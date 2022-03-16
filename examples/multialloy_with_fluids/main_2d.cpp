@@ -6114,10 +6114,62 @@ void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical
 
 }
 
+
+void initialize_grids(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t& sp,
+                      p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
+                      my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
+                      p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t* &ghost,
+                      my_p4est_node_neighbors_t* &ngbd, my_p4est_hierarchy_t* &hierarchy,
+                      my_p4est_brick_t& brick, p4est_connectivity* &conn){
+
+  // Create the p4est at time n:
+  p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
+  p4est->user_pointer = &sp;
+
+  for(int l=0; l<sp.max_lvl; l++){
+    my_p4est_refine(p4est,P4EST_FALSE,refine_levelset_cf,NULL);
+    my_p4est_partition(p4est,P4EST_FALSE,NULL);
+  }
+  p4est_balance(p4est,P4EST_CONNECT_FULL,NULL);
+  my_p4est_partition(p4est,P4EST_FALSE,NULL);
+
+  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est,ghost);
+  nodes = my_p4est_nodes_new(p4est, ghost); //same
+
+  hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
+  ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
+  ngbd->init_neighbors();
+
+  // Create the p4est at time np1:(this will be modified but is useful for initializing solvers):
+  p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
+  p4est_np1->user_pointer = &sp;
+  my_p4est_partition(p4est_np1,P4EST_FALSE,NULL);
+
+  ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_np1,ghost_np1);
+  nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+  // Get the new neighbors:
+  hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1,ghost_np1,&brick);
+  ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
+
+  // Initialize the neigbors:
+  ngbd_np1->init_neighbors();
+
+}
+
+void initialize_grids_from_load_state(){
+
+}
+
+
+
 // will become constructor (for class)
 void perform_initializations(){}
 
-void perform_initializations_from_load_state(){};
+
+
 
 // will become destructor (for class)
 void perform_final_destructions(mpi_environment_t &mpi, p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
@@ -7365,9 +7417,11 @@ int main(int argc, char** argv) {
   vec_and_ptr_t T_s_n;
   vec_and_ptr_t rhs_Ts;
 
-  // Vectors to hold first derivatives of T
+  // First derivatives of T_l_n and T_s_n
   vec_and_ptr_dim_t T_l_d;
   vec_and_ptr_dim_t T_s_d;
+
+  // Second derivatives of T_l
   vec_and_ptr_dim_t T_l_dd;
 
   // Stefan problem:------------------------------------
@@ -7384,6 +7438,8 @@ int main(int argc, char** argv) {
 
   vec_and_ptr_dim_t v_n;
   vec_and_ptr_dim_t v_nm1;
+
+  vec_and_ptr_dim_t v_n_NS, v_nm1_NS; // TO-DO : not sure if we will need this, might overhaul the whole business of NS owning them for itself (we are doing double interpolations of v to new grids which seems unnecessary)
 
   vec_and_ptr_t vorticity;
   vec_and_ptr_t vorticity_refine;
@@ -7508,52 +7564,47 @@ int main(int argc, char** argv) {
 
     PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n \n ",uniform_band);
     PetscPrintf(mpi.comm(),"Ramping bcs? %s \n t_ramp = %0.2f [nondim] = %0.2f [seconds]",ramp_bcs?"Yes":"No",t_ramp,t_ramp*time_nondim_to_dim);
+
+
+    PetscPrintf(mpi.comm(),"\nLoading from previous state? %s \n"
+                            "Starting timestep = %d \n"
+                            "Save state every iter = %d \n"
+                            "Save to vtk? %s \n"
+                            "Save using %s \n"
+                            "Save every dt = %0.5e [nondim] = %0.2f [seconds]\n"
+                            "Save every iter = %d \n",loading_from_previous_state?"Yes":"No",
+                tstep,
+                save_state_every_iter,
+                save_to_vtk?"Yes":"No",
+                save_using_dt? "dt" :"iter",
+                save_every_dt, save_every_dt*time_nondim_to_dim,
+                save_every_iter);
+
+
+
+
     // -----------------------------------------------
     // Create the grid:
     // -----------------------------------------------
     if(print_checkpoints) PetscPrintf(mpi.comm(),"Creating the grid ... \n");
 
+
+    // Initialize output file numbering:
+    int out_idx = -1;
+    int pressure_save_out_idx = -1;
+
+    // Initialize the load step (in event we use load)
     int load_tstep=-1;
+
 
     splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
     conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
     double t_original_start = tstart;
 
     if(!loading_from_previous_state){
-      // Create the p4est at time n:
-      p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
-      p4est->user_pointer = &sp;
-
-      for(unsigned int l=0;l<lmax+grid_res_iter;l++){
-        my_p4est_refine(p4est,P4EST_FALSE,refine_levelset_cf,NULL);
-        my_p4est_partition(p4est,P4EST_FALSE,NULL);
-      }
-      p4est_balance(p4est,P4EST_CONNECT_FULL,NULL);
-      my_p4est_partition(p4est,P4EST_FALSE,NULL);
-
-      ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-      my_p4est_ghost_expand(p4est,ghost);
-      nodes = my_p4est_nodes_new(p4est, ghost); //same
-
-      hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
-      ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
-      ngbd->init_neighbors();
-
-      // Create the p4est at time np1:(this will be modified but is useful for initializing solvers):
-      p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
-      p4est_np1->user_pointer = &sp;
-      my_p4est_partition(p4est_np1,P4EST_FALSE,NULL);
-
-      ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-      my_p4est_ghost_expand(p4est_np1,ghost_np1);
-      nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-
-      // Get the new neighbors:
-      hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1,ghost_np1,&brick);
-      ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
-
-      // Initialize the neigbors:
-      ngbd_np1->init_neighbors();
+      initialize_grids(mpi, sp,
+                       p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
+                       p4est, nodes, ghost, ngbd, hierarchy, brick, conn);
     }
     else{
       p4est=NULL;
@@ -7618,24 +7669,10 @@ int main(int argc, char** argv) {
 
     if(!loading_from_previous_state)tstep = 0;
 
-    PetscPrintf(mpi.comm(),"\nLoading from previous state? %s \n"
-                           "Starting timestep = %d \n"
-                           "Save state every iter = %d \n"
-                           "Save to vtk? %s \n"
-                           "Save using %s \n"
-                           "Save every dt = %0.5e [nondim] = %0.2f [seconds]\n"
-                           "Save every iter = %d \n",loading_from_previous_state?"Yes":"No",
-                          tstep,
-                          save_state_every_iter,
-                          save_to_vtk?"Yes":"No",
-                          save_using_dt? "dt" :"iter",
-                          save_every_dt, save_every_dt*time_nondim_to_dim,
-                          save_every_iter);
 
 
-    // Initialize output file numbering:
-    int out_idx = -1;
-    int pressure_save_out_idx = -1;
+
+
 
     // ------------------------------------------------------------
     // Initialize relevant fields:
@@ -7763,85 +7800,6 @@ int main(int argc, char** argv) {
     // ------------------------------------------------------------
     // Initialize relevant boundary condition objects:
     // ------------------------------------------------------------
-//    // For NS or coupled case:
-//    // Create analytical velocity field for each Cartesian direction if needed:
-//    if(analytical_IC_BC_forcing_term){
-//      for(unsigned char d=0;d<P4EST_DIM;d++){
-//        analytical_soln_v[d] = new velocity_component(d);
-//        analytical_soln_v[d]->t = tn;
-//      }
-//    }
-
-//    // For temperature problem:
-//    if(solve_stefan){
-//      // Create analytical temperature field for each domain if needed:
-//      for(unsigned char d=0;d<2;++d){
-//        if(analytical_IC_BC_forcing_term){ // TO-DO: make all incrementing consistent
-//          analytical_T[d] = new temperature_field(d);
-//          analytical_T[d]->t = tn;
-//        }
-//      }
-//      // Set the bc interface type for temperature:
-//      interface_bc_temp();
-//      if(example_uses_inner_LSF){inner_interface_bc_temp();} // inner boundary bc
-
-//      // Create necessary RHS forcing terms and BC's
-//      for(unsigned char d=0;d<2;++d){
-//        if(analytical_IC_BC_forcing_term){
-//          external_heat_source_T[d] = new external_heat_source(d,analytical_T,analytical_soln_v);
-//          external_heat_source_T[d]->t = tn;
-//          bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(NULL,NULL,analytical_T,d);
-//          bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d,analytical_T);
-//        }
-//        else{
-//          bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(); // will set proper objects later, can be null on initialization
-//          bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d);
-//        }
-//      }
-//    }
-
-
-
-//    if(solve_navier_stokes){
-//      for(unsigned char d=0;d<P4EST_DIM;d++){
-//        // Set the BC types:
-//        BC_INTERFACE_TYPE_VELOCITY(d);
-//        bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
-
-//        // Set the BC values (and potential forcing terms) depending on what we are running:
-//        if(analytical_IC_BC_forcing_term){
-//          // Interface conditions values:
-//          bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL,analytical_soln_v);
-//          bc_interface_value_velocity[d]->t = tn;
-
-//          // Wall conditions values:
-//          bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d,analytical_soln_v);
-//          bc_wall_value_velocity[d]->t = tn;
-          
-//          if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-//            for(unsigned char domain=0;domain<2;++domain){
-//                // External forcing terms:
-//                external_force_components_with_BA[d] = new external_force_per_unit_volume_component_with_boussinesq_approx(domain,d,analytical_T,analytical_soln_v);
-//                external_force_components_with_BA[d]->t = tn;
-//            }
-//          }else{
-//            // External forcing terms:
-//            external_force_components[d] = new external_force_per_unit_volume_component(d,analytical_soln_v);
-//            external_force_components[d]->t = tn;
-//          }
-//        }
-//        else{
-//          // Interface condition values:
-//          bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL); // initialize null for now, will add relevant neighbors and vector as required later on
-
-//          // Wall condition values:
-//          bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d);
-//        }
-//      }
-//      interface_bc_pressure(); // sets the interfacial bc type for pressure
-//      bc_wall_value_pressure.t = tn;
-//    }
-
     initialize_all_relevant_bcs_ics_forcing_terms(analytical_T,
                                                   bc_interface_val_temp,
                                                   bc_wall_value_temp,
@@ -7855,12 +7813,6 @@ int main(int argc, char** argv) {
                                                   bc_wall_type_pressure,
                                                   external_force_components,
                                                   external_force_components_with_BA);
-
-    // ------------------------------------------------------------
-    // Initialize relevant solvers:
-    // ------------------------------------------------------------
-    // First, initialize the Navier-Stokes solver with the grid:
-    vec_and_ptr_dim_t v_n_NS, v_nm1_NS;
 
     // -----------------------------------------------
     // Initialize files to output various data of interest:
