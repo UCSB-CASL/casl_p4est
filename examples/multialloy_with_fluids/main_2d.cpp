@@ -7232,7 +7232,7 @@ void initialize_grids(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_
 }
 
 void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
-                       my_p4est_level_set_t &ls,
+                       my_p4est_level_set_t* ls,
                        vec_and_ptr_t& phi, vec_and_ptr_t& phi_nm1,
                        vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
                        vec_and_ptr_dim_t& v_interface,
@@ -7246,8 +7246,8 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
   if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the level set function (s) ... \n");
   phi.create(p4est_np1, nodes_np1);
   sample_cf_on_nodes(p4est_np1, nodes_np1, level_set, phi.vec);
-  ls.perturb_level_set_function(phi.vec, EPS);
-  if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
+  ls->perturb_level_set_function(phi.vec, EPS);
+  if(solve_stefan)ls->reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
 
   if(start_w_merged_grains) {regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi);}
 
@@ -7609,6 +7609,8 @@ int main(int argc, char** argv) {
   vec_and_ptr_dim_t phi_solid_dd;
   vec_and_ptr_dim_t phi_substrate_dd;
 
+  my_p4est_level_set_t *ls;
+
   // Interface geometry:------------------------------
   vec_and_ptr_dim_t normal;
   vec_and_ptr_t curvature;
@@ -7719,7 +7721,7 @@ int main(int argc, char** argv) {
       }
 
     // -----------------------------------------------
-    // Set up initial grid:
+    // Set up domain :
     // -----------------------------------------------
     // domain size information
     set_geometry();
@@ -7795,14 +7797,10 @@ int main(int argc, char** argv) {
                 save_every_dt, save_every_dt*time_nondim_to_dim,
                 save_every_iter);
 
-
-
-
     // -----------------------------------------------
-    // Create the grid:
+    // Perform grid and field initializations
     // -----------------------------------------------
-    if(print_checkpoints) PetscPrintf(mpi.comm(),"Creating the grid ... \n");
-
+    if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid and field initializations ... \n");
 
     // Initialize output file numbering:
     int out_idx = -1;
@@ -7811,36 +7809,25 @@ int main(int argc, char** argv) {
     // Initialize the load step (in event we use load)
     int load_tstep=-1;
 
-
     splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
     conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
     double t_original_start = tstart;
 
-    if(!loading_from_previous_state){
-      initialize_grids(mpi, sp,
-                       p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
-                       p4est, nodes, ghost, ngbd, hierarchy, brick, conn);
-    }
-    else{
+    // Call the relevant initialization fxns
+    if(loading_from_previous_state){
       initialize_grids_and_fields_from_load_state(load_tstep, mpi, sp,
                                                   p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
                                                   p4est, nodes, ghost, ngbd, hierarchy, brick, conn,
                                                   phi, T_l_n, T_s_n, T_l_nm1,
                                                   v_n, v_nm1, vorticity, press_nodes);
+      ls = new my_p4est_level_set_t(ngbd_np1);
     }
+    else{
+      initialize_grids(mpi, sp,
+                       p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
+                       p4est, nodes, ghost, ngbd, hierarchy, brick, conn);
+      ls = new my_p4est_level_set_t(ngbd_np1);
 
-    // Initialize level set objet for field extension:
-    my_p4est_level_set_t ls(ngbd_np1); // TO-DO: declare this at beginning and encapsulate it into a fxn
-
-
-    if(!loading_from_previous_state)tstep = 0;
-
-
-    // ------------------------------------------------------------
-    // Initialize relevant fields:
-    // ------------------------------------------------------------
-    // Only initialize if we are NOT loading from a previous state
-    if(!loading_from_previous_state){
       initialize_fields(mpi,
                         p4est_np1, nodes_np1, ngbd_np1, ls,
                         phi, phi_nm1,
@@ -7848,123 +7835,8 @@ int main(int argc, char** argv) {
                         v_interface,
                         v_n, v_nm1,
                         vorticity, press_nodes);
-//      // LSF:
-//      if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the level set function (s) ... \n");
-//      phi.create(p4est_np1, nodes_np1);
-//      sample_cf_on_nodes(p4est_np1, nodes_np1, level_set, phi.vec);
-//      ls.perturb_level_set_function(phi.vec, EPS);
-//      if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
-
-//      if(start_w_merged_grains) {regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi);}
-
-//      if(solve_navier_stokes){
-//        // NS solver requires us to keep phi_nm1 for interpolating the hodge variable to the new grid.
-//        // Since p4est_np1 = p4est at initialization, it's safe to just copy phi and have them both on p4est_np1.
-//        // We will handle sliding these correctly later on
-//        // Initialize phi_nm1:
-//        phi_nm1.create(p4est_np1, nodes_np1);
-//        VecCopyGhost(phi.vec, phi_nm1.vec);
-//      }
-
-
-//      // Temperature fields:
-//      INITIAL_TEMP *T_init_cf[2];
-//      temperature_field* analytical_temp[2];
-//      if(solve_stefan){
-//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the temperature fields (s) ... \n");
-
-//        if(analytical_IC_BC_forcing_term){
-//          coupled_test_sign = 1.;
-//          vel_has_switched=false;
-
-//          for(unsigned char d=0;d<2;++d){
-//            analytical_temp[d]= new temperature_field(d);
-//            analytical_temp[d]->t = tstart;
-//          }
-//          for(unsigned char d=0;d<2;++d){
-//            T_init_cf[d]= new INITIAL_TEMP(d,analytical_temp);
-//          }
-
-//        }
-//        else{
-//          for(unsigned char d=0;d<2;++d){
-//            T_init_cf[d] = new INITIAL_TEMP(d);
-//            T_init_cf[d]->t = tstart;
-//          }
-//        }
-
-//        T_l_n.create(p4est_np1, nodes_np1);
-//        sample_cf_on_nodes(p4est_np1, nodes_np1, *T_init_cf[LIQUID_DOMAIN],T_l_n.vec);
-
-//        if(do_we_solve_for_Ts){
-//          T_s_n.create(p4est_np1, nodes_np1);
-//          sample_cf_on_nodes(p4est_np1, nodes_np1,*T_init_cf[SOLID_DOMAIN],T_s_n.vec);
-//        }
-
-//        if(solve_navier_stokes && advection_sl_order ==2){
-//          T_l_nm1.create(p4est_np1, nodes_np1);
-//          sample_cf_on_nodes(p4est_np1, nodes_np1,*T_init_cf[LIQUID_DOMAIN],T_l_nm1.vec);
-//        }
-
-//        v_interface.create(p4est_np1, nodes_np1);
-//        foreach_dimension(d){
-//          sample_cf_on_nodes(p4est_np1, nodes_np1, zero_cf, v_interface.vec[d]);
-//        }
-
-//        for(unsigned char d=0;d<2;++d){
-//          if(analytical_IC_BC_forcing_term) delete analytical_temp[d];
-//          delete T_init_cf[d];
-//        }
-//      }
-
-//      // Navier-Stokes fields:
-
-//      INITIAL_VELOCITY *v_init_cf[P4EST_DIM];
-//      velocity_component* analytical_soln[P4EST_DIM];
-
-//      if(solve_navier_stokes){
-//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the Navier-Stokes fields (s) ... \n");
-
-//        if(analytical_IC_BC_forcing_term)
-//        {
-//          for(unsigned char d=0;d<P4EST_DIM;++d){
-//            analytical_soln[d] = new velocity_component(d);
-//            analytical_soln[d]->t = tstart;
-//          }
-//        }
-//        for(unsigned char d=0;d<P4EST_DIM;++d){
-//          if(analytical_IC_BC_forcing_term){
-//            v_init_cf[d] = new INITIAL_VELOCITY(d,analytical_soln);
-//            v_init_cf[d]->t = tstart;
-//          }
-//          else {
-//            v_init_cf[d] = new INITIAL_VELOCITY(d);
-//          }
-//        }
-
-//        v_n.create(p4est_np1, nodes_np1);
-//        v_nm1.create(p4est_np1, nodes_np1);
-//        vorticity.create(p4est_np1, nodes_np1);
-//        press_nodes.create(p4est_np1, nodes_np1);
-
-//        foreach_dimension(d){
-//          sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_n.vec[d]);
-//          sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_nm1.vec[d]);
-//        }
-//        sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,vorticity.vec);
-//        sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,press_nodes.vec);
-//      }
-
-//      for(unsigned char d=0;d<P4EST_DIM;d++){
-//        if(analytical_IC_BC_forcing_term){
-//          delete analytical_soln[d];
-//        }
-//        if(solve_navier_stokes) delete v_init_cf[d];
-
-//      }
-
-//      if(solve_navier_stokes)NS_norm = max(fabs(u0),fabs(v0)); // Initialize the NS norm
-    } // end of (if not loading from previous state)
+      tstep = 0;
+    }
 
     // ------------------------------------------------------------
     // Initialize relevant boundary condition objects:
@@ -8253,7 +8125,7 @@ int main(int argc, char** argv) {
         phi_eff_list.clear(); phi_eff_opn_list.clear();
 
         // Reinitialize:
-        ls.reinitialize_2nd_order(phi_eff.vec);
+        ls->reinitialize_2nd_order(phi_eff.vec);
       }
 
       // ------------------------------------------------------------
@@ -8285,7 +8157,7 @@ int main(int argc, char** argv) {
       // Get smallest grid size: (this gets used in all examples at some point)
       dxyz_min(p4est_np1, dxyz_smallest);
       dxyz_close_to_interface = 1.2*max(dxyz_smallest[0],dxyz_smallest[1]);
-      ls.update(ngbd_np1);
+      ls->update(ngbd_np1);
       if(solve_stefan){
         // ------------------------------------------------------------
         // Define some variables needed to specify how to extend across the interface:
@@ -8295,7 +8167,7 @@ int main(int argc, char** argv) {
         extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
         extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
 
-        extend_relevant_fields(p4est_np1, nodes_np1, ngbd_np1, ls,
+        extend_relevant_fields(p4est_np1, nodes_np1, ngbd_np1, *ls,
                                phi, phi_substrate, phi_eff,
                                T_l_n, T_s_n,
                                extension_band_use_, extension_band_extend_);
@@ -8675,8 +8547,8 @@ int main(int argc, char** argv) {
         // Reinitialize the LSF on the new grid (if it has been advected):
         // -------------------------------
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Reinitializing LSF... \n");
-        ls.update(ngbd_np1);
-        perform_reinitialization(mpi.comm(), ls, phi);
+        ls->update(ngbd_np1);
+        perform_reinitialization(mpi.comm(), *ls, phi);
 
         // Regularize the front (if we are doing that)
         if(use_regularize_front){
