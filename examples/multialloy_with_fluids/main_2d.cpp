@@ -7231,6 +7231,145 @@ void initialize_grids(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_
 
 }
 
+void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
+                       my_p4est_level_set_t &ls,
+                       vec_and_ptr_t& phi, vec_and_ptr_t& phi_nm1,
+                       vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
+                       vec_and_ptr_dim_t& v_interface,
+                       vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
+                       vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes){
+
+  // ---------------------------------
+  // Level-set function(s):
+  // ---------------------------------
+
+  if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the level set function (s) ... \n");
+  phi.create(p4est_np1, nodes_np1);
+  sample_cf_on_nodes(p4est_np1, nodes_np1, level_set, phi.vec);
+  ls.perturb_level_set_function(phi.vec, EPS);
+  if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
+
+  if(start_w_merged_grains) {regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi);}
+
+  if(solve_navier_stokes){
+    // NS solver requires us to keep phi_nm1 for interpolating the hodge variable to the new grid.
+    // Since p4est_np1 = p4est at initialization, it's safe to just copy phi and have them both on p4est_np1.
+    // We will handle sliding these correctly later on
+    // Initialize phi_nm1:
+    phi_nm1.create(p4est_np1, nodes_np1);
+    VecCopyGhost(phi.vec, phi_nm1.vec);
+  }
+
+  // ---------------------------------
+  // Temperature/conc fields:
+  // ---------------------------------
+
+  INITIAL_TEMP *T_init_cf[2];
+  temperature_field* analytical_temp[2];
+  if(solve_stefan){
+    if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the temperature fields (s) ... \n");
+
+    if(analytical_IC_BC_forcing_term){
+      coupled_test_sign = 1.;
+      vel_has_switched=false;
+
+      for(unsigned char d=0;d<2;++d){
+        analytical_temp[d]= new temperature_field(d);
+        analytical_temp[d]->t = tstart;
+      }
+      for(unsigned char d=0;d<2;++d){
+        T_init_cf[d]= new INITIAL_TEMP(d,analytical_temp);
+      }
+
+    }
+    else{
+      for(unsigned char d=0;d<2;++d){
+        T_init_cf[d] = new INITIAL_TEMP(d);
+        T_init_cf[d]->t = tstart;
+      }
+    }
+
+    T_l_n.create(p4est_np1, nodes_np1);
+    sample_cf_on_nodes(p4est_np1, nodes_np1, *T_init_cf[LIQUID_DOMAIN],T_l_n.vec);
+
+    if(do_we_solve_for_Ts){
+      T_s_n.create(p4est_np1, nodes_np1);
+      sample_cf_on_nodes(p4est_np1, nodes_np1,*T_init_cf[SOLID_DOMAIN],T_s_n.vec);
+    }
+
+    if(solve_navier_stokes && advection_sl_order ==2){
+      T_l_nm1.create(p4est_np1, nodes_np1);
+      sample_cf_on_nodes(p4est_np1, nodes_np1,*T_init_cf[LIQUID_DOMAIN],T_l_nm1.vec);
+    }
+
+    v_interface.create(p4est_np1, nodes_np1);
+    foreach_dimension(d){
+      sample_cf_on_nodes(p4est_np1, nodes_np1, zero_cf, v_interface.vec[d]);
+    }
+
+    for(unsigned char d=0;d<2;++d){
+      if(analytical_IC_BC_forcing_term) delete analytical_temp[d];
+      delete T_init_cf[d];
+    }
+  }
+
+  // ---------------------------------
+  // Navier-Stokes fields:
+  // ---------------------------------
+  INITIAL_VELOCITY *v_init_cf[P4EST_DIM];
+  velocity_component* analytical_soln[P4EST_DIM];
+
+  if(solve_navier_stokes){
+    if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the Navier-Stokes fields (s) ... \n");
+
+    if(analytical_IC_BC_forcing_term)
+    {
+      for(unsigned char d=0;d<P4EST_DIM;++d){
+        analytical_soln[d] = new velocity_component(d);
+        analytical_soln[d]->t = tstart;
+      }
+    }
+    for(unsigned char d=0;d<P4EST_DIM;++d){
+      if(analytical_IC_BC_forcing_term){
+        v_init_cf[d] = new INITIAL_VELOCITY(d,analytical_soln);
+        v_init_cf[d]->t = tstart;
+      }
+      else {
+        v_init_cf[d] = new INITIAL_VELOCITY(d);
+      }
+    }
+
+    v_n.create(p4est_np1, nodes_np1);
+    v_nm1.create(p4est_np1, nodes_np1);
+    vorticity.create(p4est_np1, nodes_np1);
+    press_nodes.create(p4est_np1, nodes_np1);
+
+    foreach_dimension(d){
+      sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_n.vec[d]);
+      sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_nm1.vec[d]);
+    }
+    sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,vorticity.vec);
+    sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,press_nodes.vec);
+  }
+
+  for(unsigned char d=0;d<P4EST_DIM;d++){
+    if(analytical_IC_BC_forcing_term){
+      delete analytical_soln[d];
+    }
+    if(solve_navier_stokes) delete v_init_cf[d];
+
+  }
+
+  if(solve_navier_stokes)NS_norm = max(fabs(u0),fabs(v0)); // Initialize the NS norm
+
+
+} // end of initialize_fields
+
+
+
+
+
+
 void initialize_grids_and_fields_from_load_state(int& load_tstep,
                                       mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t& sp,
                                       p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
@@ -7691,13 +7830,10 @@ int main(int argc, char** argv) {
     }
 
     // Initialize level set objet for field extension:
-    my_p4est_level_set_t ls(ngbd_np1);
+    my_p4est_level_set_t ls(ngbd_np1); // TO-DO: declare this at beginning and encapsulate it into a fxn
+
 
     if(!loading_from_previous_state)tstep = 0;
-
-
-
-
 
 
     // ------------------------------------------------------------
@@ -7705,122 +7841,129 @@ int main(int argc, char** argv) {
     // ------------------------------------------------------------
     // Only initialize if we are NOT loading from a previous state
     if(!loading_from_previous_state){
-      // LSF:
-      if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the level set function (s) ... \n");
-      phi.create(p4est_np1, nodes_np1);
-      sample_cf_on_nodes(p4est_np1, nodes_np1, level_set, phi.vec);
-      ls.perturb_level_set_function(phi.vec, EPS);
-      if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
+      initialize_fields(mpi,
+                        p4est_np1, nodes_np1, ngbd_np1, ls,
+                        phi, phi_nm1,
+                        T_l_n, T_s_n, T_l_nm1,
+                        v_interface,
+                        v_n, v_nm1,
+                        vorticity, press_nodes);
+//      // LSF:
+//      if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the level set function (s) ... \n");
+//      phi.create(p4est_np1, nodes_np1);
+//      sample_cf_on_nodes(p4est_np1, nodes_np1, level_set, phi.vec);
+//      ls.perturb_level_set_function(phi.vec, EPS);
+//      if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
 
-      if(start_w_merged_grains) {regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi);}
+//      if(start_w_merged_grains) {regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi);}
 
-      if(solve_navier_stokes){
-        // NS solver requires us to keep phi_nm1 for interpolating the hodge variable to the new grid.
-        // Since p4est_np1 = p4est at initialization, it's safe to just copy phi and have them both on p4est_np1.
-        // We will handle sliding these correctly later on
-        // Initialize phi_nm1:
-        phi_nm1.create(p4est_np1, nodes_np1);
-        VecCopyGhost(phi.vec, phi_nm1.vec);
-      }
+//      if(solve_navier_stokes){
+//        // NS solver requires us to keep phi_nm1 for interpolating the hodge variable to the new grid.
+//        // Since p4est_np1 = p4est at initialization, it's safe to just copy phi and have them both on p4est_np1.
+//        // We will handle sliding these correctly later on
+//        // Initialize phi_nm1:
+//        phi_nm1.create(p4est_np1, nodes_np1);
+//        VecCopyGhost(phi.vec, phi_nm1.vec);
+//      }
 
 
-      // Temperature fields:
-      INITIAL_TEMP *T_init_cf[2];
-      temperature_field* analytical_temp[2];
-      if(solve_stefan){
-        if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the temperature fields (s) ... \n");
+//      // Temperature fields:
+//      INITIAL_TEMP *T_init_cf[2];
+//      temperature_field* analytical_temp[2];
+//      if(solve_stefan){
+//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the temperature fields (s) ... \n");
 
-        if(analytical_IC_BC_forcing_term){
-          coupled_test_sign = 1.;
-          vel_has_switched=false;
+//        if(analytical_IC_BC_forcing_term){
+//          coupled_test_sign = 1.;
+//          vel_has_switched=false;
 
-          for(unsigned char d=0;d<2;++d){
-            analytical_temp[d]= new temperature_field(d);
-            analytical_temp[d]->t = tstart;
-          }
-          for(unsigned char d=0;d<2;++d){
-            T_init_cf[d]= new INITIAL_TEMP(d,analytical_temp);
-          }
+//          for(unsigned char d=0;d<2;++d){
+//            analytical_temp[d]= new temperature_field(d);
+//            analytical_temp[d]->t = tstart;
+//          }
+//          for(unsigned char d=0;d<2;++d){
+//            T_init_cf[d]= new INITIAL_TEMP(d,analytical_temp);
+//          }
 
-        }
-        else{
-          for(unsigned char d=0;d<2;++d){
-            T_init_cf[d] = new INITIAL_TEMP(d);
-            T_init_cf[d]->t = tstart;
-          }
-        }
+//        }
+//        else{
+//          for(unsigned char d=0;d<2;++d){
+//            T_init_cf[d] = new INITIAL_TEMP(d);
+//            T_init_cf[d]->t = tstart;
+//          }
+//        }
 
-        T_l_n.create(p4est_np1, nodes_np1);
-        sample_cf_on_nodes(p4est_np1, nodes_np1, *T_init_cf[LIQUID_DOMAIN],T_l_n.vec);
+//        T_l_n.create(p4est_np1, nodes_np1);
+//        sample_cf_on_nodes(p4est_np1, nodes_np1, *T_init_cf[LIQUID_DOMAIN],T_l_n.vec);
 
-        if(do_we_solve_for_Ts){
-          T_s_n.create(p4est_np1, nodes_np1);
-          sample_cf_on_nodes(p4est_np1, nodes_np1,*T_init_cf[SOLID_DOMAIN],T_s_n.vec);
-        }
+//        if(do_we_solve_for_Ts){
+//          T_s_n.create(p4est_np1, nodes_np1);
+//          sample_cf_on_nodes(p4est_np1, nodes_np1,*T_init_cf[SOLID_DOMAIN],T_s_n.vec);
+//        }
 
-        if(solve_navier_stokes && advection_sl_order ==2){
-          T_l_nm1.create(p4est_np1, nodes_np1);
-          sample_cf_on_nodes(p4est_np1, nodes_np1,*T_init_cf[LIQUID_DOMAIN],T_l_nm1.vec);
-        }
+//        if(solve_navier_stokes && advection_sl_order ==2){
+//          T_l_nm1.create(p4est_np1, nodes_np1);
+//          sample_cf_on_nodes(p4est_np1, nodes_np1,*T_init_cf[LIQUID_DOMAIN],T_l_nm1.vec);
+//        }
 
-        v_interface.create(p4est_np1, nodes_np1);
-        foreach_dimension(d){
-          sample_cf_on_nodes(p4est_np1, nodes_np1, zero_cf, v_interface.vec[d]);
-        }
+//        v_interface.create(p4est_np1, nodes_np1);
+//        foreach_dimension(d){
+//          sample_cf_on_nodes(p4est_np1, nodes_np1, zero_cf, v_interface.vec[d]);
+//        }
 
-        for(unsigned char d=0;d<2;++d){
-          if(analytical_IC_BC_forcing_term) delete analytical_temp[d];
-          delete T_init_cf[d];
-        }
-      }
+//        for(unsigned char d=0;d<2;++d){
+//          if(analytical_IC_BC_forcing_term) delete analytical_temp[d];
+//          delete T_init_cf[d];
+//        }
+//      }
 
-      // Navier-Stokes fields:
+//      // Navier-Stokes fields:
 
-      INITIAL_VELOCITY *v_init_cf[P4EST_DIM];
-      velocity_component* analytical_soln[P4EST_DIM];
+//      INITIAL_VELOCITY *v_init_cf[P4EST_DIM];
+//      velocity_component* analytical_soln[P4EST_DIM];
 
-      if(solve_navier_stokes){
-        if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the Navier-Stokes fields (s) ... \n");
+//      if(solve_navier_stokes){
+//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the Navier-Stokes fields (s) ... \n");
 
-        if(analytical_IC_BC_forcing_term)
-        {
-          for(unsigned char d=0;d<P4EST_DIM;++d){
-            analytical_soln[d] = new velocity_component(d);
-            analytical_soln[d]->t = tstart;
-          }
-        }
-        for(unsigned char d=0;d<P4EST_DIM;++d){
-          if(analytical_IC_BC_forcing_term){
-            v_init_cf[d] = new INITIAL_VELOCITY(d,analytical_soln);
-            v_init_cf[d]->t = tstart;
-          }
-          else {
-            v_init_cf[d] = new INITIAL_VELOCITY(d);
-          }
-        }
+//        if(analytical_IC_BC_forcing_term)
+//        {
+//          for(unsigned char d=0;d<P4EST_DIM;++d){
+//            analytical_soln[d] = new velocity_component(d);
+//            analytical_soln[d]->t = tstart;
+//          }
+//        }
+//        for(unsigned char d=0;d<P4EST_DIM;++d){
+//          if(analytical_IC_BC_forcing_term){
+//            v_init_cf[d] = new INITIAL_VELOCITY(d,analytical_soln);
+//            v_init_cf[d]->t = tstart;
+//          }
+//          else {
+//            v_init_cf[d] = new INITIAL_VELOCITY(d);
+//          }
+//        }
 
-        v_n.create(p4est_np1, nodes_np1);
-        v_nm1.create(p4est_np1, nodes_np1);
-        vorticity.create(p4est_np1, nodes_np1);
-        press_nodes.create(p4est_np1, nodes_np1);
+//        v_n.create(p4est_np1, nodes_np1);
+//        v_nm1.create(p4est_np1, nodes_np1);
+//        vorticity.create(p4est_np1, nodes_np1);
+//        press_nodes.create(p4est_np1, nodes_np1);
 
-        foreach_dimension(d){
-          sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_n.vec[d]);
-          sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_nm1.vec[d]);
-        }
-        sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,vorticity.vec);
-        sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,press_nodes.vec);
-      }
+//        foreach_dimension(d){
+//          sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_n.vec[d]);
+//          sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_nm1.vec[d]);
+//        }
+//        sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,vorticity.vec);
+//        sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,press_nodes.vec);
+//      }
 
-      for(unsigned char d=0;d<P4EST_DIM;d++){
-        if(analytical_IC_BC_forcing_term){
-          delete analytical_soln[d];
-        }
-        if(solve_navier_stokes) delete v_init_cf[d];
+//      for(unsigned char d=0;d<P4EST_DIM;d++){
+//        if(analytical_IC_BC_forcing_term){
+//          delete analytical_soln[d];
+//        }
+//        if(solve_navier_stokes) delete v_init_cf[d];
 
-      }
+//      }
 
-      if(solve_navier_stokes)NS_norm = max(fabs(u0),fabs(v0)); // Initialize the NS norm
+//      if(solve_navier_stokes)NS_norm = max(fabs(u0),fabs(v0)); // Initialize the NS norm
     } // end of (if not loading from previous state)
 
     // ------------------------------------------------------------
