@@ -5157,7 +5157,7 @@ void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
   if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing normal and curvature ... \n");
   // Get the new solid LSF:
   VecCopyGhost(phi.vec, phi_solid.vec);
-  VecScaleGhost(phi_solid.vec,-1.0);
+  VecScaleGhost(phi_solid.vec, -1.0);
 
   // Compute normals on the interface (if needed) :
   if(interfacial_temp_bc_requires_normal || interfacial_temp_bc_requires_curvature){
@@ -5237,7 +5237,7 @@ void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
                phi_dd, phi_solid_dd,
                T_l_n, T_s_n,
                rhs_Tl, rhs_Ts,
-               bc_interface_val_temp,bc_wall_value_temp,
+               bc_interface_val_temp, bc_wall_value_temp,
                ngbd_np1, solver_Tl, solver_Ts,
                cube_refinement,
                phi_substrate,
@@ -6008,6 +6008,111 @@ void track_evolving_geometry(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4
 
 } // end of track evolving geometry
 
+void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical_T[2],
+                                                   BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
+                                                   BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
+                                                   external_heat_source* external_heat_source_T[2],
+                                                   velocity_component* analytical_soln_v[P4EST_DIM],
+                                                   BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
+                                                   BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
+                                                   BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM],
+                                                   BC_INTERFACE_VALUE_PRESSURE& bc_interface_value_pressure,
+                                                   BC_WALL_VALUE_PRESSURE& bc_wall_value_pressure,
+                                                   BC_WALL_TYPE_PRESSURE& bc_wall_type_pressure,
+                                                   external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
+                                                   external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM]){
+
+  // ------------------------------
+  // Analytical v (used for some coupled cases so has to be
+  // initialized first bc forcing terms in heat and momentum both rely on this)
+  // --> Create analytical velocity field for each Cartesian direction if needed:
+  // ------------------------------
+  if(analytical_IC_BC_forcing_term){
+    for(unsigned char d=0;d<P4EST_DIM;d++){
+      analytical_soln_v[d] = new velocity_component(d);
+      analytical_soln_v[d]->t = tn;
+    }
+  }
+  // ------------------------------
+  // For temperature problem:
+  // ------------------------------
+  if(solve_stefan){
+    // Create analytical temperature field for each domain if needed:
+    for(unsigned char d=0;d<2;++d){
+      if(analytical_IC_BC_forcing_term){ // TO-DO: make all incrementing consistent
+        analytical_T[d] = new temperature_field(d);
+        analytical_T[d]->t = tn;
+      }
+    }
+    // Set the bc interface type for temperature:
+    interface_bc_temp();
+    if(example_uses_inner_LSF){inner_interface_bc_temp();} // inner boundary bc
+
+    // Create necessary RHS forcing terms and BC's
+    for(unsigned char d=0;d<2;++d){
+      if(analytical_IC_BC_forcing_term){
+        external_heat_source_T[d] = new external_heat_source(d,analytical_T,analytical_soln_v);
+        external_heat_source_T[d]->t = tn;
+        bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(NULL,NULL,analytical_T,d);
+        bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d,analytical_T);
+      }
+      else{
+        bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(); // will set proper objects later, can be null on initialization
+        bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d);
+      }
+    }
+  }
+
+
+  if(solve_navier_stokes){
+    for(unsigned char d=0;d<P4EST_DIM;d++){
+      // Set the BC types:
+      BC_INTERFACE_TYPE_VELOCITY(d);
+      bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
+
+      // Set the BC values (and potential forcing terms) depending on what we are running:
+      if(analytical_IC_BC_forcing_term){
+        // Interface conditions values:
+        bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL,analytical_soln_v);
+        bc_interface_value_velocity[d]->t = tn;
+
+        // Wall conditions values:
+        bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d,analytical_soln_v);
+        bc_wall_value_velocity[d]->t = tn;
+
+        if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+          for(unsigned char domain=0;domain<2;++domain){
+            // External forcing terms:
+            external_force_components_with_BA[d] = new external_force_per_unit_volume_component_with_boussinesq_approx(domain,d,analytical_T,analytical_soln_v);
+            external_force_components_with_BA[d]->t = tn;
+          }
+        }else{
+          // External forcing terms:
+          external_force_components[d] = new external_force_per_unit_volume_component(d,analytical_soln_v);
+          external_force_components[d]->t = tn;
+        }
+      }
+      else{
+        // Interface condition values:
+        bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL); // initialize null for now, will add relevant neighbors and vector as required later on
+
+        // Wall condition values:
+        bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d);
+      }
+    }
+    interface_bc_pressure(); // sets the interfacial bc type for pressure
+    bc_wall_value_pressure.t = tn;
+  }
+
+
+
+
+
+
+
+
+
+}
 
 // will become constructor (for class)
 void perform_initializations(){}
@@ -6035,7 +6140,7 @@ void perform_final_destructions(mpi_environment_t &mpi, p4est_t* &p4est_np1, p4e
                                 BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM])
 {
 
-  // Final destructions: TO-DO: need to revisit these, make sure they're done correctly
+  // Final destructions
   phi.destroy();
 
   if(solve_stefan){
@@ -7305,7 +7410,9 @@ int main(int argc, char** argv) {
   BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM];
   BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM];
 
-  // Note: Pressure BC objects take no arguments, don't need to be initialized
+  BC_INTERFACE_VALUE_PRESSURE bc_interface_value_pressure;
+  BC_WALL_VALUE_PRESSURE bc_wall_value_pressure;
+  BC_WALL_TYPE_PRESSURE bc_wall_type_pressure;
 
   external_force_per_unit_volume_component* external_force_components[P4EST_DIM];
   external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM];
@@ -7542,9 +7649,6 @@ int main(int argc, char** argv) {
       ls.perturb_level_set_function(phi.vec, EPS);
       if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
 
-
-
-
       if(start_w_merged_grains) {regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi);}
 
       if(solve_navier_stokes){
@@ -7659,88 +7763,98 @@ int main(int argc, char** argv) {
     // ------------------------------------------------------------
     // Initialize relevant boundary condition objects:
     // ------------------------------------------------------------
-    // For NS or coupled case:
-    // Create analytical velocity field for each Cartesian direction if needed:
-    if(analytical_IC_BC_forcing_term){
-      for(unsigned char d=0;d<P4EST_DIM;d++){
-        analytical_soln_v[d] = new velocity_component(d);
-        analytical_soln_v[d]->t = tn;
-      }
-    }
+//    // For NS or coupled case:
+//    // Create analytical velocity field for each Cartesian direction if needed:
+//    if(analytical_IC_BC_forcing_term){
+//      for(unsigned char d=0;d<P4EST_DIM;d++){
+//        analytical_soln_v[d] = new velocity_component(d);
+//        analytical_soln_v[d]->t = tn;
+//      }
+//    }
 
-    // For temperature problem:
-    if(solve_stefan){
-      // Create analytical temperature field for each domain if needed:
-      for(unsigned char d=0;d<2;++d){
-        if(analytical_IC_BC_forcing_term){ // TO-DO: make all incrementing consistent
-          analytical_T[d] = new temperature_field(d);
-          analytical_T[d]->t = tn;
-        }
-      }
-      // Set the bc interface type for temperature:
-      interface_bc_temp();
-      if(example_uses_inner_LSF){inner_interface_bc_temp();} // inner boundary bc
+//    // For temperature problem:
+//    if(solve_stefan){
+//      // Create analytical temperature field for each domain if needed:
+//      for(unsigned char d=0;d<2;++d){
+//        if(analytical_IC_BC_forcing_term){ // TO-DO: make all incrementing consistent
+//          analytical_T[d] = new temperature_field(d);
+//          analytical_T[d]->t = tn;
+//        }
+//      }
+//      // Set the bc interface type for temperature:
+//      interface_bc_temp();
+//      if(example_uses_inner_LSF){inner_interface_bc_temp();} // inner boundary bc
 
-      // Create necessary RHS forcing terms and BC's
-      for(unsigned char d=0;d<2;++d){
-        if(analytical_IC_BC_forcing_term){
-          external_heat_source_T[d] = new external_heat_source(d,analytical_T,analytical_soln_v);
-          external_heat_source_T[d]->t = tn;
-          bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(NULL,NULL,analytical_T,d);
-          bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d,analytical_T);
-        }
-        else{
-          bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(); // will set proper objects later, can be null on initialization
-          bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d);
-        }
-      }
-    }
+//      // Create necessary RHS forcing terms and BC's
+//      for(unsigned char d=0;d<2;++d){
+//        if(analytical_IC_BC_forcing_term){
+//          external_heat_source_T[d] = new external_heat_source(d,analytical_T,analytical_soln_v);
+//          external_heat_source_T[d]->t = tn;
+//          bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(NULL,NULL,analytical_T,d);
+//          bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d,analytical_T);
+//        }
+//        else{
+//          bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(); // will set proper objects later, can be null on initialization
+//          bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d);
+//        }
+//      }
+//    }
 
-    // For NS problem:
-    BC_INTERFACE_VALUE_PRESSURE bc_interface_value_pressure;
-    BC_WALL_VALUE_PRESSURE bc_wall_value_pressure;
-    BC_WALL_TYPE_PRESSURE bc_wall_type_pressure;
 
-    if(solve_navier_stokes){
-      for(unsigned char d=0;d<P4EST_DIM;d++){
-        // Set the BC types:
-        BC_INTERFACE_TYPE_VELOCITY(d);
-        bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
 
-        // Set the BC values (and potential forcing terms) depending on what we are running:
-        if(analytical_IC_BC_forcing_term){
-          // Interface conditions values:
-          bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL,analytical_soln_v);
-          bc_interface_value_velocity[d]->t = tn;
+//    if(solve_navier_stokes){
+//      for(unsigned char d=0;d<P4EST_DIM;d++){
+//        // Set the BC types:
+//        BC_INTERFACE_TYPE_VELOCITY(d);
+//        bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
 
-          // Wall conditions values:
-          bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d,analytical_soln_v);
-          bc_wall_value_velocity[d]->t = tn;
+//        // Set the BC values (and potential forcing terms) depending on what we are running:
+//        if(analytical_IC_BC_forcing_term){
+//          // Interface conditions values:
+//          bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL,analytical_soln_v);
+//          bc_interface_value_velocity[d]->t = tn;
+
+//          // Wall conditions values:
+//          bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d,analytical_soln_v);
+//          bc_wall_value_velocity[d]->t = tn;
           
-          if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-            for(unsigned char domain=0;domain<2;++domain){
-                // External forcing terms:
-                external_force_components_with_BA[d] = new external_force_per_unit_volume_component_with_boussinesq_approx(domain,d,analytical_T,analytical_soln_v);
-                external_force_components_with_BA[d]->t = tn;
-            }
-          }else{
-            // External forcing terms:
-            external_force_components[d] = new external_force_per_unit_volume_component(d,analytical_soln_v);
-            external_force_components[d]->t = tn;
-          }
-        }
-        else{
-          // Interface condition values:
-          bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL); // initialize null for now, will add relevant neighbors and vector as required later on
+//          if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+//            for(unsigned char domain=0;domain<2;++domain){
+//                // External forcing terms:
+//                external_force_components_with_BA[d] = new external_force_per_unit_volume_component_with_boussinesq_approx(domain,d,analytical_T,analytical_soln_v);
+//                external_force_components_with_BA[d]->t = tn;
+//            }
+//          }else{
+//            // External forcing terms:
+//            external_force_components[d] = new external_force_per_unit_volume_component(d,analytical_soln_v);
+//            external_force_components[d]->t = tn;
+//          }
+//        }
+//        else{
+//          // Interface condition values:
+//          bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL); // initialize null for now, will add relevant neighbors and vector as required later on
 
-          // Wall condition values:
-          bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d);
-        }
-      }
-      interface_bc_pressure(); // sets the interfacial bc type for pressure
-      bc_wall_value_pressure.t = tn;
-    }
+//          // Wall condition values:
+//          bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d);
+//        }
+//      }
+//      interface_bc_pressure(); // sets the interfacial bc type for pressure
+//      bc_wall_value_pressure.t = tn;
+//    }
 
+    initialize_all_relevant_bcs_ics_forcing_terms(analytical_T,
+                                                  bc_interface_val_temp,
+                                                  bc_wall_value_temp,
+                                                  external_heat_source_T,
+                                                  analytical_soln_v,
+                                                  bc_interface_value_velocity,
+                                                  bc_wall_value_velocity,
+                                                  bc_wall_type_velocity,
+                                                  bc_interface_value_pressure,
+                                                  bc_wall_value_pressure,
+                                                  bc_wall_type_pressure,
+                                                  external_force_components,
+                                                  external_force_components_with_BA);
 
     // ------------------------------------------------------------
     // Initialize relevant solvers:
@@ -8025,7 +8139,8 @@ int main(int argc, char** argv) {
       // Poisson Problem at Nodes (for temp and/or conc scalar fields):
       // Setup and solve a Poisson problem on both the liquid and solidified subdomains
       // ------------------------------------------------------------
-      if((tstep>0) && solve_stefan){ // mostly memory safe (may have tiniest leak TO-DO)
+      if((tstep>0) && solve_stefan){
+
         setup_and_solve_poisson_problem(mpi,
                                         p4est_np1, nodes_np1, ngbd_np1,
                                         p4est, nodes, ngbd,
@@ -8114,8 +8229,6 @@ int main(int argc, char** argv) {
                                                    ngbd_np1,
                                                    faces_np1,ngbd_c_np1,
                                                    hierarchy_np1);
-//          phi_nm1.destroy(); // Now that hodge has been correctly interpolated, we can destroy this
-          // ^ no need for this, should be hanlded properly elsewhere
         }
 
         // -------------------------------
@@ -8463,6 +8576,8 @@ int main(int argc, char** argv) {
 
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Interpolating fields to new grid ... \n");
         // ELYCE TO-DO: why do we need to do this sliding for tstep=0? Can we do away with this?
+        // I believe this is done bc we do not begin solving NS until tstep=1, and therefore the initial fields
+        // related to NS and temperature advection need to be slid once. Will think about how to handle this differently.
         if(tstep==0){
           // Slide fields
           if(solve_navier_stokes){
