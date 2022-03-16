@@ -6008,261 +6008,6 @@ void track_evolving_geometry(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4
 
 } // end of track evolving geometry
 
-void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical_T[2],
-                                                   BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
-                                                   BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
-                                                   external_heat_source* external_heat_source_T[2],
-                                                   velocity_component* analytical_soln_v[P4EST_DIM],
-                                                   BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
-                                                   BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
-                                                   BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM],
-                                                   BC_INTERFACE_VALUE_PRESSURE& bc_interface_value_pressure,
-                                                   BC_WALL_VALUE_PRESSURE& bc_wall_value_pressure,
-                                                   BC_WALL_TYPE_PRESSURE& bc_wall_type_pressure,
-                                                   external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
-                                                   external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM]){
-
-  // ------------------------------
-  // Analytical v (used for some coupled cases so has to be
-  // initialized first bc forcing terms in heat and momentum both rely on this)
-  // --> Create analytical velocity field for each Cartesian direction if needed:
-  // ------------------------------
-  if(analytical_IC_BC_forcing_term){
-    for(unsigned char d=0;d<P4EST_DIM;d++){
-      analytical_soln_v[d] = new velocity_component(d);
-      analytical_soln_v[d]->t = tn;
-    }
-  }
-  // ------------------------------
-  // For temperature problem:
-  // ------------------------------
-  if(solve_stefan){
-    // Create analytical temperature field for each domain if needed:
-    for(unsigned char d=0;d<2;++d){
-      if(analytical_IC_BC_forcing_term){ // TO-DO: make all incrementing consistent
-        analytical_T[d] = new temperature_field(d);
-        analytical_T[d]->t = tn;
-      }
-    }
-    // Set the bc interface type for temperature:
-    interface_bc_temp();
-    if(example_uses_inner_LSF){inner_interface_bc_temp();} // inner boundary bc
-
-    // Create necessary RHS forcing terms and BC's
-    for(unsigned char d=0;d<2;++d){
-      if(analytical_IC_BC_forcing_term){
-        external_heat_source_T[d] = new external_heat_source(d,analytical_T,analytical_soln_v);
-        external_heat_source_T[d]->t = tn;
-        bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(NULL,NULL,analytical_T,d);
-        bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d,analytical_T);
-      }
-      else{
-        bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(); // will set proper objects later, can be null on initialization
-        bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d);
-      }
-    }
-  }
-
-
-  if(solve_navier_stokes){
-    for(unsigned char d=0;d<P4EST_DIM;d++){
-      // Set the BC types:
-      BC_INTERFACE_TYPE_VELOCITY(d);
-      bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
-
-      // Set the BC values (and potential forcing terms) depending on what we are running:
-      if(analytical_IC_BC_forcing_term){
-        // Interface conditions values:
-        bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL,analytical_soln_v);
-        bc_interface_value_velocity[d]->t = tn;
-
-        // Wall conditions values:
-        bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d,analytical_soln_v);
-        bc_wall_value_velocity[d]->t = tn;
-
-        if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-          for(unsigned char domain=0;domain<2;++domain){
-            // External forcing terms:
-            external_force_components_with_BA[d] = new external_force_per_unit_volume_component_with_boussinesq_approx(domain,d,analytical_T,analytical_soln_v);
-            external_force_components_with_BA[d]->t = tn;
-          }
-        }else{
-          // External forcing terms:
-          external_force_components[d] = new external_force_per_unit_volume_component(d,analytical_soln_v);
-          external_force_components[d]->t = tn;
-        }
-      }
-      else{
-        // Interface condition values:
-        bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL); // initialize null for now, will add relevant neighbors and vector as required later on
-
-        // Wall condition values:
-        bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d);
-      }
-    }
-    interface_bc_pressure(); // sets the interfacial bc type for pressure
-    bc_wall_value_pressure.t = tn;
-  }
-
-
-
-
-
-
-
-
-
-}
-
-
-void initialize_grids(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t& sp,
-                      p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
-                      my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
-                      p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t* &ghost,
-                      my_p4est_node_neighbors_t* &ngbd, my_p4est_hierarchy_t* &hierarchy,
-                      my_p4est_brick_t& brick, p4est_connectivity* &conn){
-
-  // Create the p4est at time n:
-  p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
-  p4est->user_pointer = &sp;
-
-  for(int l=0; l<sp.max_lvl; l++){
-    my_p4est_refine(p4est,P4EST_FALSE,refine_levelset_cf,NULL);
-    my_p4est_partition(p4est,P4EST_FALSE,NULL);
-  }
-  p4est_balance(p4est,P4EST_CONNECT_FULL,NULL);
-  my_p4est_partition(p4est,P4EST_FALSE,NULL);
-
-  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est,ghost);
-  nodes = my_p4est_nodes_new(p4est, ghost); //same
-
-  hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
-  ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
-  ngbd->init_neighbors();
-
-  // Create the p4est at time np1:(this will be modified but is useful for initializing solvers):
-  p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
-  p4est_np1->user_pointer = &sp;
-  my_p4est_partition(p4est_np1,P4EST_FALSE,NULL);
-
-  ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est_np1,ghost_np1);
-  nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-
-  // Get the new neighbors:
-  hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1,ghost_np1,&brick);
-  ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
-
-  // Initialize the neigbors:
-  ngbd_np1->init_neighbors();
-
-}
-
-void initialize_grids_from_load_state(){
-
-}
-
-
-
-// will become constructor (for class)
-void perform_initializations(){}
-
-
-
-
-// will become destructor (for class)
-void perform_final_destructions(mpi_environment_t &mpi, p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
-                                my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
-                                p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t* &ghost,
-                                my_p4est_node_neighbors_t* &ngbd, my_p4est_hierarchy_t* &hierarchy,
-                                my_p4est_brick_t& brick, p4est_connectivity* &conn,
-                                vec_and_ptr_t& phi, vec_and_ptr_t& phi_nm1,
-                                vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
-                                vec_and_ptr_dim_t& v_interface,
-                                vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1, vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes,
-                                my_p4est_navier_stokes_t* &ns,
-                                temperature_field* analytical_T[2], external_heat_source* external_heat_source_T[2],
-                                BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2], BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
-                                velocity_component* analytical_soln_v[P4EST_DIM],
-                                external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
-                                external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM],
-                                BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
-                                BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
-                                BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM])
-{
-
-  // Final destructions
-  phi.destroy();
-
-  if(solve_stefan){
-    T_l_n.destroy();
-    T_s_n.destroy();
-    v_interface.destroy();
-
-    if(advection_sl_order==2) T_l_nm1.destroy();
-
-    // Destroy relevant BC and RHS info:
-    for(unsigned char d=0;d<2;++d){
-      if(analytical_IC_BC_forcing_term){
-        delete analytical_T[d];
-        delete external_heat_source_T[d];
-      }
-      delete bc_interface_val_temp[d];
-      delete bc_wall_value_temp[d];
-    }
-
-    if(!solve_navier_stokes){
-      // destroy the structures leftover (in non NS case)
-      p4est_nodes_destroy(nodes);
-      p4est_ghost_destroy(ghost);
-      p4est_destroy      (p4est);
-
-      p4est_nodes_destroy(nodes_np1);
-      p4est_ghost_destroy(ghost_np1);
-      p4est_destroy(p4est_np1);
-
-      my_p4est_brick_destroy(conn, &brick);
-      delete hierarchy;
-      delete ngbd;
-
-      delete hierarchy_np1;
-      delete ngbd_np1;
-    }
-  }
-
-  if(solve_navier_stokes){
-    v_n.destroy();
-    v_nm1.destroy();
-    phi_nm1.destroy();
-
-    // NS takes care of destroying v_NS_n and v_NS_nm1
-    vorticity.destroy();
-    press_nodes.destroy();
-    MPI_Barrier(mpi.comm());
-
-    for(unsigned char d=0;d<P4EST_DIM;d++){
-      if(analytical_IC_BC_forcing_term){
-        delete analytical_soln_v[d];
-        if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-          delete external_force_components_with_BA[d];
-        }
-        else{
-          delete external_force_components[d];
-        }
-      }
-
-      delete bc_interface_value_velocity[d];
-      delete bc_wall_value_velocity[d];
-      delete bc_wall_type_velocity[d];
-    }
-
-
-    ns->nullify_phi(); // since we delete it ourselves earlier
-    delete ns;
-  }
-}
-
 // --------------------------------------------------------------------------------------------------------------
 // Functions for saving to VTK:
 // --------------------------------------------------------------------------------------------------------------
@@ -7331,6 +7076,337 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
   PetscPrintf(mpi.comm(),"Loads forest and data \n");
 }
 
+// --------------------------------------------------------------------------------------------------------------
+// Initializations and destructions:
+// --------------------------------------------------------------------------------------------------------------
+
+void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical_T[2],
+                                                   BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
+                                                   BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
+                                                   external_heat_source* external_heat_source_T[2],
+                                                   velocity_component* analytical_soln_v[P4EST_DIM],
+                                                   BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
+                                                   BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
+                                                   BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM],
+                                                   BC_INTERFACE_VALUE_PRESSURE& bc_interface_value_pressure,
+                                                   BC_WALL_VALUE_PRESSURE& bc_wall_value_pressure,
+                                                   BC_WALL_TYPE_PRESSURE& bc_wall_type_pressure,
+                                                   external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
+                                                   external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM]){
+
+  // ------------------------------
+  // Analytical v (used for some coupled cases so has to be
+  // initialized first bc forcing terms in heat and momentum both rely on this)
+  // --> Create analytical velocity field for each Cartesian direction if needed:
+  // ------------------------------
+  if(analytical_IC_BC_forcing_term){
+    for(unsigned char d=0;d<P4EST_DIM;d++){
+      analytical_soln_v[d] = new velocity_component(d);
+      analytical_soln_v[d]->t = tn;
+    }
+  }
+  // ------------------------------
+  // For temperature problem:
+  // ------------------------------
+  if(solve_stefan){
+    // Create analytical temperature field for each domain if needed:
+    for(unsigned char d=0;d<2;++d){
+      if(analytical_IC_BC_forcing_term){ // TO-DO: make all incrementing consistent
+        analytical_T[d] = new temperature_field(d);
+        analytical_T[d]->t = tn;
+      }
+    }
+    // Set the bc interface type for temperature:
+    interface_bc_temp();
+    if(example_uses_inner_LSF){inner_interface_bc_temp();} // inner boundary bc
+
+    // Create necessary RHS forcing terms and BC's
+    for(unsigned char d=0;d<2;++d){
+      if(analytical_IC_BC_forcing_term){
+        external_heat_source_T[d] = new external_heat_source(d,analytical_T,analytical_soln_v);
+        external_heat_source_T[d]->t = tn;
+        bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(NULL,NULL,analytical_T,d);
+        bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d,analytical_T);
+      }
+      else{
+        bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(); // will set proper objects later, can be null on initialization
+        bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d);
+      }
+    }
+  }
+
+
+  if(solve_navier_stokes){
+    for(unsigned char d=0;d<P4EST_DIM;d++){
+      // Set the BC types:
+      BC_INTERFACE_TYPE_VELOCITY(d);
+      bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
+
+      // Set the BC values (and potential forcing terms) depending on what we are running:
+      if(analytical_IC_BC_forcing_term){
+        // Interface conditions values:
+        bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL,analytical_soln_v);
+        bc_interface_value_velocity[d]->t = tn;
+
+        // Wall conditions values:
+        bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d,analytical_soln_v);
+        bc_wall_value_velocity[d]->t = tn;
+
+        if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+          for(unsigned char domain=0;domain<2;++domain){
+            // External forcing terms:
+            external_force_components_with_BA[d] = new external_force_per_unit_volume_component_with_boussinesq_approx(domain,d,analytical_T,analytical_soln_v);
+            external_force_components_with_BA[d]->t = tn;
+          }
+        }else{
+          // External forcing terms:
+          external_force_components[d] = new external_force_per_unit_volume_component(d,analytical_soln_v);
+          external_force_components[d]->t = tn;
+        }
+      }
+      else{
+        // Interface condition values:
+        bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL); // initialize null for now, will add relevant neighbors and vector as required later on
+
+        // Wall condition values:
+        bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d);
+      }
+    }
+    interface_bc_pressure(); // sets the interfacial bc type for pressure
+    bc_wall_value_pressure.t = tn;
+  }
+
+
+
+
+
+
+
+
+
+}
+
+
+void initialize_grids(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t& sp,
+                      p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
+                      my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
+                      p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t* &ghost,
+                      my_p4est_node_neighbors_t* &ngbd, my_p4est_hierarchy_t* &hierarchy,
+                      my_p4est_brick_t& brick, p4est_connectivity* &conn){
+
+  // Create the p4est at time n:
+  p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
+  p4est->user_pointer = &sp;
+
+  for(int l=0; l<sp.max_lvl; l++){
+    my_p4est_refine(p4est,P4EST_FALSE,refine_levelset_cf,NULL);
+    my_p4est_partition(p4est,P4EST_FALSE,NULL);
+  }
+  p4est_balance(p4est,P4EST_CONNECT_FULL,NULL);
+  my_p4est_partition(p4est,P4EST_FALSE,NULL);
+
+  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est,ghost);
+  nodes = my_p4est_nodes_new(p4est, ghost); //same
+
+  hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
+  ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
+  ngbd->init_neighbors();
+
+  // Create the p4est at time np1:(this will be modified but is useful for initializing solvers):
+  p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
+  p4est_np1->user_pointer = &sp;
+  my_p4est_partition(p4est_np1,P4EST_FALSE,NULL);
+
+  ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_np1,ghost_np1);
+  nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+  // Get the new neighbors:
+  hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1,ghost_np1,&brick);
+  ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
+
+  // Initialize the neigbors:
+  ngbd_np1->init_neighbors();
+
+}
+
+void initialize_grids_and_fields_from_load_state(int& load_tstep,
+                                      mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t& sp,
+                                      p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
+                                      my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
+                                      p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t* &ghost,
+                                      my_p4est_node_neighbors_t* &ngbd, my_p4est_hierarchy_t* &hierarchy,
+                                      my_p4est_brick_t& brick, p4est_connectivity* &conn,
+                                      vec_and_ptr_t& phi,
+                                      vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
+                                      vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
+                                      vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes){
+
+  // Set everything to NULL at first:
+  p4est=NULL;
+  conn=NULL;
+  p4est=NULL; ghost=NULL;nodes=NULL;
+  hierarchy=NULL;ngbd=NULL;
+
+  phi.vec=NULL;
+  T_l_n.vec=NULL; T_l_nm1.vec=NULL;
+  T_s_n.vec=NULL;
+  foreach_dimension(d){
+    v_n.vec[d]=NULL;
+    v_nm1.vec[d]=NULL;
+
+  }
+  vorticity.vec=NULL;
+
+  // Get the load directory:
+  const char* load_path = getenv("LOAD_STATE_PATH");
+  if(!load_path){
+    throw std::invalid_argument("You need to set the  directory for the desired load state");
+  }
+  PetscPrintf(mpi.comm(),"Load dir is:  %s \n",load_path);
+
+  load_state(mpi,load_path,&sp,p4est,nodes,ghost,conn,
+             &phi.vec,&T_l_n.vec,&T_l_nm1.vec,&T_s_n.vec,
+             v_n.vec,v_nm1.vec,&vorticity.vec);
+
+  PetscPrintf(mpi.comm(),"State was loaded successfully from %s \n",load_path);
+
+  // Update the neigborhood and hierarchy:
+  if(hierarchy!=NULL) {
+    delete hierarchy;
+  }
+  if(ngbd!=NULL) {delete ngbd;}
+
+  hierarchy = new my_p4est_hierarchy_t(p4est,ghost,&brick);
+  ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
+  ngbd->init_neighbors();
+
+  // Create the p4est at time np1 (this will be modified but is useful for initializing solvers):
+  p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
+  ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_np1,ghost_np1);
+  nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+  // Get the new neighbors:
+  hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1,ghost_np1,&brick);
+  ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
+
+  // Initialize the neigbors:
+  ngbd_np1->init_neighbors();
+
+  // Initialize pressure vector (if navier stokes)
+  if(solve_navier_stokes) press_nodes.create(p4est,nodes);
+
+  load_tstep =tstep;
+  tstart=tn;
+
+
+} // end of initialize_grids_from_load_state
+
+
+
+// will become constructor (for class)
+void perform_initializations(){}
+
+
+
+
+// will become destructor (for class)
+void perform_final_destructions(mpi_environment_t &mpi, p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
+                                my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
+                                p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t* &ghost,
+                                my_p4est_node_neighbors_t* &ngbd, my_p4est_hierarchy_t* &hierarchy,
+                                my_p4est_brick_t& brick, p4est_connectivity* &conn,
+                                vec_and_ptr_t& phi, vec_and_ptr_t& phi_nm1,
+                                vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
+                                vec_and_ptr_dim_t& v_interface,
+                                vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1, vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes,
+                                my_p4est_navier_stokes_t* &ns,
+                                temperature_field* analytical_T[2], external_heat_source* external_heat_source_T[2],
+                                BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2], BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
+                                velocity_component* analytical_soln_v[P4EST_DIM],
+                                external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
+                                external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM],
+                                BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
+                                BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
+                                BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM])
+{
+
+  // Final destructions
+  phi.destroy();
+
+  if(solve_stefan){
+    T_l_n.destroy();
+    T_s_n.destroy();
+    v_interface.destroy();
+
+    if(advection_sl_order==2) T_l_nm1.destroy();
+
+    // Destroy relevant BC and RHS info:
+    for(unsigned char d=0;d<2;++d){
+      if(analytical_IC_BC_forcing_term){
+        delete analytical_T[d];
+        delete external_heat_source_T[d];
+      }
+      delete bc_interface_val_temp[d];
+      delete bc_wall_value_temp[d];
+    }
+
+    if(!solve_navier_stokes){
+      // destroy the structures leftover (in non NS case)
+      p4est_nodes_destroy(nodes);
+      p4est_ghost_destroy(ghost);
+      p4est_destroy      (p4est);
+
+      p4est_nodes_destroy(nodes_np1);
+      p4est_ghost_destroy(ghost_np1);
+      p4est_destroy(p4est_np1);
+
+      my_p4est_brick_destroy(conn, &brick);
+      delete hierarchy;
+      delete ngbd;
+
+      delete hierarchy_np1;
+      delete ngbd_np1;
+    }
+  }
+
+  if(solve_navier_stokes){
+    v_n.destroy();
+    v_nm1.destroy();
+    phi_nm1.destroy();
+
+    // NS takes care of destroying v_NS_n and v_NS_nm1
+    vorticity.destroy();
+    press_nodes.destroy();
+    MPI_Barrier(mpi.comm());
+
+    for(unsigned char d=0;d<P4EST_DIM;d++){
+      if(analytical_IC_BC_forcing_term){
+        delete analytical_soln_v[d];
+        if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+          delete external_force_components_with_BA[d];
+        }
+        else{
+          delete external_force_components[d];
+        }
+      }
+
+      delete bc_interface_value_velocity[d];
+      delete bc_wall_value_velocity[d];
+      delete bc_wall_type_velocity[d];
+    }
+
+
+    ns->nullify_phi(); // since we delete it ourselves earlier
+    delete ns;
+  }
+}
+
+
+// --------------------------------------------------------------------------------------------------------------
+
 
 // --------------------------------------------------------------------------------------------------------------
 // Begin main operation:
@@ -7607,62 +7683,12 @@ int main(int argc, char** argv) {
                        p4est, nodes, ghost, ngbd, hierarchy, brick, conn);
     }
     else{
-      p4est=NULL;
-      conn=NULL;
-      p4est=NULL; ghost=NULL;nodes=NULL;
-      hierarchy=NULL;ngbd=NULL;
-
-      phi.vec=NULL;
-      T_l_n.vec=NULL; T_l_nm1.vec=NULL;
-      T_s_n.vec=NULL;
-      foreach_dimension(d){
-        v_n.vec[d]=NULL;
-        v_nm1.vec[d]=NULL;
-
-      }
-      vorticity.vec=NULL;
-
-      const char* load_path = getenv("LOAD_STATE_PATH");
-      if(!load_path){
-          throw std::invalid_argument("You need to set the  directory for the desired load state");
-        }
-      PetscPrintf(mpi.comm(),"Load dir is:  %s \n",load_path);
-
-      load_state(mpi,load_path,&sp,p4est,nodes,ghost,conn,
-                 &phi.vec,&T_l_n.vec,&T_l_nm1.vec,&T_s_n.vec,
-                 v_n.vec,v_nm1.vec,&vorticity.vec);
-
-      PetscPrintf(mpi.comm(),"State was loaded successfully from %s \n",load_path);
-
-      // Update the neigborhood and hierarchy:
-      if(hierarchy!=NULL) {
-        delete hierarchy;
-        }
-      if(ngbd!=NULL) {delete ngbd;}
-
-      hierarchy = new my_p4est_hierarchy_t(p4est,ghost,&brick);
-      ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
-      ngbd->init_neighbors();
-
-      // Create the p4est at time np1 (this will be modified but is useful for initializing solvers):
-      p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
-      ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-      my_p4est_ghost_expand(p4est_np1,ghost_np1);
-      nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-
-      // Get the new neighbors:
-      hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1,ghost_np1,&brick);
-      ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
-
-      // Initialize the neigbors:
-      ngbd_np1->init_neighbors();
-
-      // Initialize pressure vector (if navier stokes)
-      if(solve_navier_stokes) press_nodes.create(p4est,nodes);
-
-      load_tstep =tstep;
-      tstart=tn;
-      }
+      initialize_grids_and_fields_from_load_state(load_tstep, mpi, sp,
+                                                  p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
+                                                  p4est, nodes, ghost, ngbd, hierarchy, brick, conn,
+                                                  phi, T_l_n, T_s_n, T_l_nm1,
+                                                  v_n, v_nm1, vorticity, press_nodes);
+    }
 
     // Initialize level set objet for field extension:
     my_p4est_level_set_t ls(ngbd_np1);
