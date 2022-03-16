@@ -4729,6 +4729,7 @@ void setup_rhs(vec_and_ptr_t& phi, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, v
   if(solve_navier_stokes && advection_sl_order==2){
     advection_alpha_coeff = (2.*dt + dt_nm1)/(dt + dt_nm1);
     advection_beta_coeff = (-1.*dt)/(dt + dt_nm1);
+    printf("advection SL alpha = %f, advection SL beta = %f \n", advection_alpha_coeff, advection_beta_coeff);
   }
   // Get Ts arrays:
   if(do_we_solve_for_Ts){
@@ -4756,7 +4757,7 @@ void setup_rhs(vec_and_ptr_t& phi, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, v
   foreach_node(n, nodes_np1){
     if(do_we_solve_for_Ts){
       // First, assemble system for Ts depending on case:
-      if(method_ == 2){ // Crank Nicholson
+      if(method_ == 2){ // Crank Nicholson // TO-DO: REMOVE THIS CRANK NICHOLSON CASE, IT'S NOT EVEN UPDATED TO WORK CORRECTLY
         rhs_Ts.ptr[n] = 2.*T_s_n.ptr[n]/dt + alpha_s*(T_s_dd.ptr[0][n] + T_s_dd.ptr[1][n]);
       }
       else{ // Backward Euler
@@ -5106,18 +5107,6 @@ void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
                                      int cube_refinement)
 {
   PetscErrorCode ierr;
-//  // -------------------------------
-//  // Update BC objects for stefan problem:
-//  // -------------------------------
-//  if(analytical_IC_BC_forcing_term){
-//    for(unsigned char d=0;d<2;d++){
-//      analytical_T[d]->t = tn;
-//      bc_interface_val_temp[d]->t = tn;
-//      bc_wall_value_temp[d]->t = tn;
-//      external_heat_source_T[d]->t = tn;
-//    }
-//  }
-//  // If not, we use the curvature and neighbors, but we have to wait till curvature is computed in Poisson step to apply this, so it is applied later
 
   // -------------------------------
   // Create all vectors that will be used
@@ -7558,7 +7547,6 @@ int main(int argc, char** argv) {
   PetscViewer viewer;
   int mpi_ret; // Check mpi issues
 
-//  PetscMemorySetGetMaximumUsage();
   cmdParser cmd;
 
   pl.initialize_parser(cmd);
@@ -7570,14 +7558,19 @@ int main(int argc, char** argv) {
   solve_coupled = solve_navier_stokes && solve_stefan;
   select_problem_nondim_or_dim_formulation();
 
-  PetscPrintf(mpi.comm(), "The nondimensionalizaton formulation being used is %s \n \n",
-              (problem_dimensionalization_type == 0)? ("NONDIM BY FLUID VELOCITY"):
-                                      ((problem_dimensionalization_type == 1) ? ("NONDIM BY DIFFUSIVITY") : ("DIMENSIONAL")));
-  PetscPrintf(mpi.comm(), "nondim = %d \n", problem_dimensionalization_type);
-  PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d, method = %d \n",lmin,lmax,method_);
-  PetscPrintf(mpi.comm(),"Number of mpi tasks: %d \n",mpi.size());
-  PetscPrintf(mpi.comm(),"Stefan = %d, NS = %d, Coupled = %d \n",solve_stefan,solve_navier_stokes,solve_coupled);
+  PetscPrintf(mpi.comm(), "\n The nondimensionalizaton formulation being used is %s \n",
+              (problem_dimensionalization_type == 0)?
+              ("NONDIM BY FLUID VELOCITY"):
+              ((problem_dimensionalization_type == 1) ?
+              ("NONDIM BY DIFFUSIVITY") : ("DIMENSIONAL")));
 
+  PetscPrintf(mpi.comm(), "Nondim = %d \n"
+                          "lmin = %d, lmax = %d, method = %d \n"
+                          "Number of mpi tasks: %d \n"
+                          "Stefan = %d, NS = %d \n \n ", problem_dimensionalization_type,
+                                                                lmin, lmax, method_,
+                                                                mpi.size(),
+                                                                solve_stefan, solve_navier_stokes);
   // -----------------------------------------------
   // Declare all needed variables:
   // -----------------------------------------------
@@ -7620,7 +7613,7 @@ int main(int argc, char** argv) {
   vec_and_ptr_dim_t substrate_normals;
   vec_and_ptr_t island_numbers;
 
-  // Poisson problem:---------------------------------
+  // Temperature/concentration problem:---------------------------------
   int cube_refinement = 1;
   my_p4est_poisson_nodes_mls_t *solver_Tl = NULL;  // will solve poisson problem for Temperature in liquid domains
   my_p4est_poisson_nodes_mls_t *solver_Ts = NULL;  // will solve poisson problem for Temperature in solid domain
@@ -7691,6 +7684,7 @@ int main(int argc, char** argv) {
   external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM];
 
   CF_DIM* external_forces_NS[P4EST_DIM];
+
   // Coupled/NS boundary conditions:
   velocity_component* analytical_soln_v[P4EST_DIM];
 
@@ -7698,14 +7692,12 @@ int main(int argc, char** argv) {
   interpolation_method interp_bw_grids = quadratic_non_oscillatory_continuous_v2;
 
   // Variables for extension band and grid size: ---------
-
   double dxyz_smallest[P4EST_DIM];
   double dxyz_close_to_interface;
 
   double min_volume_;
   double extension_band_use_;
   double extension_band_extend_;
-  double extension_band_check_;
 
   // stopwatch
   parStopWatch w;
