@@ -5434,7 +5434,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   // (a) get rid of old vnm1, now vn becomes the new vnm1
   // (b) no need to destroy vn, bc now we put vnp1 into vn's slot
   v_nm1.destroy();
-  v_nm1.create(p4est_np1, nodes_np1);
+//  v_nm1.create(p4est_np1, nodes_np1);
 
 //  PetscPrintf(p4est_np1->mpicomm, "1Addresses on rank %d in ns step: p4est_np1 = %p, vnm1 = %p, vn = %p \n",
 //              p4est_np1->mpirank, p4est_np1, v_nm1.vec[0], v_n.vec[0]);
@@ -5457,7 +5457,9 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   }
 
   // Get the computed values of vorticity
+  if(tstep == 1)vorticity.destroy(); // ELYCE TO-DO: THIS IS TEMPORARY -- BC WE SAMPLE AN INITIAL VORTICITY FOR REFINEMENTS SAKE, WHICH I WANT TO CHANGE
   vorticity.vec = ns->get_vorticity();
+
 
 
   // Elyce TO-DO: commenting out below for now, going to move fluid force and area computation to its own fxn, not do it here
@@ -7351,14 +7353,14 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
 
     v_n.create(p4est_np1, nodes_np1);
     v_nm1.create(p4est_np1, nodes_np1);
-    vorticity.create(p4est_np1, nodes_np1);
+    vorticity.create(p4est_np1, nodes_np1); // no need to  create this, we are going to get it from NS
     press_nodes.create(p4est_np1, nodes_np1);
 
     foreach_dimension(d){
       sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_n.vec[d]);
       sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_nm1.vec[d]);
     }
-    sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,vorticity.vec);
+    sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,vorticity.vec); // FOR NOW WE DO THIS, BUT WANT TO CHANGE NS TO SOLVE ON ITER 0 AND NOT DO THIS
     sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,press_nodes.vec);
   }
 
@@ -7467,6 +7469,7 @@ void perform_final_destructions(mpi_environment_t &mpi, p4est_t* &p4est_np1, p4e
                                 p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t* &ghost,
                                 my_p4est_node_neighbors_t* &ngbd, my_p4est_hierarchy_t* &hierarchy,
                                 my_p4est_brick_t& brick, p4est_connectivity* &conn,
+                                my_p4est_level_set_t* &ls,
                                 vec_and_ptr_t& phi, vec_and_ptr_t& phi_nm1,
                                 vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
                                 vec_and_ptr_dim_t& v_interface,
@@ -7484,6 +7487,10 @@ void perform_final_destructions(mpi_environment_t &mpi, p4est_t* &p4est_np1, p4e
 
   // Final destructions
   phi.destroy();
+
+
+  delete ls;
+
 
   if(solve_stefan){
     T_l_n.destroy();
@@ -8606,6 +8613,9 @@ int main(int argc, char** argv) {
         interpolate_fields_onto_new_grid(T_l_n, T_s_n,
                                          v_interface, v_n,
                                          nodes_np1, p4est_np1, ngbd, interp_bw_grids);
+
+
+        // MOVE UPDATE OF NS GRID TO HERE:
       } // end of "if tstep !=last tstep"
 
 
@@ -8679,6 +8689,7 @@ int main(int argc, char** argv) {
   perform_final_destructions(mpi, p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
                              p4est, nodes, ghost, ngbd, hierarchy,
                              brick, conn,
+                             ls,
                              phi, phi_nm1,
                              T_l_n, T_s_n, T_l_nm1,
                              v_interface,
