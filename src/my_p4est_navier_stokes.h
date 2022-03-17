@@ -547,6 +547,8 @@ public:
 
   // ---------------------------------------------------
   // ONLY FOR PEOPLE WHO KNOW WHAT THEY ARE DOING!!!
+  // (a.k.a. Raphael's wording of "Elyce doing some sketchy stuff indeed"
+  // ... and it's only grown worse ...  (:-D) (:-0) ¯\_(ツ)_/¯
   inline void nullify_p4est_nm1() {
     p4est_nm1 = NULL;
     nodes_nm1 = NULL;
@@ -557,6 +559,20 @@ public:
   inline void nullify_phi(){
     phi = NULL;
   }
+  inline void nullify_vorticity(){
+    vorticity = NULL;
+  }
+
+  inline void nullify_velocities_at_nodes(){
+    foreach_dimension(d){
+      if(vnm1_nodes[d]!=NULL) vnm1_nodes[d] = NULL;
+      if(vn_nodes[d]!=NULL) vn_nodes[d] = NULL;
+      if(vnp1_nodes[d]!=NULL) vnp1_nodes[d] = NULL;
+    }
+  }
+
+  void get_node_velocities_n(Vec &v_comp, int d){v_comp= vn_nodes[d];}
+  void get_node_velocities_np1(Vec &v_comp, int d){v_comp= vnp1_nodes[d];}
   // ---------------------------------------------------
 
   inline const BoundaryConditionsDIM &get_bc_hodge() const { return bc_hodge; }
@@ -744,6 +760,7 @@ public:
    */
 
   void update_from_tn_to_tnp1_grid_external(Vec phi_np1, Vec phi_n,
+                                            Vec v_n_nodes_[P4EST_DIM], Vec v_nm1_nodes[P4EST_DIM],
                                             p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1,
                                             my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* &faces_np1,
                                             my_p4est_cell_neighbors_t* &ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1);
@@ -917,6 +934,9 @@ public:
   Vec const* get_node_velocities_n() const    { return vn_nodes;    }
   Vec const* get_node_velocities_np1() const  { return vnp1_nodes;  }
   Vec get_phi() const { return phi; }
+
+
+
 };
 
 
