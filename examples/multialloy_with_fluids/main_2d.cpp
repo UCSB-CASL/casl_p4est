@@ -6020,6 +6020,33 @@ void track_evolving_geometry(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4
 
 } // end of track evolving geometry
 
+
+void create_and_compute_phi_sub_and_phi_eff(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+                                            my_p4est_level_set_t* ls,
+                                            vec_and_ptr_t& phi,
+                                            vec_and_ptr_t& phi_substrate,
+                                            vec_and_ptr_t& phi_eff){
+
+  phi_substrate.create(p4est_np1, nodes_np1);
+  sample_cf_on_nodes(p4est_np1, nodes_np1, mini_level_set, phi_substrate.vec);
+
+  // For computing phi_effective for this step:
+  phi_eff.create(p4est_np1, nodes_np1);
+
+  std::vector<Vec> phi_eff_list;
+  std::vector<mls_opn_t> phi_eff_opn_list;
+
+  phi_eff_list.push_back(phi.vec); phi_eff_list.push_back(phi_substrate.vec);
+  phi_eff_opn_list.push_back(MLS_INTERSECTION); phi_eff_opn_list.push_back(MLS_INTERSECTION);
+
+  compute_phi_eff(phi_eff.vec, nodes_np1, phi_eff_list, phi_eff_opn_list);
+
+  phi_eff_list.clear(); phi_eff_opn_list.clear();
+
+  // Reinitialize:
+  ls->reinitialize_2nd_order(phi_eff.vec);
+
+}
 // --------------------------------------------------------------------------------------------------------------
 // Functions for saving to VTK:
 // --------------------------------------------------------------------------------------------------------------
@@ -7246,6 +7273,7 @@ void initialize_grids(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_
 void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
                        my_p4est_level_set_t* ls,
                        vec_and_ptr_t& phi, vec_and_ptr_t& phi_nm1,
+                       vec_and_ptr_t& phi_substrate, vec_and_ptr_t& phi_eff,
                        vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
                        vec_and_ptr_dim_t& v_interface,
                        vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
@@ -7262,6 +7290,12 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
   if(solve_stefan)ls->reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
 
   if(start_w_merged_grains) {regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi);}
+
+  if(example_uses_inner_LSF){
+    create_and_compute_phi_sub_and_phi_eff(p4est_np1, nodes_np1,
+                                           ls,
+                                           phi, phi_substrate, phi_eff);
+  }
 
   if(solve_navier_stokes){
     // NS solver requires us to keep phi_nm1 for interpolating the hodge variable to the new grid.
@@ -7471,6 +7505,7 @@ void perform_final_destructions(mpi_environment_t &mpi, p4est_t* &p4est_np1, p4e
                                 my_p4est_brick_t& brick, p4est_connectivity* &conn,
                                 my_p4est_level_set_t* &ls,
                                 vec_and_ptr_t& phi, vec_and_ptr_t& phi_nm1,
+                                vec_and_ptr_t& phi_substrate, vec_and_ptr_t& phi_eff,
                                 vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
                                 vec_and_ptr_dim_t& v_interface,
                                 vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1, vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes,
@@ -7487,10 +7522,12 @@ void perform_final_destructions(mpi_environment_t &mpi, p4est_t* &p4est_np1, p4e
 
   // Final destructions
   phi.destroy();
-
+  if(example_uses_inner_LSF){
+    phi_substrate.destroy();
+    phi_eff.destroy();
+  }
 
   delete ls;
-
 
   if(solve_stefan){
     T_l_n.destroy();
@@ -7854,6 +7891,7 @@ int main(int argc, char** argv) {
       initialize_fields(mpi,
                         p4est_np1, nodes_np1, ngbd_np1, ls,
                         phi, phi_nm1,
+                        phi_substrate, phi_eff,
                         T_l_n, T_s_n, T_l_nm1,
                         v_interface,
                         v_n, v_nm1,
@@ -8131,24 +8169,24 @@ int main(int argc, char** argv) {
       // if that is required for this example, to be used as needed throughout the timestep:
       //-------------------------------------------------------------
       if(example_uses_inner_LSF){
-        phi_substrate.create(p4est_np1, nodes_np1);
-        sample_cf_on_nodes(p4est_np1, nodes_np1, mini_level_set, phi_substrate.vec);
+//        phi_substrate.create(p4est_np1, nodes_np1);
+//        sample_cf_on_nodes(p4est_np1, nodes_np1, mini_level_set, phi_substrate.vec);
 
-        // For computing phi_effective for this step:
-        phi_eff.create(p4est_np1, nodes_np1);
+//        // For computing phi_effective for this step:
+//        phi_eff.create(p4est_np1, nodes_np1);
 
-        std::vector<Vec> phi_eff_list;
-        std::vector<mls_opn_t> phi_eff_opn_list;
+//        std::vector<Vec> phi_eff_list;
+//        std::vector<mls_opn_t> phi_eff_opn_list;
 
-        phi_eff_list.push_back(phi.vec); phi_eff_list.push_back(phi_substrate.vec);
-        phi_eff_opn_list.push_back(MLS_INTERSECTION); phi_eff_opn_list.push_back(MLS_INTERSECTION);
+//        phi_eff_list.push_back(phi.vec); phi_eff_list.push_back(phi_substrate.vec);
+//        phi_eff_opn_list.push_back(MLS_INTERSECTION); phi_eff_opn_list.push_back(MLS_INTERSECTION);
 
-        compute_phi_eff(phi_eff.vec, nodes_np1, phi_eff_list, phi_eff_opn_list);
+//        compute_phi_eff(phi_eff.vec, nodes_np1, phi_eff_list, phi_eff_opn_list);
 
-        phi_eff_list.clear(); phi_eff_opn_list.clear();
+//        phi_eff_list.clear(); phi_eff_opn_list.clear();
 
-        // Reinitialize:
-        ls->reinitialize_2nd_order(phi_eff.vec);
+//        // Reinitialize:
+//        ls->reinitialize_2nd_order(phi_eff.vec);
       }
 
       // ------------------------------------------------------------
@@ -8567,6 +8605,7 @@ int main(int argc, char** argv) {
                         phi, phi_nm1, v_interface, phi_substrate, phi_eff, phi_dd,
                         vorticity, vorticity_refine, T_l_n, T_l_dd);
 
+
         // -------------------------------
         // Reinitialize the LSF on the new grid (if it has been advected):
         // -------------------------------
@@ -8585,6 +8624,17 @@ int main(int argc, char** argv) {
           PetscPrintf(mpi.comm(), "Checking collapse \n ");
 //          if(start_w_merged_grains){regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi_substrate.vec);}
           check_collapse_on_substrate(p4est_np1,nodes_np1,ngbd_np1, phi, phi_substrate);
+        }
+
+        //------------------------------------------------------
+        // Destroy substrate LSF and phi_eff (if used) and re-create for upcoming timestep:
+        //------------------------------------------------------
+        if(example_uses_inner_LSF){
+          phi_substrate.destroy();
+          phi_eff.destroy();
+          create_and_compute_phi_sub_and_phi_eff(p4est_np1, nodes_np1,
+                                                 ls,
+                                                 phi, phi_substrate, phi_eff);
         }
 
         // ---------------------------------------------------
@@ -8613,19 +8663,27 @@ int main(int argc, char** argv) {
         interpolate_fields_onto_new_grid(T_l_n, T_s_n,
                                          v_interface, v_n,
                                          nodes_np1, p4est_np1, ngbd, interp_bw_grids);
+        if(solve_navier_stokes){
+//          ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
+//                                                   v_n.vec, v_nm1.vec,
+//                                                   p4est_np1,nodes_np1,ghost_np1,
+//                                                   ngbd_np1,
+//                                                   faces_np1,ngbd_c_np1,
+//                                                   hierarchy_np1);
+        }
 
 
         // MOVE UPDATE OF NS GRID TO HERE:
       } // end of "if tstep !=last tstep"
 
 
-      //------------------------------------------------------
-      // Destroy substrate LSF if that is required for this example, we are done using it for this timestep:
-      //------------------------------------------------------
-      if(example_uses_inner_LSF){
-        phi_substrate.destroy();
-        phi_eff.destroy();
-      }
+//      //------------------------------------------------------
+//      // Destroy substrate LSF if that is required for this example, we are done using it for this timestep:
+//      //------------------------------------------------------
+//      if(example_uses_inner_LSF){
+//        phi_substrate.destroy();
+//        phi_eff.destroy();
+//      }
 
       // -------------------------------
       // Do a memory safety check as user specified
@@ -8691,6 +8749,7 @@ int main(int argc, char** argv) {
                              brick, conn,
                              ls,
                              phi, phi_nm1,
+                             phi_substrate, phi_eff,
                              T_l_n, T_s_n, T_l_nm1,
                              v_interface,
                              v_n, v_nm1, vorticity, press_nodes, ns,
