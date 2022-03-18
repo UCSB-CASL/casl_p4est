@@ -2334,6 +2334,26 @@ public:
 } mini_level_set;
 
 
+struct INITIAL_REFINEMENT_CF : CF_DIM {
+  public:
+      double operator() (DIM(double x, double y, double z)) const{
+        if(example_uses_inner_LSF){
+          bool main_phi_has_smaller_abs_val = fabs(level_set(x,y)) < fabs(mini_level_set(x,y));
+          if(main_phi_has_smaller_abs_val){
+            return level_set(x,y);
+          }
+          else{
+            return mini_level_set(x,y);
+          }
+        }
+        else{
+          return level_set(x,y);
+        }
+
+      }
+}initial_refinement_cf;
+
+
 // Function for ramping the boundary conditions:
 double ramp_BC(double initial,double goal_value){
   if(tn<t_ramp){
@@ -3526,6 +3546,11 @@ void extend_relevant_fields(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
   // Extend Temperature Fields across the interface:
   // -------------------------------
   if(print_checkpoints) PetscPrintf(mpi_comm,"Calling extension over phi \n");
+
+
+
+
+
   // Extend liquid temperature:
   ls.extend_Over_Interface_TVD_Full((example_uses_inner_LSF? phi_eff.vec : phi.vec)/*phi.vec*/, T_l_n.vec,
                                     50, 2,
@@ -3858,7 +3883,7 @@ void compute_timestep(vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& phi,
   }
 
   // Compute initial timestep if relevant:
-  if(tstep==0){
+  if(tstep<0){
     dxyz_min(p4est_np1,dxyz_smallest);
 
     // Initialize timesteps to use:
@@ -3921,7 +3946,7 @@ void compute_timestep(vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& phi,
      } // end of if solve stefan
 
     // Compute dt_NS if necessary
-    if(solve_navier_stokes){
+     if(solve_navier_stokes && tstep>0){
         ns->compute_dt();
         dt_NS = ns->get_dt();
         // Address the case where we are loading a simulation state
@@ -4963,28 +4988,43 @@ void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
 
                   int cube_refinement,
                   vec_and_ptr_t& phi_substrate, vec_and_ptr_dim_t& phi_substrate_dd){
+  const p4est_t* p4est_temp = ngbd_np1->get_p4est();
+  const p4est_nodes_t* nodes_temp = ngbd_np1->get_nodes();
+
 
   // Create solvers:
   solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
   if(do_we_solve_for_Ts) solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
 
   // Add the appropriate interfaces and interfacial boundary conditions:
-  solver_Tl->add_boundary(MLS_INTERSECTION, phi.vec, phi_dd.vec[0], phi_dd.vec[1],
-      interface_bc_type_temp, *bc_interface_val_temp[LIQUID_DOMAIN], bc_interface_coeff);
+  solver_Tl->add_boundary(MLS_INTERSECTION, phi.vec,
+                          phi_dd.vec[0], phi_dd.vec[1],
+                          interface_bc_type_temp,
+                          *bc_interface_val_temp[LIQUID_DOMAIN], bc_interface_coeff);
 
   if(do_we_solve_for_Ts){
-    solver_Ts->add_boundary(MLS_INTERSECTION, phi_solid.vec, phi_solid_dd.vec[0], phi_solid_dd.vec[1],
-                            interface_bc_type_temp, *bc_interface_val_temp[SOLID_DOMAIN], bc_interface_coeff);
+    solver_Ts->add_boundary(MLS_INTERSECTION, phi_solid.vec,
+                            phi_solid_dd.vec[0], phi_solid_dd.vec[1],
+                            interface_bc_type_temp,
+                            *bc_interface_val_temp[SOLID_DOMAIN],
+                            bc_interface_coeff);
   }
+
 
   if(example_uses_inner_LSF){
     // Need to add this is the event that phi collapses onto the substrate and we need the phi_substrate BC to take over in that region
-    solver_Tl->add_boundary(MLS_INTERSECTION, phi_substrate.vec, phi_substrate_dd.vec[0], phi_substrate_dd.vec[1],
-                            inner_interface_bc_type_temp,bc_interface_val_inner,bc_interface_coeff_inner);
+    solver_Tl->add_boundary(MLS_INTERSECTION, phi_substrate.vec,
+                            phi_substrate_dd.vec[0], phi_substrate_dd.vec[1],
+                            inner_interface_bc_type_temp,
+                            bc_interface_val_inner,
+                            bc_interface_coeff_inner);
     if(do_we_solve_for_Ts){
       // Need to add this to fully define the solid domain (assuming solid is sitting on substrate, thus bounded by liquid and substrate)
-      solver_Ts->add_boundary(MLS_INTERSECTION, phi_substrate.vec, phi_substrate_dd.vec[0], phi_substrate_dd.vec[1],
-          inner_interface_bc_type_temp,bc_interface_val_inner,bc_interface_coeff_inner);
+      solver_Ts->add_boundary(MLS_INTERSECTION, phi_substrate.vec,
+                              phi_substrate_dd.vec[0], phi_substrate_dd.vec[1],
+                              inner_interface_bc_type_temp,
+                              bc_interface_val_inner,
+                              bc_interface_coeff_inner);
     }
   }
 
@@ -5054,6 +5094,7 @@ void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
       break;
     }
   }
+;
 
   // Set RHS:
   solver_Tl->set_rhs(rhs_Tl.vec);
@@ -5070,12 +5111,14 @@ void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
     solver_Ts->set_cube_refinement(cube_refinement);
     solver_Ts->set_store_finite_volumes(0);
   }
+
   // Set the wall BC and RHS:
-  solver_Tl->set_wc(bc_wall_type_temp,*bc_wall_value_temp[LIQUID_DOMAIN]);
-  if(do_we_solve_for_Ts) solver_Ts->set_wc(bc_wall_type_temp,*bc_wall_value_temp[SOLID_DOMAIN]);
+  solver_Tl->set_wc(bc_wall_type_temp, *bc_wall_value_temp[LIQUID_DOMAIN]);
+  if(do_we_solve_for_Ts) solver_Ts->set_wc(bc_wall_type_temp, *bc_wall_value_temp[SOLID_DOMAIN]);
 
   // Preassemble the linear system
   solver_Tl->preassemble_linear_system();
+
   if(do_we_solve_for_Ts) solver_Ts->preassemble_linear_system();
 
   // Solve the system:
@@ -7275,7 +7318,8 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
                        vec_and_ptr_t& phi, vec_and_ptr_t& phi_nm1,
                        vec_and_ptr_t& phi_substrate, vec_and_ptr_t& phi_eff,
                        vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
-                       vec_and_ptr_dim_t& v_interface,
+                       vec_and_ptr_dim_t& T_l_d, vec_and_ptr_dim_t& T_s_d,
+                       vec_and_ptr_dim_t& jump, vec_and_ptr_dim_t& v_interface,
                        vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
                        vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes){
 
@@ -7303,7 +7347,7 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
     // We will handle sliding these correctly later on
     // Initialize phi_nm1:
     phi_nm1.create(p4est_np1, nodes_np1);
-    VecCopyGhost(phi.vec, phi_nm1.vec);
+    VecCopyGhost(phi.vec, phi_nm1.vec); // should be an option for phi_eff -- TO DO  , doesnt really matter i think, but in principle !
   }
 
   // ---------------------------------
@@ -7348,10 +7392,38 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
       sample_cf_on_nodes(p4est_np1, nodes_np1,*T_init_cf[LIQUID_DOMAIN],T_l_nm1.vec);
     }
 
+    // Extend fields:
+    double dxyz_smallest[P4EST_DIM];
+    dxyz_min(p4est_np1, dxyz_smallest);
+    double min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
+    double extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
+    double extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
+    double dxyz_close_to_interface = 1.2*max(dxyz_smallest[0],dxyz_smallest[1]);
+    extend_relevant_fields(p4est_np1, nodes_np1, ngbd_np1,
+                           *ls,
+                           phi, phi_substrate, phi_eff,
+                           T_l_n, T_s_n, extension_band_use_, extension_band_extend_);
+
+    // Compute vinterface:
     v_interface.create(p4est_np1, nodes_np1);
-    foreach_dimension(d){
-      sample_cf_on_nodes(p4est_np1, nodes_np1, zero_cf, v_interface.vec[d]);
-    }
+    compute_interfacial_velocity(T_l_n, T_s_n,
+                                 T_l_d, T_s_d,
+                                 jump, v_interface,
+                                 phi, phi_eff, phi_substrate,
+                                 p4est_np1, nodes_np1, ngbd_np1, extension_band_extend_);
+
+    // -------------
+
+
+
+
+
+
+
+//    v_interface.create(p4est_np1, nodes_np1);
+//    foreach_dimension(d){
+//      sample_cf_on_nodes(p4est_np1, nodes_np1, zero_cf, v_interface.vec[d]);
+//    }
 
     for(unsigned char d=0;d<2;++d){
       if(analytical_IC_BC_forcing_term) delete analytical_temp[d];
@@ -7869,7 +7941,10 @@ int main(int argc, char** argv) {
     // Initialize the load step (in event we use load)
     int load_tstep=-1;
 
-    splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
+    splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,
+                                                lmax+grid_res_iter,
+                                                &initial_refinement_cf,
+                                                uniform_band, 2.0);
     conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
     double t_original_start = tstart;
 
@@ -7893,9 +7968,11 @@ int main(int argc, char** argv) {
                         phi, phi_nm1,
                         phi_substrate, phi_eff,
                         T_l_n, T_s_n, T_l_nm1,
+                        T_l_d, T_s_d, jump,
                         v_interface,
                         v_n, v_nm1,
                         vorticity, press_nodes);
+
       tstep = 0;
     }
 
@@ -8193,7 +8270,7 @@ int main(int argc, char** argv) {
       // Poisson Problem at Nodes (for temp and/or conc scalar fields):
       // Setup and solve a Poisson problem on both the liquid and solidified subdomains
       // ------------------------------------------------------------
-      if((tstep>0) && solve_stefan){
+      if(solve_stefan){
 
         setup_and_solve_poisson_problem(mpi,
                                         p4est_np1, nodes_np1, ngbd_np1,
