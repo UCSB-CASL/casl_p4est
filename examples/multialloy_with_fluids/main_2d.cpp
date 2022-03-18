@@ -8278,12 +8278,12 @@ int main(int argc, char** argv) {
                                faces_np1, ngbd_c_np1);
         }
         else{
-          ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
-                                                   v_n.vec, v_nm1.vec,
-                                                   p4est_np1,nodes_np1,ghost_np1,
-                                                   ngbd_np1,
-                                                   faces_np1,ngbd_c_np1,
-                                                   hierarchy_np1);
+//          ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
+//                                                   v_n.vec, v_nm1.vec,
+//                                                   p4est_np1,nodes_np1,ghost_np1,
+//                                                   ngbd_np1,
+//                                                   faces_np1,ngbd_c_np1,
+//                                                   hierarchy_np1);
         }
 
         // -------------------------------
@@ -8598,13 +8598,11 @@ int main(int argc, char** argv) {
       if(tstep!=last_tstep){
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid update process ... \n"
                                                      "Refine by d2T = %s \n",refine_by_d2T? "true": "false");
-
         update_the_grid(sp, p4est_np1, nodes_np1, ngbd_np1, ghost_np1, hierarchy_np1,
                         p4est, nodes, ngbd, ghost, hierarchy,
                         brick, ns,
                         phi, phi_nm1, v_interface, phi_substrate, phi_eff, phi_dd,
                         vorticity, vorticity_refine, T_l_n, T_l_dd);
-
 
         // -------------------------------
         // Reinitialize the LSF on the new grid (if it has been advected):
@@ -8663,13 +8661,13 @@ int main(int argc, char** argv) {
         interpolate_fields_onto_new_grid(T_l_n, T_s_n,
                                          v_interface, v_n,
                                          nodes_np1, p4est_np1, ngbd, interp_bw_grids);
-        if(solve_navier_stokes){
-//          ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
-//                                                   v_n.vec, v_nm1.vec,
-//                                                   p4est_np1,nodes_np1,ghost_np1,
-//                                                   ngbd_np1,
-//                                                   faces_np1,ngbd_c_np1,
-//                                                   hierarchy_np1);
+        if(solve_navier_stokes && tstep>0){
+          ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
+                                                   v_n.vec, v_nm1.vec,
+                                                   p4est_np1,nodes_np1,ghost_np1,
+                                                   ngbd_np1,
+                                                   faces_np1,ngbd_c_np1,
+                                                   hierarchy_np1);
         }
 
 
