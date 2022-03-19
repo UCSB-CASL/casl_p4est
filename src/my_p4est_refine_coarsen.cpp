@@ -150,9 +150,9 @@ refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, 
 p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad )
 {
 	auto *data = (splitting_criteria_cf_and_uniform_band_shs_t *) p4est->user_pointer;
-	if( quad->level < data->min_lvl )
+	if( quad->level < data->min_lvl )		// Refine until we get to the desired min level.
 		return P4EST_TRUE;
-	else if( quad->level >= data->max_lvl )
+	else if( quad->level >= data->max_lvl )	// Stop refining beyond max level.
 		return P4EST_FALSE;
 	else
 	{
@@ -177,8 +177,35 @@ p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topi
 #ifdef P4_TO_P8
 		double dz = (tree_zmax - tree_zmin) * dmin;
 #endif
-		double smallest_dxyz_max = MAX(DIM((tree_xmax - tree_xmin), (tree_ymax - tree_ymin), (tree_zmax - tree_zmin))) *
-								   ((double)P4EST_QUADRANT_LEN( data->max_lvl )) / ((double) P4EST_ROOT_LEN);
+		double smallest_dy = (tree_ymax - tree_ymin) * (double)P4EST_QUADRANT_LEN( data->max_lvl ) / P4EST_ROOT_LEN;
+
+		// Use smallest_dy to define the limits for mid-level-cell refinement.
+		const int NUM_MID_LEVELS = data->max_lvl - data->min_lvl - 1;
+		double midEffectiveDist = data->DELTA * data->LMID_DELTA_PERCENT - data->uniform_band * smallest_dy;
+		std::vector<double> midBounds;
+		bool midLvlCellsOK = false;
+		if( NUM_MID_LEVELS > 0 && data->LMID_DELTA_PERCENT > 0 )	// Use option only if user allowed it with a percent > 0.
+		{
+			if( midEffectiveDist <= 0 )		// Check mid-level cells have space to be placed; if not, don't enforce anything.
+			{
+				std::cerr << "[CASL_WARNING] refine_levelset_cf_and_uniform_band_shs: The uniform band of finest cells "
+						  << "extends beyond the requested space for mid-level cells!  Check your calculations..."
+						  << std::endl;
+			}
+			else
+			{
+				midBounds.reserve( NUM_MID_LEVELS );						// Mid bands are spaced like (b, 2b, 4b,..., 2^{n-1}b).
+				double b = midEffectiveDist / ((1<<NUM_MID_LEVELS) - 1);	// where n is number of mid levels.
+				for( int i = 0; i < NUM_MID_LEVELS; i++ )
+				{
+					if( i == 0 )
+						midBounds.push_back( data->uniform_band * smallest_dy + (1 << i) * b );
+					else
+						midBounds.push_back( midBounds.back() + (1 << i) * b );
+				}
+				midLvlCellsOK = true;
+			}
+		}
 
 		double x = (tree_xmax - tree_xmin) * (double)quad->x / (double)P4EST_ROOT_LEN + tree_xmin;
 		double y = (tree_ymax - tree_ymin) * (double)quad->y / (double)P4EST_ROOT_LEN + tree_ymin;
@@ -200,7 +227,7 @@ p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topi
 					double xyz[P4EST_DIM] = {DIM( x + ci * 0.5 * dx, y + cj * 0.5 * dy, z + ck * 0.5 * dz )};
 					f = phi( DIM( xyz[0], xyz[1], xyz[2] ) );
 					is_crossed = is_crossed || (vmmm_is_neg != (f <= 0.0));
-					if( fabs( f ) < data->uniform_band * smallest_dxyz_max || is_crossed )
+					if( fabs( f ) < data->uniform_band * smallest_dy || is_crossed )
 						return P4EST_TRUE;
 
 					// Check if any of quad's corners/midpoints are in the negative domain.
@@ -209,8 +236,16 @@ p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topi
 						// If after the above condition we didn't refine a quad, we need to check cells next to the
 						// air interface (which is not considered by the solid-ridge-based level-set function).
 						double minDistToWall = MIN( ABS( xyz[1] + data->DELTA ), ABS( xyz[1] - data->DELTA ) );
-						if( minDistToWall < data->uniform_band * smallest_dxyz_max )
+						if( minDistToWall < data->uniform_band * smallest_dy )
 							return P4EST_TRUE;	// Enforce uniform band along the wall, regardless of interface type.
+
+						// Check the mid-level cells (and their bands) only if requested and valid.
+						if( NUM_MID_LEVELS > 0 && midLvlCellsOK )
+						{
+							int boundIdx = MAX( 0, MIN( (data->max_lvl - 1) - (quad->level + 1), NUM_MID_LEVELS - 1 ) );	// We want to check if we can go one level up.
+							if( minDistToWall < midBounds[boundIdx] && quad->level < data->max_lvl - boundIdx - 1 )
+								return P4EST_TRUE;
+						}
 					}
 				}
 	}

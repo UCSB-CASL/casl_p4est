@@ -692,14 +692,15 @@ public:
 
   inline void create_p4est_ghost_and_nodes( p4est_t* &forest, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
 										    splitting_criteria_cf_and_uniform_band_shs_t* &sp,
-										    p4est_connectivity_t *conn, const mpi_environment_t& mpi_,
-                                            const int& lmin, const unsigned int wall_layer, const double& lip_user )
+										    p4est_connectivity_t *conn, const mpi_environment_t& mpi_, const int& lmin,
+											const unsigned int wall_layer, const double& lmid_delta_percent,
+											const double& lip_user )
   {
     P4EST_ASSERT( is_configured );
     delete sp;
     sp = new splitting_criteria_cf_and_uniform_band_shs_t( lmin, max_lvl, this,
 														   calculate_uniform_band_for_ns_solver( wall_layer ), delta(),
-														   calculate_lip_for_ns_solver( lip_user ) );
+														   lmid_delta_percent, calculate_lip_for_ns_solver( lip_user ) );
 
     if( forest != nullptr )
       p4est_destroy( forest );
