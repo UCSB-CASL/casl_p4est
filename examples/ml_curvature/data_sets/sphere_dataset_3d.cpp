@@ -11,7 +11,7 @@
  * lization.
  *
  * Developer: Luis Ángel.
- * Created: March 18, 2022.
+ * Created: March 19, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -59,8 +59,8 @@ int main ( int argc, char* argv[] )
 	param_t<u_char>          maxRL( pl,     6, "maxRL"				, "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<u_short>   reinitIters( pl,    10, "reinitIters"		, "Number of iterations for reinitialization (default: 10)" );
 	param_t<int>       spheresPerH( pl,     2, "spheresPerH"		, "How many sphere radii to fit in a cell (default: 2)" );
-	param_t<int>      samplesPerH3( pl,     1, "samplesPerH3"		, "Samples per H^3 based on the average radius (default: 1)" );
-	param_t<int> keepEveryXSamples( pl,     4, "keepEveryXSamples"	, "Keep record every x samples next to Gamma randomly (default: 4)" );
+	param_t<double>   samplesPerH3( pl,   0.1, "samplesPerH3"		, "Samples per H^3 based on the average radius (default: 0.1)" );
+	param_t<int> keepEveryXSamples( pl,    10, "keepEveryXSamples"	, "Keep record every x samples next to Gamma randomly (default: 10)" );
 	param_t<size_t>  bufferMinSize( pl,   1e4, "bufferMinSize"		, "Buffer minimum overflow size to trigger storage (default: 10K)" );
 	param_t<std::string>    outDir( pl,   ".", "outDir"				, "Path where files will be written to (default: build folder)" );
 
@@ -239,10 +239,9 @@ int main ( int argc, char* argv[] )
 				SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
 			}
 
-			nc++;
-
 			PetscPrintf( mpi.comm(), "     (%d) Done with radius = %f.  Maximum relative error = %f.  Samples = %d;\n",
 						 nc, R, maxRE, 2 * (int)round( samplesPerRadius[nc] ) );
+			nc++;
 
 			if( nc % 10 == 0 )
 				PetscPrintf( mpi.comm(), "   [%i radii evaluated after %f secs.]\n", nc, watch.get_duration_current() );
