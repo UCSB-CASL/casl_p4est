@@ -358,10 +358,13 @@ namespace kml
 		 * @param [in] mpi MPI environment.
 		 * @param [in,out] file File object.
 		 * @param [in] buffer Samples buffer.
+		 * @param [in] nSamplesToSave Number of samples to save (if distinct to buffer true size, use 0 to save all).
 		 * @return Number of samples written to file.
+		 * @throws invalid_argument exception if nSamplesToSave is negative or larger than buffer size.
 		 */
 		int saveSamplesBufferToFile( const mpi_environment_t& mpi, std::ofstream& file,
-									 const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer );
+									 const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer,
+									 const size_t& nSamplesToSave=0 );
 
 		/**
 		 * Transform samples with (optional) negative-mean-curvature and phi-by-h normalization, followed by

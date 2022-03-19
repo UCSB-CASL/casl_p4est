@@ -664,13 +664,18 @@ int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::
 
 
 int kml::utils::saveSamplesBufferToFile( const mpi_environment_t& mpi, std::ofstream& file,
-										 const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer )
+										 const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer,
+										 const size_t& nSamplesToSave )
 {
 	int savedSamples;
+	if( nSamplesToSave < 0 || nSamplesToSave > buffer.size() )
+		throw std::invalid_argument( "[CASL_ERROR] kml::utils::saveSamplesBufferToFile: nSamplesToSave must be "
+									 "non-negative and at most buffer current size!" );
 	if( mpi.rank() == 0 )
 	{
 		int i;
-		for( i = 0; i < buffer.size(); i++ )
+		size_t numSamplesToSave = nSamplesToSave == 0? buffer.size() : nSamplesToSave;
+		for( i = 0; i < numSamplesToSave; i++ )
 		{
 			int j;
 			for( j = 0; j < K_INPUT_SIZE_LEARN - 1; j++ )

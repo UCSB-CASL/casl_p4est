@@ -34,6 +34,12 @@ inline T SQR(const T& val)
   return  val*val;
 }
 
+template<typename T>
+inline T CUBE( const T& val )
+{
+	return val * val * val;
+}
+
 inline int mod(int a, int b)
 {
 #ifdef CASL_THROWS
