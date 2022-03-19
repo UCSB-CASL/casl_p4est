@@ -61,7 +61,7 @@ int main ( int argc, char* argv[] )
 	param_t<int>       spheresPerH( pl,     2, "spheresPerH"		, "How many sphere radii to fit in a cell (default: 2)" );
 	param_t<int>      samplesPerH3( pl,     1, "samplesPerH3"		, "Samples per H^3 based on the average radius (default: 1)" );
 	param_t<int> keepEveryXSamples( pl,     4, "keepEveryXSamples"	, "Keep record every x samples next to Gamma randomly (default: 4)" );
-	param_t<size_t>  bufferMinSize( pl,   3e5, "bufferMinSize"		, "Buffer minimum overflow size to trigger storage (default: 300K)" );
+	param_t<size_t>  bufferMinSize( pl,   1e4, "bufferMinSize"		, "Buffer minimum overflow size to trigger storage (default: 10K)" );
 	param_t<std::string>    outDir( pl,   ".", "outDir"				, "Path where files will be written to (default: build folder)" );
 
 	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes (it's OK that it's not in sync among processes).
@@ -223,6 +223,9 @@ int main ( int argc, char* argv[] )
 				int savedSamples = saveSamples( mpi, buffer, bufferSize, file, fileName, bufferMinSize(), nSamplesLeftForSameRadius );
 				nSamples += savedSamples;
 				nSamplesLeftForSameRadius -= savedSamples;
+#ifdef DEBUG
+				PetscPrintf( mpi.comm(), ":: Number of samples left: %d\n", nSamplesLeftForSameRadius );
+#endif
 
 				// Destroy the p4est and its connectivity structure.
 				delete ngbd;
@@ -441,18 +444,28 @@ int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>&
 
 	if( bufferSize > 0 && samplesLeftToSave > 0 && (samplesLeftToSave <= bufferSize || bufferSize >= bufferMinSize) )	// Check if it's time to save samples.
 	{
-		size_t numSamplesToSave = MIN( bufferSize, samplesLeftToSave );
-		savedSamples = kml::utils::saveSamplesBufferToFile( mpi, file, buffer, numSamplesToSave );
-
-		CHKERRXX( PetscPrintf( mpi.comm(), "[*] Saved %d out of %d samples to output file %s.\n", savedSamples, bufferSize, fileName.c_str() ) );
-
-		buffer.clear();							// Reset control variables.
 		if( mpi.rank() == 0 )
-			buffer.reserve( bufferMinSize );
-		bufferSize = 0;
+		{
+			int i;
+			size_t numSamplesToSave = MIN( bufferSize, samplesLeftToSave );
+			for( i = 0; i < numSamplesToSave; i++ )
+			{
+				int j;
+				for( j = 0; j < K_INPUT_SIZE_LEARN - 1; j++ )
+					file << buffer[i][j] << ",";		// Inner elements.
+				file << buffer[i][j] << std::endl;		// Last element is ihk in 2D or ih2kg in 3D.
+			}
+			savedSamples = i;
 
-		SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "[*] Saved %d out of %d samples to output file %s.\n", savedSamples, bufferSize, fileName.c_str() ) );
+
+			buffer.clear();							// Reset control variables.
+			buffer.reserve( bufferMinSize );
+		}
+		bufferSize = 0;
 	}
 
+	// Communicate to everyone the total number of saved samples.
+	SC_CHECK_MPI( MPI_Bcast( &savedSamples, 1, MPI_INT, 0, mpi.comm() ) );	// Acts as an MPI_Barrier, too.
 	return savedSamples;
 }
