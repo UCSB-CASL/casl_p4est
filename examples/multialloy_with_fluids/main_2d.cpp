@@ -7324,6 +7324,130 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
 
   PetscPrintf(mpi.comm(),"Loads forest and data \n");
 }
+// --------------------------------------------------------------------------------------------------------------
+// Problem initial setup:
+// --------------------------------------------------------------------------------------------------------------
+void setup_initial_parameters_and_report(mpi_environment_t& mpi){
+  select_solvers();
+
+  // ------------------------------
+  // Make sure your flags are set to solve at least one of the problems:
+  // ------------------------------
+  if(!solve_stefan && !solve_navier_stokes){
+    throw std::invalid_argument("Woops, you haven't set options to solve either type of physical problem. \n"
+                                "You must at least set solve_stefan OR solve_navier_stokes to true. ");
+  }
+
+
+  // -----------------------------------------------
+  // Set up domain :
+  // -----------------------------------------------
+  // domain size information
+  set_geometry();
+
+  // if porous media example, create the porous media geometry:
+  // do this operation on one process so they don't have different grain defn's.
+  /*if(mpi.rank() == 0) */
+  if(example_ == EVOLVING_POROUS_MEDIA){
+    make_LSF_for_porous_media(mpi);
+  }
+
+  // -----------------------------------------------
+  // Set applicable parameters and nondim groups:
+  // -----------------------------------------------
+  select_problem_nondim_or_dim_formulation();
+
+  set_physical_properties();
+  if(solve_navier_stokes){
+    set_NS_info();
+  }
+  set_nondimensional_groups();
+
+
+  // -----------------------------------------------
+  // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
+  // -----------------------------------------------
+
+  simulation_time_info();
+
+
+
+  // -----------------------------------------------
+  // Report relevant information:
+  // -----------------------------------------------
+  PetscPrintf(mpi.comm(),"------------------------------------"
+                          "\n \n"
+                          "INITIAL PROBLEM INFORMATION\n"
+                          "------------------------------------\n\n",example_);
+
+  PetscPrintf(mpi.comm(),"Example number %d \n \n",example_);
+  PetscPrintf(mpi.comm(), "The nondimensionalizaton formulation being used is %s \n \n",
+              (problem_dimensionalization_type == 0)?
+                                                     ("NONDIM BY FLUID VELOCITY"):
+                                                     ((problem_dimensionalization_type == 1) ?
+                                                                                             ("NONDIM BY DIFFUSIVITY") : ("DIMENSIONAL")));
+
+  PetscPrintf(mpi.comm(), "Nondim = %d \n"
+                          "lmin = %d, lmax = %d \n"
+                          "Number of mpi tasks: %d \n"
+                          "Stefan = %d, NS = %d \n \n ", problem_dimensionalization_type,
+              lmin, lmax,
+              mpi.size(),
+              solve_stefan, solve_navier_stokes);
+  PetscPrintf(mpi.comm(),"The nondimensional groups are: \n"
+                          "Re = %f \n"
+                          "Pr = %f \n"
+                          "Sc = %f \n"
+                          "Pe = %f \n"
+                          "St = %f \n"
+                          "Da = %f \n"
+                          "gamma_diss = %f \n"
+                          "With: \n"
+                          "u_inf = %0.3e [m/s]\n"
+                          "delta T = %0.2f [K]\n"
+                          "sigma = %0.3e, l_char = %0.3e, sigma/l_char = %0.3e \n \n",
+              Re, Pr, Sc, Pe, St, Da, gamma_diss,
+              u_inf,deltaT,sigma,l_char,sigma/l_char);
+
+
+
+
+  PetscPrintf(mpi.comm(),"Simulation time: %0.3f [min] = %0.3f [sec] = %0.2f [nondim]\n\n",
+              tfinal*time_nondim_to_dim/60.,
+              tfinal*time_nondim_to_dim,
+              tfinal);
+
+  bool using_startup = (startup_dim_time>0.) || (startup_nondim_time >0.);
+  bool using_dim_startup = using_startup && (startup_dim_time>0.);
+
+  PetscPrintf(mpi.comm(),"Are we using startup time? %s \n \n",using_startup? "Yes": "No");
+  if(using_startup){
+    PetscPrintf(mpi.comm(),"Startup time: %s = %0.2f %s \n", using_dim_startup? "Dimensional" : "Nondimensional", using_dim_startup? startup_dim_time:startup_nondim_time,using_dim_startup? "[seconds]": "[nondim]");
+  }
+
+
+  PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n \n ",uniform_band);
+
+  PetscPrintf(mpi.comm(),"Are we ramping bcs? %s \n t_ramp = %0.2f [nondim] = %0.2f [seconds] \n \n",ramp_bcs?"Yes":"No",t_ramp,t_ramp*time_nondim_to_dim);
+
+  PetscPrintf(mpi.comm(),"Are we loading from previous state? %s \n"
+                          "Starting timestep = %d \n"
+                          "Save state every iter = %d \n"
+                          "Save to vtk? %s \n"
+                          "Save using %s \n"
+                          "Save every dt = %0.5e [nondim] = %0.2f [seconds]\n"
+                          "Save every iter = %d \n \n",loading_from_previous_state?"Yes":"No",
+              tstep,
+              save_state_every_iter,
+              save_to_vtk?"Yes":"No",
+              save_using_dt? "dt" :"iter",
+              save_every_dt, save_every_dt*time_nondim_to_dim,
+              save_every_iter);
+  PetscPrintf(mpi.comm(),"------------------------------------\n\n");
+
+
+}
+
 
 // --------------------------------------------------------------------------------------------------------------
 // Initializations and destructions:
@@ -7831,30 +7955,16 @@ int main(int argc, char** argv) {
   PetscViewer viewer;
   int mpi_ret; // Check mpi issues
 
-  cmdParser cmd;
+  // -----------------------------------------------
+  // Parse the user inputs:
+  // -----------------------------------------------
 
+  cmdParser cmd;
   pl.initialize_parser(cmd);
   cmd.parse(argc,argv);
-
   pl.get_all(cmd);
-  select_solvers();
 
-  solve_coupled = solve_navier_stokes && solve_stefan;
-  select_problem_nondim_or_dim_formulation();
 
-  PetscPrintf(mpi.comm(), "\n The nondimensionalizaton formulation being used is %s \n",
-              (problem_dimensionalization_type == 0)?
-              ("NONDIM BY FLUID VELOCITY"):
-              ((problem_dimensionalization_type == 1) ?
-              ("NONDIM BY DIFFUSIVITY") : ("DIMENSIONAL")));
-
-  PetscPrintf(mpi.comm(), "Nondim = %d \n"
-                          "lmin = %d, lmax = %d \n"
-                          "Number of mpi tasks: %d \n"
-                          "Stefan = %d, NS = %d \n \n ", problem_dimensionalization_type,
-                                                                lmin, lmax,
-                                                                mpi.size(),
-                                                                solve_stefan, solve_navier_stokes);
   // -----------------------------------------------
   // Declare all needed variables:
   // -----------------------------------------------
@@ -7986,88 +8096,8 @@ int main(int argc, char** argv) {
   // Begin loop through number of grid splits:
   // -----------------------------------------------
   for(int grid_res_iter=0;grid_res_iter<=num_splits;grid_res_iter++){
-    // Make sure your flags are set to solve at least one of the problems:
-    if(!solve_stefan && !solve_navier_stokes){
-        throw std::invalid_argument("Woops, you haven't set options to solve either type of physical problem. \n"
-                                    "You must at least set solve_stefan OR solve_navier_stokes to true. ");
-      }
+    setup_initial_parameters_and_report(mpi);
 
-    // -----------------------------------------------
-    // Set up domain :
-    // -----------------------------------------------
-    // domain size information
-    set_geometry();
-
-    // if porous media example, create the porous media geometry:
-    // do this operation on one process so they don't have different grain defn's.
-    /*if(mpi.rank() == 0) */
-    if(example_ == EVOLVING_POROUS_MEDIA){
-      make_LSF_for_porous_media(mpi);
-    }
-
-
-    const int n_xyz[]      = { nx,  ny,  0};
-    const double xyz_min[] = {xmin, ymin, 0};
-    const double xyz_max[] = {xmax,  ymax,  0};
-    const int periodic[]   = { px,  py,  0};
-
-    // Set physical properties:
-    set_physical_properties();
-
-    // -----------------------------------------------
-    // Set properties for the Navier - Stokes problem (if applicable):
-    // -----------------------------------------------
-    if(solve_navier_stokes){
-        set_NS_info();
-      }
-    set_nondimensional_groups();
-
-    PetscPrintf(mpi.comm(),"\n\nNONDIM GROUPS ARE: \n"
-                           "Re = %f \n"
-                           "Pr = %f \n"
-                            "Sc = %f \n"
-                           "Pe = %f \n"
-                           "St = %f \n"
-                           "Da = %f \n"
-                           "gamma_diss = %f \n"
-                           "With: \n"
-                           "u_inf = %0.3e [m/s]\n"
-                           "delta T = %0.2f [K]\n"
-                           "sigma = %0.3e, l_char = %0.3e, sigma/l_char = %0.3e \n",
-                          Re, Pr, Sc, Pe, St, Da, gamma_diss,
-                          u_inf,deltaT,sigma,l_char,sigma/l_char);
-
-
-    // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
-    simulation_time_info();
-    PetscPrintf(mpi.comm(),"Example number %d \n",example_);
-
-    PetscPrintf(mpi.comm(),"Sim time: %0.3f [min] = %0.2f [nondim]\n",tfinal*time_nondim_to_dim/60.,tfinal);
-    bool using_startup = (startup_dim_time>0.) || (startup_nondim_time >0.);
-    bool using_dim_startup = using_startup && (startup_dim_time>0.);
-    PetscPrintf(mpi.comm(),"Using startup time? %s \n",using_startup? "Yes": "No");
-    if(using_startup){
-      PetscPrintf(mpi.comm(),"Startup time: %s = %0.2f %s \n",using_dim_startup? "Dimensional" : "Nondimensional", using_dim_startup? startup_dim_time:startup_nondim_time,using_dim_startup? "[seconds]": "[nondim]");
-    }
-
-
-    PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n \n ",uniform_band);
-    PetscPrintf(mpi.comm(),"Ramping bcs? %s \n t_ramp = %0.2f [nondim] = %0.2f [seconds]",ramp_bcs?"Yes":"No",t_ramp,t_ramp*time_nondim_to_dim);
-
-
-    PetscPrintf(mpi.comm(),"\nLoading from previous state? %s \n"
-                            "Starting timestep = %d \n"
-                            "Save state every iter = %d \n"
-                            "Save to vtk? %s \n"
-                            "Save using %s \n"
-                            "Save every dt = %0.5e [nondim] = %0.2f [seconds]\n"
-                            "Save every iter = %d \n",loading_from_previous_state?"Yes":"No",
-                tstep,
-                save_state_every_iter,
-                save_to_vtk?"Yes":"No",
-                save_using_dt? "dt" :"iter",
-                save_every_dt, save_every_dt*time_nondim_to_dim,
-                save_every_iter);
 
     // -----------------------------------------------
     // Perform grid and field initializations
@@ -8085,6 +8115,11 @@ int main(int argc, char** argv) {
                                                 lmax+grid_res_iter,
                                                 &initial_refinement_cf,
                                                 uniform_band, 2.0);
+    const int n_xyz[]      = { nx,  ny,  0};
+    const double xyz_min[] = {xmin, ymin, 0};
+    const double xyz_max[] = {xmax,  ymax,  0};
+    const int periodic[]   = { px,  py,  0};
+
     conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
     double t_original_start = tstart;
 
