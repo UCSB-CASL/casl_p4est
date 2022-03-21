@@ -2249,20 +2249,12 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   // (1) Set phi as the new phi on new grid
   //------------------------------------------------------
 
-//  int phi_size;
-//  int phi_new_size;
-//  int phi_updated_size;
-////  ierr = VecGetSize(phi, &phi_size); CHKERRXX(ierr);
-//  ierr = VecGetSize(phi_np1, &phi_new_size);CHKERRXX(ierr);
-
-
   phi = phi_np1;
 
-//  ierr = VecGetSize(phi, &phi_updated_size);CHKERRXX(ierr);
-//  printf("Update grid: phi_new size = %d, phi_updated size = %d \n", phi_new_size, phi_updated_size);
   delete interp_phi;
   interp_phi = new my_p4est_interpolation_nodes_t(ngbd_np1);
   interp_phi->set_input(phi_np1,linear);
+
   // reset grad phi
   if(grad_phi != NULL){
     ierr = VecDestroy(grad_phi); CHKERRXX(ierr);
@@ -2288,72 +2280,31 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   //------------------------------------------------------
   // (3) Slide velocity fields at nodes (and their second derivatives)
   //------------------------------------------------------
+  // NOTE: We want to slide velocity fields inside the NS solver such that:
+  // And the user provides the vnm1 and vn
+  // vnm1_nodes[d] = vn_nodes[d]
+  // vnp_nodes[d] = vnp1_nodes[d]
+  // vnp1_nodes[d] --> we will create a new one here on the new grid provided by the user to hold the forthcoming new soln at vnp1
 
-//  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-//  {
-//    // (3.1) : destroy vnm1 at nodes , and slide current vn to be the new vnm1
-//    ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr);
-//    vnm1_nodes[dir] = vn_nodes[dir]; // At this point, both vnm1_nodes and vn_nodes point to the same object
-
-//    // (3.2): Create new object to hold the new v_n values (which will be interpolated from the computed vnp1)
-//    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vn_nodes[dir]); CHKERRXX(ierr);// At this point, we now create a new object, which vn_nodes points to now.
-
-//    // (3.3): do 3.1 and 3.2, but for the second derivatives of velocity
-//    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd) {
-//      ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
-//      second_derivatives_vnm1_nodes[dd][dir] = second_derivatives_vn_nodes[dd][dir];
-//      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
-//    }
-//  }
-
-  // Slide the velocity fields as provided
-  // (these have already been interpolated externally and appropriate destructions have been handled)
-//  int  vnm1_new_size, vn_new_size;
-//  VecGetSize(v_nm1_nodes_[0], &vnm1_new_size);
-//  VecGetSize(v_n_nodes_[0], &vn_new_size);
-//  printf("Update grid: vnm1 new: %d,  vn_new: %d \n",vnm1_new_size, vn_new_size);
   foreach_dimension(d){
+    // Slide the velocities:
     vnm1_nodes[d] = v_nm1_nodes_[d];
     vn_nodes[d] = v_n_nodes_[d];
 
-    // Create new vecs for the second derivatives
+    // Slide 2nd derivatives and create new vecs for the second derivatives to come
     foreach_dimension(dd){
-//      if(second_derivatives_vnm1_nodes[d][dd]!=NULL){
-//        printf("update grid: 2nd derivatives of [%d][%d] still exist! \n", d, dd);
-//      }
       ierr = VecDestroy(second_derivatives_vnm1_nodes[d][dd]); CHKERRXX(ierr);
       second_derivatives_vnm1_nodes[d][dd] = second_derivatives_vn_nodes[d][dd];
       ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &second_derivatives_vn_nodes[d][dd]); CHKERRXX(ierr);
     }
   }
 
-//  // (3.4) Prepare interpolator for vnp1 at nodes
-//  my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
-//  for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
-//  {
-//    double xyz[P4EST_DIM];
-//    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
-//    interp_nodes.add_point(n, xyz);
-//  }
-
-//  // (3.5) Interpolate the vnp1 nodes (which were solved for on the nth grid) onto the n + 1 grid to become the vn values at upcoming the (n + 1) timestep
-//  interp_nodes.set_input(vnp1_nodes, quadratic_non_oscillatory_continuous_v2, P4EST_DIM);
-//  interp_nodes.interpolate(vn_nodes); CHKERRXX(ierr);
-
   // Create vector to hold the new vnp1 at the nodes (for next time!):
+  // Note: this is safe to do bc outside of this fxn, the vn_nodes has been slid to vnm1_nodes and vnp1_nodes to vn_nodes, so now we need to create a new vector for the new vnp1 forthcoming
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-//    if(vnp1_nodes[dir]!=NULL) {
-//      PetscPrintf(p4est_np1->mpicomm, "Inside not null: Address of vnp1[%d] in update grid is %p \n", dir, vnp1_nodes[dir]);
-//      printf( "Rank %d Inside not null: Address of vnp1[%d] in update grid is %p \n", p4est_np1->mpirank, dir, vnp1_nodes[dir]);
-
-
-//      ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
-//    }
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vnp1_nodes[dir]); CHKERRXX(ierr);
   }
-//  PetscPrintf(p4est_n->mpicomm, "After create ghost nodes: Address of vnp1 in update grid is %p \n", vnp1_nodes[0]);
 
-//  interp_nodes.clear();
 
   // (3.6) Compute the new second derivatives of vn on the new grid
   ngbd_np1->second_derivatives_central(vn_nodes, DIM(second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2]), P4EST_DIM);

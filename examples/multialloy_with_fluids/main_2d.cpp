@@ -5423,10 +5423,8 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
   int mpi_comm = p4est_np1->mpicomm;
 
-  // Destroy old pressure and vorticity and create vectors to hold new solns:
-//  vorticity.destroy(); vorticity.create(p4est_np1, nodes_np1);
+  // Destroy old pressure at nodes (if it exists) and create vector to hold new solns:
   press_nodes.destroy(); press_nodes.create(p4est_np1, nodes_np1);
-
 
   // Create vector to store old dxyz hodge:
   for (unsigned char d=0; d<P4EST_DIM; d++){
@@ -5472,24 +5470,16 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   // Compute velocity at the nodes
   ns->compute_velocity_at_nodes();
 
-  // Slide velocity fields:
+  // ------------------------
+  // Slide velocity fields (for our use):
   // ------------------------
   // (a) get rid of old vnm1, now vn becomes the new vnm1
   // (b) no need to destroy vn, bc now we put vnp1 into vn's slot
   v_nm1.destroy();
-//  v_nm1.create(p4est_np1, nodes_np1);
-
-//  PetscPrintf(p4est_np1->mpicomm, "1Addresses on rank %d in ns step: p4est_np1 = %p, vnm1 = %p, vn = %p \n",
-//              p4est_np1->mpirank, p4est_np1, v_nm1.vec[0], v_n.vec[0]);
-
   foreach_dimension(d){
     ns->get_node_velocities_n(v_nm1.vec[d], d);
     ns->get_node_velocities_np1(v_n.vec[d], d);
   }
-
-  //  PetscPrintf(p4est_np1->mpicomm, "2Addresses on rank %d in ns step: p4est_np1 = %p, vnm1 = %p, vn = %p \n",
-  //              p4est_np1->mpirank, p4est_np1, v_nm1.vec[0], v_n.vec[0]);
-  //  printf("Address of vnm1 on rank %d in ns step is %p \n", p4est_np1->mpirank, v_nm1.vec[0]);
 
 
   // ------------------------
@@ -5500,7 +5490,6 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   }
 
   // Get the computed values of vorticity
-//  if(tstep == 0)vorticity.destroy(); // ELYCE TO-DO: THIS IS TEMPORARY -- BC WE SAMPLE AN INITIAL VORTICITY FOR REFINEMENTS SAKE, WHICH I WANT TO CHANGE
   vorticity.vec = ns->get_vorticity();
 
 
@@ -7320,8 +7309,7 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
                        vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
                        vec_and_ptr_dim_t& T_l_d, vec_and_ptr_dim_t& T_s_d,
                        vec_and_ptr_dim_t& jump, vec_and_ptr_dim_t& v_interface,
-                       vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1/*,
-                       vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes*/){
+                       vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1){
 
   // ---------------------------------
   // Level-set function(s):
@@ -7414,17 +7402,6 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
 
     // -------------
 
-
-
-
-
-
-
-//    v_interface.create(p4est_np1, nodes_np1);
-//    foreach_dimension(d){
-//      sample_cf_on_nodes(p4est_np1, nodes_np1, zero_cf, v_interface.vec[d]);
-//    }
-
     for(unsigned char d=0;d<2;++d){
       if(analytical_IC_BC_forcing_term) delete analytical_temp[d];
       delete T_init_cf[d];
@@ -7459,15 +7436,11 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
 
     v_n.create(p4est_np1, nodes_np1);
     v_nm1.create(p4est_np1, nodes_np1);
-//    vorticity.create(p4est_np1, nodes_np1); // no need to  create this, we are going to get it from NS
-//    press_nodes.create(p4est_np1, nodes_np1);
 
     foreach_dimension(d){
       sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_n.vec[d]);
       sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_nm1.vec[d]);
     }
-//    sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,vorticity.vec); // FOR NOW WE DO THIS, BUT WANT TO CHANGE NS TO SOLVE ON ITER 0 AND NOT DO THIS
-//    sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,press_nodes.vec);
   }
 
   for(unsigned char d=0;d<P4EST_DIM;d++){
@@ -7479,7 +7452,6 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
   }
 
   if(solve_navier_stokes)NS_norm = max(fabs(u0),fabs(v0)); // Initialize the NS norm
-
 
 } // end of initialize_fields
 
@@ -7553,7 +7525,7 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
   ngbd_np1->init_neighbors();
 
   // Initialize pressure vector (if navier stokes)
-  if(solve_navier_stokes) press_nodes.create(p4est,nodes);
+//  if(solve_navier_stokes) press_nodes.create(p4est,nodes);
 
   load_tstep =tstep;
   tstart=tn;
@@ -7970,8 +7942,7 @@ int main(int argc, char** argv) {
                         T_l_n, T_s_n, T_l_nm1,
                         T_l_d, T_s_d, jump,
                         v_interface,
-                        v_n, v_nm1/*,
-                        vorticity, press_nodes*/);
+                        v_n, v_nm1);
 
       tstep = 0;
     }
@@ -8251,31 +8222,6 @@ int main(int argc, char** argv) {
 
       }
 
-      //-------------------------------------------------------------
-      // Create substrate LSF and corresponding phi_eff
-      // if that is required for this example, to be used as needed throughout the timestep:
-      //-------------------------------------------------------------
-      if(example_uses_inner_LSF){
-//        phi_substrate.create(p4est_np1, nodes_np1);
-//        sample_cf_on_nodes(p4est_np1, nodes_np1, mini_level_set, phi_substrate.vec);
-
-//        // For computing phi_effective for this step:
-//        phi_eff.create(p4est_np1, nodes_np1);
-
-//        std::vector<Vec> phi_eff_list;
-//        std::vector<mls_opn_t> phi_eff_opn_list;
-
-//        phi_eff_list.push_back(phi.vec); phi_eff_list.push_back(phi_substrate.vec);
-//        phi_eff_opn_list.push_back(MLS_INTERSECTION); phi_eff_opn_list.push_back(MLS_INTERSECTION);
-
-//        compute_phi_eff(phi_eff.vec, nodes_np1, phi_eff_list, phi_eff_opn_list);
-
-//        phi_eff_list.clear(); phi_eff_opn_list.clear();
-
-//        // Reinitialize:
-//        ls->reinitialize_2nd_order(phi_eff.vec);
-      }
-
       // ------------------------------------------------------------
       // Poisson Problem at Nodes (for temp and/or conc scalar fields):
       // Setup and solve a Poisson problem on both the liquid and solidified subdomains
@@ -8341,38 +8287,7 @@ int main(int argc, char** argv) {
       // ---------------------------------------------------------------------------
       // Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
       // ---------------------------------------------------------------------------
-      if (/*(tstep>0) &&*/ solve_navier_stokes){
-
-        // -------------------------------
-        // Update the NS grid (or initialize the solver)
-        // -------------------------------
-//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling the Navier-Stokes grid update... \n");
-//        if((tstep==0) || (tstep==load_tstep)){
-//          PetscPrintf(mpi.comm(),"Initializing Navier-Stokes solver \n");
-
-////          v_n_NS.create(p4est_np1,nodes_np1);
-////          v_nm1_NS.create(p4est,nodes);
-
-////          foreach_dimension(d){
-////            ierr = VecCopyGhost(v_nm1.vec[d],v_nm1_NS.vec[d]); CHKERRXX(ierr);
-////            ierr = VecCopyGhost(v_n.vec[d],v_n_NS.vec[d]); CHKERRXX(ierr);
-////          }
-
-////          initialize_ns_solver(ns, p4est_np1, ghost_np1, ngbd_np1,ngbd,
-////                               hierarchy_np1, &brick,
-////                               (example_uses_inner_LSF ? phi_eff:phi),
-////                               v_n, v_nm1,
-////                               faces_np1, ngbd_c_np1);
-//        }
-//        else{
-////          ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
-////                                                   v_n.vec, v_nm1.vec,
-////                                                   p4est_np1,nodes_np1,ghost_np1,
-////                                                   ngbd_np1,
-////                                                   faces_np1,ngbd_c_np1,
-////                                                   hierarchy_np1);
-//        }
-
+      if (solve_navier_stokes){
         // -------------------------------
         // Set the NS timestep:
         // -------------------------------
@@ -8463,15 +8378,6 @@ int main(int argc, char** argv) {
             }
           }
         }
-
-        // -------------------------------
-        // Prepare vectors to receive solution for np1 timestep:
-        // -------------------------------
-
-//        v_n.destroy();v_n.create(p4est_np1,nodes_np1);
-//        v_nm1.destroy();v_nm1.create(p4est_np1,nodes_np1);
-//        vorticity.destroy();vorticity.create(p4est_np1,nodes_np1);
-//        press_nodes.destroy();press_nodes.create(p4est_np1,nodes_np1);
 
         // -------------------------------
         // Solve the Navier-Stokes problem:
@@ -8727,28 +8633,11 @@ int main(int argc, char** argv) {
         // ---------------------------------------------------
 
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Interpolating fields to new grid ... \n");
-        // ELYCE TO-DO: why do we need to do this sliding for tstep=0? Can we do away with this?
-        // I believe this is done bc we do not begin solving NS until tstep=1, and therefore the initial fields
-        // related to NS and temperature advection need to be slid once. Will think about how to handle this differently.
-/*        if(tstep==0){
-          // Slide fields
-          if(solve_navier_stokes){
-            v_nm1.destroy();v_nm1.create(p4est,nodes);
-            foreach_dimension(d){
-              ierr = VecCopyGhost(v_n.vec[d],v_nm1.vec[d]); CHKERRXX(ierr);
-            }
-          }
-          if(solve_stefan){
-            T_l_nm1.destroy(); T_l_nm1.create(p4est,nodes);
-            ierr = VecCopyGhost(T_l_n.vec,T_l_nm1.vec);CHKERRXX(ierr);
-          }
-
-        }*/ // end of "if tstep ==0"
 
         interpolate_fields_onto_new_grid(T_l_n, T_s_n,
                                          v_interface, v_n,
                                          nodes_np1, p4est_np1, ngbd, interp_bw_grids);
-        if(solve_navier_stokes /*&& tstep>0*/){
+        if(solve_navier_stokes){
           ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
                                                    v_n.vec, v_nm1.vec,
                                                    p4est_np1,nodes_np1,ghost_np1,
@@ -8756,19 +8645,7 @@ int main(int argc, char** argv) {
                                                    faces_np1,ngbd_c_np1,
                                                    hierarchy_np1);
         }
-
-
-        // MOVE UPDATE OF NS GRID TO HERE:
       } // end of "if tstep !=last tstep"
-
-
-//      //------------------------------------------------------
-//      // Destroy substrate LSF if that is required for this example, we are done using it for this timestep:
-//      //------------------------------------------------------
-//      if(example_uses_inner_LSF){
-//        phi_substrate.destroy();
-//        phi_eff.destroy();
-//      }
 
       // -------------------------------
       // Do a memory safety check as user specified
@@ -8814,7 +8691,6 @@ int main(int argc, char** argv) {
           ierr = PetscFOpen(mpi.comm(),name_mem,"a",&fich_mem); CHKERRXX(ierr);
           ierr = PetscFPrintf(mpi.comm(),fich_mem,"%d %g %d %d \n",tstep, mem_safety_check, no, are_we_saving);CHKERRXX(ierr);
           ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
-
         }
       }
 
