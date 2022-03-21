@@ -7975,6 +7975,16 @@ int main(int argc, char** argv) {
 
       tstep = 0;
     }
+    // ------------------------------------------------------------
+    // Initialize Navier Stokes solver:
+    // ------------------------------------------------------------
+    if(solve_navier_stokes){
+      initialize_ns_solver(ns, p4est_np1, ghost_np1, ngbd_np1,ngbd,
+                           hierarchy_np1, &brick,
+                           (example_uses_inner_LSF ? phi_eff:phi),
+                           v_n, v_nm1,
+                           faces_np1, ngbd_c_np1);
+    }
 
     // ------------------------------------------------------------
     // Initialize relevant boundary condition objects:
@@ -8336,32 +8346,32 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Update the NS grid (or initialize the solver)
         // -------------------------------
-        if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling the Navier-Stokes grid update... \n");
-        if((tstep==0) || (tstep==load_tstep)){
-          PetscPrintf(mpi.comm(),"Initializing Navier-Stokes solver \n");
+//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling the Navier-Stokes grid update... \n");
+//        if((tstep==0) || (tstep==load_tstep)){
+//          PetscPrintf(mpi.comm(),"Initializing Navier-Stokes solver \n");
 
-//          v_n_NS.create(p4est_np1,nodes_np1);
-//          v_nm1_NS.create(p4est,nodes);
+////          v_n_NS.create(p4est_np1,nodes_np1);
+////          v_nm1_NS.create(p4est,nodes);
 
-//          foreach_dimension(d){
-//            ierr = VecCopyGhost(v_nm1.vec[d],v_nm1_NS.vec[d]); CHKERRXX(ierr);
-//            ierr = VecCopyGhost(v_n.vec[d],v_n_NS.vec[d]); CHKERRXX(ierr);
-//          }
+////          foreach_dimension(d){
+////            ierr = VecCopyGhost(v_nm1.vec[d],v_nm1_NS.vec[d]); CHKERRXX(ierr);
+////            ierr = VecCopyGhost(v_n.vec[d],v_n_NS.vec[d]); CHKERRXX(ierr);
+////          }
 
-          initialize_ns_solver(ns, p4est_np1, ghost_np1, ngbd_np1,ngbd,
-                               hierarchy_np1, &brick,
-                               (example_uses_inner_LSF ? phi_eff:phi),
-                               v_n, v_nm1,
-                               faces_np1, ngbd_c_np1);
-        }
-        else{
-//          ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
-//                                                   v_n.vec, v_nm1.vec,
-//                                                   p4est_np1,nodes_np1,ghost_np1,
-//                                                   ngbd_np1,
-//                                                   faces_np1,ngbd_c_np1,
-//                                                   hierarchy_np1);
-        }
+////          initialize_ns_solver(ns, p4est_np1, ghost_np1, ngbd_np1,ngbd,
+////                               hierarchy_np1, &brick,
+////                               (example_uses_inner_LSF ? phi_eff:phi),
+////                               v_n, v_nm1,
+////                               faces_np1, ngbd_c_np1);
+//        }
+//        else{
+////          ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
+////                                                   v_n.vec, v_nm1.vec,
+////                                                   p4est_np1,nodes_np1,ghost_np1,
+////                                                   ngbd_np1,
+////                                                   faces_np1,ngbd_c_np1,
+////                                                   hierarchy_np1);
+//        }
 
         // -------------------------------
         // Set the NS timestep:
