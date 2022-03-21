@@ -5500,7 +5500,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   }
 
   // Get the computed values of vorticity
-  if(tstep == 0)vorticity.destroy(); // ELYCE TO-DO: THIS IS TEMPORARY -- BC WE SAMPLE AN INITIAL VORTICITY FOR REFINEMENTS SAKE, WHICH I WANT TO CHANGE
+//  if(tstep == 0)vorticity.destroy(); // ELYCE TO-DO: THIS IS TEMPORARY -- BC WE SAMPLE AN INITIAL VORTICITY FOR REFINEMENTS SAKE, WHICH I WANT TO CHANGE
   vorticity.vec = ns->get_vorticity();
 
 
@@ -7320,8 +7320,8 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
                        vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
                        vec_and_ptr_dim_t& T_l_d, vec_and_ptr_dim_t& T_s_d,
                        vec_and_ptr_dim_t& jump, vec_and_ptr_dim_t& v_interface,
-                       vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
-                       vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes){
+                       vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1/*,
+                       vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes*/){
 
   // ---------------------------------
   // Level-set function(s):
@@ -7459,15 +7459,15 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
 
     v_n.create(p4est_np1, nodes_np1);
     v_nm1.create(p4est_np1, nodes_np1);
-    vorticity.create(p4est_np1, nodes_np1); // no need to  create this, we are going to get it from NS
-    press_nodes.create(p4est_np1, nodes_np1);
+//    vorticity.create(p4est_np1, nodes_np1); // no need to  create this, we are going to get it from NS
+//    press_nodes.create(p4est_np1, nodes_np1);
 
     foreach_dimension(d){
       sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_n.vec[d]);
       sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_nm1.vec[d]);
     }
-    sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,vorticity.vec); // FOR NOW WE DO THIS, BUT WANT TO CHANGE NS TO SOLVE ON ITER 0 AND NOT DO THIS
-    sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,press_nodes.vec);
+//    sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,vorticity.vec); // FOR NOW WE DO THIS, BUT WANT TO CHANGE NS TO SOLVE ON ITER 0 AND NOT DO THIS
+//    sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,press_nodes.vec);
   }
 
   for(unsigned char d=0;d<P4EST_DIM;d++){
@@ -7970,8 +7970,8 @@ int main(int argc, char** argv) {
                         T_l_n, T_s_n, T_l_nm1,
                         T_l_d, T_s_d, jump,
                         v_interface,
-                        v_n, v_nm1,
-                        vorticity, press_nodes);
+                        v_n, v_nm1/*,
+                        vorticity, press_nodes*/);
 
       tstep = 0;
     }
