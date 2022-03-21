@@ -5625,26 +5625,164 @@ bool are_we_saving_fluid_forces(double& tn_,bool is_load_step, int& out_idx, boo
   return out;
 }
 
-void setup_and_solve_navier_stokes_problem(my_p4est_navier_stokes_t* ns,
-                                           p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+void setup_and_solve_navier_stokes_problem(mpi_environment_t& mpi, my_p4est_navier_stokes_t* ns,
+                                           p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
+                                           vec_and_ptr_t& phi, vec_and_ptr_t& phi_eff,
                                            vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
                                            vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes,
+                                           vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& T_l_n,
                                            double dxyz_close_to_interface,
                                            KSPType face_solver_type, PCType pc_face,
                                            KSPType cell_solver_type, PCType pc_cell,
-                                           my_p4est_faces_t* faces_np1, bool compute_pressure_){
+                                           my_p4est_faces_t* faces_np1,
+                                           bool& did_crash,
+                                           int& out_idx, int& pressure_save_out_idx,
+                                           BoundaryConditions2D bc_velocity[P4EST_DIM], BoundaryConditions2D& bc_pressure,
+                                           BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
+                                           BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
+                                           BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM],
+                                           BC_INTERFACE_VALUE_PRESSURE& bc_interface_value_pressure,
+                                           BC_WALL_VALUE_PRESSURE& bc_wall_value_pressure,
+                                           BC_WALL_TYPE_PRESSURE& bc_wall_type_pressure,
+                                           CF_DIM* external_forces_NS[P4EST_DIM],
+                                           external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
+                                           external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM]){
+
+  PetscErrorCode ierr;
+
+  // -------------------------------
+  // Set the NS timestep:
+  // -------------------------------
+  if(advection_sl_order ==2){
+    ns->set_dt(dt_nm1,dt);
+  }
+  else{
+    ns->set_dt(dt);
+  }
+
+  // -------------------------------
+  // Update BC and RHS objects for navier-stokes problem:
+  // -------------------------------
+  // NOTE: we update NS grid first, THEN set new BCs and forces. This is because the update grid interpolation of the hodge variable
+  // requires knowledge of the boundary conditions from that same timestep (the previous one, in our case)
+  // -------------------------------
+  // Setup velocity conditions
+  for(unsigned char d=0;d<P4EST_DIM;d++){
+    if(interfacial_vel_bc_requires_vint){
+      bc_interface_value_velocity[d]->set(ngbd_np1, v_interface.vec[d]);
+    }
+
+    bc_velocity[d].setInterfaceType(interface_bc_type_velocity[d]);
+    bc_velocity[d].setInterfaceValue(*bc_interface_value_velocity[d]);
+    bc_velocity[d].setWallValues(*bc_wall_value_velocity[d]);
+    bc_velocity[d].setWallTypes(*bc_wall_type_velocity[d]);
+  }
+  // Setup pressure conditions:
+  bc_pressure.setInterfaceType(interface_bc_type_pressure);
+  bc_pressure.setInterfaceValue(bc_interface_value_pressure);
+  bc_pressure.setWallTypes(bc_wall_type_pressure);
+  bc_pressure.setWallValues(bc_wall_value_pressure);
 
 
+  // -------------------------------
+  // Set BC's and external forces if relevant
+  // (note: these are actually updated in the fxn dedicated to it, aka setup_analytical_ics_and_bcs_for_this_tstep() )
+  // -------------------------------
+  // Set the boundary conditions:
+  ns->set_bc(bc_velocity,&bc_pressure);
+
+  // Set the RHS:
+  if(analytical_IC_BC_forcing_term){
+    if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+      ns->set_external_forces(external_forces_NS);
+    }
+    else
+    {
+      ns->set_external_forces(external_forces_NS);
+    }
+  }
+
+  // -------------------------------
+  // Handle the Boussinesq case setup for the RHS, if relevant:
+  // ---------------------------
+  if(use_boussinesq && (!analytical_IC_BC_forcing_term)){
+    switch(problem_dimensionalization_type){
+    case NONDIM_BY_FLUID_VELOCITY:{
+      ns->boussinesq_approx=true;
+      ierr = VecScaleGhost(T_l_n.vec, -1.);
+      ns->set_external_forces_using_vector(T_l_n.vec);
+      ierr = VecScaleGhost(T_l_n.vec, -1.);
+      break;
+    }
+    case NONDIM_BY_DIFFUSIVITY:{
+      ns->boussinesq_approx=true;
+              if(!is_dissolution_case){
+        ierr = VecScaleGhost(T_l_n.vec, -1.*RaT*Pr);
+        ns->set_external_forces_using_vector(T_l_n.vec);
+        ierr = VecScaleGhost(T_l_n.vec, -1./(RaT*Pr));
+      }
+      else{
+        // Elyce to-do: 12/15/21 - this is a work in process, havent nailed down nondim def yet
+        ierr = VecScaleGhost(T_l_n.vec, -1.*RaC*Sc);
+        ns->set_external_forces_using_vector(T_l_n.vec);
+        ierr = VecScaleGhost(T_l_n.vec, -1./(RaC*Sc));
+      }
+
+      break;
+    }
+    case DIMENSIONAL:{
+      throw std::invalid_argument("AHHHHH!!! this is not fully developed yet. don't use this setup with natural convection \n");
+
+      break;
+    }
+    default:{
+      throw std::runtime_error("setting natural convection -- unrecognized problem dimensionalization formulation \n");
+    }
+    }
+  }
 
 
+  // -------------------------------
+  // Solve the Navier-Stokes problem:
+  // -------------------------------
+  if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Navier-Stokes solution step... \n");
 
+  bool compute_pressure_to_save = false;
+  compute_pressure_to_save =
+      are_we_saving_vtk(tstep,tn, false,out_idx,false) ||
+      are_we_saving_fluid_forces(tn, false, pressure_save_out_idx, true);
 
+  compute_pressure_to_save = compute_pressure_to_save || example_is_a_test_case;
+  // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
 
+//  bool did_crash = false;
 
+  navier_stokes_step(ns, p4est_np1, nodes_np1,
+                     v_n, v_nm1, vorticity, press_nodes,
+                     dxyz_close_to_interface,
+                     face_solver_type,pc_face,cell_solver_type,pc_cell,
+                     faces_np1, compute_pressure_to_save, did_crash);
 
+//  if(did_crash){
+//    PetscPrintf(mpi.comm(),"Outputting crash files ... \n");
+//    MPI_Barrier(mpi.comm());
+//    save_fields_to_vtk(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
+//                       0,0, phi, phi_eff, phi_substrate, T_l_n, T_s_n, v_interface,
+//                       v_n, press_nodes, vorticity, island_numbers, true);
+//    MPI_Barrier(mpi.comm());
+//    MPI_Abort(mpi.comm(),0);
+//  }
 
+  // -------------------------------
+  // Clear out the interfacial BC for the next timestep, if needed
+  // -------------------------------
+  if(interfacial_vel_bc_requires_vint){
+    for(unsigned char d=0;d<P4EST_DIM;d++){
+      bc_interface_value_velocity[d]->clear();
+    }
+  }
 
-
+  if(print_checkpoints) PetscPrintf(mpi.comm(),"Completed Navier-Stokes step \n");
 
 
 }
@@ -7534,11 +7672,8 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
 } // end of initialize_grids_from_load_state
 
 
-
 // will become constructor (for class)
 void perform_initializations(){}
-
-
 
 
 // will become destructor (for class)
@@ -8242,7 +8377,7 @@ int main(int argc, char** argv) {
                                         analytical_T, external_heat_source_T,
                                         solver_Tl, solver_Ts, cube_refinement);
 
-      } // end of "if solve stefan" AND tstep>0
+      } // end of "if solve stefan"
 
       // ------------------------------------------------------------
       // Extend Fields Across Interface (if solving Stefan):
@@ -8288,138 +8423,159 @@ int main(int argc, char** argv) {
       // Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
       // ---------------------------------------------------------------------------
       if (solve_navier_stokes){
-        // -------------------------------
-        // Set the NS timestep:
-        // -------------------------------
-        if(advection_sl_order ==2){
-          ns->set_dt(dt_nm1,dt);
-        }
-        else{
-          ns->set_dt(dt);
-        }
-
-        // -------------------------------
-        // Update BC and RHS objects for navier-stokes problem:
-        // -------------------------------
-        // NOTE: we update NS grid first, THEN set new BCs and forces. This is because the update grid interpolation of the hodge variable
-        // requires knowledge of the boundary conditions from that same timestep (the previous one, in our case)
-        // -------------------------------
-        // Setup velocity conditions
-        for(unsigned char d=0;d<P4EST_DIM;d++){
-          if(interfacial_vel_bc_requires_vint){
-            bc_interface_value_velocity[d]->set(ngbd_np1,v_interface.vec[d]);
-          }
-
-          bc_velocity[d].setInterfaceType(interface_bc_type_velocity[d]);
-          bc_velocity[d].setInterfaceValue(*bc_interface_value_velocity[d]);
-          bc_velocity[d].setWallValues(*bc_wall_value_velocity[d]);
-          bc_velocity[d].setWallTypes(*bc_wall_type_velocity[d]);
-        }
-        // Setup pressure conditions:
-        bc_pressure.setInterfaceType(interface_bc_type_pressure);
-        bc_pressure.setInterfaceValue(bc_interface_value_pressure);
-        bc_pressure.setWallTypes(bc_wall_type_pressure);
-        bc_pressure.setWallValues(bc_wall_value_pressure);
-
-
-        // -------------------------------
-        // Set BC's and external forces if relevant
-        // (note: these are actually updated in the fxn dedicated to it, aka setup_analytical_ics_and_bcs_for_this_tstep() )
-        // -------------------------------
-        // Set the boundary conditions:
-        ns->set_bc(bc_velocity,&bc_pressure);
-
-        // Set the RHS:
-        if(analytical_IC_BC_forcing_term){
-          if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-            ns->set_external_forces(external_forces_NS);
-          }
-          else
-          {
-            ns->set_external_forces(external_forces_NS);
-          }
-        }
-
-        // -------------------------------
-        // Handle the Boussinesq case setup for the RHS, if relevant:
-        // ---------------------------
-        if(use_boussinesq && (!analytical_IC_BC_forcing_term)){
-          switch(problem_dimensionalization_type){
-            case NONDIM_BY_FLUID_VELOCITY:{
-              ns->boussinesq_approx=true;
-              ierr = VecScaleGhost(T_l_n.vec, -1.);
-              ns->set_external_forces_using_vector(T_l_n.vec);
-              ierr = VecScaleGhost(T_l_n.vec, -1.);
-              break;
-            }
-            case NONDIM_BY_DIFFUSIVITY:{
-              ns->boussinesq_approx=true;             
-              if(!is_dissolution_case){
-                ierr = VecScaleGhost(T_l_n.vec, -1.*RaT*Pr);
-                ns->set_external_forces_using_vector(T_l_n.vec);
-                ierr = VecScaleGhost(T_l_n.vec, -1./(RaT*Pr));
-              }
-              else{
-                // Elyce to-do: 12/15/21 - this is a work in process, havent nailed down nondim def yet
-                ierr = VecScaleGhost(T_l_n.vec, -1.*RaC*Sc);
-                ns->set_external_forces_using_vector(T_l_n.vec);
-                ierr = VecScaleGhost(T_l_n.vec, -1./(RaC*Sc));
-              }
-
-              break;
-            }
-            case DIMENSIONAL:{
-              throw std::invalid_argument("AHHHHH!!! this is not fully developed yet. don't use this setup with natural convection \n");
-
-              break;
-            }
-            default:{
-              throw std::runtime_error("setting natural convection -- unrecognized problem dimensionalization formulation \n");
-            }
-          }
-        }
-
-        // -------------------------------
-        // Solve the Navier-Stokes problem:
-        // -------------------------------
-        if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Navier-Stokes solution step... \n");
-
-        bool compute_pressure_to_save = false;
-        compute_pressure_to_save =
-            are_we_saving_vtk(tstep,tn, false,out_idx,false) ||
-            are_we_saving_fluid_forces(tn, false, pressure_save_out_idx, true);
-
-        compute_pressure_to_save = compute_pressure_to_save || example_is_a_test_case;
-        // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
-
-        bool did_crash = false;
-
-        navier_stokes_step(ns, p4est_np1, nodes_np1,
-                           v_n, v_nm1, vorticity, press_nodes,
-                           dxyz_close_to_interface,
-                           face_solver_type,pc_face,cell_solver_type,pc_cell,
-                           faces_np1, compute_pressure_to_save, did_crash);
-
+        bool did_crash=false;
+        setup_and_solve_navier_stokes_problem(mpi, ns,
+                                              p4est_np1, nodes_np1, ngbd_np1,
+                                              phi, phi_eff,
+                                              v_n, v_nm1,
+                                              vorticity, press_nodes,
+                                              v_interface, T_l_n,
+                                              dxyz_close_to_interface,
+                                              face_solver_type, pc_face, cell_solver_type, pc_cell,
+                                              faces_np1,
+                                              did_crash, out_idx, pressure_save_out_idx,
+                                              bc_velocity, bc_pressure,
+                                              bc_interface_value_velocity,
+                                              bc_wall_value_velocity, bc_wall_type_velocity,
+                                              bc_interface_value_pressure, bc_wall_value_pressure, bc_wall_type_pressure,
+                                              external_forces_NS, external_force_components, external_force_components_with_BA);
         if(did_crash){
-          PetscPrintf(mpi.comm(),"Outputting crash files ... \n");
-          MPI_Barrier(mpi.comm());
           save_fields_to_vtk(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
-                             0,0, phi, phi_eff, phi_substrate, T_l_n, T_s_n, v_interface,
-                             v_n, press_nodes, vorticity, island_numbers, true);
-          MPI_Barrier(mpi.comm());
-          MPI_Abort(mpi.comm(),0);
+                             out_idx, grid_res_iter, phi, phi_eff, phi_substrate,
+                             T_l_n, T_s_n, v_interface, v_n, press_nodes, vorticity, island_numbers, true);
         }
+//        // -------------------------------
+//        // Set the NS timestep:
+//        // -------------------------------
+//        if(advection_sl_order ==2){
+//          ns->set_dt(dt_nm1,dt);
+//        }
+//        else{
+//          ns->set_dt(dt);
+//        }
 
-        // -------------------------------
-        // Clear out the interfacial BC for the next timestep, if needed
-        // -------------------------------
-        if(interfacial_vel_bc_requires_vint){
-          for(unsigned char d=0;d<P4EST_DIM;d++){
-            bc_interface_value_velocity[d]->clear();
-            }
-        }
+//        // -------------------------------
+//        // Update BC and RHS objects for navier-stokes problem:
+//        // -------------------------------
+//        // NOTE: we update NS grid first, THEN set new BCs and forces. This is because the update grid interpolation of the hodge variable
+//        // requires knowledge of the boundary conditions from that same timestep (the previous one, in our case)
+//        // -------------------------------
+//        // Setup velocity conditions
+//        for(unsigned char d=0;d<P4EST_DIM;d++){
+//          if(interfacial_vel_bc_requires_vint){
+//            bc_interface_value_velocity[d]->set(ngbd_np1,v_interface.vec[d]);
+//          }
 
-        if(print_checkpoints) PetscPrintf(mpi.comm(),"Completed Navier-Stokes step \n");
+//          bc_velocity[d].setInterfaceType(interface_bc_type_velocity[d]);
+//          bc_velocity[d].setInterfaceValue(*bc_interface_value_velocity[d]);
+//          bc_velocity[d].setWallValues(*bc_wall_value_velocity[d]);
+//          bc_velocity[d].setWallTypes(*bc_wall_type_velocity[d]);
+//        }
+//        // Setup pressure conditions:
+//        bc_pressure.setInterfaceType(interface_bc_type_pressure);
+//        bc_pressure.setInterfaceValue(bc_interface_value_pressure);
+//        bc_pressure.setWallTypes(bc_wall_type_pressure);
+//        bc_pressure.setWallValues(bc_wall_value_pressure);
+
+
+//        // -------------------------------
+//        // Set BC's and external forces if relevant
+//        // (note: these are actually updated in the fxn dedicated to it, aka setup_analytical_ics_and_bcs_for_this_tstep() )
+//        // -------------------------------
+//        // Set the boundary conditions:
+//        ns->set_bc(bc_velocity,&bc_pressure);
+
+//        // Set the RHS:
+//        if(analytical_IC_BC_forcing_term){
+//          if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+//            ns->set_external_forces(external_forces_NS);
+//          }
+//          else
+//          {
+//            ns->set_external_forces(external_forces_NS);
+//          }
+//        }
+
+//        // -------------------------------
+//        // Handle the Boussinesq case setup for the RHS, if relevant:
+//        // ---------------------------
+//        if(use_boussinesq && (!analytical_IC_BC_forcing_term)){
+//          switch(problem_dimensionalization_type){
+//            case NONDIM_BY_FLUID_VELOCITY:{
+//              ns->boussinesq_approx=true;
+//              ierr = VecScaleGhost(T_l_n.vec, -1.);
+//              ns->set_external_forces_using_vector(T_l_n.vec);
+//              ierr = VecScaleGhost(T_l_n.vec, -1.);
+//              break;
+//            }
+//            case NONDIM_BY_DIFFUSIVITY:{
+//              ns->boussinesq_approx=true;
+//              if(!is_dissolution_case){
+//                ierr = VecScaleGhost(T_l_n.vec, -1.*RaT*Pr);
+//                ns->set_external_forces_using_vector(T_l_n.vec);
+//                ierr = VecScaleGhost(T_l_n.vec, -1./(RaT*Pr));
+//              }
+//              else{
+//                // Elyce to-do: 12/15/21 - this is a work in process, havent nailed down nondim def yet
+//                ierr = VecScaleGhost(T_l_n.vec, -1.*RaC*Sc);
+//                ns->set_external_forces_using_vector(T_l_n.vec);
+//                ierr = VecScaleGhost(T_l_n.vec, -1./(RaC*Sc));
+//              }
+
+//              break;
+//            }
+//            case DIMENSIONAL:{
+//              throw std::invalid_argument("AHHHHH!!! this is not fully developed yet. don't use this setup with natural convection \n");
+
+//              break;
+//            }
+//            default:{
+//              throw std::runtime_error("setting natural convection -- unrecognized problem dimensionalization formulation \n");
+//            }
+//          }
+//        }
+
+//        // -------------------------------
+//        // Solve the Navier-Stokes problem:
+//        // -------------------------------
+//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Navier-Stokes solution step... \n");
+
+//        bool compute_pressure_to_save = false;
+//        compute_pressure_to_save =
+//            are_we_saving_vtk(tstep,tn, false,out_idx,false) ||
+//            are_we_saving_fluid_forces(tn, false, pressure_save_out_idx, true);
+
+//        compute_pressure_to_save = compute_pressure_to_save || example_is_a_test_case;
+//        // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
+
+//        bool did_crash = false;
+
+//        navier_stokes_step(ns, p4est_np1, nodes_np1,
+//                           v_n, v_nm1, vorticity, press_nodes,
+//                           dxyz_close_to_interface,
+//                           face_solver_type,pc_face,cell_solver_type,pc_cell,
+//                           faces_np1, compute_pressure_to_save, did_crash);
+
+//        if(did_crash){
+//          PetscPrintf(mpi.comm(),"Outputting crash files ... \n");
+//          MPI_Barrier(mpi.comm());
+//          save_fields_to_vtk(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
+//                             0,0, phi, phi_eff, phi_substrate, T_l_n, T_s_n, v_interface,
+//                             v_n, press_nodes, vorticity, island_numbers, true);
+//          MPI_Barrier(mpi.comm());
+//          MPI_Abort(mpi.comm(),0);
+//        }
+
+//        // -------------------------------
+//        // Clear out the interfacial BC for the next timestep, if needed
+//        // -------------------------------
+//        if(interfacial_vel_bc_requires_vint){
+//          for(unsigned char d=0;d<P4EST_DIM;d++){
+//            bc_interface_value_velocity[d]->clear();
+//            }
+//        }
+
+//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Completed Navier-Stokes step \n");
       } // End of "if solve navier stokes"
 
       // Elye TO-DO: commenting out below, going to move all that sort of stuff to its own function
@@ -8640,7 +8796,7 @@ int main(int argc, char** argv) {
         if(solve_navier_stokes){
           ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
                                                    v_n.vec, v_nm1.vec,
-                                                   p4est_np1,nodes_np1,ghost_np1,
+                                                   p4est_np1, nodes_np1, ghost_np1,
                                                    ngbd_np1,
                                                    faces_np1,ngbd_c_np1,
                                                    hierarchy_np1);
