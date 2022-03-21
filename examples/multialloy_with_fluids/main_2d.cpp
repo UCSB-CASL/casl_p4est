@@ -354,7 +354,7 @@ DEFINE_PARAMETER(pl, double, vorticity_threshold, 0.1,"Threshold to refine vorti
 DEFINE_PARAMETER(pl, double, gradT_threshold, 1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
 DEFINE_PARAMETER(pl, bool, use_uniform_band, true, "Boolean whether or not to refine using a uniform band");
 DEFINE_PARAMETER(pl, double, uniform_band, 8., "Uniform band (default:8.)");
-
+DEFINE_PARAMETER(pl, double, dxyz_close_to_interface_mult, 1.2, "Multiplier that defines dxyz_close_to_interface = mult* max(dxyz_smallest)");
 // ---------------------------------------
 // Geometry and grid refinement options:
 // ---------------------------------------
@@ -3867,10 +3867,18 @@ void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
   }
 }
 
-void compute_timestep(vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& phi,
+void compute_timestep( p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+                       vec_and_ptr_t& phi, vec_and_ptr_dim_t& v_interface,
+                       my_p4est_navier_stokes_t* ns,
+                       double dxyz_close_to_interface, double dxyz_smallest[P4EST_DIM],
+                       int load_tstep, int &last_tstep)
+
+
+
+    /*vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& phi,
                       double dxyz_close_to_interface, double dxyz_smallest[P4EST_DIM],
                       p4est_nodes_t *nodes_np1, p4est_t *p4est_np1, my_p4est_navier_stokes_t* ns,
-                      const int load_tstep, int &last_tstep ){
+                      const int load_tstep, int &last_tstep )*/{
 
   int mpicomm = p4est_np1->mpicomm;
 
@@ -3946,7 +3954,7 @@ void compute_timestep(vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& phi,
      } // end of if solve stefan
 
     // Compute dt_NS if necessary
-     if(solve_navier_stokes && tstep>0){
+     if(solve_navier_stokes/* && tstep>0*/){
         ns->compute_dt();
         dt_NS = ns->get_dt();
         // Address the case where we are loading a simulation state
@@ -4037,7 +4045,7 @@ void compute_timestep(vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& phi,
 } // ends function
 
 
-void prepare_refinement_fields(vec_and_ptr_t& phi, vec_and_ptr_t& vorticity, vec_and_ptr_t& vorticity_refine, vec_and_ptr_dim_t& T_l_dd, my_p4est_node_neighbors_t* ngbd){
+void prepare_refinement_fields(vec_and_ptr_t& phi, vec_and_ptr_t& vorticity, vec_and_ptr_t& vorticity_refine, vec_and_ptr_dim_t& T_l_dd, my_p4est_node_neighbors_t* ngbd_n){
   PetscErrorCode ierr;
 
   // Get relevant arrays:
@@ -4049,8 +4057,8 @@ void prepare_refinement_fields(vec_and_ptr_t& phi, vec_and_ptr_t& vorticity, vec
   phi.get_array();
 
   // Compute proper refinement fields on layer nodes:
-  for(size_t i = 0; i<ngbd->get_layer_size(); i++){
-      p4est_locidx_t n = ngbd->get_layer_node(i);
+  for(size_t i = 0; i<ngbd_n->get_layer_size(); i++){
+      p4est_locidx_t n = ngbd_n->get_layer_node(i);
       if(phi.ptr[n] < 0.){
           if(solve_navier_stokes)vorticity_refine.ptr[n] = vorticity.ptr[n];
         }
@@ -4073,8 +4081,8 @@ void prepare_refinement_fields(vec_and_ptr_t& phi, vec_and_ptr_t& vorticity, vec
   }
 
   //Compute proper refinement fields on local nodes:
-  for(size_t i = 0; i<ngbd->get_local_size(); i++){
-      p4est_locidx_t n = ngbd->get_local_node(i);
+  for(size_t i = 0; i<ngbd_n->get_local_size(); i++){
+      p4est_locidx_t n = ngbd_n->get_local_node(i);
       if(phi.ptr[n] < 0.){
           if(solve_navier_stokes)vorticity_refine.ptr[n] = vorticity.ptr[n];
         }
@@ -4353,7 +4361,7 @@ void regularize_front(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_nod
 
 void refine_and_coarsen_grid_and_advect_lsf_if_applicable(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_uniform_band_t sp,
                      p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
-                     p4est_t* &p4est, p4est_nodes_t* &nodes,
+                     p4est_t* &p4est_n, p4est_nodes_t* &nodes_n,
                      vec_and_ptr_t &phi, vec_and_ptr_dim_t& v_interface,
                      vec_and_ptr_t& phi_substrate,
                      vec_and_ptr_dim_t& phi_dd,
@@ -4381,11 +4389,11 @@ void refine_and_coarsen_grid_and_advect_lsf_if_applicable(my_p4est_semi_lagrangi
   // ------------------------
   if(solve_navier_stokes) {
     num_fields+=1;
-    vorticity_refine.create(p4est, nodes);
+    vorticity_refine.create(p4est_n, nodes_n);
   }// for vorticity
   if(refine_by_d2T){
     num_fields+=2;
-    T_l_dd.create(p4est,nodes);
+    T_l_dd.create(p4est_n, nodes_n);
     ngbd->second_derivatives_central(T_l_n.vec,T_l_dd.vec);
   } // for second derivatives of temperature
 
@@ -4432,7 +4440,7 @@ void refine_and_coarsen_grid_and_advect_lsf_if_applicable(my_p4est_semi_lagrangi
     }
     if(refine_by_d2T){
       double dxyz_smallest[P4EST_DIM];
-      dxyz_min(p4est,dxyz_smallest);
+      dxyz_min(p4est_n,dxyz_smallest);
 
       double dTheta= fabs(theta_infty - theta_interface)>0 ? fabs(theta_infty - theta_interface): 1.0;
       dTheta/=SQR(min(dxyz_smallest[0],dxyz_smallest[1])); // max d2Theta in liquid subdomain
@@ -4475,7 +4483,7 @@ void refine_and_coarsen_grid_and_advect_lsf_if_applicable(my_p4est_semi_lagrangi
 
   if(solve_stefan){
     // Create second derivatives for phi in the case that we are using update_p4est:
-    phi_dd.create(p4est, nodes);
+    phi_dd.create(p4est_n, nodes_n);
     ngbd->second_derivatives_central(phi.vec, phi_dd.vec);
 
     // Get inner substrate LSF if needed
@@ -4513,7 +4521,7 @@ void refine_and_coarsen_grid_and_advect_lsf_if_applicable(my_p4est_semi_lagrangi
 
       // Create a vector which will hold the updated values of the LSF:
       vec_and_ptr_t phi_new;
-      phi_new.create(p4est,nodes);
+      phi_new.create(p4est_n, nodes_n);
       ierr = VecCopyGhost(phi.vec, phi_new.vec);
 
       bool is_grid_changing = true;
@@ -4613,8 +4621,8 @@ void refine_and_coarsen_grid_and_advect_lsf_if_applicable(my_p4est_semi_lagrangi
 void update_the_grid(splitting_criteria_cf_and_uniform_band_t sp,
                      p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, my_p4est_node_neighbors_t* &ngbd_np1,
                      p4est_ghost_t* &ghost_np1, my_p4est_hierarchy_t* &hierarchy_np1,
-                     p4est_t* &p4est, p4est_nodes_t* &nodes, my_p4est_node_neighbors_t* &ngbd,
-                     p4est_ghost_t* &ghost, my_p4est_hierarchy_t* &hierarchy,
+                     p4est_t* &p4est_n, p4est_nodes_t* &nodes_n, my_p4est_node_neighbors_t* &ngbd_n,
+                     p4est_ghost_t* &ghost_n, my_p4est_hierarchy_t* &hierarchy_n,
                      my_p4est_brick_t &brick, my_p4est_navier_stokes_t* ns,
                      vec_and_ptr_t &phi, vec_and_ptr_t &phi_nm1, vec_and_ptr_dim_t& v_interface,
                      vec_and_ptr_t& phi_substrate, vec_and_ptr_t &phi_eff,
@@ -4629,23 +4637,23 @@ void update_the_grid(splitting_criteria_cf_and_uniform_band_t sp,
   // --------------------------------
   // Destroy p4est at n and slide grids:
   // -----------------------------------
-  p4est_destroy(p4est);
-  p4est_ghost_destroy(ghost);
-  p4est_nodes_destroy(nodes);
-  delete ngbd;
-  delete hierarchy;
+  p4est_destroy(p4est_n);
+  p4est_ghost_destroy(ghost_n);
+  p4est_nodes_destroy(nodes_n);
+  delete ngbd_n;
+  delete hierarchy_n;
 
-  p4est = p4est_np1;
-  ghost = ghost_np1;
-  nodes = nodes_np1;
+  p4est_n = p4est_np1;
+  ghost_n = ghost_np1;
+  nodes_n = nodes_np1;
 
-  hierarchy = hierarchy_np1;
-  ngbd = ngbd_np1;
+  hierarchy_n = hierarchy_np1;
+  ngbd_n = ngbd_np1;
 
   // -------------------------------
   // Create the new p4est at time np1:
   // -------------------------------
-  p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
+  p4est_np1 = p4est_copy(p4est_n, P4EST_FALSE); // copy the grid but not the data
   ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_np1,ghost_np1);
   nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
@@ -4675,7 +4683,7 @@ void update_the_grid(splitting_criteria_cf_and_uniform_band_t sp,
     if (phi_nm1.vec!= NULL){
       phi_nm1.destroy();
     }
-    phi_nm1.create(p4est,nodes);
+    phi_nm1.create(p4est_n, nodes_n);
     ierr = VecCopyGhost((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec); CHKERRXX(ierr); //--> this will need to be provided to NS update_from_tn_to_tnp1_grid_external
     // copy over phi eff if we are using a substrate
     // Note: this is done because the update_p4est destroys the old LSF, but we need to keep it
@@ -4683,16 +4691,16 @@ void update_the_grid(splitting_criteria_cf_and_uniform_band_t sp,
     if(print_checkpoints) ierr= PetscPrintf(mpi_comm,"Phi nm1 copy is created ... \n");
   }
 
-  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
+  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd_n);
 
   refine_and_coarsen_grid_and_advect_lsf_if_applicable(sl, sp,
                                                        p4est_np1, nodes_np1, ghost_np1,
-                                                       p4est, nodes,
+                                                       p4est_n, nodes_n,
                                                        phi, v_interface,
                                                        phi_substrate, phi_dd,
                                                        vorticity, vorticity_refine,
                                                        T_l_n, T_l_dd,
-                                                       ngbd);
+                                                       ngbd_n);
 
   // -------------------------------
   // Update hierarchy and neighbors to match new updated grid:
@@ -4953,10 +4961,6 @@ void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
 
                   int cube_refinement,
                   vec_and_ptr_t& phi_substrate, vec_and_ptr_dim_t& phi_substrate_dd){
-  const p4est_t* p4est_temp = ngbd_np1->get_p4est();
-  const p4est_nodes_t* nodes_temp = ngbd_np1->get_nodes();
-
-
   // Create solvers:
   solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
   if(do_we_solve_for_Ts) solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
@@ -4974,7 +4978,6 @@ void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
                             *bc_interface_val_temp[SOLID_DOMAIN],
                             bc_interface_coeff);
   }
-
 
   if(example_uses_inner_LSF){
     // Need to add this is the event that phi collapses onto the substrate and we need the phi_substrate BC to take over in that region
@@ -5089,7 +5092,7 @@ void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
 
 void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
                                      p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
-                                     p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t* ngbd,
+                                     p4est_t* p4est_n, p4est_nodes_t* nodes_n, my_p4est_node_neighbors_t* ngbd_n,
                                      vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
                                      vec_and_ptr_dim_t& phi_dd, vec_and_ptr_dim_t& phi_solid_dd,
                                      vec_and_ptr_t& phi_substrate, vec_and_ptr_dim_t& phi_substrate_dd,
@@ -5195,7 +5198,7 @@ void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
                  T_l_backtrace, T_l_backtrace_nm1,
                  v_n, v_nm1,
                  p4est_np1, nodes_np1, ngbd_np1,
-                 p4est, nodes, ngbd);
+                 p4est_n, nodes_n, ngbd_n);
     // Do backtrace with v_n --> navier-stokes fluid velocity
   } // end of solve_navier_stokes if statement
 
@@ -7404,7 +7407,8 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
                        vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
                        vec_and_ptr_dim_t& T_l_d, vec_and_ptr_dim_t& T_s_d,
                        vec_and_ptr_dim_t& jump, vec_and_ptr_dim_t& v_interface,
-                       vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1){
+                       vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
+                       double dxyz_smallest[P4EST_DIM], double& dxyz_close_to_interface){
 
   // ---------------------------------
   // Level-set function(s):
@@ -7476,12 +7480,11 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
     }
 
     // Extend fields:
-    double dxyz_smallest[P4EST_DIM];
     dxyz_min(p4est_np1, dxyz_smallest);
     double min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
     double extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
     double extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
-    double dxyz_close_to_interface = 1.2*max(dxyz_smallest[0],dxyz_smallest[1]);
+    dxyz_close_to_interface = dxyz_close_to_interface_mult*max(dxyz_smallest[0],dxyz_smallest[1]);
     extend_relevant_fields(p4est_np1, nodes_np1, ngbd_np1,
                            *ls,
                            phi, phi_substrate, phi_eff,
@@ -7549,10 +7552,6 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
   if(solve_navier_stokes)NS_norm = max(fabs(u0),fabs(v0)); // Initialize the NS norm
 
 } // end of initialize_fields
-
-
-
-
 
 
 void initialize_grids_and_fields_from_load_state(int& load_tstep,
@@ -7737,8 +7736,9 @@ void perform_final_destructions(mpi_environment_t &mpi, p4est_t* &p4est_np1, p4e
 }
 
 
-// --------------------------------------------------------------------------------------------------------------
-
+// ---------------------------------
+// End of auxiliary functions
+// --------------------------------
 
 // --------------------------------------------------------------------------------------------------------------
 // Begin main operation:
@@ -7779,13 +7779,13 @@ int main(int argc, char** argv) {
   // Declare all needed variables:
   // -----------------------------------------------
   // p4est variables
-  p4est_t*              p4est;
-  p4est_nodes_t*        nodes;
-  p4est_ghost_t*        ghost;
+  p4est_t*              p4est_n;
+  p4est_nodes_t*        nodes_n;
+  p4est_ghost_t*        ghost_n;
   p4est_connectivity_t* conn;
   my_p4est_brick_t      brick;
-  my_p4est_hierarchy_t* hierarchy;
-  my_p4est_node_neighbors_t* ngbd;
+  my_p4est_hierarchy_t* hierarchy_n;
+  my_p4est_node_neighbors_t* ngbd_n;
 
   p4est_t               *p4est_np1;
   p4est_nodes_t         *nodes_np1;
@@ -7853,14 +7853,10 @@ int main(int argc, char** argv) {
   vec_and_ptr_dim_t v_n;
   vec_and_ptr_dim_t v_nm1;
 
-  vec_and_ptr_dim_t v_n_NS, v_nm1_NS; // TO-DO : not sure if we will need this, might overhaul the whole business of NS owning them for itself (we are doing double interpolations of v to new grids which seems unnecessary)
-
   vec_and_ptr_t vorticity;
   vec_and_ptr_t vorticity_refine;
 
   vec_and_ptr_t press_nodes;
-
-  Vec dxyz_hodge_old[P4EST_DIM];
 
   my_p4est_cell_neighbors_t *ngbd_c_np1 = NULL;
   my_p4est_faces_t *faces_np1 = NULL;
@@ -8016,7 +8012,7 @@ int main(int argc, char** argv) {
     if(loading_from_previous_state){
       initialize_grids_and_fields_from_load_state(load_tstep, mpi, sp,
                                                   p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
-                                                  p4est, nodes, ghost, ngbd, hierarchy, brick, conn,
+                                                  p4est_n, nodes_n, ghost_n, ngbd_n, hierarchy_n, brick, conn,
                                                   phi, T_l_n, T_s_n, T_l_nm1,
                                                   v_n, v_nm1, vorticity, press_nodes);
       ls = new my_p4est_level_set_t(ngbd_np1);
@@ -8024,7 +8020,7 @@ int main(int argc, char** argv) {
     else{
       initialize_grids(mpi, sp,
                        p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
-                       p4est, nodes, ghost, ngbd, hierarchy, brick, conn);
+                       p4est_n, nodes_n, ghost_n, ngbd_n, hierarchy_n, brick, conn);
       ls = new my_p4est_level_set_t(ngbd_np1);
 
       initialize_fields(mpi,
@@ -8034,21 +8030,38 @@ int main(int argc, char** argv) {
                         T_l_n, T_s_n, T_l_nm1,
                         T_l_d, T_s_d, jump,
                         v_interface,
-                        v_n, v_nm1);
+                        v_n, v_nm1,
+                        dxyz_smallest, dxyz_close_to_interface);
 
       tstep = 0;
+      tn = tstart;
     }
     // ------------------------------------------------------------
     // Initialize Navier Stokes solver:
     // ------------------------------------------------------------
     if(solve_navier_stokes){
-      initialize_ns_solver(ns, p4est_np1, ghost_np1, ngbd_np1,ngbd,
+      initialize_ns_solver(ns, p4est_np1, ghost_np1, ngbd_np1, ngbd_n,
                            hierarchy_np1, &brick,
                            (example_uses_inner_LSF ? phi_eff:phi),
                            v_n, v_nm1,
                            faces_np1, ngbd_c_np1);
     }
 
+    // ------------------------------------------------------------
+    // Compute the initial timestep:
+    // ------------------------------------------------------------
+    // Initialize the integer which will keep track of what our last timestep will be:
+    int last_tstep=-1;
+
+//    compute_timestep(v_interface, phi, dxyz_close_to_interface, dxyz_smallest, nodes_np1, p4est_np1, ns, tstep, last_tstep);
+
+    dxyz_min(p4est_np1, dxyz_smallest);
+    dxyz_close_to_interface = dxyz_close_to_interface_mult*max(dxyz_smallest[0],dxyz_smallest[1]);
+    compute_timestep(p4est_np1, nodes_np1,
+                     phi, v_interface,
+                     ns,
+                     dxyz_close_to_interface, dxyz_smallest,
+                     load_tstep, last_tstep);
     // ------------------------------------------------------------
     // Initialize relevant boundary condition objects:
     // ------------------------------------------------------------
@@ -8168,10 +8181,6 @@ int main(int argc, char** argv) {
     // Begin stepping through time
     // ------------------------------------------------------------
 
-    if(!loading_from_previous_state){tstep=0;}
-    tn = tstart;
-    int last_tstep=-1;
-
     double cfl_NS_steady = cfl_NS; // store desired CFL, will use it eventually, but always use 0.5 for the first 10 iterations just to make sure NS solver stabilizes nicely
     double hodge_percentage_steady = hodge_percentage_of_max_u;
 
@@ -8213,15 +8222,15 @@ int main(int argc, char** argv) {
 
         }
       }
-      if(tstep ==0){
-        dxyz_min(p4est,dxyz_smallest);
+//      if(tstep ==0){
+//        dxyz_min(p4est_np1, dxyz_smallest);
 
-        dxyz_close_to_interface = 1.2*max(dxyz_smallest[0],dxyz_smallest[1]);
-          compute_timestep(v_interface, phi,
-                           dxyz_close_to_interface, dxyz_smallest,
-                           nodes_np1, p4est_np1, ns,
-                           load_tstep, last_tstep);
-      }
+//        dxyz_close_to_interface = 1.2*max(dxyz_smallest[0],dxyz_smallest[1]);
+//          compute_timestep(v_interface, phi,
+//                           dxyz_close_to_interface, dxyz_smallest,
+//                           nodes_np1, p4est_np1, ns,
+//                           load_tstep, last_tstep);
+//      }
 
 
       // Check if some startup time (before allowing interfacial growth) has been requested
@@ -8316,7 +8325,7 @@ int main(int argc, char** argv) {
       if(solve_stefan){
         setup_and_solve_poisson_problem(mpi,
                                         p4est_np1, nodes_np1, ngbd_np1,
-                                        p4est, nodes, ngbd,
+                                        p4est_n, nodes_n, ngbd_n,
                                         phi, phi_solid, phi_dd, phi_solid_dd,
                                         phi_substrate, phi_substrate_dd,
                                         normal, curvature,
@@ -8336,7 +8345,8 @@ int main(int argc, char** argv) {
       // ------------------------------------------------------------
       // Get smallest grid size: (this gets used in all examples at some point)
       dxyz_min(p4est_np1, dxyz_smallest);
-      dxyz_close_to_interface = 1.2*max(dxyz_smallest[0],dxyz_smallest[1]);
+
+      dxyz_close_to_interface = dxyz_close_to_interface_mult*max(dxyz_smallest[0],dxyz_smallest[1]);
       ls->update(ngbd_np1);
       if(solve_stefan){
         // ------------------------------------------------------------
@@ -8554,9 +8564,14 @@ int main(int argc, char** argv) {
               v_interface_max_norm*vel_nondim_to_dim,
               v_interface_max_norm*vel_nondim_to_dim*1000.);
 
-      compute_timestep(v_interface, phi,
-                       dxyz_close_to_interface, dxyz_smallest,
-                       nodes_np1, p4est_np1, ns,
+//      compute_timestep(v_interface, phi,
+//                       dxyz_close_to_interface, dxyz_smallest,
+//                       nodes_np1, p4est_np1, ns,
+//                       load_tstep, last_tstep); // this function modifies the variable dt
+
+      compute_timestep(p4est_np1, nodes_np1,
+                       phi, v_interface,
+                       ns, dxyz_close_to_interface, dxyz_smallest,
                        load_tstep, last_tstep); // this function modifies the variable dt
 
 
@@ -8567,7 +8582,7 @@ int main(int argc, char** argv) {
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid update process ... \n"
                                                      "Refine by d2T = %s \n",refine_by_d2T? "true": "false");
         update_the_grid(sp, p4est_np1, nodes_np1, ngbd_np1, ghost_np1, hierarchy_np1,
-                        p4est, nodes, ngbd, ghost, hierarchy,
+                        p4est_n, nodes_n, ngbd_n, ghost_n, hierarchy_n,
                         brick, ns,
                         phi, phi_nm1, v_interface, phi_substrate, phi_eff, phi_dd,
                         vorticity, vorticity_refine, T_l_n, T_l_dd);
@@ -8611,7 +8626,7 @@ int main(int argc, char** argv) {
 
         interpolate_fields_onto_new_grid(T_l_n, T_s_n,
                                          v_interface, v_n,
-                                         nodes_np1, p4est_np1, ngbd, interp_bw_grids);
+                                         nodes_np1, p4est_np1, ngbd_n, interp_bw_grids);
         if(solve_navier_stokes){
           ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
                                                    v_n.vec, v_nm1.vec,
@@ -8631,7 +8646,7 @@ int main(int argc, char** argv) {
         PetscMemoryGetCurrentUsage(&mem_safety_check);
 
 
-        int no = nodes->num_owned_indeps;
+        int no = nodes_np1->num_owned_indeps;
         MPI_Allreduce(MPI_IN_PLACE,&no,1,MPI_INT,MPI_SUM,mpi.comm());
 
 
@@ -8681,7 +8696,7 @@ int main(int argc, char** argv) {
 
   // Do the final destructions!
   perform_final_destructions(mpi, p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
-                             p4est, nodes, ghost, ngbd, hierarchy,
+                             p4est_n, nodes_n, ghost_n, ngbd_n, hierarchy_n,
                              brick, conn,
                              ls,
                              phi, phi_nm1,
