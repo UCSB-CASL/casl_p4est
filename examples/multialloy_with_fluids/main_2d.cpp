@@ -5500,7 +5500,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   }
 
   // Get the computed values of vorticity
-  if(tstep == 1)vorticity.destroy(); // ELYCE TO-DO: THIS IS TEMPORARY -- BC WE SAMPLE AN INITIAL VORTICITY FOR REFINEMENTS SAKE, WHICH I WANT TO CHANGE
+  if(tstep == 0)vorticity.destroy(); // ELYCE TO-DO: THIS IS TEMPORARY -- BC WE SAMPLE AN INITIAL VORTICITY FOR REFINEMENTS SAKE, WHICH I WANT TO CHANGE
   vorticity.vec = ns->get_vorticity();
 
 
@@ -8331,13 +8331,13 @@ int main(int argc, char** argv) {
       // ---------------------------------------------------------------------------
       // Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
       // ---------------------------------------------------------------------------
-      if ((tstep>0) && solve_navier_stokes){
+      if (/*(tstep>0) &&*/ solve_navier_stokes){
 
         // -------------------------------
         // Update the NS grid (or initialize the solver)
         // -------------------------------
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling the Navier-Stokes grid update... \n");
-        if((tstep==1) || (tstep==load_tstep)){
+        if((tstep==0) || (tstep==load_tstep)){
           PetscPrintf(mpi.comm(),"Initializing Navier-Stokes solver \n");
 
 //          v_n_NS.create(p4est_np1,nodes_np1);
@@ -8720,7 +8720,7 @@ int main(int argc, char** argv) {
         // ELYCE TO-DO: why do we need to do this sliding for tstep=0? Can we do away with this?
         // I believe this is done bc we do not begin solving NS until tstep=1, and therefore the initial fields
         // related to NS and temperature advection need to be slid once. Will think about how to handle this differently.
-        if(tstep==0){
+/*        if(tstep==0){
           // Slide fields
           if(solve_navier_stokes){
             v_nm1.destroy();v_nm1.create(p4est,nodes);
@@ -8733,12 +8733,12 @@ int main(int argc, char** argv) {
             ierr = VecCopyGhost(T_l_n.vec,T_l_nm1.vec);CHKERRXX(ierr);
           }
 
-        } // end of "if tstep ==0"
+        }*/ // end of "if tstep ==0"
 
         interpolate_fields_onto_new_grid(T_l_n, T_s_n,
                                          v_interface, v_n,
                                          nodes_np1, p4est_np1, ngbd, interp_bw_grids);
-        if(solve_navier_stokes && tstep>0){
+        if(solve_navier_stokes /*&& tstep>0*/){
           ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
                                                    v_n.vec, v_nm1.vec,
                                                    p4est_np1,nodes_np1,ghost_np1,
