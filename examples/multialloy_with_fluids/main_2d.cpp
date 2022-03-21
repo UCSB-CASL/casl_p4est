@@ -4044,6 +4044,86 @@ void compute_timestep( p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                         dxyz_close_to_interface);
 } // ends function
 
+void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, double cfl_NS_steady, double hodge_percentage_steady){
+
+  // -----------------------------
+  // Handle any startup time/startup iterations/ flush time/ etc. // TO-DO: will move this stuff to its own fxn
+  // ------------------------------
+  // Enforce startup iterations for verification tests if needed:
+  if((startup_iterations>0)){
+    if(tstep<startup_iterations){
+      force_interfacial_velocity_to_zero=true;
+      tn=tstart;
+    }
+    else if(tstep==startup_iterations){
+      force_interfacial_velocity_to_zero=false;
+      tn = tstart;
+    }
+  }
+
+  if(solve_navier_stokes){
+    // Adjust the cfl_NS depending on the timestep:
+    if(tstep<=10){
+      cfl_NS=0.5;
+
+      // loosen hodge criteria for initialization for porous media case:
+      if(example_ == EVOLVING_POROUS_MEDIA){
+        hodge_percentage_of_max_u = 0.1;
+      }
+
+    }
+    else{
+      cfl_NS = cfl_NS_steady;
+
+      if(example_ == EVOLVING_POROUS_MEDIA){
+        hodge_percentage_of_max_u = hodge_percentage_steady; // to-do : clean up, num startup iterations should be a user intput, instead of just being set to 10
+      }
+
+    }
+  }
+
+
+  // Check if some startup time (before allowing interfacial growth) has been requested
+  if((startup_dim_time>0.) || (startup_nondim_time>0.)){
+    if((startup_dim_time>0.) && (startup_nondim_time>0.)){
+      throw std::invalid_argument("Must choose startup dim time, OR startup nondim time, but not both \n");
+    }
+
+    if(startup_dim_time>0.){ // Dimensional case
+      if(tn*time_nondim_to_dim < startup_dim_time){
+        force_interfacial_velocity_to_zero=true;
+      }
+      else{
+        force_interfacial_velocity_to_zero = false;
+      }
+    } // end of dimensional case
+    else{ // nondimensional case
+      if(tn<startup_nondim_time){
+        force_interfacial_velocity_to_zero=true;
+      }
+      else{
+        force_interfacial_velocity_to_zero=false;
+      }
+    } // end of nondimensional case
+  } // end of considering startup times
+
+  // Check if some flush time (at which to change the wall temp or conc BC) has been requested:
+  bool flush_time_initiated = false;
+  if((flush_dim_time>0.) && (tn*time_nondim_to_dim >= flush_dim_time) && (!flush_time_initiated)){
+    if(!is_dissolution_case){
+      PetscPrintf(mpi.comm(), "Flush time is reached, activating new temperature BC value (s) \n");
+      theta_infty = (Tflush - T0)/deltaT;
+    }
+    else{
+      PetscPrintf(mpi.comm(), "Flush time is reached, activating new concentration BC value (s) \n");
+      theta_infty = (Tflush - T0)/deltaT;
+    }
+    if(example_uses_inner_LSF){
+      theta0 = theta_interface;
+    }
+    flush_time_initiated = true;
+  }
+}
 
 void prepare_refinement_fields(vec_and_ptr_t& phi, vec_and_ptr_t& vorticity, vec_and_ptr_t& vorticity_refine, vec_and_ptr_dim_t& T_l_dd, my_p4est_node_neighbors_t* ngbd_n){
   PetscErrorCode ierr;
@@ -8053,8 +8133,6 @@ int main(int argc, char** argv) {
     // Initialize the integer which will keep track of what our last timestep will be:
     int last_tstep=-1;
 
-//    compute_timestep(v_interface, phi, dxyz_close_to_interface, dxyz_smallest, nodes_np1, p4est_np1, ns, tstep, last_tstep);
-
     dxyz_min(p4est_np1, dxyz_smallest);
     dxyz_close_to_interface = dxyz_close_to_interface_mult*max(dxyz_smallest[0],dxyz_smallest[1]);
     compute_timestep(p4est_np1, nodes_np1,
@@ -8178,101 +8256,19 @@ int main(int argc, char** argv) {
       }
 
     // ------------------------------------------------------------
-    // Begin stepping through time
-    // ------------------------------------------------------------
 
-    double cfl_NS_steady = cfl_NS; // store desired CFL, will use it eventually, but always use 0.5 for the first 10 iterations just to make sure NS solver stabilizes nicely
+    // ---------------------------------------
+    // Begin time loop
+    // ---------------------------------------
+    // Store desired CFL and hodge criteria -- we will relax these for several startup iterations, then use them
+    double cfl_NS_steady = cfl_NS;
     double hodge_percentage_steady = hodge_percentage_of_max_u;
 
-    // Begin time loop
     while(tn<=tfinal){
-
-      // -----------------------------
-      // Handle any startup time/startup iterations/ flush time/ etc. // TO-DO: will move this stuff to its own fxn
-      // ------------------------------
-      // Enforce startup iterations for verification tests if needed:
-      if((startup_iterations>0)){
-        if(tstep<startup_iterations){
-          force_interfacial_velocity_to_zero=true;
-          tn=tstart;
-        }
-        else if(tstep==startup_iterations){
-          force_interfacial_velocity_to_zero=false;
-          tn = tstart;
-        }
-      }
-
-      if(solve_navier_stokes){
-        // Adjust the cfl_NS depending on the timestep:
-        if(tstep<=10){
-          cfl_NS=0.5;
-
-          // loosen hodge criteria for initialization for porous media case:
-          if(example_ == EVOLVING_POROUS_MEDIA){
-            hodge_percentage_of_max_u = 0.1;
-          }
-
-        }
-        else{
-          cfl_NS = cfl_NS_steady;
-
-          if(example_ == EVOLVING_POROUS_MEDIA){
-            hodge_percentage_of_max_u = hodge_percentage_steady; // to-do : clean up, num startup iterations should be a user intput, instead of just being set to 10
-          }
-
-        }
-      }
-//      if(tstep ==0){
-//        dxyz_min(p4est_np1, dxyz_smallest);
-
-//        dxyz_close_to_interface = 1.2*max(dxyz_smallest[0],dxyz_smallest[1]);
-//          compute_timestep(v_interface, phi,
-//                           dxyz_close_to_interface, dxyz_smallest,
-//                           nodes_np1, p4est_np1, ns,
-//                           load_tstep, last_tstep);
-//      }
-
-
-      // Check if some startup time (before allowing interfacial growth) has been requested
-      if((startup_dim_time>0.) || (startup_nondim_time>0.)){
-        if((startup_dim_time>0.) && (startup_nondim_time>0.)){
-          throw std::invalid_argument("Must choose startup dim time, OR startup nondim time, but not both \n");
-        }
-
-        if(startup_dim_time>0.){ // Dimensional case
-          if(tn*time_nondim_to_dim < startup_dim_time){
-            force_interfacial_velocity_to_zero=true;
-          }
-          else{
-              force_interfacial_velocity_to_zero = false;
-          }
-        } // end of dimensional case
-        else{ // nondimensional case
-          if(tn<startup_nondim_time){
-            force_interfacial_velocity_to_zero=true;
-          }
-          else{
-            force_interfacial_velocity_to_zero=false;
-          }
-        } // end of nondimensional case
-      } // end of considering startup times
-
-      // Check if some flush time (at which to change the wall temp or conc BC) has been requested:
-      bool flush_time_initiated = false;
-      if((flush_dim_time>0.) && (tn*time_nondim_to_dim >= flush_dim_time) && (!flush_time_initiated)){
-        if(!is_dissolution_case){
-          PetscPrintf(mpi.comm(), "Flush time is reached, activating new temperature BC value (s) \n");
-          theta_infty = (Tflush - T0)/deltaT;
-        }
-        else{
-          PetscPrintf(mpi.comm(), "Flush time is reached, activating new concentration BC value (s) \n");
-          theta_infty = (Tflush - T0)/deltaT;
-        }
-        if(example_uses_inner_LSF){
-          theta0 = theta_interface;
-        }
-        flush_time_initiated = true;
-      }
+      // ---------------------------------------
+      // Handle any modifications to cfl, dt, vint, or bcs related with "startup" conditions
+      // ---------------------------------------
+      handle_any_startup_t_dt_and_bc_cases(mpi, cfl_NS_steady, hodge_percentage_steady);
 
       // ---------------------------------------
       // Print iteration information:
@@ -8563,11 +8559,6 @@ int main(int argc, char** argv) {
               v_interface_max_norm,
               v_interface_max_norm*vel_nondim_to_dim,
               v_interface_max_norm*vel_nondim_to_dim*1000.);
-
-//      compute_timestep(v_interface, phi,
-//                       dxyz_close_to_interface, dxyz_smallest,
-//                       nodes_np1, p4est_np1, ns,
-//                       load_tstep, last_tstep); // this function modifies the variable dt
 
       compute_timestep(p4est_np1, nodes_np1,
                        phi, v_interface,
