@@ -6961,9 +6961,68 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
     delete analytical_soln_velNS[d];
     delete analytical_soln_velINT[d];
   }
+}
+
+
+void save_test_case_errors_and_vtk(mpi_environment_t& mpi, splitting_criteria_cf_and_uniform_band_t& sp,
+                                   p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+                                   p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1,
+                                   my_p4est_navier_stokes_t* ns,
+                                   vec_and_ptr_t& phi,
+                                   vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
+                                   vec_and_ptr_dim_t& v_interface,
+                                   vec_and_ptr_dim_t& v_n,
+                                   vec_and_ptr_t& press_nodes, vec_and_ptr_t& vorticity,
+                                   FILE* fich_errors, char name_errors[],
+                                   double& dxyz_close_to_interface,
+                                   bool are_we_saving, int out_idx){
+
+  PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n", sp.min_lvl, sp.max_lvl);
+  printf("outidx = %d \n", out_idx);
+
+  // Get the vtk output directory:
+  const char* out_dir_test_vtk = getenv("OUT_DIR_VTK");
+  char output[1000];
+  sprintf(output, "%s/snapshot_test_%d_lmin_%d_lmax_%d_outidx_%d", out_dir_test_vtk, example_, sp.min_lvl, sp.max_lvl, out_idx);
+
+  switch(example_){
+  case NS_GIBOU_EXAMPLE:{
+    // In typical saving, only compute pressure nodes when we save to vtk. For this example, save pressure nodes every time so we can check the error
+    press_nodes.destroy();press_nodes.create(p4est_np1,nodes_np1);
+    ns->compute_pressure_at_nodes(&press_nodes.vec);
+
+    // Save the test case info:
+    save_navier_stokes_test_case(p4est_np1, nodes_np1, ghost_np1,
+                                 phi, v_n, press_nodes, vorticity,
+                                 dxyz_close_to_interface, are_we_saving, output,
+                                 name_errors, fich_errors);
+
+    break;
+  }
+  case COUPLED_TEST_2:
+  case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+  case COUPLED_PROBLEM_EXAMPLE:{
+    save_coupled_test_case(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
+                           phi, T_l_n, T_s_n, v_interface, v_n, press_nodes, vorticity,
+                           dxyz_close_to_interface, are_we_saving, output,
+                           name_errors, fich_errors);
+    break;
+  }
+
+  case FRANK_SPHERE:{
+    save_stefan_test_case(p4est_np1, nodes_np1, ghost_np1,
+                          T_l_n, T_s_n,
+                          phi, v_interface,
+                          dxyz_close_to_interface, are_we_saving,
+                          output, name_errors, fich_errors);
+    break;
+  }
+  }
+
 
 
 }
+
 
 // --------------------------------------------------------------------------------------------------------------
 // Functions for saving or loading the simulation state:
@@ -7324,9 +7383,12 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
 
   PetscPrintf(mpi.comm(),"Loads forest and data \n");
 }
+
 // --------------------------------------------------------------------------------------------------------------
-// Problem initial setup:
+// Initializations and destructions:
 // --------------------------------------------------------------------------------------------------------------
+
+
 void setup_initial_parameters_and_report(mpi_environment_t& mpi){
   select_solvers();
 
@@ -7449,9 +7511,140 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi){
 }
 
 
-// --------------------------------------------------------------------------------------------------------------
-// Initializations and destructions:
-// --------------------------------------------------------------------------------------------------------------
+void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
+                                           splitting_criteria_cf_and_uniform_band_t* sp,
+                                           FILE* fich_errors,
+                                           char name_errors[], FILE* fich_data, char name_data[]){
+  PetscErrorCode ierr;
+
+  // Get the output directory to put the error files:
+  // Output file for Frank Sphere errors:
+  const char* out_dir_files = getenv("OUT_DIR_FILES");
+  if(!out_dir_files){
+    throw std::invalid_argument("You need to set the environment variable OUT_DIR_FILES to save stefan errors");
+  }
+
+  switch(example_){
+  case FRANK_SPHERE:{
+
+    sprintf(name_errors,"%s/frank_sphere_error_lmin_%d_lmax_%d.dat",
+            out_dir_files, sp->min_lvl, sp->max_lvl);
+
+    ierr = PetscFOpen(mpi.comm(),name_errors,"w",&fich_errors); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(),fich_errors,"time " "timestep " "iteration "
+                                                        "phi_error " "T_l_error " "T_s_error "
+                                                        "v_int_error " "number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(),fich_errors); CHKERRXX(ierr);
+    break;
+  }
+  case NS_GIBOU_EXAMPLE:{
+    // Output file for NS test case errors:
+
+    sprintf(name_errors,"%s/navier_stokes_error_lmin_%d_lmax_%d.dat",
+            out_dir_files, sp->min_lvl, sp->max_lvl);
+
+    ierr = PetscFOpen(mpi.comm(),name_errors, "w", &fich_errors); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(),fich_errors,"time " "timestep " "iteration " "u_error "
+                                                    "v_error " "P_error " "number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(),fich_errors); CHKERRXX(ierr);
+
+    break;
+  }
+  case COUPLED_TEST_2:
+  case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+  case COUPLED_PROBLEM_EXAMPLE:{
+    // Output file for coupled problem test case:
+    sprintf(name_errors,"%s/coupled_error_lmin_%d_lmax_%d.dat",
+            out_dir_files,  sp->min_lvl, sp->max_lvl);
+
+    ierr = PetscFOpen(mpi.comm(),name_errors,"w",&fich_errors); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(),fich_errors,"time " "timestep " "iteration "
+                                                         "u_error " "v_error " "P_error "
+                                                         "Tl_error " "Ts_error " "vint_error" "phi_error "
+                                                         "number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(),fich_errors); CHKERRXX(ierr);
+    break;
+  }
+  case FLOW_PAST_CYLINDER:
+  case DISSOLVING_DISK_BENCHMARK:
+  case EVOLVING_POROUS_MEDIA:
+  case MELTING_ICE_SPHERE_NAT_CONV:
+  case MELTING_ICE_SPHERE:
+  case ICE_AROUND_CYLINDER:{
+    if(save_fluid_forces || example_requires_area_computation){
+
+
+      switch(problem_dimensionalization_type){
+        case NONDIM_BY_FLUID_VELOCITY:{
+          if(is_dissolution_case){
+            // Output file for fluid forces or area data
+            sprintf(name_data,"%s/area_and_or_force_data_Re_%0.2f_gamma_%0.2f_lmin_%d_lmax_%d.dat",
+                    out_dir_files, Re, gamma_diss, sp->min_lvl, sp->max_lvl);
+          }
+          else{
+            // Output file for fluid forces or area data
+            sprintf(name_data,"%s/area_and_or_force_data_Re_%0.2f_St_%0.2f_lmin_%d_lmax_%d.dat",
+                    out_dir_files, Re, St, sp->min_lvl, sp->max_lvl);
+          }
+
+
+          break;
+        }
+        case NONDIM_BY_DIFFUSIVITY:{
+          if(is_dissolution_case){
+            // Output file for fluid forces or area data
+            sprintf(name_data,"%s/area_and_or_force_data_Sc_%0.2f_gamma_%0.2f_lmin_%d_lmax_%d.dat",
+                    out_dir_files, Sc, gamma_diss, sp->min_lvl, sp->max_lvl);
+          }
+          else{
+            // Output file for fluid forces or area data
+            sprintf(name_data,"%s/area_and_or_force_data_Pr_%0.2f_St_%0.2f_lmin_%d_lmax_%d.dat",
+                    out_dir_files, Pr, St, sp->min_lvl, sp->max_lvl);
+          }
+          break;
+        }
+        case DIMENSIONAL:{
+          if(is_dissolution_case){
+            // Output file for fluid forces or area data
+            sprintf(name_data,"%s/area_and_or_force_data_dimensional_Re_%0.2f_gamma_%0.2f_lmin_%d_lmax_%d.dat",
+                    out_dir_files, Re, gamma_diss, sp->min_lvl, sp->max_lvl);
+          }
+          else{
+            // Output file for fluid forces or area data
+            sprintf(name_data,"%s/area_and_or_force_data_dimensional_Re_%0.2f_St_%0.2f_lmin_%d_lmax_%d.dat",
+                    out_dir_files, Re, St, sp->min_lvl, sp->max_lvl);
+          }
+          break;
+        }
+        default:{
+          throw std::invalid_argument("Output file initialization: unknown problem dimensionalization type \n");
+        }
+      }
+
+      if(no_flow || !save_fluid_forces){
+        ierr = PetscFOpen(mpi.comm(),name_data,"w",&fich_data); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(),fich_data,"time A \n");CHKERRXX(ierr);
+        ierr = PetscFClose(mpi.comm(),fich_data); CHKERRXX(ierr);
+      }
+      else{
+        ierr = PetscFOpen(mpi.comm(),name_data,"w",&fich_data); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(),fich_data,"time fx fy A \n");CHKERRXX(ierr);
+        ierr = PetscFClose(mpi.comm(),fich_data); CHKERRXX(ierr);}
+    }
+    break;
+  }
+
+  default:{
+    break;
+  }
+  }
+
+
+
+
+}
+
+
 
 void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical_T[2],
                                                    BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
@@ -8098,7 +8291,6 @@ int main(int argc, char** argv) {
   for(int grid_res_iter=0;grid_res_iter<=num_splits;grid_res_iter++){
     setup_initial_parameters_and_report(mpi);
 
-
     // -----------------------------------------------
     // Perform grid and field initializations
     // -----------------------------------------------
@@ -8196,99 +8388,16 @@ int main(int argc, char** argv) {
     // Initialize files to output various data of interest:
     // -----------------------------------------------
     if(print_checkpoints)PetscPrintf(mpi.comm(),"Initializing output files ... \n");
-    FILE *fich_stefan_errors;
-    char name_stefan_errors[1000];
+    FILE *fich_errors;
+    char name_errors[1000];
 
-    FILE *fich_NS_errors;
-    char name_NS_errors[1000];
+    FILE *fich_data;
+    char name_data[1000];
+    initialize_error_files_for_test_cases(mpi, &sp,
+                                          fich_errors, name_errors,
+                                          fich_data, name_data);
 
-    FILE *fich_coupled_errors;
-    char name_coupled_errors[1000];
 
-    FILE *fich_fluid_forces;
-    char name_fluid_forces[1000];
-
-    switch(example_){
-      case FRANK_SPHERE:{
-        // Output file for Frank Sphere errors:
-        const char* out_dir_err_stefan = getenv("OUT_DIR_ERR_stefan");
-        if(!out_dir_err_stefan){
-            throw std::invalid_argument("You need to set the environment variable OUT_DIR_ERR_stefan to save stefan errors");
-          }
-        sprintf(name_stefan_errors,"%s/frank_sphere_error_lmin_%d_lmax_%d.dat",
-                out_dir_err_stefan,lmin+grid_res_iter,lmax+grid_res_iter);
-
-        ierr = PetscFOpen(mpi.comm(),name_stefan_errors,"w",&fich_stefan_errors); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(),fich_stefan_errors,"time " "timestep " "iteration "
-                                                          "phi_error " "T_l_error " "T_s_error "
-                                                          "v_int_error " "number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
-        ierr = PetscFClose(mpi.comm(),fich_stefan_errors); CHKERRXX(ierr);
-        break;
-        }
-      case NS_GIBOU_EXAMPLE:{
-          // Output file for NS test case errors:
-          const char* out_dir_err_NS = getenv("OUT_DIR_ERR_NS");
-          if(!out_dir_err_NS){
-              throw std::invalid_argument("You need to set the environment variable OUT_DIR_ERR_NS to save Navier Stokes errors");
-            }
-          sprintf(name_NS_errors,"%s/navier_stokes_error_lmin_%d_lmax_%d_advection_order_%d.dat",
-                  out_dir_err_NS,lmin+grid_res_iter,lmax+grid_res_iter,advection_sl_order);
-
-          ierr = PetscFOpen(mpi.comm(),name_NS_errors,"w",&fich_NS_errors); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(),fich_NS_errors,"time " "timestep " "iteration " "u_error "
-                                                        "v_error " "P_error " "number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
-          ierr = PetscFClose(mpi.comm(),fich_NS_errors); CHKERRXX(ierr);
-
-          break;
-        }
-      case COUPLED_TEST_2:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:{
-          // Output file for coupled problem test case:
-          const char* out_dir_err_coupled = getenv("OUT_DIR_ERR_coupled");
-          sprintf(name_coupled_errors,"%s/coupled_error_ex_%d_lmin_%d_lmax_%d_advection_order_%d.dat",
-                  out_dir_err_coupled,example_,lmin+grid_res_iter,lmax + grid_res_iter,advection_sl_order);
-
-          ierr = PetscFOpen(mpi.comm(),name_coupled_errors,"w",&fich_coupled_errors); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(),fich_coupled_errors,"time " "timestep " "iteration "
-                                                             "u_error " "v_error " "P_error "
-                                                             "Tl_error " "Ts_error " "vint_error" "phi_error "
-                                                             "number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
-          ierr = PetscFClose(mpi.comm(),fich_coupled_errors); CHKERRXX(ierr);
-          break;
-        }
-      case FLOW_PAST_CYLINDER:
-      case DISSOLVING_DISK_BENCHMARK:
-      case EVOLVING_POROUS_MEDIA:
-      case MELTING_ICE_SPHERE_NAT_CONV:
-      case MELTING_ICE_SPHERE:
-      case ICE_AROUND_CYLINDER:{
-        if(save_fluid_forces || example_requires_area_computation){
-          // Output file for NS test case errors:
-          const char* out_dir_fluid_forces = getenv("OUT_DIR_FILES");
-          if(!out_dir_fluid_forces){
-              throw std::invalid_argument("You need to set the environment variable OUT_DIR_FILES to save fluid forces");
-            }
-          sprintf(name_fluid_forces,"%s/area_and_or_force_data_Re_%0.2f_lmin_%d_lmax_%d_advection_order_%d.dat",
-                  out_dir_fluid_forces,Re,lmin+grid_res_iter,lmax+grid_res_iter,advection_sl_order);
-
-          if(no_flow || !save_fluid_forces){
-            ierr = PetscFOpen(mpi.comm(),name_fluid_forces,"w",&fich_fluid_forces); CHKERRXX(ierr);
-            ierr = PetscFPrintf(mpi.comm(),fich_fluid_forces,"time A \n");CHKERRXX(ierr);
-            ierr = PetscFClose(mpi.comm(),fich_fluid_forces); CHKERRXX(ierr);
-          }
-          else{
-            ierr = PetscFOpen(mpi.comm(),name_fluid_forces,"w",&fich_fluid_forces); CHKERRXX(ierr);
-            ierr = PetscFPrintf(mpi.comm(),fich_fluid_forces,"time fx fy A \n");CHKERRXX(ierr);
-            ierr = PetscFClose(mpi.comm(),fich_fluid_forces); CHKERRXX(ierr);}
-        }
-          break;
-      }
-
-      default:{
-        break;
-        }
-      }
 
     // ------------------------------------------------------------
 
@@ -8500,6 +8609,7 @@ int main(int argc, char** argv) {
       bool are_we_saving = false;
 
       are_we_saving = are_we_saving_vtk( tstep, tn, tstep==load_tstep, out_idx, true) /*&& (tstep>0)*/;
+      printf("outidx outside: %d \n", out_idx);
       // ---------------------------
       // (b) Save to VTK if applicable:
       // ---------------------------
@@ -8511,7 +8621,7 @@ int main(int argc, char** argv) {
                                   phi, island_numbers, out_idx);
         }
 
-        save_fields_to_vtk(p4est_np1,nodes_np1,ghost_np1,ngbd_np1,out_idx,grid_res_iter,
+        save_fields_to_vtk(p4est_np1,nodes_np1,ghost_np1,ngbd_np1, out_idx,grid_res_iter,
                            phi, phi_eff, phi_substrate,T_l_n,T_s_n,
                            v_interface,
                            v_n, press_nodes, vorticity,
@@ -8526,51 +8636,23 @@ int main(int argc, char** argv) {
       // (c) Check errors on validation cases if relevant,
       // save errors to vtk if we are saving this timestep
       // ---------------------------
-      if(example_ == NS_GIBOU_EXAMPLE){
-          const char* out_dir_ns = getenv("OUT_DIR_VTK");
-          char output[1000];
-          PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
 
-          sprintf(output,"%s/snapshot_NS_Gibou_test_lmin_%d_lmax_%d_outidx_%d",out_dir_ns,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-
-          if(tstep>0){
-            // In typical saving, only compute pressure nodes when we save to vtk. For this example, save pressure nodes every time so we can check the error
-            press_nodes.destroy();press_nodes.create(p4est_np1,nodes_np1);
-            ns->compute_pressure_at_nodes(&press_nodes.vec);
-          }
-
-          save_navier_stokes_test_case(p4est_np1, nodes_np1, ghost_np1,
-                                       phi, v_n, press_nodes, vorticity,
-                                       dxyz_close_to_interface, are_we_saving, output,
-                                       name_NS_errors, fich_NS_errors);
-        }
-      if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)){
-        const char* out_dir_coupled = getenv("OUT_DIR_VTK");
-
-        char output[1000];
-        PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
-
-        sprintf(output,"%s/snapshot_coupled_test_lmin_%d_lmax_%d_outidx_%d",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-
-        PetscPrintf(mpi.comm(),"Saving coupled problem example \n");
-        save_coupled_test_case(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
-                               phi, T_l_n, T_s_n, v_interface, v_n, press_nodes, vorticity,
-                               dxyz_close_to_interface, are_we_saving, output,
-                               name_coupled_errors, fich_coupled_errors);
-        // Don't check first timestep bc have not computed velocity yet
-        PetscPrintf(mpi.comm(),"Coupled test case saved \n");
-
+      if(example_is_a_test_case){
+        save_test_case_errors_and_vtk(mpi, sp,
+                                      p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
+                                      ns,
+                                      phi,
+                                      T_l_n, T_s_n,
+                                      v_interface,
+                                      v_n,
+                                      press_nodes, vorticity,
+                                      fich_errors, name_errors,
+                                      dxyz_close_to_interface,
+                                      are_we_saving, out_idx);
       }
-      if(example_ == FRANK_SPHERE){
-          const char* out_dir_stefan = getenv("OUT_DIR_VTK");
 
-          char output[1000];
 
-          sprintf(output,"%s/snapshot_Frank_Sphere_test_lmin_%d_lmax_%d_outidx_%d",out_dir_stefan,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-          PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
 
-          save_stefan_test_case(p4est_np1,nodes_np1,ghost_np1,T_l_n, T_s_n, phi, v_interface, dxyz_close_to_interface,are_we_saving,output,name_stefan_errors,fich_stefan_errors);
-        }
 
       // ---------------------------------------------------
       // Advance the LSF/Update the grid :
