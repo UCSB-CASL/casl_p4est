@@ -2310,7 +2310,7 @@ public:
 
 
 // Inner level set function for relevant cases:
-struct MINI_LEVEL_SET : CF_DIM {
+struct SUBSTRATE_LEVEL_SET : CF_DIM {
 public:
   double operator() (DIM(double x, double y, double z)) const
   {
@@ -2334,19 +2334,19 @@ public:
         throw std::invalid_argument("This option may not be used for the particular example being called");
       }
   }
-} mini_level_set;
+} substrate_level_set;
 
 
 struct INITIAL_REFINEMENT_CF : CF_DIM {
   public:
       double operator() (DIM(double x, double y, double z)) const{
         if(example_uses_inner_LSF){
-          bool main_phi_has_smaller_abs_val = fabs(level_set(x,y)) < fabs(mini_level_set(x,y));
+          bool main_phi_has_smaller_abs_val = fabs(level_set(x,y)) < fabs(substrate_level_set(x,y));
           if(main_phi_has_smaller_abs_val){
             return level_set(x,y);
           }
           else{
-            return mini_level_set(x,y);
+            return substrate_level_set(x,y);
           }
         }
         else{
@@ -6179,7 +6179,7 @@ void create_and_compute_phi_sub_and_phi_eff(p4est_t* p4est_np1, p4est_nodes_t* n
                                             vec_and_ptr_t& phi_eff){
 
   phi_substrate.create(p4est_np1, nodes_np1);
-  sample_cf_on_nodes(p4est_np1, nodes_np1, mini_level_set, phi_substrate.vec);
+  sample_cf_on_nodes(p4est_np1, nodes_np1, substrate_level_set, phi_substrate.vec);
 
   // For computing phi_effective for this step:
   phi_eff.create(p4est_np1, nodes_np1);
@@ -7485,7 +7485,7 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi){
 
 
 
-  PetscPrintf(mpi.comm(),"Simulation time: %0.3f [min] = %0.3f [sec] = %0.2f [nondim]\n\n",
+  PetscPrintf(mpi.comm(),"Simulation time: %0.4f [min] = %0.4f [sec] = %0.4f [nondim]\n\n",
               tfinal*time_nondim_to_dim/60.,
               tfinal*time_nondim_to_dim,
               tfinal);
@@ -7971,8 +7971,8 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
                                       mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t& sp,
                                       p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
                                       my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
-                                      p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t* &ghost,
-                                      my_p4est_node_neighbors_t* &ngbd, my_p4est_hierarchy_t* &hierarchy,
+                                      p4est_t* &p4est_n, p4est_nodes_t* &nodes_n, p4est_ghost_t* &ghost_n,
+                                      my_p4est_node_neighbors_t* &ngbd_n, my_p4est_hierarchy_t* &hierarchy_n,
                                       my_p4est_brick_t& brick, p4est_connectivity* &conn,
                                       vec_and_ptr_t& phi,
                                       vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
@@ -7980,10 +7980,10 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
                                       vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes){
 
   // Set everything to NULL at first:
-  p4est=NULL;
+  p4est_n=NULL;
   conn=NULL;
-  p4est=NULL; ghost=NULL;nodes=NULL;
-  hierarchy=NULL;ngbd=NULL;
+  p4est_n=NULL; ghost_n=NULL;nodes_n=NULL;
+  hierarchy_n=NULL;ngbd_n=NULL;
 
   phi.vec=NULL;
   T_l_n.vec=NULL; T_l_nm1.vec=NULL;
@@ -8002,24 +8002,24 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
   }
   PetscPrintf(mpi.comm(),"Load dir is:  %s \n",load_path);
 
-  load_state(mpi,load_path,&sp,p4est,nodes,ghost,conn,
+  load_state(mpi,load_path,&sp,p4est_n,nodes_n,ghost_n,conn,
              &phi.vec,&T_l_n.vec,&T_l_nm1.vec,&T_s_n.vec,
              v_n.vec,v_nm1.vec,&vorticity.vec);
 
   PetscPrintf(mpi.comm(),"State was loaded successfully from %s \n",load_path);
 
   // Update the neigborhood and hierarchy:
-  if(hierarchy!=NULL) {
-    delete hierarchy;
+  if(hierarchy_n!=NULL) {
+    delete hierarchy_n;
   }
-  if(ngbd!=NULL) {delete ngbd;}
+  if(ngbd_n!=NULL) {delete ngbd_n;}
 
-  hierarchy = new my_p4est_hierarchy_t(p4est,ghost,&brick);
-  ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
-  ngbd->init_neighbors();
+  hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, &brick);
+  ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
+  ngbd_n->init_neighbors();
 
   // Create the p4est at time np1 (this will be modified but is useful for initializing solvers):
-  p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
+  p4est_np1 = p4est_copy(p4est_n,P4EST_FALSE); // copy the grid but not the data
   ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_np1,ghost_np1);
   nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
@@ -8042,7 +8042,133 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
 
 
 // will become constructor (for class)
-void perform_initializations(){}
+void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t* sp,
+                             p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
+                             my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
+                             my_p4est_faces_t* &faces_np1, my_p4est_cell_neighbors_t* &ngbd_c_np1,
+                             p4est_t* &p4est_n, p4est_nodes_t* &nodes_n, p4est_ghost_t* &ghost_n,
+                             my_p4est_node_neighbors_t* &ngbd_n, my_p4est_hierarchy_t* &hierarchy_n,
+                             my_p4est_brick_t& brick, p4est_connectivity* &conn,
+                             my_p4est_navier_stokes_t* &ns,
+                             my_p4est_level_set_t* &ls,
+                             vec_and_ptr_t& phi, vec_and_ptr_t& phi_nm1,
+                             vec_and_ptr_t& phi_substrate, vec_and_ptr_t& phi_eff,
+                             vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
+                             vec_and_ptr_dim_t& T_l_d, vec_and_ptr_dim_t& T_s_d,
+                             vec_and_ptr_dim_t& jump, vec_and_ptr_dim_t& v_interface,
+                             vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
+                             vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes,
+                             double dxyz_smallest[P4EST_DIM], double& dxyz_close_to_interface,
+                             int load_tstep, int last_tstep,
+                             temperature_field* analytical_T[2],
+                             BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
+                             BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
+                             external_heat_source* external_heat_source_T[2],
+                             velocity_component* analytical_soln_v[P4EST_DIM],
+                             BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
+                             BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
+                             BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM],
+                             BC_INTERFACE_VALUE_PRESSURE& bc_interface_value_pressure,
+                             BC_WALL_VALUE_PRESSURE& bc_wall_value_pressure,
+                             BC_WALL_TYPE_PRESSURE& bc_wall_type_pressure,
+                             external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
+                             external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM],
+                             FILE* fich_errors, char name_errors[],
+                             FILE* fich_data, char name_data[],
+                             FILE* fich_mem, char name_mem[]){
+
+  setup_initial_parameters_and_report(mpi);
+
+  // -----------------------------------------------
+  // Perform grid and field initializations
+  // -----------------------------------------------
+  if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid and field initializations ... \n");
+
+  // Call the relevant initialization fxns
+  if(loading_from_previous_state){
+    initialize_grids_and_fields_from_load_state(load_tstep, mpi, *sp,
+                                                p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
+                                                p4est_n, nodes_n, ghost_n, ngbd_n, hierarchy_n, brick, conn,
+                                                phi, T_l_n, T_s_n, T_l_nm1,
+                                                v_n, v_nm1, vorticity, press_nodes);
+    ls = new my_p4est_level_set_t(ngbd_np1);
+  }
+  else{
+    initialize_grids(mpi, *sp,
+                     p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
+                     p4est_n, nodes_n, ghost_n, ngbd_n, hierarchy_n, brick, conn);
+    ls = new my_p4est_level_set_t(ngbd_np1);
+
+    initialize_fields(mpi,
+                      p4est_np1, nodes_np1, ngbd_np1, ls,
+                      phi, phi_nm1,
+                      phi_substrate, phi_eff,
+                      T_l_n, T_s_n, T_l_nm1,
+                      T_l_d, T_s_d, jump,
+                      v_interface,
+                      v_n, v_nm1,
+                      dxyz_smallest, dxyz_close_to_interface);
+
+    tstep = 0;
+    tn = tstart;
+  }
+  // ------------------------------------------------------------
+  // Initialize Navier Stokes solver:
+  // ------------------------------------------------------------
+  if(solve_navier_stokes){
+    initialize_ns_solver(ns, p4est_np1, ghost_np1, ngbd_np1, ngbd_n,
+                         hierarchy_np1, &brick,
+                         (example_uses_inner_LSF ? phi_eff:phi),
+                         v_n, v_nm1,
+                         faces_np1, ngbd_c_np1);
+  }
+
+  // ------------------------------------------------------------
+  // Compute the initial timestep:
+  // ------------------------------------------------------------
+
+  dxyz_min(p4est_np1, dxyz_smallest);
+  dxyz_close_to_interface = dxyz_close_to_interface_mult*max(dxyz_smallest[0],dxyz_smallest[1]);
+  compute_timestep(p4est_np1, nodes_np1,
+                   phi, v_interface,
+                   ns,
+                   dxyz_close_to_interface, dxyz_smallest,
+                   load_tstep, last_tstep);
+  // ------------------------------------------------------------
+  // Initialize relevant boundary condition objects:
+  // ------------------------------------------------------------
+  if(print_checkpoints)PetscPrintf(mpi.comm(),"Initializing all BCs/ICs/forcing terms ... \n");
+
+  initialize_all_relevant_bcs_ics_forcing_terms(analytical_T,
+                                                bc_interface_val_temp,
+                                                bc_wall_value_temp,
+                                                external_heat_source_T,
+                                                analytical_soln_v,
+                                                bc_interface_value_velocity,
+                                                bc_wall_value_velocity,
+                                                bc_wall_type_velocity,
+                                                bc_interface_value_pressure,
+                                                bc_wall_value_pressure,
+                                                bc_wall_type_pressure,
+                                                external_force_components,
+                                                external_force_components_with_BA);
+
+  // -----------------------------------------------
+  // Initialize files to output various data of interest:
+  // -----------------------------------------------
+  if(print_checkpoints)PetscPrintf(mpi.comm(),"Initializing output files ... \n");
+
+
+  initialize_error_files_for_test_cases(mpi, sp,
+                                        fich_errors, name_errors,
+                                        fich_data, name_data,
+                                        fich_mem, name_mem);
+
+
+
+  // ------------------------------------------------------------
+
+}
 
 
 // will become destructor (for class)
@@ -8192,6 +8318,8 @@ int main(int argc, char** argv) {
   my_p4est_hierarchy_t* hierarchy_np1;
   my_p4est_node_neighbors_t* ngbd_np1;
 
+  splitting_criteria_cf_and_uniform_band_t* sp;
+
   // Level set function(s):---------------------------
   vec_and_ptr_t phi;
   vec_and_ptr_t phi_nm1; // LSF for previous timestep... we must keep this so that hodge fields can be updated correctly in NS process
@@ -8298,6 +8426,16 @@ int main(int argc, char** argv) {
   double extension_band_use_;
   double extension_band_extend_;
 
+  // Files for outputting relevant information : ---------
+  FILE *fich_errors = NULL;
+  char name_errors[1000];
+
+  FILE *fich_data = NULL;
+  char name_data[1000];
+
+  FILE *fich_mem = NULL;
+  char name_mem[1000];
+
   // stopwatch
   parStopWatch w;
   w.start("Running example: stefan_with_fluids");
@@ -8305,8 +8443,6 @@ int main(int argc, char** argv) {
   // Begin loop through number of grid splits:
   // -----------------------------------------------
   for(int grid_res_iter=0;grid_res_iter<=num_splits;grid_res_iter++){
-    setup_initial_parameters_and_report(mpi);
-
     // -----------------------------------------------
     // Perform grid and field initializations
     // -----------------------------------------------
@@ -8320,6 +8456,8 @@ int main(int argc, char** argv) {
     // Initialize the load step (in event we use load)
     int load_tstep=-1;
 
+    int last_tstep=-1;
+
     splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,
                                                 lmax+grid_res_iter,
                                                 &initial_refinement_cf,
@@ -8332,96 +8470,25 @@ int main(int argc, char** argv) {
     conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
     double t_original_start = tstart;
 
-    // Call the relevant initialization fxns
-    if(loading_from_previous_state){
-      initialize_grids_and_fields_from_load_state(load_tstep, mpi, sp,
-                                                  p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
-                                                  p4est_n, nodes_n, ghost_n, ngbd_n, hierarchy_n, brick, conn,
-                                                  phi, T_l_n, T_s_n, T_l_nm1,
-                                                  v_n, v_nm1, vorticity, press_nodes);
-      ls = new my_p4est_level_set_t(ngbd_np1);
-    }
-    else{
-      initialize_grids(mpi, sp,
-                       p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
-                       p4est_n, nodes_n, ghost_n, ngbd_n, hierarchy_n, brick, conn);
-      ls = new my_p4est_level_set_t(ngbd_np1);
-
-      initialize_fields(mpi,
-                        p4est_np1, nodes_np1, ngbd_np1, ls,
-                        phi, phi_nm1,
-                        phi_substrate, phi_eff,
-                        T_l_n, T_s_n, T_l_nm1,
-                        T_l_d, T_s_d, jump,
-                        v_interface,
-                        v_n, v_nm1,
-                        dxyz_smallest, dxyz_close_to_interface);
-
-      tstep = 0;
-      tn = tstart;
-    }
-    // ------------------------------------------------------------
-    // Initialize Navier Stokes solver:
-    // ------------------------------------------------------------
-    if(solve_navier_stokes){
-      initialize_ns_solver(ns, p4est_np1, ghost_np1, ngbd_np1, ngbd_n,
-                           hierarchy_np1, &brick,
-                           (example_uses_inner_LSF ? phi_eff:phi),
-                           v_n, v_nm1,
-                           faces_np1, ngbd_c_np1);
-    }
-
-    // ------------------------------------------------------------
-    // Compute the initial timestep:
-    // ------------------------------------------------------------
-    // Initialize the integer which will keep track of what our last timestep will be:
-    int last_tstep=-1;
-
-    dxyz_min(p4est_np1, dxyz_smallest);
-    dxyz_close_to_interface = dxyz_close_to_interface_mult*max(dxyz_smallest[0],dxyz_smallest[1]);
-    compute_timestep(p4est_np1, nodes_np1,
-                     phi, v_interface,
-                     ns,
-                     dxyz_close_to_interface, dxyz_smallest,
-                     load_tstep, last_tstep);
-    // ------------------------------------------------------------
-    // Initialize relevant boundary condition objects:
-    // ------------------------------------------------------------
-    initialize_all_relevant_bcs_ics_forcing_terms(analytical_T,
-                                                  bc_interface_val_temp,
-                                                  bc_wall_value_temp,
-                                                  external_heat_source_T,
-                                                  analytical_soln_v,
-                                                  bc_interface_value_velocity,
-                                                  bc_wall_value_velocity,
-                                                  bc_wall_type_velocity,
-                                                  bc_interface_value_pressure,
-                                                  bc_wall_value_pressure,
-                                                  bc_wall_type_pressure,
-                                                  external_force_components,
-                                                  external_force_components_with_BA);
-
-    // -----------------------------------------------
-    // Initialize files to output various data of interest:
-    // -----------------------------------------------
-    if(print_checkpoints)PetscPrintf(mpi.comm(),"Initializing output files ... \n");
-    FILE *fich_errors;
-    char name_errors[1000];
-
-    FILE *fich_data;
-    char name_data[1000];
-
-    FILE *fich_mem;
-    char name_mem[1000];
-
-    initialize_error_files_for_test_cases(mpi, &sp,
-                                          fich_errors, name_errors,
-                                          fich_data, name_data,
-                                          fich_mem, name_mem);
-
-
-
-    // ------------------------------------------------------------
+    perform_initializations(mpi, &sp,
+                            p4est_np1, nodes_np1, ghost_np1,
+                            ngbd_np1, hierarchy_np1,
+                            faces_np1, ngbd_c_np1,
+                            p4est_n, nodes_n, ghost_n,
+                            ngbd_n, hierarchy_n,
+                            brick, conn,
+                            ns, ls,
+                            phi, phi_nm1, phi_substrate, phi_eff,
+                            T_l_n, T_s_n, T_l_nm1, T_l_d, T_s_d, jump, v_interface,
+                            v_n,v_nm1, vorticity, press_nodes,
+                            dxyz_smallest, dxyz_close_to_interface, load_tstep, last_tstep,
+                            analytical_T, bc_interface_val_temp, bc_wall_value_temp, external_heat_source_T,
+                            analytical_soln_v, bc_interface_value_velocity, bc_wall_value_velocity, bc_wall_type_velocity,
+                            bc_interface_value_pressure, bc_wall_value_pressure, bc_wall_type_pressure,
+                            external_force_components, external_force_components_with_BA,
+                            fich_errors, name_errors,
+                            fich_data, name_data,
+                            fich_mem, name_mem);
 
     // ---------------------------------------
     // Begin time loop
