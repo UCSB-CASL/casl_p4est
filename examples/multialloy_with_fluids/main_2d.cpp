@@ -120,10 +120,13 @@ DEFINE_PARAMETER(pl, double, save_every_dt, 1, "Saves vtk every dt amount of tim
 
 // Options to compute and save fluid forces to a file:
 DEFINE_PARAMETER(pl, bool, save_fluid_forces, false, "Saves fluid forces if true (default: false) \n");
-DEFINE_PARAMETER(pl, double, save_fluid_forces_every_dt, 0.01, "Saves fluid forces every dt amount of time in seconds of dimensional time (default is 1.0) \n");
+DEFINE_PARAMETER(pl, bool, save_area_data, false, "Save area data if true (default: false, but some examples will set this to true automatically)");
+DEFINE_PARAMETER(pl, double, save_data_every_dt, 0.01, "Saves fluid forces and/or area data every dt amount of time in seconds of dimensional time (default is 1.0) \n");
 
 // Options to track and output island numbers for an evolving geometry:
 DEFINE_PARAMETER(pl, bool, track_evolving_geometries, false, "Flag to track island numbers for the evolving geometry(ies) and output the island numbers to vtk and other information to a file in the same folder as the vtk info. Default: false. For use with the evolving porous media problem. \n");
+
+DEFINE_PARAMETER(pl, bool, wrap_up_simulation_if_solid_has_vanished, false, "If set to true, the simulation will check if the solid region has vanished and pause the simulation at that point \n");
 
 // Save state options
 DEFINE_PARAMETER(pl, int, save_state_every_iter, 10000, "Saves simulation state every n number of iterations (default is 500)");
@@ -222,7 +225,7 @@ bool interfacial_temp_bc_requires_normal;
 bool interfacial_vel_bc_requires_vint;
 
 bool example_uses_inner_LSF;
-bool example_requires_area_computation;
+//bool example_requires_area_computation;
 
 
 bool example_has_known_max_vint;
@@ -316,10 +319,10 @@ void select_solvers(){
 
     example_uses_inner_LSF = (example_ == ICE_AROUND_CYLINDER) || ((example_ == EVOLVING_POROUS_MEDIA) && use_inner_surface_porous_media);
 
-    example_requires_area_computation = (example_ == ICE_AROUND_CYLINDER) ||
+    save_area_data = (example_ == ICE_AROUND_CYLINDER) ||
                                         (example_ == MELTING_ICE_SPHERE) ||
                                         (example_ == MELTING_ICE_SPHERE_NAT_CONV) ||
-                                        (example_  ==DISSOLVING_DISK_BENCHMARK);
+                                        (example_  ==DISSOLVING_DISK_BENCHMARK) || save_area_data; // change to just option to compute and save area?
 
     do_we_solve_for_Ts = (example_ != DISSOLVING_DISK_BENCHMARK);
 
@@ -5534,60 +5537,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
 
 
-  // Elyce TO-DO: commenting out below for now, going to move fluid force and area computation to its own fxn, not do it here
-/*
-  // Compute forces (if we are doing that)
-  if((save_fluid_forces && compute_pressure_) || example_requires_area_computation){
-    double forces[P4EST_DIM];
 
-    if(save_fluid_forces && compute_pressure_){
-      ns->compute_forces(forces);
-    }
-
-    // If ice on substrate case, let's compute the area of the ice, and store that as well:
-    double ice_area = 0.0;
-    if(example_requires_area_computation){
-      // ELYCE DEBUGGING HERE
-      // Get total solid domain
-      // (including the substrate bulk -- Note: this will need to be subtracted later, but cyl area is a constant value so no need to compute it over and over):
-
-      // --> First, need to scale phi
-      VecScaleGhost(phi.vec, -1.0);
-
-      // --> Compute area of negative domain (aka ice bulk)
-      ice_area = area_in_negative_domain(p4est_np1, nodes_np1, phi.vec);
-
-      //--> Scale phi back to normal:
-      VecScaleGhost(phi.vec, -1.0);
-      // For melting ice sphere example, check if the ice is melted -- if so, halt the simulation:
-      if((example_ == MELTING_ICE_SPHERE)||(example_== MELTING_ICE_SPHERE_NAT_CONV)){
-        if((fabs(ice_area) < 0.1*dxyz_close_to_interface) || (ice_area<0.)){
-          tfinal = tn;
-        }
-      }
-    }
-
-    // To-do : this may be the source of erroneous first times being reported in fluid force files -- at the first step, dt might be initialized to something much larger than what the eventual dt will use. Might need to do this differently
-
-
-    ierr = PetscFOpen(mpi_comm, name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
-    if(save_fluid_forces && example_requires_area_computation){
-      PetscPrintf(mpi_comm,"tn = %g, tfinal = %g, fx = %g, fy = %g , A = %0.6f \n",tn,tfinal,forces[0],forces[1],ice_area);
-      ierr = PetscFPrintf(mpi_comm, fich_fluid_forces,"%g %g %g %g\n",tn,forces[0],forces[1],ice_area);CHKERRXX(ierr);
-    }
-    else if(save_fluid_forces && !example_requires_area_computation){
-      PetscPrintf(mpi_comm,"tn = %g, fx = %g, fy = %g \n",tn,forces[0],forces[1]);
-      ierr = PetscFPrintf(mpi_comm, fich_fluid_forces,"%g %g %g \n",tn,forces[0],forces[1]);CHKERRXX(ierr);
-    }
-    else if(!save_fluid_forces && example_requires_area_computation){
-      PetscPrintf(mpi_comm,"tn = %g, A = %0.6f \n",tn, ice_area);
-      ierr = PetscFPrintf(mpi_comm, fich_fluid_forces,"%g %g\n",tn,ice_area);CHKERRXX(ierr);
-    }
-    ierr = PetscFClose(mpi_comm, fich_fluid_forces); CHKERRXX(ierr);
-    PetscPrintf(mpi_comm,"forces saved \n");
-
-  }
-*/
   // Check the L2 norm of u to make sure nothing is blowing up
   NS_norm = ns->get_max_L2_norm_u();
 
@@ -5654,12 +5604,12 @@ bool are_we_saving_vtk(double tstep_, double tn_,bool is_load_step, int& out_idx
   return out;
 }
 
-bool are_we_saving_fluid_forces(double& tn_,bool is_load_step, int& out_idx, bool get_new_outidx){
+bool are_we_saving_data(double& tn_,bool is_load_step, int& out_idx, bool get_new_outidx){
   bool out = false;
-  if(save_fluid_forces){
-      out= ((int (floor(tn_/save_fluid_forces_every_dt) )) !=out_idx) && (!is_load_step);
+  if(save_fluid_forces || save_area_data){
+      out = ((int (floor(tn_/save_data_every_dt) )) !=out_idx) && (!is_load_step);
       if(get_new_outidx){
-        out_idx = int (floor(tn_/save_fluid_forces_every_dt) );
+        out_idx = int (floor(tn_/save_data_every_dt) );
       }
   }
   return out;
@@ -5675,8 +5625,8 @@ void setup_and_solve_navier_stokes_problem(mpi_environment_t& mpi, my_p4est_navi
                                            KSPType face_solver_type, PCType pc_face,
                                            KSPType cell_solver_type, PCType pc_cell,
                                            my_p4est_faces_t* faces_np1,
-                                           bool& did_crash,
-                                           int& out_idx, int& pressure_save_out_idx,
+                                           bool& did_crash, bool& compute_pressure_to_save,
+                                           int& out_idx, int& data_save_out_idx,
                                            BoundaryConditions2D bc_velocity[P4EST_DIM], BoundaryConditions2D& bc_pressure,
                                            BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
                                            BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
@@ -5787,10 +5737,10 @@ void setup_and_solve_navier_stokes_problem(mpi_environment_t& mpi, my_p4est_navi
   // -------------------------------
   if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Navier-Stokes solution step... \n");
 
-  bool compute_pressure_to_save = false;
+  compute_pressure_to_save = false;
   compute_pressure_to_save =
-      are_we_saving_vtk(tstep,tn, false,out_idx,false) ||
-      are_we_saving_fluid_forces(tn, false, pressure_save_out_idx, true);
+      are_we_saving_vtk(tstep, tn, false, out_idx,false) ||
+      are_we_saving_data(tn, false, data_save_out_idx, true);
 
   compute_pressure_to_save = compute_pressure_to_save || example_is_a_test_case;
   // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
@@ -5800,18 +5750,9 @@ void setup_and_solve_navier_stokes_problem(mpi_environment_t& mpi, my_p4est_navi
   navier_stokes_step(ns, p4est_np1, nodes_np1,
                      v_n, v_nm1, vorticity, press_nodes,
                      dxyz_close_to_interface,
-                     face_solver_type,pc_face,cell_solver_type,pc_cell,
+                     face_solver_type, pc_face, cell_solver_type, pc_cell,
                      faces_np1, compute_pressure_to_save, did_crash);
 
-//  if(did_crash){
-//    PetscPrintf(mpi.comm(),"Outputting crash files ... \n");
-//    MPI_Barrier(mpi.comm());
-//    save_fields_to_vtk(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
-//                       0,0, phi, phi_eff, phi_substrate, T_l_n, T_s_n, v_interface,
-//                       v_n, press_nodes, vorticity, island_numbers, true);
-//    MPI_Barrier(mpi.comm());
-//    MPI_Abort(mpi.comm(),0);
-//  }
 
   // -------------------------------
   // Clear out the interfacial BC for the next timestep, if needed
@@ -7024,6 +6965,72 @@ void save_test_case_errors_and_vtk(mpi_environment_t& mpi, splitting_criteria_cf
 }
 
 
+
+void save_fluid_forces_and_or_area_data(mpi_environment_t& mpi,
+                                        p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+                                        my_p4est_navier_stokes_t* ns,
+                                        vec_and_ptr_t& phi, vec_and_ptr_t& press_nodes,
+                                        bool compute_pressure,
+                                        FILE* fich_data, char name_data[], int& last_tstep){
+
+  PetscErrorCode ierr;
+
+  double forces[P4EST_DIM];
+  double solid_area;
+  if(save_fluid_forces || save_area_data){
+    // Open file
+    ierr = PetscFOpen(mpi.comm(), name_data, "a", &fich_data);
+    // Print time to console
+    ierr = PetscPrintf(mpi.comm(), "tn = %g \n", tn);
+    // Print time to file
+    ierr = PetscFPrintf(mpi.comm(), fich_data, "%g ", tn);
+  }
+
+  if(save_area_data || wrap_up_simulation_if_solid_has_vanished){
+    // Compute the solid area:
+    VecScaleGhost(phi.vec, -1.);
+    solid_area = area_in_negative_domain(p4est_np1, nodes_np1, phi.vec);
+    VecScaleGhost(phi.vec, -1.);
+
+    if(save_area_data){
+      // Print area to console
+      ierr = PetscPrintf(mpi.comm(), "A = %g \n", solid_area);
+
+      // Print area to file
+      ierr = PetscFPrintf(mpi.comm(), fich_data, "%g ", solid_area);
+    }
+
+    if(wrap_up_simulation_if_solid_has_vanished){
+      // Check if the solid has vanished:
+      if(solid_area<EPS){
+        PetscPrintf(mpi.comm(), "The solid region has vanished, wrapping up now ... \n");
+        last_tstep = tstep;
+      }
+    }
+  }
+
+
+  if(save_fluid_forces){
+    // Compute the fluid forces
+    ns->compute_forces(forces);
+
+    // Print force data to console
+    ierr = PetscPrintf(mpi.comm(), "fx = %g, fy = %g \n", forces[0], forces[1]);
+
+    // Print area to file
+    ierr = PetscFPrintf(mpi.comm(), fich_data, "%g %g ", forces[0], forces[1]);
+
+  }
+
+
+  if(save_fluid_forces || save_area_data){
+    // End the line and Close the file
+    ierr = PetscFPrintf(mpi.comm(), fich_data, "\n");
+    ierr = PetscFClose(mpi.comm(), fich_data); CHKERRXX(ierr);
+    PetscPrintf(mpi.comm(), "The data has been saved ... \n");
+  }
+}
+
 // --------------------------------------------------------------------------------------------------------------
 // Functions for saving or loading the simulation state:
 // --------------------------------------------------------------------------------------------------------------
@@ -7571,7 +7578,7 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
   case MELTING_ICE_SPHERE_NAT_CONV:
   case MELTING_ICE_SPHERE:
   case ICE_AROUND_CYLINDER:{
-    if(save_fluid_forces || example_requires_area_computation){
+    if(save_fluid_forces || save_area_data){
 
 
       switch(problem_dimensionalization_type){
@@ -7620,18 +7627,22 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
           throw std::invalid_argument("Output file initialization: unknown problem dimensionalization type \n");
         }
       }
+      // TO-DO: adjust this logic appropriately
+      ierr = PetscFOpen(mpi.comm(),name_data,"w",&fich_data); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(),fich_data,"tn ");CHKERRXX(ierr);
 
-      if(no_flow || !save_fluid_forces){
-        ierr = PetscFOpen(mpi.comm(),name_data,"w",&fich_data); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(),fich_data,"time A \n");CHKERRXX(ierr);
-        ierr = PetscFClose(mpi.comm(),fich_data); CHKERRXX(ierr);
+      if(save_area_data){
+        ierr = PetscFPrintf(mpi.comm(),fich_data,"A ");CHKERRXX(ierr);
       }
-      else{
-        ierr = PetscFOpen(mpi.comm(),name_data,"w",&fich_data); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(),fich_data,"time fx fy A \n");CHKERRXX(ierr);
-        ierr = PetscFClose(mpi.comm(),fich_data); CHKERRXX(ierr);}
-    }
+      if(save_fluid_forces){
+        ierr = PetscFPrintf(mpi.comm(),fich_data,"fx fy ");CHKERRXX(ierr);
+
+      }
+      ierr = PetscFPrintf(mpi.comm(),fich_data,"\n");CHKERRXX(ierr);
+      ierr = PetscFClose(mpi.comm(),fich_data); CHKERRXX(ierr);
+
     break;
+  }
   }
 
   default:{
@@ -7643,6 +7654,7 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
 
 
 }
+
 
 
 
@@ -8298,7 +8310,8 @@ int main(int argc, char** argv) {
 
     // Initialize output file numbering:
     int out_idx = -1;
-    int pressure_save_out_idx = -1;
+    int data_save_out_idx = -1;
+    bool compute_pressure_ = false; // will be updated by the NS
 
     // Initialize the load step (in event we use load)
     int load_tstep=-1;
@@ -8534,7 +8547,8 @@ int main(int argc, char** argv) {
                                               dxyz_close_to_interface,
                                               face_solver_type, pc_face, cell_solver_type, pc_cell,
                                               faces_np1,
-                                              did_crash, out_idx, pressure_save_out_idx,
+                                              did_crash, compute_pressure_,
+                                              out_idx, data_save_out_idx,
                                               bc_velocity, bc_pressure,
                                               bc_interface_value_velocity,
                                               bc_wall_value_velocity, bc_wall_type_velocity,
@@ -8547,35 +8561,17 @@ int main(int argc, char** argv) {
         }
       } // End of "if solve navier stokes"
 
-      // Elye TO-DO: commenting out below, going to move all that sort of stuff to its own function
-      /*
-      // If not solving NS but you still want area data:
-
-      // Elyce to-do: clean this up --> need to just make a function that saves area and/or fluid forces
-      if((example_requires_area_computation) && (save_fluid_forces) && (no_flow)){
-        // ELYCE DEBUGGING HERE
-        // Get total solid domain
-        // (including the substrate bulk -- Note: this will need to be subtracted later, but cyl area is a constant value so no need to compute it over and over):
-
-        //PetscPrintf(mpi.comm(),"We are in here ! ");
-        // --> First, need to scale phi
-        VecScaleGhost(phi.vec,-1.0);
-
-        // --> Compute area of negative domain (aka ice bulk)
-        double ice_area;
-        ice_area = area_in_negative_domain(p4est_np1,nodes_np1,phi.vec);
-
-        //--> Scale phi back to normal:
-        VecScaleGhost(phi.vec,-1.0);
-        PetscPrintf(mpi.comm(),"tn = %g, A = %0.6f \n",tn+dt,ice_area);
-        ierr = PetscFOpen(mpi.comm(),name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
-
-        ierr = PetscFPrintf(mpi.comm(),fich_fluid_forces,"%g %g\n",tn+dt,ice_area);CHKERRXX(ierr);
-        ierr = PetscFClose(mpi.comm(),fich_fluid_forces); CHKERRXX(ierr);
-        PetscPrintf(mpi.comm(),"forces saved \n");
-
+      // --------------------------------------------------------------------------------------------------------------
+      // Save the fluid forces and/or area
+      // --------------------------------------------------------------------------------------------------------------
+      // TO-DO: note: I dont think data save out idx gets used anywhere, we could probably do without it but I'll keep it for now just in case it has some later use
+      if(are_we_saving_data(tn, tstep==load_tstep, data_save_out_idx, false) || wrap_up_simulation_if_solid_has_vanished){
+        save_fluid_forces_and_or_area_data(mpi,
+                                           p4est_np1, nodes_np1,
+                                           ns,
+                                           phi, press_nodes, compute_pressure_,
+                                           fich_data, name_data, last_tstep);
       }
-      */
 
       // --------------------------------------------------------------------------------------------------------------
       // Save simulation state every specified number of iterations
@@ -8609,7 +8605,6 @@ int main(int argc, char** argv) {
       bool are_we_saving = false;
 
       are_we_saving = are_we_saving_vtk( tstep, tn, tstep==load_tstep, out_idx, true) /*&& (tstep>0)*/;
-      printf("outidx outside: %d \n", out_idx);
       // ---------------------------
       // (b) Save to VTK if applicable:
       // ---------------------------
