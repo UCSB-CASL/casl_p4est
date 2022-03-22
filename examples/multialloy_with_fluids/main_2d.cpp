@@ -6199,84 +6199,8 @@ void create_and_compute_phi_sub_and_phi_eff(p4est_t* p4est_np1, p4est_nodes_t* n
 
 }
 // --------------------------------------------------------------------------------------------------------------
-// Functions for saving to VTK:
+// Function for saving to VTK:
 // --------------------------------------------------------------------------------------------------------------
-void save_everything(p4est_t *p4est_np1, p4est_nodes_t *nodes_np1, p4est_ghost_t *ghost_np1, my_p4est_node_neighbors_t* ngbd_np1,
-                     vec_and_ptr_t& phi, vec_and_ptr_t& phi_eff, vec_and_ptr_t& phi_substrate, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_dim_t& v_int,
-                     vec_and_ptr_dim_t& v_n_NS, vec_and_ptr_t& press, vec_and_ptr_t& vorticity, vec_and_ptr_t& island_numbers, char* filename, bool is_crash){
-// Things we want to save:
-/*
- * LSF
- * LSF2 for ex 2
- * Tl
- * Ts
- * v_interface
- * v NS
- * pressure
- * vorticity
- * smoke -TAKEN OUT
- * */
-
-
-  // Calculate curvature:
-  vec_and_ptr_t kappa;
-  vec_and_ptr_dim_t normal;
-
-  kappa.create(p4est_np1, nodes_np1);
-  normal.create(p4est_np1, nodes_np1);
-
-  VecScaleGhost(phi.vec,-1.0);
-  compute_normals(*ngbd_np1, phi.vec,normal.vec);
-  compute_mean_curvature(*ngbd_np1, normal.vec,kappa.vec);
-
-  VecScaleGhost(phi.vec,-1.0);
-
-  // Save data:
-  std::vector<Vec_for_vtk_export_t> point_fields;
-  point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
-  point_fields.push_back(Vec_for_vtk_export_t(kappa.vec, "kappa"));
-
-  //phi substrate and phi eff
-  if(example_uses_inner_LSF){
-      point_fields.push_back(Vec_for_vtk_export_t(phi_eff.vec, "phi_eff"));
-      point_fields.push_back(Vec_for_vtk_export_t(phi_substrate.vec, "phi_sub"));
-  }
-  // stefan related fields
-  if(solve_stefan){
-      point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl"));
-    if(do_we_solve_for_Ts){
-        point_fields.push_back(Vec_for_vtk_export_t(T_s_n.vec, "Ts"));
-    }
-    point_fields.push_back(Vec_for_vtk_export_t(v_int.vec[0], "v_interface_x"));
-    point_fields.push_back(Vec_for_vtk_export_t(v_int.vec[1], "v_interface_y"));
-  }
-
-  // Elyce TO-DO: what is the purpose of the no_flow flag ?
-  if(solve_navier_stokes && !no_flow){
-      point_fields.push_back(Vec_for_vtk_export_t(v_n_NS.vec[0], "u"));
-      point_fields.push_back(Vec_for_vtk_export_t(v_n_NS.vec[1], "v"));
-      point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
-      point_fields.push_back(Vec_for_vtk_export_t(press.vec, "pressure"));
-  }
-  if(track_evolving_geometries && !is_crash){
-    point_fields.push_back(Vec_for_vtk_export_t(island_numbers.vec, "island_no"));
-  }
-
-  std::vector<Vec_for_vtk_export_t> cell_fields = {};
-
-  my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ghost_np1,
-                               P4EST_TRUE,P4EST_TRUE,filename,
-                               point_fields, cell_fields);
-
-
-  point_fields.clear();
-  cell_fields.clear();
-
-  kappa.destroy();
-  normal.destroy();
-
-}
-
 void save_fields_to_vtk(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                        p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1,
                        int out_idx, int grid_res_iter,
@@ -6289,9 +6213,9 @@ void save_fields_to_vtk(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
   int mpi_comm = p4est_np1->mpicomm;
 
   // If it's a test case, we ignore, we have our own special save functions for those cases that have error checking as well
-  bool test_cases = example_is_a_test_case;
+
   char output[1000];
-  if(!test_cases){
+  if(!example_is_a_test_case){
     const char* out_dir = getenv("OUT_DIR_VTK");
     if(!out_dir){
         throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
@@ -6320,18 +6244,68 @@ void save_fields_to_vtk(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
 
     if(is_crash){
       sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_CRASH", output, lmin+grid_res_iter, lmax+grid_res_iter);
-      save_everything(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
-                      phi, phi_eff, phi_substrate,T_l_n,T_s_n,v_interface,
-                      v_n,press_nodes,vorticity,
-                      island_numbers, output, is_crash);
+
     }
     else{
       sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outidx_%d", output, lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-      save_everything(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
-                      phi,phi_eff, phi_substrate,T_l_n,T_s_n,v_interface,
-                      v_n,press_nodes,vorticity,
-                      island_numbers,output, is_crash);
     }
+
+    // Calculate curvature:
+    vec_and_ptr_t kappa;
+    vec_and_ptr_dim_t normal;
+
+    kappa.create(p4est_np1, nodes_np1);
+    normal.create(p4est_np1, nodes_np1);
+
+    VecScaleGhost(phi.vec,-1.0);
+    compute_normals(*ngbd_np1, phi.vec,normal.vec);
+    compute_mean_curvature(*ngbd_np1, normal.vec,kappa.vec);
+
+    VecScaleGhost(phi.vec,-1.0);
+
+    // Save data:
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+    point_fields.push_back(Vec_for_vtk_export_t(kappa.vec, "kappa"));
+
+    //phi substrate and phi eff
+    if(example_uses_inner_LSF){
+      point_fields.push_back(Vec_for_vtk_export_t(phi_eff.vec, "phi_eff"));
+      point_fields.push_back(Vec_for_vtk_export_t(phi_substrate.vec, "phi_sub"));
+    }
+    // stefan related fields
+    if(solve_stefan){
+      point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl"));
+      if(do_we_solve_for_Ts){
+        point_fields.push_back(Vec_for_vtk_export_t(T_s_n.vec, "Ts"));
+      }
+      point_fields.push_back(Vec_for_vtk_export_t(v_interface.vec[0], "v_interface_x"));
+      point_fields.push_back(Vec_for_vtk_export_t(v_interface.vec[1], "v_interface_y"));
+    }
+
+    // Elyce TO-DO: what is the purpose of the no_flow flag ?
+    if(solve_navier_stokes && !no_flow){
+      point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "u"));
+      point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "v"));
+      point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
+      point_fields.push_back(Vec_for_vtk_export_t(press_nodes.vec, "pressure"));
+    }
+    if(track_evolving_geometries && !is_crash){
+      point_fields.push_back(Vec_for_vtk_export_t(island_numbers.vec, "island_no"));
+    }
+
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ghost_np1,
+                                 P4EST_TRUE,P4EST_TRUE, output,
+                                 point_fields, cell_fields);
+
+
+    point_fields.clear();
+    cell_fields.clear();
+
+    kappa.destroy();
+    normal.destroy();
 
     if(print_checkpoints) PetscPrintf(mpi_comm,"Finishes saving to VTK \n");
   }
@@ -7792,15 +7766,6 @@ void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical
     interface_bc_pressure(); // sets the interfacial bc type for pressure
     bc_wall_value_pressure.t = tn;
   }
-
-
-
-
-
-
-
-
-
 }
 
 
@@ -8685,8 +8650,6 @@ int main(int argc, char** argv) {
       }
 
 
-
-
       // ---------------------------------------------------
       // Advance the LSF/Update the grid :
       // ---------------------------------------------------
@@ -8781,7 +8744,7 @@ int main(int argc, char** argv) {
       // ----------------------------------------------------
       // Check that vint is still within allowable range:
       // -----------------------------------------------------
-      if(solve_stefan){ // ELYCE TO-DO: probably want to move this to after the vint computation, along with crash files?
+      if(solve_stefan){
         if(v_interface_max_norm>v_int_max_allowed){
           PetscPrintf(mpi.comm(),"Interfacial velocity has exceeded its max allowable value \n"
                                   "Current max norm is %g, and max allowed is : %g \n", v_interface_max_norm, v_int_max_allowed);
