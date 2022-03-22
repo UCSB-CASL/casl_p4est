@@ -1479,6 +1479,10 @@ DEFINE_PARAMETER(pl,bool,perturb_initial_flow,false,"Perturb initial flow? For m
 void simulation_time_info(){
   t_ramp /= time_nondim_to_dim; // divide input in seconds by time_nondim_to_dim because we are going from dim--> nondim
   save_every_dt/=time_nondim_to_dim; // convert save_every_dt input (in seconds) to nondimensional time
+
+
+  dt_max_allowed = ((xmax-xmin)/nx)/(pow(2., lmax))*10.;
+
   switch(example_){
     case FRANK_SPHERE:{
       tfinal = 1.01;
@@ -1491,12 +1495,6 @@ void simulation_time_info(){
     case ICE_AROUND_CYLINDER: {
       // ice solidifying around isothermally cooled cylinder
       tfinal = (40.*60.)/(time_nondim_to_dim); // 40 minutes
-      if(save_every_dt>0.){
-        dt_max_allowed = save_every_dt - EPS;
-      }
-      else{
-        dt_max_allowed = 0.1;
-      }
 
       tstart = 0.0;
       break;
@@ -1567,7 +1565,12 @@ void simulation_time_info(){
       tstart = 0.0;
       break;
     }
-    }
+  }
+
+  // Overwrite dt max allowed if we are saving a certain dt:
+  if(save_using_dt){
+    dt_max_allowed = min(dt_max_allowed, save_every_dt - EPS);
+  }
 
   if((duration_overwrite>0.) || (duration_overwrite_nondim>0.)){
     if((duration_overwrite>0.) && (duration_overwrite_nondim>0.)){
