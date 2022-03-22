@@ -7031,6 +7031,36 @@ void save_fluid_forces_and_or_area_data(mpi_environment_t& mpi,
   }
 }
 
+void do_mem_safety_check(mpi_environment_t& mpi, splitting_criteria_t& sp,
+                         p4est_nodes_t* nodes_np1, bool are_we_saving,
+                         FILE* fich_mem, char name_mem[]){
+
+  PetscLogDouble mem_safety_check;
+  PetscErrorCode ierr;
+
+  MPI_Barrier(mpi.comm());
+  PetscMemoryGetCurrentUsage(&mem_safety_check);
+
+
+  int no = nodes_np1->num_owned_indeps;
+  MPI_Allreduce(MPI_IN_PLACE,&no,1,MPI_INT,MPI_SUM,mpi.comm());
+
+
+  MPI_Allreduce(MPI_IN_PLACE,&mem_safety_check,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
+
+  PetscPrintf(mpi.comm(),"\n"
+                          "Memory safety check:\n"
+                          " - Current memory usage is : %0.9e GB \n"
+                          " - Number of grid nodes is: %d \n"
+                          " - Percent of safety limit: %0.2f % \n \n \n",
+              mem_safety_check*1.e-9,
+              no,
+              (mem_safety_check)/(mem_safety_limit)*100.0);
+
+    ierr = PetscFOpen(mpi.comm(),name_mem,"a",&fich_mem); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(),fich_mem,"%d %g %d %d \n",tstep, mem_safety_check, no, are_we_saving);CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
+}
 // --------------------------------------------------------------------------------------------------------------
 // Functions for saving or loading the simulation state:
 // --------------------------------------------------------------------------------------------------------------
@@ -7520,8 +7550,9 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi){
 
 void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
                                            splitting_criteria_cf_and_uniform_band_t* sp,
-                                           FILE* fich_errors,
-                                           char name_errors[], FILE* fich_data, char name_data[]){
+                                           FILE* fich_errors, char name_errors[],
+                                           FILE* fich_data, char name_data[],
+                                           FILE* fich_mem, char name_mem[]){
   PetscErrorCode ierr;
 
   // Get the output directory to put the error files:
@@ -7651,7 +7682,15 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
   }
 
 
+  // Initialize memory file if we are doing a memory safety check:
+  if(check_mem_every_iter>0){
+    sprintf(name_mem,"%s/memory_check_lmin_%d_lmax_%d.dat",
+            out_dir_files, sp->min_lvl, sp->max_lvl);
 
+    ierr = PetscFOpen(mpi.comm(), name_mem, "w", &fich_mem); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(),fich_mem, "tstep mem num_nodes vtk_bool \n");CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(), fich_mem); CHKERRXX(ierr);
+  }
 
 }
 
@@ -8406,9 +8445,14 @@ int main(int argc, char** argv) {
 
     FILE *fich_data;
     char name_data[1000];
+
+    FILE *fich_mem;
+    char name_mem[1000];
+
     initialize_error_files_for_test_cases(mpi, &sp,
                                           fich_errors, name_errors,
-                                          fich_data, name_data);
+                                          fich_data, name_data,
+                                          fich_mem, name_mem);
 
 
 
@@ -8450,13 +8494,7 @@ int main(int argc, char** argv) {
         PetscPrintf(mpi.comm(),"Current time info : \n");
         w.read_duration_current();
       }
-      if(solve_stefan){ // ELYCE TO-DO: probably want to move this to after the vint computation, along with crash files?
-          if(v_interface_max_norm>v_int_max_allowed){
-              PetscPrintf(mpi.comm(),"Interfacial velocity has exceeded its max allowable value \n"
-                                     "Max allowed is : %g \n",v_int_max_allowed);
-              MPI_Abort(mpi.comm(),1);
-            }
-      }
+
 
       // -------------------------------
       // Set up analytical ICs/BCs/forcing terms if needed
@@ -8740,57 +8778,27 @@ int main(int argc, char** argv) {
         }
       } // end of "if tstep !=last tstep"
 
+      // ----------------------------------------------------
+      // Check that vint is still within allowable range:
+      // -----------------------------------------------------
+      if(solve_stefan){ // ELYCE TO-DO: probably want to move this to after the vint computation, along with crash files?
+        if(v_interface_max_norm>v_int_max_allowed){
+          PetscPrintf(mpi.comm(),"Interfacial velocity has exceeded its max allowable value \n"
+                                  "Current max norm is %g, and max allowed is : %g \n", v_interface_max_norm, v_int_max_allowed);
+          MPI_Abort(mpi.comm(),1);
+        }
+      }
       // -------------------------------
       // Do a memory safety check as user specified
       // -------------------------------
-      PetscLogDouble mem_safety_check;
-      if((check_mem_every_iter>0) && (tstep%check_mem_every_iter)==0){
-        MPI_Barrier(mpi.comm());
-        PetscMemoryGetCurrentUsage(&mem_safety_check);
-
-
-        int no = nodes_np1->num_owned_indeps;
-        MPI_Allreduce(MPI_IN_PLACE,&no,1,MPI_INT,MPI_SUM,mpi.comm());
-
-
-        MPI_Allreduce(MPI_IN_PLACE,&mem_safety_check,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
-
-        PetscPrintf(mpi.comm(),"\n"
-                               "Memory safety check:\n"
-                               " - Current memory usage is : %0.9e GB \n"
-                               " - Number of grid nodes is: %d \n"
-                               " - Percent of safety limit: %0.2f % \n \n \n",
-                    mem_safety_check*1.e-9,
-                    no,
-                    (mem_safety_check)/(mem_safety_limit)*100.0);
-
-        // Output file for NS test case errors:
-        const char* out_dir_mem = getenv("OUT_DIR_FILES");
-        if(!out_dir_mem){
-            throw std::invalid_argument("You need to set the environment variable OUT_DIR_FILES to save memory usage info");
-          }
-        FILE* fich_mem;
-        char name_mem[1000];
-        sprintf(name_mem,"%s/memory_check_Re_%0.2f_lmin_%d_lmax_%d_advection_order_%d.dat",
-                out_dir_mem,Re,lmin+grid_res_iter,lmax+grid_res_iter,advection_sl_order);
-
-        if(tstep==0){
-          ierr = PetscFOpen(mpi.comm(),name_mem,"w",&fich_mem); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(),fich_mem,"tstep mem num_nodes vtk_bool\n"
-                                                  "%d %g %d %d \n",tstep, mem_safety_check, no, are_we_saving);CHKERRXX(ierr);
-          ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
-        }
-        else{
-          ierr = PetscFOpen(mpi.comm(),name_mem,"a",&fich_mem); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(),fich_mem,"%d %g %d %d \n",tstep, mem_safety_check, no, are_we_saving);CHKERRXX(ierr);
-          ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
-        }
+      if((check_mem_every_iter>0) && ((tstep%check_mem_every_iter)==0)){
+        do_mem_safety_check(mpi, sp, nodes_np1, are_we_saving, fich_mem, name_mem);
       }
 
       // -------------------------------
       // Update time:
       // -------------------------------
-      if(tstep==0){dt_nm1 = dt;}
+//      if(tstep==0){dt_nm1 = dt;}
       tn+=dt;
       tstep++;
     } // <-- End of for loop through time
