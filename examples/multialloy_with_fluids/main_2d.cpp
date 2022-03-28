@@ -1485,7 +1485,7 @@ void simulation_time_info(){
 
   switch(example_){
     case FRANK_SPHERE:{
-      tfinal = 1.01;
+      tfinal = 1.1;
       dt_max_allowed = 0.05;
       tstart = 1.0;
       break;
@@ -6391,13 +6391,13 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
 
   // Print Errors to application output:
   PetscPrintf(p4est->mpicomm,"\n----------------\n Errors on frank sphere: \n --------------- \n");
-  PetscPrintf(p4est->mpicomm,"dxyz close to interface: %0.2f \n", dxyz_close_to_interface);
+  PetscPrintf(p4est->mpicomm,"dxyz close to interface: %0.2e \n", dxyz_close_to_interface);
 
   int num_nodes = nodes->indep_nodes.elem_count;
   PetscPrintf(p4est->mpicomm,"Number of grid points used: %d \n \n", num_nodes);
 
 
-  PetscPrintf(p4est->mpicomm," Linf on phi: %0.4f \n Linf on T_l: %0.4f \n Linf on T_s: %0.4f \n Linf on v_int: %0.4f \n", global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3]);
+  PetscPrintf(p4est->mpicomm," Linf on phi: %0.4e \n Linf on T_l: %0.4e \n Linf on T_s: %0.4e \n Linf on v_int: %0.4e \n", global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3]);
 
   // Print errors to file:
   ierr = PetscFOpen(p4est->mpicomm,name,"a",&fich);CHKERRXX(ierr);
