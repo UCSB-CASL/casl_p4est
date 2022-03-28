@@ -5372,26 +5372,26 @@ void setup_analytical_ics_and_bcs_for_this_tstep(BC_INTERFACE_VALUE_TEMP* bc_int
                                              external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM],
                                                  CF_DIM* external_forces_NS[P4EST_DIM]){
   // Necessary for coupled case:
-  if((tstep>0)){
-    // Note, this object does not actually get used directly, but
-    // forcing terms for some examples depend upon it existing and being updated
 
-    // IN PARTICULAR-- forcing term for liquid temperature problem also depends on this,
-    // which is why it currently gets updated before the poisson problem
-    for(unsigned char d=0;d<P4EST_DIM;d++){
-      analytical_soln_v[d]->t = tn;
-    }
+  // Note, this object does not actually get used directly, but
+  // forcing terms for some examples depend upon it existing and being updated
+
+  // IN PARTICULAR-- forcing term for liquid temperature problem also depends on this,
+  // which is why it currently gets updated before the poisson problem
+  for(unsigned char d=0;d<P4EST_DIM;d++){
+    analytical_soln_v[d]->t = tn+dt;
   }
+
 
   // -------------------------------
   // Update BC objects for stefan problem:
   // -------------------------------
 
   for(unsigned char d=0;d<2;d++){
-    analytical_T[d]->t = tn;
-    bc_interface_val_temp[d]->t = tn;
-    bc_wall_value_temp[d]->t = tn;
-    external_heat_source_T[d]->t = tn;
+    analytical_T[d]->t = tn+dt;
+    bc_interface_val_temp[d]->t = tn+dt;
+    bc_wall_value_temp[d]->t = tn+dt;
+    external_heat_source_T[d]->t = tn+dt;
   }
 
   // If not, we use the curvature and neighbors, but we have to wait till curvature is computed in Poisson step to apply this, so it is applied later
@@ -5400,19 +5400,19 @@ void setup_analytical_ics_and_bcs_for_this_tstep(BC_INTERFACE_VALUE_TEMP* bc_int
   // Update analytical objects for the NS problem:
   // -------------------------------
   foreach_dimension(d){
-    bc_interface_value_velocity[d]->t = tn;
-    bc_wall_value_velocity[d]->t = tn;
+    bc_interface_value_velocity[d]->t = tn+dt;
+    bc_wall_value_velocity[d]->t = tn+dt;
 
     if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-      external_force_components_with_BA[d]->t = tn;
+      external_force_components_with_BA[d]->t = tn+dt;
       external_forces_NS[d] = external_force_components_with_BA[d];
     }
     else{
-      external_force_components[d]->t = tn;
+      external_force_components[d]->t = tn+dt;
       external_forces_NS[d] = external_force_components[d];
     }
   }
-  bc_wall_value_pressure.t=tn;
+  bc_wall_value_pressure.t=tn+dt;
 
 }
 
@@ -6335,13 +6335,13 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
     node_xyz_fr_n(n,p4est,nodes,xyz);
 
     r = sqrt(SQR(xyz[0]) + SQR(xyz[1]));
-    sval = r/sqrt(tn);
+    sval = r/sqrt(tn+dt);
 
-    phi_ana.ptr[n] = s0*sqrt(tn) - r;
+    phi_ana.ptr[n] = s0*sqrt(tn+dt) - r;
 
     T_ana.ptr[n] = frank_sphere_solution_t(sval);
 
-    v_interface_ana.ptr[n] = s0/(2.0*sqrt(tn));
+    v_interface_ana.ptr[n] = s0/(2.0*sqrt(tn+dt));
 
     // Error on phi and v_int:
     if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
@@ -6388,7 +6388,7 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
 
   // Print errors to file:
   ierr = PetscFOpen(p4est->mpicomm,name,"a",&fich);CHKERRXX(ierr);
-  PetscFPrintf(p4est->mpicomm,fich,"%e %e %d %e %e %e %e %d %e \n", tn, dt, tstep,
+  PetscFPrintf(p4est->mpicomm,fich,"%e %e %d %e %e %e %e %d %e \n", tn+dt, dt, tstep,
                                                                     global_Linf_errors[0], global_Linf_errors[1],
                                                                     global_Linf_errors[2], global_Linf_errors[3],
                                                                     num_nodes, dxyz_close_to_interface);
@@ -6453,7 +6453,7 @@ void save_navier_stokes_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_gh
   velocity_component* analytical_soln_comp[P4EST_DIM];
   for(unsigned char d=0;d<P4EST_DIM;++d){
     analytical_soln_comp[d] = new velocity_component(d);
-    analytical_soln_comp[d]->t = tn;
+    analytical_soln_comp[d]->t = tn+dt;
   }
   CF_DIM *analytical_soln[P4EST_DIM] = {DIM(analytical_soln_comp[0],analytical_soln_comp[1],analytical_soln_comp[2])};
 
@@ -6604,18 +6604,18 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
 
   for(unsigned char d=0;d<2;++d){
     analytical_soln_temp[d] = new temperature_field(d);
-    analytical_soln_temp[d]->t = tn;
+    analytical_soln_temp[d]->t = tn+dt;
   }
 
   for(unsigned char d=0;d<P4EST_DIM;++d){
     analytical_soln_velNS[d] = new velocity_component(d);
-    analytical_soln_velNS[d]->t = tn;
+    analytical_soln_velNS[d]->t = tn+dt;
 
     analytical_soln_velINT[d] = new interfacial_velocity(d,analytical_soln_temp);
-    analytical_soln_velINT[d]->t = tn;
+    analytical_soln_velINT[d]->t = tn+dt;
   }
 
-  pressure_field_analytical.t=tn;
+  pressure_field_analytical.t=tn+dt;
   CF_DIM *analytical_soln_velNS_cf[P4EST_DIM] = {DIM(analytical_soln_velNS[0],analytical_soln_velNS[1],analytical_soln_velNS[2])};
   CF_DIM *analytical_soln_velINT_cf[P4EST_DIM] = {DIM(analytical_soln_velINT[0],analytical_soln_velINT[1],analytical_soln_velINT[2])};
   CF_DIM *analytical_soln_temp_cf[2] = {analytical_soln_temp[LIQUID_DOMAIN],analytical_soln_temp[SOLID_DOMAIN]};
@@ -6748,7 +6748,7 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
                                           "%g %g %g "
                                           "%g %g %g "
                                           "%g "
-                                          "%d %g \n", tn, dt, tstep,
+                                          "%d %g \n", tn+dt, dt, tstep,
                                                      global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],
                                                      global_Linf_errors[3],global_Linf_errors[4],global_Linf_errors[5],
                                                      global_Linf_errors[6],
@@ -7683,7 +7683,7 @@ void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical
   if(analytical_IC_BC_forcing_term){
     for(unsigned char d=0;d<P4EST_DIM;d++){
       analytical_soln_v[d] = new velocity_component(d);
-      analytical_soln_v[d]->t = tn;
+      analytical_soln_v[d]->t = tn+dt;
     }
   }
   // ------------------------------
@@ -7694,7 +7694,7 @@ void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical
     for(unsigned char d=0;d<2;++d){
       if(analytical_IC_BC_forcing_term){ // TO-DO: make all incrementing consistent
         analytical_T[d] = new temperature_field(d);
-        analytical_T[d]->t = tn;
+        analytical_T[d]->t = tn+dt;
       }
     }
     // Set the bc interface type for temperature:
@@ -7705,7 +7705,7 @@ void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical
     for(unsigned char d=0;d<2;++d){
       if(analytical_IC_BC_forcing_term){
         external_heat_source_T[d] = new external_heat_source(d,analytical_T,analytical_soln_v);
-        external_heat_source_T[d]->t = tn;
+        external_heat_source_T[d]->t = tn+dt;
         bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(NULL,NULL,analytical_T,d);
         bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d,analytical_T);
       }
@@ -7727,22 +7727,22 @@ void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical
       if(analytical_IC_BC_forcing_term){
         // Interface conditions values:
         bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL,analytical_soln_v);
-        bc_interface_value_velocity[d]->t = tn;
+        bc_interface_value_velocity[d]->t = tn+dt;
 
         // Wall conditions values:
         bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d,analytical_soln_v);
-        bc_wall_value_velocity[d]->t = tn;
+        bc_wall_value_velocity[d]->t = tn+dt;
 
         if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
           for(unsigned char domain=0;domain<2;++domain){
             // External forcing terms:
             external_force_components_with_BA[d] = new external_force_per_unit_volume_component_with_boussinesq_approx(domain,d,analytical_T,analytical_soln_v);
-            external_force_components_with_BA[d]->t = tn;
+            external_force_components_with_BA[d]->t = tn+dt;
           }
         }else{
           // External forcing terms:
           external_force_components[d] = new external_force_per_unit_volume_component(d,analytical_soln_v);
-          external_force_components[d]->t = tn;
+          external_force_components[d]->t = tn+dt;
         }
       }
       else{
@@ -7754,7 +7754,7 @@ void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical
       }
     }
     interface_bc_pressure(); // sets the interfacial bc type for pressure
-    bc_wall_value_pressure.t = tn;
+    bc_wall_value_pressure.t = tn+dt;
   }
 }
 
@@ -8723,6 +8723,7 @@ int main(int argc, char** argv) {
                                       dxyz_close_to_interface,
                                       are_we_saving, out_idx);
       }
+      PetscPrintf(mpi.comm(), "At checking errors, tn = %f \n", tn);
 
 
       // ---------------------------------------------------
@@ -8837,8 +8838,10 @@ int main(int argc, char** argv) {
       // Update time:
       // -------------------------------
 //      if(tstep==0){dt_nm1 = dt;}
+
       tn+=dt;
       tstep++;
+      PetscPrintf(mpi.comm(), "At end of loop, tn = %f \n", tn);
     } // <-- End of for loop through time
 
   PetscPrintf(mpi.comm(),"Time loop exited \n");
