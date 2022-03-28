@@ -440,6 +440,7 @@ std::vector<double> rvals;
 
 void set_geometry(){
   switch(example_){
+    printf("SET GEOM CALLED \n");
     case FRANK_SPHERE: {
       // Corresponds to the Frank Sphere 2d analytical solution to the Stefan problem
       // Was added to verify that the Stefan problem was being solved correctly independent of flow
@@ -1481,6 +1482,7 @@ void simulation_time_info(){
   save_every_dt/=time_nondim_to_dim; // convert save_every_dt input (in seconds) to nondimensional time
 
 
+  // dt_max_allowed will be set according to the grid size. If a different value is desired, the user may overwrite it below by simply defining it as something else in the relevant example block
   dt_max_allowed = ((xmax-xmin)/nx)/(pow(2., lmax))*10.;
 
   switch(example_){
@@ -1503,20 +1505,14 @@ void simulation_time_info(){
     case MELTING_ICE_SPHERE:{
       //tfinal = (2.*60)/(time_nondim_to_dim); // 2 minutes
       tfinal = (1000.0*60)/(time_nondim_to_dim);; // 1000 in nondim time for refinement test
-      //dt_max_allowed = 0.9*save_every_dt;
-      dt_max_allowed = save_every_dt - EPS;
       tstart = 0.0;
 
       break;
     }
     case DISSOLVING_DISK_BENCHMARK:{
       tstart = 0.0;
-      if(save_every_dt>0.){
-        dt_max_allowed = save_every_dt - EPS;
-      }
-      else{
-        dt_max_allowed = 10.0;
-      }
+      dt_max_allowed = 10.0;
+
       dt = 1.0e-3; // initial timestep
       break;
     }
@@ -1524,44 +1520,35 @@ void simulation_time_info(){
     case NS_GIBOU_EXAMPLE:{
       tfinal = 0.025;
     //tfinal = PI/3.;
-      dt_max_allowed = 1.e-2;
+
       tstart = 0.0;
       break;
     }
     case PLANE_POIS_FLOW:{
       tfinal = 100.;
-      dt_max_allowed = 1.e-2;
       tstart=0.0;
       break;
     }
 
     case COUPLED_PROBLEM_EXAMPLE:{
       tfinal = PI/3.;//PI/2.;
-      dt_max_allowed = 1.0e-1;
       tstart = 0.0;
       break;
     }
     case COUPLED_TEST_2:{
       tfinal = 0.75;//1.;
-      dt_max_allowed=1.0e-1;
       tstart=0.0;
       break;
     }
     case DENDRITE_TEST:{
       tfinal = 10000000./time_nondim_to_dim;
       tstart=0.;
-      printf("dt max allowed = %f \n", dt_max_allowed);
-      if(save_every_dt>0.){
-        dt_max_allowed = save_every_dt - EPS;;
-      }
-      else{
-        dt_max_allowed = 1000.; // unrestricted for now
-      }
+      dt_max_allowed = 1000.; // unrestricted for now
+
       break;
     }
     case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
       tfinal = PI/3.;//PI/2.;
-      dt_max_allowed = 1.0e-1;
       tstart = 0.0;
       break;
     }
@@ -6896,7 +6883,7 @@ void save_test_case_errors_and_vtk(mpi_environment_t& mpi, splitting_criteria_cf
                                    bool are_we_saving, int out_idx){
 
   PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n", sp.min_lvl, sp.max_lvl);
-  printf("outidx = %d \n", out_idx);
+  PetscPrintf(mpi.comm(), "vtk outidx = %d \n", out_idx);
 
   // Get the vtk output directory:
   const char* out_dir_test_vtk = getenv("OUT_DIR_VTK");
@@ -7404,7 +7391,7 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
 
 
 void setup_initial_parameters_and_report(mpi_environment_t& mpi){
-  select_solvers();
+  select_solvers(); // Note, this function must be called "BEFORE" set_geometry()
 
   // ------------------------------
   // Make sure your flags are set to solve at least one of the problems:
@@ -8045,7 +8032,7 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
 
 
 // will become constructor (for class)
-void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t* sp,
+void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t* &sp, int grid_res_iter,
                              p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
                              my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
                              my_p4est_faces_t* &faces_np1, my_p4est_cell_neighbors_t* &ngbd_c_np1,
@@ -8086,6 +8073,17 @@ void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_u
   // Perform grid and field initializations
   // -----------------------------------------------
   if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid and field initializations ... \n");
+
+  sp = new splitting_criteria_cf_and_uniform_band_t(lmin+grid_res_iter,
+                                              lmax+grid_res_iter,
+                                              &initial_refinement_cf,
+                                              uniform_band, 2.0);
+  const int n_xyz[]      = { nx,  ny,  0};
+  const double xyz_min[] = {xmin, ymin, 0};
+  const double xyz_max[] = {xmax,  ymax,  0};
+  const int periodic[]   = { px,  py,  0};
+
+  conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   // Call the relevant initialization fxns
   if(loading_from_previous_state){
@@ -8175,7 +8173,7 @@ void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_u
 
 
 // will become destructor (for class)
-void perform_final_destructions(mpi_environment_t &mpi, p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
+void perform_final_destructions(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t* &sp ,p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
                                 my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
                                 p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t* &ghost,
                                 my_p4est_node_neighbors_t* &ngbd, my_p4est_hierarchy_t* &hierarchy,
@@ -8205,6 +8203,7 @@ void perform_final_destructions(mpi_environment_t &mpi, p4est_t* &p4est_np1, p4e
   }
 
   delete ls;
+  delete sp;
 
   if(solve_stefan){
     T_l_n.destroy();
@@ -8461,19 +8460,25 @@ int main(int argc, char** argv) {
 
     int last_tstep=-1;
 
-    splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,
-                                                lmax+grid_res_iter,
-                                                &initial_refinement_cf,
-                                                uniform_band, 2.0);
-    const int n_xyz[]      = { nx,  ny,  0};
-    const double xyz_min[] = {xmin, ymin, 0};
-    const double xyz_max[] = {xmax,  ymax,  0};
-    const int periodic[]   = { px,  py,  0};
 
-    conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
+//    splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,
+//                                                lmax+grid_res_iter,
+//                                                &initial_refinement_cf,
+//                                                uniform_band, 2.0);
+//    const int n_xyz[]      = { nx,  ny,  0};
+//    const double xyz_min[] = {xmin, ymin, 0};
+//    const double xyz_max[] = {xmax,  ymax,  0};
+//    const int periodic[]   = { px,  py,  0};
+
+//    conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
+//    printf("prescribed min/max --> (xmin, ymin) = (%f, %f), (xmax, ymax) = (%f, %f) \n ", xmin, ymin, xmax, ymax);
+//    printf("passed min/max --> (xmin, ymin) = (%f, %f), (xmax, ymax) = (%f, %f) \n", xyz_min[0], xyz_min[1],
+//           xyz_max[0], xyz_max[1]);
+//    printf("brick min/max --> (xmin, ymin) = (%f, %f), (xmax, ymax) = (%f, %f) \n", brick.xyz_min[0], brick.xyz_min[1], brick.xyz_max[0], brick.xyz_max[1]);
+
     double t_original_start = tstart;
 
-    perform_initializations(mpi, &sp,
+    perform_initializations(mpi, sp, grid_res_iter,
                             p4est_np1, nodes_np1, ghost_np1,
                             ngbd_np1, hierarchy_np1,
                             faces_np1, ngbd_c_np1,
@@ -8662,7 +8667,7 @@ int main(int argc, char** argv) {
                   advection_sl_order,example_);
 
           save_state(mpi,output,num_save_states,
-                     &sp,p4est_np1,nodes_np1,
+                     sp,p4est_np1,nodes_np1,
                      phi.vec,T_l_n.vec,T_l_nm1.vec,T_s_n.vec,
                      v_n.vec,v_nm1.vec,vorticity.vec);
 
@@ -8706,7 +8711,7 @@ int main(int argc, char** argv) {
       // ---------------------------
 
       if(example_is_a_test_case){
-        save_test_case_errors_and_vtk(mpi, sp,
+        save_test_case_errors_and_vtk(mpi, *sp,
                                       p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
                                       ns,
                                       phi,
@@ -8755,7 +8760,7 @@ int main(int argc, char** argv) {
       if(tstep!=last_tstep){
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid update process ... \n"
                                                      "Refine by d2T = %s \n",refine_by_d2T? "true": "false");
-        update_the_grid(sp, p4est_np1, nodes_np1, ngbd_np1, ghost_np1, hierarchy_np1,
+        update_the_grid(*sp, p4est_np1, nodes_np1, ngbd_np1, ghost_np1, hierarchy_np1,
                         p4est_n, nodes_n, ngbd_n, ghost_n, hierarchy_n,
                         brick, ns,
                         phi, phi_nm1, v_interface, phi_substrate, phi_eff, phi_dd,
@@ -8825,7 +8830,7 @@ int main(int argc, char** argv) {
       // Do a memory safety check as user specified
       // -------------------------------
       if((check_mem_every_iter>0) && ((tstep%check_mem_every_iter)==0)){
-        do_mem_safety_check(mpi, sp, nodes_np1, are_we_saving, fich_mem, name_mem);
+        do_mem_safety_check(mpi, *sp, nodes_np1, are_we_saving, fich_mem, name_mem);
       }
 
       // -------------------------------
@@ -8839,7 +8844,7 @@ int main(int argc, char** argv) {
   PetscPrintf(mpi.comm(),"Time loop exited \n");
 
   // Do the final destructions!
-  perform_final_destructions(mpi, p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
+  perform_final_destructions(mpi, sp, p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
                              p4est_n, nodes_n, ghost_n, ngbd_n, hierarchy_n,
                              brick, conn,
                              ls,
