@@ -7400,16 +7400,23 @@ void perform_one_timestep(mpi_environment_t &mpi, splitting_criteria_cf_and_unif
                           my_p4est_faces_t* &faces_np1, my_p4est_cell_neighbors_t* &ngbd_c_np1,
                           p4est_t* &p4est_n, p4est_nodes_t* &nodes_n, p4est_ghost_t* &ghost_n,
                           my_p4est_node_neighbors_t* &ngbd_n, my_p4est_hierarchy_t* &hierarchy_n,
-                          my_p4est_brick_t& brick, p4est_connectivity* &conn,
+                          my_p4est_brick_t& brick,
                           my_p4est_navier_stokes_t* &ns,
                           my_p4est_level_set_t* &ls,
                           vec_and_ptr_t& phi, vec_and_ptr_t& phi_nm1,
                           vec_and_ptr_t& phi_substrate, vec_and_ptr_t& phi_eff,
+                          vec_and_ptr_t& phi_solid,
+                          vec_and_ptr_dim_t& phi_dd, vec_and_ptr_dim_t& phi_solid_dd, vec_and_ptr_dim_t& phi_substrate_dd,
+                          vec_and_ptr_dim_t& normal, vec_and_ptr_t& curvature,
+                          vec_and_ptr_t& island_numbers,
                           vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
+                          vec_and_ptr_t& T_l_backtrace, vec_and_ptr_t& T_l_backtrace_nm1,
+                          vec_and_ptr_t& rhs_Tl, vec_and_ptr_t& rhs_Ts,
                           vec_and_ptr_dim_t& T_l_d, vec_and_ptr_dim_t& T_s_d,
+                          vec_and_ptr_dim_t& T_l_dd,
                           vec_and_ptr_dim_t& jump, vec_and_ptr_dim_t& v_interface,
                           vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
-                          vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes,
+                          vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes, vec_and_ptr_t& vorticity_refine,
                           double dxyz_smallest[P4EST_DIM], double& dxyz_close_to_interface,
                           int load_tstep, int last_tstep,
                           temperature_field* analytical_T[2],
@@ -7423,11 +7430,369 @@ void perform_one_timestep(mpi_environment_t &mpi, splitting_criteria_cf_and_unif
                           BC_INTERFACE_VALUE_PRESSURE& bc_interface_value_pressure,
                           BC_WALL_VALUE_PRESSURE& bc_wall_value_pressure,
                           BC_WALL_TYPE_PRESSURE& bc_wall_type_pressure,
+                          BoundaryConditions2D bc_velocity[P4EST_DIM], BoundaryConditions2D& bc_pressure,
                           external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
                           external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM],
+                          CF_DIM* external_forces_NS[P4EST_DIM],
+                          my_p4est_poisson_nodes_mls_t* &solver_Tl, my_p4est_poisson_nodes_mls_t* &solver_Ts, int& cube_refinement,
+                          PCType& pc_face, KSPType& face_solver_type, PCType& pc_cell, KSPType& cell_solver_type,
+                          interpolation_method& interp_bw_grids,
                           FILE* fich_errors, char name_errors[],
                           FILE* fich_data, char name_data[],
-                          FILE* fich_mem, char name_mem[]){
+                          FILE* fich_mem, char name_mem[],
+                          double& cfl_NS_steady, double& hodge_percentage_steady,
+                          double& t_original_start,
+                          double& extension_band_use_, double& extension_band_extend_, double& min_volume_,
+                          int& out_idx, bool& compute_pressure_, int& data_save_out_idx,
+                          PetscErrorCode& ierr){
+
+  // ---------------------------------------
+  // Handle any modifications to cfl, dt, vint, or bcs related with "startup" conditions
+  // ---------------------------------------
+  handle_any_startup_t_dt_and_bc_cases(mpi, cfl_NS_steady, hodge_percentage_steady);
+
+  // ---------------------------------------
+  // Print iteration information:
+  // ---------------------------------------
+  int num_nodes = nodes_np1->num_owned_indeps;
+  MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
+  ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
+                                 "Iteration %d , Time: %0.3f [nondim] "
+                                 "= Time: %0.3f [nondim] "
+                                 "= %0.3f [sec] "
+                                 "= %0.3f [min],"
+                                 " Timestep: %0.3e [nondim] = %0.3e [sec],"
+                                 " Percent Done : %0.2f %"
+                                 " \n ------------------------------------------- \n"
+                                 "Number of nodes : %d \n \n",
+                     tstep,tn,tn,tn*time_nondim_to_dim,tn*(time_nondim_to_dim)/60.,
+                     dt, dt*(time_nondim_to_dim),
+                     ((tn-t_original_start)/(tfinal-t_original_start))*100.0,num_nodes);
+
+
+//  if((timing_every_n>0) && (tstep%timing_every_n == 0)) {
+//    PetscPrintf(mpi.comm(),"Current time info : \n");
+//    w.read_duration_current();
+//  }
+
+
+  // -------------------------------
+  // Set up analytical ICs/BCs/forcing terms if needed
+  // -------------------------------
+      if(analytical_IC_BC_forcing_term) {
+    if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up analytical ICs/BCs/forcing terms... \n");
+    setup_analytical_ics_and_bcs_for_this_tstep(bc_interface_val_temp, bc_wall_value_temp,
+                                                analytical_T, external_heat_source_T,
+                                                analytical_soln_v, bc_interface_value_velocity, bc_wall_value_velocity,
+                                                bc_wall_value_pressure,
+                                                external_force_components, external_force_components_with_BA,
+                                                external_forces_NS);
+  }
+
+  // ------------------------------------------------------------
+  // (1) Poisson Problem at Nodes (for temp and/or conc scalar fields):
+  // Setup and solve a Poisson problem on both the liquid and solidified subdomains
+  // ------------------------------------------------------------
+  if(solve_stefan){
+    setup_and_solve_poisson_problem(mpi,
+                                    p4est_np1, nodes_np1, ngbd_np1,
+                                    p4est_n, nodes_n, ngbd_n,
+                                    phi, phi_solid, phi_dd, phi_solid_dd,
+                                    phi_substrate, phi_substrate_dd,
+                                    normal, curvature,
+                                    T_l_n, T_s_n,
+                                    T_l_nm1, T_l_backtrace, T_l_backtrace_nm1,
+                                    v_n, v_nm1,
+                                    rhs_Tl, rhs_Ts,
+                                    bc_interface_val_temp, bc_wall_value_temp,
+                                    analytical_T, external_heat_source_T,
+                                    solver_Tl, solver_Ts, cube_refinement);
+
+  } // end of "if solve stefan"
+
+  // ------------------------------------------------------------
+  // (2) Computation of the interfacial velocity
+  // ------------------------------------------------------------
+  // (2a) Extend Fields Across Interface (if solving Stefan):
+  // -- Note: we do not extend NS velocity fields bc NS solver handles that internally
+  // ------------------------------------------------------------
+  // Get smallest grid size: (this gets used in all examples at some point)
+  dxyz_min(p4est_np1, dxyz_smallest);
+
+  dxyz_close_to_interface = dxyz_close_to_interface_mult*max(dxyz_smallest[0],dxyz_smallest[1]);
+  ls->update(ngbd_np1);
+  if(solve_stefan){
+    // ------------------------------------------------------------
+    // Define some variables needed to specify how to extend across the interface:
+    // ------------------------------------------------------------
+
+    min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
+    extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
+    extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
+
+    extend_relevant_fields(p4est_np1, nodes_np1, ngbd_np1, *ls,
+                           phi, phi_substrate, phi_eff,
+                           T_l_n, T_s_n,
+                           extension_band_use_, extension_band_extend_);
+    // -------------------------------------------------------------------------
+    // (2b) Actually compute the interfacial velocity (Stefan): -- do now so it can be used for
+    // NS boundary condition
+    // -------------------------------------------------------------------------
+
+    if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing interfacial velocity ... \n");
+    v_interface.destroy();
+    v_interface.create(p4est_np1,nodes_np1);
+
+
+    compute_interfacial_velocity(T_l_n, T_s_n,
+                                 T_l_d, T_s_d,
+                                 jump, v_interface,
+                                 phi, phi_eff, phi_substrate,
+                                 p4est_np1, nodes_np1, ngbd_np1,
+                                 extension_band_extend_);
+  } // end of "if solve stefan"
+
+
+  // ---------------------------------------------------------------------------
+  // (3) Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
+  // ---------------------------------------------------------------------------
+  if (solve_navier_stokes){
+    bool did_crash=false;
+    setup_and_solve_navier_stokes_problem(mpi, ns,
+                                          p4est_np1, nodes_np1, ngbd_np1,
+                                          phi, phi_eff,
+                                          v_n, v_nm1,
+                                          vorticity, press_nodes,
+                                          v_interface, T_l_n,
+                                          dxyz_close_to_interface,
+                                          face_solver_type, pc_face, cell_solver_type, pc_cell,
+                                          faces_np1,
+                                          did_crash, compute_pressure_,
+                                          out_idx, data_save_out_idx,
+                                          bc_velocity, bc_pressure,
+                                          bc_interface_value_velocity,
+                                          bc_wall_value_velocity, bc_wall_type_velocity,
+                                          bc_interface_value_pressure, bc_wall_value_pressure, bc_wall_type_pressure,
+                                          external_forces_NS, external_force_components, external_force_components_with_BA);
+    if(did_crash){
+      save_fields_to_vtk(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
+                         out_idx, grid_res_iter, phi, phi_eff, phi_substrate,
+                         T_l_n, T_s_n, v_interface, v_n, press_nodes, vorticity, island_numbers, true);
+    }
+  } // End of "if solve navier stokes"
+
+  // --------------------------------------------------------------------------------------------------------------
+  // Save the fluid forces and/or area
+  // --------------------------------------------------------------------------------------------------------------
+  // TO-DO: note: I dont think data save out idx gets used anywhere, we could probably do without it but I'll keep it for now just in case it has some later use
+  if(are_we_saving_data(tn, tstep==load_tstep, data_save_out_idx, false) || wrap_up_simulation_if_solid_has_vanished){
+    save_fluid_forces_and_or_area_data(mpi,
+                                       p4est_np1, nodes_np1,
+                                       ns,
+                                       phi, press_nodes, compute_pressure_,
+                                       fich_data, name_data, last_tstep);
+  }
+
+
+  // --------------------------------------------------------------------------------------------------------------
+  // Saving to VTK: either every specified number of iterations, or every specified dt:
+  // Note: we do this after extension of fields to make visualization nicer
+  // --------------------------------------------------------------------------------------------------------------
+  // (Saving-a) Determine if we are saving this timestep:
+  // ---------------------------
+  bool are_we_saving = false;
+
+  are_we_saving = are_we_saving_vtk( tstep, tn, tstep==load_tstep, out_idx, true) /*&& (tstep>0)*/;
+  // ---------------------------
+  // (Saving-b) Save to VTK if applicable:
+  // ---------------------------
+  if(are_we_saving){
+    // Get the island numbers to save if we want that
+    if(track_evolving_geometries){
+      island_numbers.create(p4est_np1, nodes_np1);
+      track_evolving_geometry(p4est_np1, nodes_np1, ngbd_np1,
+                              phi, island_numbers, out_idx);
+    }
+
+    save_fields_to_vtk(p4est_np1,nodes_np1,ghost_np1,ngbd_np1, out_idx,grid_res_iter,
+                       phi, phi_eff, phi_substrate,T_l_n,T_s_n,
+                       v_interface,
+                       v_n, press_nodes, vorticity,
+                       island_numbers);
+
+    if(track_evolving_geometries){
+      island_numbers.destroy();
+    }
+  } // end of if "are we saving"
+
+  // ---------------------------
+  // (Saving-c) Check errors on validation cases if relevant,
+  // save errors to vtk if we are saving this timestep
+  // ---------------------------
+
+  if(example_is_a_test_case){
+    save_test_case_errors_and_vtk(mpi, *sp,
+                                  p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
+                                  ns,
+                                  phi,
+                                  T_l_n, T_s_n,
+                                  v_interface,
+                                  v_n,
+                                  press_nodes, vorticity,
+                                  fich_errors, name_errors,
+                                  dxyz_close_to_interface,
+                                  are_we_saving, out_idx);
+  }
+
+
+
+
+  // ---------------------------------------------------
+  // (4) Advance the LSF and (5) Update the grid:
+  // ---------------------------------------------------
+  /* In Coupled case: advect the LSF and update the grid according to vorticity, d2T/dd2, and phi
+       * In Stefan case:  advect the LSF and update the grid according to phi
+       * In NS case:      update the grid according to phi (no advection)
+      */
+  // --------------------------------
+  // (4/5a) Compute the timestep
+  // (needed for the grid advection, and will be used as timestep for np1 step)
+  // --------------------------------
+  dt_nm1 = dt; // Slide the timestep
+
+  // Compute stefan timestep:
+  char stefan_timestep[1000];
+  sprintf(stefan_timestep,"Computed interfacial velocity: \n"
+                           " - Computational : %0.3e  "
+                           "- Physical : %0.3e [m/s]  "
+                           "- Physical : %0.3f  [mm/s] \n",
+          v_interface_max_norm,
+          v_interface_max_norm*vel_nondim_to_dim,
+          v_interface_max_norm*vel_nondim_to_dim*1000.);
+
+  compute_timestep(p4est_np1, nodes_np1,
+                   phi, v_interface,
+                   ns, dxyz_close_to_interface, dxyz_smallest,
+                   load_tstep, last_tstep); // this function modifies the variable dt
+
+
+
+  if(tstep!=last_tstep){
+    //-------------------------------------------------------------
+    // (4/5b) Update the grids so long as this is not the last timestep:
+    //-------------------------------------------------------------
+    if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid update process ... \n"
+                              "Refine by d2T = %s \n",refine_by_d2T? "true": "false");
+    update_the_grid(*sp, p4est_np1, nodes_np1, ngbd_np1, ghost_np1, hierarchy_np1,
+                    p4est_n, nodes_n, ngbd_n, ghost_n, hierarchy_n,
+                    brick, ns,
+                    phi, phi_nm1, v_interface, phi_substrate, phi_eff, phi_dd,
+                    vorticity, vorticity_refine, T_l_n, T_l_dd);
+
+    // -------------------------------
+    // (4/5c) Reinitialize the LSF on the new grid (if it has been advected):
+    // -------------------------------
+    if(print_checkpoints) PetscPrintf(mpi.comm(),"Reinitializing LSF... \n");
+    ls->update(ngbd_np1);
+    perform_reinitialization(mpi.comm(), *ls, phi);
+
+    // Regularize the front (if we are doing that)
+    if(use_regularize_front){
+      PetscPrintf(mpi.comm(), "Calling regularlize front: \n");
+      regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi);
+    }
+
+    // Check collapse on the substrate (if we are doing that)
+    if(example_uses_inner_LSF && use_collapse_onto_substrate){
+      PetscPrintf(mpi.comm(), "Checking collapse \n ");
+      //          if(start_w_merged_grains){regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi_substrate.vec);}
+      check_collapse_on_substrate(p4est_np1,nodes_np1,ngbd_np1, phi, phi_substrate);
+    }
+
+    //------------------------------------------------------
+    // (4/5d) Destroy substrate LSF and phi_eff (if used) and re-create for upcoming timestep:
+    //------------------------------------------------------
+    if(example_uses_inner_LSF){
+      phi_substrate.destroy();
+      phi_eff.destroy();
+      create_and_compute_phi_sub_and_phi_eff(p4est_np1, nodes_np1,
+                                             ls,
+                                             phi, phi_substrate, phi_eff);
+    }
+
+    // ---------------------------------------------------
+    // (4/5e) Interpolate Values onto New Grid:
+    // ---------------------------------------------------
+
+    if(print_checkpoints) PetscPrintf(mpi.comm(),"Interpolating fields to new grid ... \n");
+
+    interpolate_fields_onto_new_grid(T_l_n, T_s_n,
+                                     v_interface, v_n,
+                                     nodes_np1, p4est_np1, ngbd_n, interp_bw_grids);
+    if(solve_navier_stokes){
+      ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,
+                                               v_n.vec, v_nm1.vec,
+                                               p4est_np1, nodes_np1, ghost_np1,
+                                               ngbd_np1,
+                                               faces_np1,ngbd_c_np1,
+                                               hierarchy_np1);
+    }
+    if(print_checkpoints) PetscPrintf(mpi.comm(),"Done. \n");
+  } // end of "if tstep !=last tstep"
+
+
+  // ----------------------------------------------------
+  // Check that vint is still within allowable range:
+  // -----------------------------------------------------
+  if(solve_stefan){
+    if(v_interface_max_norm>v_int_max_allowed){
+      PetscPrintf(mpi.comm(),"Interfacial velocity has exceeded its max allowable value \n"
+                              "Current max norm is %g, and max allowed is : %g \n", v_interface_max_norm, v_int_max_allowed);
+      MPI_Abort(mpi.comm(),1);
+    }
+  }
+  // -------------------------------
+  // Do a memory safety check as user specified
+  // -------------------------------
+  if((check_mem_every_iter>0) && ((tstep%check_mem_every_iter)==0)){
+    do_mem_safety_check(mpi, *sp, nodes_np1, are_we_saving, fich_mem, name_mem);
+  }
+
+  // -------------------------------
+  // Update time:
+  // -------------------------------
+  tn+=dt;
+  tstep++;
+
+  // --------------------------------------------------------------------------------------------------------------
+  // Save simulation state every specified number of iterations
+  // We save the state here to be consistent with how states are loaded -- a state that is loaded will be loaded as if its an initial condition, and then the temperature problem will be solved, and so on and so forth.
+  // Thus we save the state here, since the natural next step would be as described above
+  // --------------------------------------------------------------------------------------------------------------
+  if(tstep>0 && ((tstep%save_state_every_iter)==0) && tstep!=load_tstep){
+    char output[1000];
+    const char* out_dir_coupled = getenv("OUT_DIR_SAVE_STATE");
+    if(!out_dir_coupled){
+      throw std::invalid_argument("You need to set the output directory for save states: OUT_DIR_SAVE_STATE");
+    }
+    PetscPrintf(mpi.comm(),"Beginning save state process... \n");
+    sprintf(output,
+            "%s/save_states_output_lmin_%d_lmax_%d_advection_order_%d_example_%d",
+            out_dir_coupled,
+            lmin+grid_res_iter,lmax+grid_res_iter,
+            advection_sl_order,example_);
+
+    save_state(mpi, output, num_save_states,
+               sp,
+               p4est_np1, nodes_np1,
+               p4est_n, nodes_n,
+               phi.vec, T_l_n.vec, T_l_nm1.vec, T_s_n.vec,
+               v_n.vec, v_nm1.vec/*, vorticity.vec*/);
+
+    PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
+  }
+
+
 
 }
 
@@ -8579,6 +8944,55 @@ int main(int argc, char** argv) {
     double hodge_percentage_steady = hodge_percentage_of_max_u;
 
     while(tn<=tfinal){
+
+//      perform_one_timestep(mpi, sp, grid_res_iter,
+//                           p4est_np1, nodes_np1, ghost_np1,
+//                           ngbd_np1, hierarchy_np1,
+//                           faces_np1, ngbd_c_np1,
+//                           p4est_n, nodes_n, ghost_n,
+//                           ngbd_n, hierarchy_n, brick,
+//                           ns, ls,
+//                           phi, phi_nm1, phi_substrate, phi_eff,
+//                           phi_solid,
+//                           phi_dd, phi_solid_dd, phi_substrate_dd,
+//                           normal, curvature,
+//                           island_numbers,
+//                           T_l_n, T_s_n, T_l_nm1,
+//                           T_l_backtrace, T_l_backtrace_nm1,
+//                           rhs_Tl, rhs_Ts,
+//                           T_l_d, T_s_d,
+//                           T_l_dd,
+//                           jump, v_interface,
+//                           v_n, v_nm1,
+//                           vorticity, press_nodes, vorticity_refine,
+//                           dxyz_smallest, dxyz_close_to_interface,
+//                           load_tstep, last_tstep,
+//                           analytical_T,
+//                           bc_interface_val_temp,
+//                           bc_wall_value_temp,
+//                           external_heat_source_T,
+//                           analytical_soln_v,
+//                           bc_interface_value_velocity,
+//                           bc_wall_value_velocity,
+//                           bc_wall_type_velocity,
+//                           bc_interface_value_pressure,
+//                           bc_wall_value_pressure,
+//                           bc_wall_type_pressure,
+//                           bc_velocity, bc_pressure,
+//                           external_force_components,
+//                           external_force_components_with_BA,
+//                           external_forces_NS,
+//                           solver_Tl, solver_Ts, cube_refinement,
+//                           pc_face, face_solver_type, pc_cell, cell_solver_type,
+//                           interp_bw_grids,
+//                           fich_errors, name_errors,
+//                           fich_data, name_data,
+//                           fich_mem, name_mem,
+//                           cfl_NS_steady, hodge_percentage_steady,
+//                           t_original_start,
+//                           extension_band_use_, extension_band_extend_, min_volume_,
+//                           out_idx, compute_pressure_, data_save_out_idx,
+//                           ierr);
       // ---------------------------------------
       // Handle any modifications to cfl, dt, vint, or bcs related with "startup" conditions
       // ---------------------------------------
@@ -8611,7 +9025,7 @@ int main(int argc, char** argv) {
 
       // -------------------------------
       // Set up analytical ICs/BCs/forcing terms if needed
-      // ------------------------------- 
+      // -------------------------------
       if(analytical_IC_BC_forcing_term) {
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up analytical ICs/BCs/forcing terms... \n");
         setup_analytical_ics_and_bcs_for_this_tstep(bc_interface_val_temp, bc_wall_value_temp,
