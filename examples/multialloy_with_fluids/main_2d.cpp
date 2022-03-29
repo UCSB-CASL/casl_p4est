@@ -7158,9 +7158,10 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
 
 }
 
-void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_save,
+void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_save_np1,
+                                     vector<save_or_load_element_t> &fields_to_save_n,
                                      Vec *phi, Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n,
-                                     Vec v_NS[P4EST_DIM], Vec v_NS_nm1[P4EST_DIM], Vec *vorticity){
+                                     Vec v_NS[P4EST_DIM], Vec v_NS_nm1[P4EST_DIM]/*, Vec *vorticity*/){
 
   save_or_load_element_t to_add;
   // ----------------------
@@ -7171,7 +7172,7 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
   to_add.DATA_SAMPLING = NODE_DATA;
   to_add.nvecs = 1;
   to_add.pointer_to_vecs = phi;
-  fields_to_save.push_back(to_add);
+  fields_to_save_np1.push_back(to_add);
 
 
 
@@ -7182,7 +7183,7 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
     to_add.DATA_SAMPLING = NODE_DATA;
     to_add.nvecs = 1;
     to_add.pointer_to_vecs = T_l_n;
-    fields_to_save.push_back(to_add);
+    fields_to_save_np1.push_back(to_add);
 
     if(advection_sl_order==2 && solve_navier_stokes){
       // Fluid temp at nm1
@@ -7190,7 +7191,7 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
       to_add.DATA_SAMPLING = NODE_DATA;
       to_add.nvecs = 1;
       to_add.pointer_to_vecs = T_l_nm1;
-      fields_to_save.push_back(to_add);
+      fields_to_save_n.push_back(to_add);
     }
 
     if(do_we_solve_for_Ts){
@@ -7199,7 +7200,7 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
       to_add.DATA_SAMPLING = NODE_DATA;
       to_add.nvecs = 1;
       to_add.pointer_to_vecs = T_s_n;
-      fields_to_save.push_back(to_add);
+      fields_to_save_np1.push_back(to_add);
     }
   }
 
@@ -7209,19 +7210,19 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
     to_add.DATA_SAMPLING = NODE_DATA;
     to_add.nvecs = P4EST_DIM;
     to_add.pointer_to_vecs = v_NS;
-    fields_to_save.push_back(to_add);
+    fields_to_save_np1.push_back(to_add);
 
     to_add.name = "v_NS_nm1";
     to_add.DATA_SAMPLING = NODE_DATA;
     to_add.nvecs = P4EST_DIM;
     to_add.pointer_to_vecs = v_NS_nm1;
-    fields_to_save.push_back(to_add);
+    fields_to_save_n.push_back(to_add);
 
-    to_add.name = "vorticity";
-    to_add.DATA_SAMPLING = NODE_DATA;
-    to_add.nvecs = 1;
-    to_add.pointer_to_vecs = vorticity;
-    fields_to_save.push_back(to_add);
+//    to_add.name = "vorticity";
+//    to_add.DATA_SAMPLING = NODE_DATA;
+//    to_add.nvecs = 1;
+//    to_add.pointer_to_vecs = vorticity;
+//    fields_to_save.push_back(to_add);
 
   }
 
@@ -7229,9 +7230,11 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
 
 
 void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned int n_saved,
-                splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+                splitting_criteria_cf_and_uniform_band_t* sp,
+                p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+                p4est_t* p4est_n, p4est_nodes_t* nodes_n,
                 Vec phi, Vec T_l_n, Vec T_l_nm1, Vec T_s_n,
-                Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM],Vec vorticity){
+                Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM]/*,Vec vorticity*/){
   PetscErrorCode ierr;
 
   if(!file_exists(path_to_directory)){
@@ -7320,27 +7323,33 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
 
     // Save the p4est and corresponding data:
 
-    vector<save_or_load_element_t> fields_to_save;
+    vector<save_or_load_element_t> fields_to_save_n, fields_to_save_np1;
 
 
-    prepare_fields_for_save_or_load(fields_to_save,
+    prepare_fields_for_save_or_load(fields_to_save_np1, fields_to_save_n,
                                     &phi, &T_l_n, &T_l_nm1, &T_s_n,
-                                    v_NS, v_NS_nm1, &vorticity);
+                                    v_NS, v_NS_nm1/*, &vorticity*/);
 
     // Save the state:
     // choosing not to save the faces because we don't need them saved ? Elyce to-do double check this, 1/6/21
     my_p4est_save_forest_and_data(path_to_folder, p4est_np1, nodes_np1, NULL,
-                                                  "p4est", fields_to_save);
+                                                  "p4est_np1", fields_to_save_np1);
+
+    my_p4est_save_forest_and_data(path_to_folder, p4est_n, nodes_n, NULL,
+                                  "p4est_n", fields_to_save_n);
 
     ierr = PetscPrintf(p4est_np1->mpicomm,"Saved solver state in ... %s \n",path_to_folder);CHKERRXX(ierr);
 }
 
 // Elyce to-do : why don't we pass vec_and_ptr?
 void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
-                splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* &p4est_n, p4est_nodes_t* &nodes_n,
+                splitting_criteria_cf_and_uniform_band_t* sp,
+                p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1,
+                p4est_ghost_t* &ghost_np1,
+                p4est_t* &p4est_n, p4est_nodes_t* &nodes_n,
                 p4est_ghost_t* &ghost_n, p4est_connectivity* &conn,
                 Vec *phi, Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n,
-                Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM],Vec *vorticity){
+                Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM]/*,Vec *vorticity*/){
 
   char filename[PATH_MAX];
   if(!is_folder(path_to_folder)) throw std::invalid_argument("Load state: path to directory is invalid \n");
@@ -7352,22 +7361,32 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
   // Load p4est_n and corresponding objections
 
 
-  vector<save_or_load_element_t> fields_to_load;
+  vector<save_or_load_element_t> fields_to_load_np1, fields_to_load_n;
 
 
-  prepare_fields_for_save_or_load(fields_to_load,
+  prepare_fields_for_save_or_load(fields_to_load_np1,
+                                  fields_to_load_n,
                                   phi, T_l_n, T_l_nm1, T_s_n,
-                                  v_NS, v_NS_nm1, vorticity);
+                                  v_NS, v_NS_nm1);
 
+  // Load the time n grid:
   my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
                                 p4est_n, conn, P4EST_TRUE, ghost_n, nodes_n,
-                                "p4est", fields_to_load);
+                                "p4est_n", fields_to_load_n);
+
+  // Load the np1 grid:
+  my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
+                                p4est_np1, conn, P4EST_TRUE, ghost_np1, nodes_np1,
+                                "p4est_np1", fields_to_load_np1);
+
 
   P4EST_ASSERT(find_max_level(p4est_n) == sp->max_lvl);
+  P4EST_ASSERT(find_max_level(p4est_np1) == sp->max_lvl);
 
   // Update the user pointer:
   splitting_criteria_cf_and_uniform_band_t* sp_new = new splitting_criteria_cf_and_uniform_band_t(*sp);
   p4est_n->user_pointer = (void*) sp_new;
+  p4est_np1->user_pointer = (void*) sp_new;
 
   PetscPrintf(mpi.comm(),"Loads forest and data \n");
 }
@@ -7990,9 +8009,11 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
   }
   PetscPrintf(mpi.comm(),"Load dir is:  %s \n",load_path);
 
-  load_state(mpi, load_path, &sp, p4est_n, nodes_n, ghost_n, conn,
+  load_state(mpi, load_path, &sp,
+             p4est_np1, nodes_np1, ghost_np1,
+             p4est_n, nodes_n, ghost_n, conn,
              &phi.vec, &T_l_n.vec, &T_l_nm1.vec, &T_s_n.vec,
-             v_n.vec, v_nm1.vec, &vorticity.vec);
+             v_n.vec, v_nm1.vec/*, &vorticity.vec*/);
 
 
   PetscPrintf(mpi.comm(),"State was loaded successfully from %s \n",load_path);
@@ -8007,17 +8028,14 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
   ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
   ngbd_n->init_neighbors();
 
-  // Create the p4est at time np1 (this will be modified but is useful for initializing solvers):
-  p4est_np1 = p4est_copy(p4est_n,P4EST_FALSE); // copy the grid but not the data
-  ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est_np1,ghost_np1);
-  nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+  // Update the neigborhood and hierarchy:
+  if(hierarchy_np1!=NULL) {
+    delete hierarchy_np1;
+  }
+  if(ngbd_np1!=NULL) {delete ngbd_np1;}
 
-  // Get the new neighbors:
-  hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1,ghost_np1,&brick);
-  ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
-
-  // Initialize the neigbors:
+  hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, &brick);
+  ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
   ngbd_np1->init_neighbors();
 
   // Initialize the level set object
@@ -8030,14 +8048,13 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
                                            phi, phi_substrate, phi_eff);
   }
 
-
-
   // Extend fields:
   dxyz_min(p4est_np1, dxyz_smallest);
   double min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
   double extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
   double extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
   dxyz_close_to_interface = dxyz_close_to_interface_mult*max(dxyz_smallest[0],dxyz_smallest[1]);
+
   extend_relevant_fields(p4est_np1, nodes_np1, ngbd_np1,
                          *ls,
                          phi, phi_substrate, phi_eff,
@@ -8053,7 +8070,6 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
 
   load_tstep =tstep;
   tstart=tn;
-
 
 } // end of initialize_grids_from_load_state
 
@@ -8492,22 +8508,6 @@ int main(int argc, char** argv) {
 
     int last_tstep=-1;
 
-
-//    splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,
-//                                                lmax+grid_res_iter,
-//                                                &initial_refinement_cf,
-//                                                uniform_band, 2.0);
-//    const int n_xyz[]      = { nx,  ny,  0};
-//    const double xyz_min[] = {xmin, ymin, 0};
-//    const double xyz_max[] = {xmax,  ymax,  0};
-//    const int periodic[]   = { px,  py,  0};
-
-//    conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
-//    printf("prescribed min/max --> (xmin, ymin) = (%f, %f), (xmax, ymax) = (%f, %f) \n ", xmin, ymin, xmax, ymax);
-//    printf("passed min/max --> (xmin, ymin) = (%f, %f), (xmax, ymax) = (%f, %f) \n", xyz_min[0], xyz_min[1],
-//           xyz_max[0], xyz_max[1]);
-//    printf("brick min/max --> (xmin, ymin) = (%f, %f), (xmax, ymax) = (%f, %f) \n", brick.xyz_min[0], brick.xyz_min[1], brick.xyz_max[0], brick.xyz_max[1]);
-
     double t_original_start = tstart;
 
     perform_initializations(mpi, sp, grid_res_iter,
@@ -8683,28 +8683,6 @@ int main(int argc, char** argv) {
                                            fich_data, name_data, last_tstep);
       }
 
-      // --------------------------------------------------------------------------------------------------------------
-      // Save simulation state every specified number of iterations
-      // --------------------------------------------------------------------------------------------------------------
-      if(tstep>0 && ((tstep%save_state_every_iter)==0) && tstep!=load_tstep){
-          char output[1000];
-          const char* out_dir_coupled = getenv("OUT_DIR_SAVE_STATE");
-          if(!out_dir_coupled){
-              throw std::invalid_argument("You need to set the output directory for save states: OUT_DIR_SAVE_STATE");
-            }
-          sprintf(output,
-                  "%s/save_states_output_lmin_%d_lmax_%d_advection_order_%d_example_%d",
-                  out_dir_coupled,
-                  lmin+grid_res_iter,lmax+grid_res_iter,
-                  advection_sl_order,example_);
-
-          save_state(mpi, output, num_save_states,
-                     sp,p4est_np1,nodes_np1,
-                     phi.vec, T_l_n.vec, T_l_nm1.vec, T_s_n.vec,
-                     v_n.vec, v_nm1.vec, vorticity.vec);
-
-          PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
-        }
 
       // --------------------------------------------------------------------------------------------------------------
       // Saving to VTK: either every specified number of iterations, or every specified dt:
@@ -8755,6 +8733,9 @@ int main(int argc, char** argv) {
                                       dxyz_close_to_interface,
                                       are_we_saving, out_idx);
       }
+
+
+
 
       // ---------------------------------------------------
       // Advance the LSF/Update the grid :
@@ -8845,7 +8826,9 @@ int main(int argc, char** argv) {
                                                    faces_np1,ngbd_c_np1,
                                                    hierarchy_np1);
         }
+        if(print_checkpoints) PetscPrintf(mpi.comm(),"Done. \n");
       } // end of "if tstep !=last tstep"
+
 
       // ----------------------------------------------------
       // Check that vint is still within allowable range:
@@ -8869,6 +8852,37 @@ int main(int argc, char** argv) {
       // -------------------------------
       tn+=dt;
       tstep++;
+
+      // --------------------------------------------------------------------------------------------------------------
+      // Save simulation state every specified number of iterations
+      // We save the state here to be consistent with how states are loaded -- a state that is loaded will be loaded as if its an initial condition, and then the temperature problem will be solved, and so on and so forth.
+      // Thus we save the state here, since the natural next step would be as described above
+      // --------------------------------------------------------------------------------------------------------------
+      if(tstep>0 && ((tstep%save_state_every_iter)==0) && tstep!=load_tstep){
+        char output[1000];
+        const char* out_dir_coupled = getenv("OUT_DIR_SAVE_STATE");
+        if(!out_dir_coupled){
+          throw std::invalid_argument("You need to set the output directory for save states: OUT_DIR_SAVE_STATE");
+        }
+        PetscPrintf(mpi.comm(),"Beginning save state process... \n");
+        sprintf(output,
+                "%s/save_states_output_lmin_%d_lmax_%d_advection_order_%d_example_%d",
+                out_dir_coupled,
+                lmin+grid_res_iter,lmax+grid_res_iter,
+                advection_sl_order,example_);
+
+        save_state(mpi, output, num_save_states,
+                   sp,
+                   p4est_np1, nodes_np1,
+                   p4est_n, nodes_n,
+                   phi.vec, T_l_n.vec, T_l_nm1.vec, T_s_n.vec,
+                   v_n.vec, v_nm1.vec/*, vorticity.vec*/);
+
+        PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
+      }
+
+
+
     } // <-- End of for loop through time
 
   PetscPrintf(mpi.comm(),"Time loop exited \n");
