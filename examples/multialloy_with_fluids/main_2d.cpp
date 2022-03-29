@@ -7394,6 +7394,47 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
 // --------------------------------------------------------------------------------------------------------------
 // Initializations and destructions:
 // --------------------------------------------------------------------------------------------------------------
+void perform_one_timestep(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t* &sp, int grid_res_iter,
+                          p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
+                          my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
+                          my_p4est_faces_t* &faces_np1, my_p4est_cell_neighbors_t* &ngbd_c_np1,
+                          p4est_t* &p4est_n, p4est_nodes_t* &nodes_n, p4est_ghost_t* &ghost_n,
+                          my_p4est_node_neighbors_t* &ngbd_n, my_p4est_hierarchy_t* &hierarchy_n,
+                          my_p4est_brick_t& brick, p4est_connectivity* &conn,
+                          my_p4est_navier_stokes_t* &ns,
+                          my_p4est_level_set_t* &ls,
+                          vec_and_ptr_t& phi, vec_and_ptr_t& phi_nm1,
+                          vec_and_ptr_t& phi_substrate, vec_and_ptr_t& phi_eff,
+                          vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
+                          vec_and_ptr_dim_t& T_l_d, vec_and_ptr_dim_t& T_s_d,
+                          vec_and_ptr_dim_t& jump, vec_and_ptr_dim_t& v_interface,
+                          vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
+                          vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes,
+                          double dxyz_smallest[P4EST_DIM], double& dxyz_close_to_interface,
+                          int load_tstep, int last_tstep,
+                          temperature_field* analytical_T[2],
+                          BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
+                          BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
+                          external_heat_source* external_heat_source_T[2],
+                          velocity_component* analytical_soln_v[P4EST_DIM],
+                          BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
+                          BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
+                          BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM],
+                          BC_INTERFACE_VALUE_PRESSURE& bc_interface_value_pressure,
+                          BC_WALL_VALUE_PRESSURE& bc_wall_value_pressure,
+                          BC_WALL_TYPE_PRESSURE& bc_wall_type_pressure,
+                          external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
+                          external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM],
+                          FILE* fich_errors, char name_errors[],
+                          FILE* fich_data, char name_data[],
+                          FILE* fich_mem, char name_mem[]){
+
+}
+
+
+// --------------------------------------------------------------------------------------------------------------
+// Initializations and destructions:
+// --------------------------------------------------------------------------------------------------------------
 
 
 void setup_initial_parameters_and_report(mpi_environment_t& mpi){
@@ -8582,7 +8623,7 @@ int main(int argc, char** argv) {
       }
 
       // ------------------------------------------------------------
-      // Poisson Problem at Nodes (for temp and/or conc scalar fields):
+      // (1) Poisson Problem at Nodes (for temp and/or conc scalar fields):
       // Setup and solve a Poisson problem on both the liquid and solidified subdomains
       // ------------------------------------------------------------
       if(solve_stefan){
@@ -8603,7 +8644,9 @@ int main(int argc, char** argv) {
       } // end of "if solve stefan"
 
       // ------------------------------------------------------------
-      // Extend Fields Across Interface (if solving Stefan):
+      // (2) Computation of the interfacial velocity
+      // ------------------------------------------------------------
+      // (2a) Extend Fields Across Interface (if solving Stefan):
       // -- Note: we do not extend NS velocity fields bc NS solver handles that internally
       // ------------------------------------------------------------
       // Get smallest grid size: (this gets used in all examples at some point)
@@ -8625,7 +8668,7 @@ int main(int argc, char** argv) {
                                T_l_n, T_s_n,
                                extension_band_use_, extension_band_extend_);
         // -------------------------------------------------------------------------
-        // Compute the interfacial velocity (Stefan): -- do now so it can be used for
+        // (2b) Actually compute the interfacial velocity (Stefan): -- do now so it can be used for
         // NS boundary condition
         // -------------------------------------------------------------------------
 
@@ -8644,7 +8687,7 @@ int main(int argc, char** argv) {
 
 
       // ---------------------------------------------------------------------------
-      // Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
+      // (3) Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
       // ---------------------------------------------------------------------------
       if (solve_navier_stokes){
         bool did_crash=false;
@@ -8688,13 +8731,13 @@ int main(int argc, char** argv) {
       // Saving to VTK: either every specified number of iterations, or every specified dt:
       // Note: we do this after extension of fields to make visualization nicer
       // --------------------------------------------------------------------------------------------------------------
-      // (a) Determine if we are saving this timestep:
+      // (Saving-a) Determine if we are saving this timestep:
       // ---------------------------
       bool are_we_saving = false;
 
       are_we_saving = are_we_saving_vtk( tstep, tn, tstep==load_tstep, out_idx, true) /*&& (tstep>0)*/;
       // ---------------------------
-      // (b) Save to VTK if applicable:
+      // (Saving-b) Save to VTK if applicable:
       // ---------------------------
       if(are_we_saving){
         // Get the island numbers to save if we want that
@@ -8716,7 +8759,7 @@ int main(int argc, char** argv) {
       } // end of if "are we saving"
 
       // ---------------------------
-      // (c) Check errors on validation cases if relevant,
+      // (Saving-c) Check errors on validation cases if relevant,
       // save errors to vtk if we are saving this timestep
       // ---------------------------
 
@@ -8738,14 +8781,14 @@ int main(int argc, char** argv) {
 
 
       // ---------------------------------------------------
-      // Advance the LSF/Update the grid :
+      // (4) Advance the LSF and (5) Update the grid:
       // ---------------------------------------------------
       /* In Coupled case: advect the LSF and update the grid according to vorticity, d2T/dd2, and phi
        * In Stefan case:  advect the LSF and update the grid according to phi
        * In NS case:      update the grid according to phi (no advection)
       */
       // --------------------------------
-      // (a) Compute the timestep
+      // (4/5a) Compute the timestep
       // (needed for the grid advection, and will be used as timestep for np1 step)
       // --------------------------------
       dt_nm1 = dt; // Slide the timestep
@@ -8766,10 +8809,11 @@ int main(int argc, char** argv) {
                        load_tstep, last_tstep); // this function modifies the variable dt
 
 
-      //-------------------------------------------------------------
-      // (b) Update the grids so long as this is not the last timestep:
-      //-------------------------------------------------------------
+
       if(tstep!=last_tstep){
+        //-------------------------------------------------------------
+        // (4/5b) Update the grids so long as this is not the last timestep:
+        //-------------------------------------------------------------
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid update process ... \n"
                                                      "Refine by d2T = %s \n",refine_by_d2T? "true": "false");
         update_the_grid(*sp, p4est_np1, nodes_np1, ngbd_np1, ghost_np1, hierarchy_np1,
@@ -8779,7 +8823,7 @@ int main(int argc, char** argv) {
                         vorticity, vorticity_refine, T_l_n, T_l_dd);
 
         // -------------------------------
-        // Reinitialize the LSF on the new grid (if it has been advected):
+        // (4/5c) Reinitialize the LSF on the new grid (if it has been advected):
         // -------------------------------
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Reinitializing LSF... \n");
         ls->update(ngbd_np1);
@@ -8799,7 +8843,7 @@ int main(int argc, char** argv) {
         }
 
         //------------------------------------------------------
-        // Destroy substrate LSF and phi_eff (if used) and re-create for upcoming timestep:
+        // (4/5d) Destroy substrate LSF and phi_eff (if used) and re-create for upcoming timestep:
         //------------------------------------------------------
         if(example_uses_inner_LSF){
           phi_substrate.destroy();
@@ -8810,7 +8854,7 @@ int main(int argc, char** argv) {
         }
 
         // ---------------------------------------------------
-        // Interpolate Values onto New Grid:
+        // (4/5e) Interpolate Values onto New Grid:
         // ---------------------------------------------------
 
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Interpolating fields to new grid ... \n");
@@ -8880,7 +8924,6 @@ int main(int argc, char** argv) {
 
         PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
       }
-
 
 
     } // <-- End of for loop through time
