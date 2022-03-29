@@ -7040,37 +7040,24 @@ void fill_or_load_double_parameters(save_or_load flag,PetscInt num,splitting_cri
         data[idx++] = tn;
         data[idx++] = dt;
         data[idx++] = dt_nm1;
-        data[idx++] = k_l;
-        data[idx++] = k_s;
-        data[idx++] = alpha_l;
-        data[idx++] = alpha_s;
-        data[idx++] = rho_l;
-        data[idx++] = rho_s;
-        data[idx++] = mu_l;
-        data[idx++] = L;
         data[idx++] = cfl;
+        data[idx++] = cfl_NS;
         data[idx++] = uniform_band;
         data[idx++] = sp->lip;
         data[idx++] = NS_norm;
+        data[idx++] = v_interface_max_norm;
         break;
       }
     case LOAD:{
         tn = data[idx++];
         dt = data[idx++];
-        // Note: since these parameters depend on advection sl order, need to load integers first before doubles
         dt_nm1 = data[idx++];
-        k_l = data[idx++];
-        k_s = data[idx++];
-        alpha_l = data[idx++];
-        alpha_s = data[idx++];
-        rho_l = data[idx++];
-        rho_s = data[idx++];
-        mu_l = data[idx++];
-        L = data[idx++];
         cfl = data[idx++];
+        cfl_NS = data[idx++];
         uniform_band= data[idx++];
         sp->lip = data[idx++];
         NS_norm = data[idx++];
+        v_interface_max_norm = data[idx++];
       }
 
     }
@@ -7082,7 +7069,6 @@ void fill_or_load_integer_parameters(save_or_load flag, PetscInt num, splitting_
   switch(flag){
     case SAVE:{
         data[idx++] = advection_sl_order;
-        data[idx++] = save_every_iter;
         data[idx++] = tstep;
         data[idx++] = sp->min_lvl;
         data[idx++] = sp->max_lvl;
@@ -7090,7 +7076,6 @@ void fill_or_load_integer_parameters(save_or_load flag, PetscInt num, splitting_
       }
     case LOAD:{
         advection_sl_order = data[idx++];
-        save_every_iter = data[idx++];
         tstep = data[idx++];
         sp->min_lvl=data[idx++];
         sp->max_lvl=data[idx++];
@@ -7104,13 +7089,11 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
   PetscErrorCode ierr;
 
   // Double parameters we need to save:
-  // - tn, dt, dt_nm1 (if 2nd order), k_l, k_s, alpha_l, alpha_s, rho_l, rho_s, mu_l, L, cfl, uniform_band, scaling, data->lip
-  PetscInt num_doubles = 15;
+  PetscInt num_doubles = 9;
   PetscReal double_parameters[num_doubles];
 
   // Integer parameters we need to save:
-  // - current lmin, current lmax, advection_sl_order, save_every_iter, tstep, data->min_lvl, data->max_lvl
-  PetscInt num_integers = 5;
+  PetscInt num_integers = 4;
   PetscInt integer_parameters[num_integers];
 
   int fd;
@@ -7246,16 +7229,16 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
 
 
 void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned int n_saved,
-                splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* p4est, p4est_nodes_t* nodes,
+                splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                 Vec phi, Vec T_l_n, Vec T_l_nm1, Vec T_s_n,
                 Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM],Vec vorticity){
   PetscErrorCode ierr;
 
   if(!file_exists(path_to_directory)){
-    create_directory(path_to_directory,p4est->mpirank,p4est->mpicomm);
+    create_directory(path_to_directory,p4est_np1->mpirank, p4est_np1->mpicomm);
   }
   if(!is_folder(path_to_directory)){
-      if(!create_directory(path_to_directory, p4est->mpirank, p4est->mpicomm))
+      if(!create_directory(path_to_directory, p4est_np1->mpirank, p4est_np1->mpicomm))
       {
         char error_msg[1024];
         sprintf(error_msg, "save_state: the path %s is invalid and the directory could not be created", path_to_directory);
@@ -7282,7 +7265,7 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
               {
                 char full_path[PATH_MAX];
                 sprintf(full_path, "%s/%s", path_to_directory, subfolders[idx].c_str());
-                delete_directory(full_path, p4est->mpirank, p4est->mpicomm, true);
+                delete_directory(full_path, p4est_np1->mpirank, p4est_np1->mpicomm, true);
               }
               else
                 n_backup_subfolders++;
@@ -7308,7 +7291,7 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
         char full_path_zeroth_index[PATH_MAX];
         sprintf(full_path_zeroth_index, "%s/backup_0", path_to_directory);
         // delete the 0th
-        delete_directory(full_path_zeroth_index, p4est->mpirank, p4est->mpicomm, true);
+        delete_directory(full_path_zeroth_index, p4est_np1->mpirank, p4est_np1->mpicomm, true);
         // shift the others
         for (size_t idx = 1; idx < n_saved; ++idx) {
           char old_name[PATH_MAX], new_name[PATH_MAX];
@@ -7323,11 +7306,11 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
 
     } // end of operations only on rank 0
 
-    int mpiret = MPI_Bcast(&backup_idx, 1, MPI_INT, 0, p4est->mpicomm); SC_CHECK_MPI(mpiret);// acts as a MPI_Barrier, too
+    int mpiret = MPI_Bcast(&backup_idx, 1, MPI_INT, 0, p4est_np1->mpicomm); SC_CHECK_MPI(mpiret);// acts as a MPI_Barrier, too
 
     char path_to_folder[PATH_MAX];
     sprintf(path_to_folder, "%s/backup_%d", path_to_directory, (int) backup_idx);
-    create_directory(path_to_folder, p4est->mpirank, p4est->mpicomm);
+    create_directory(path_to_folder, p4est_np1->mpirank, p4est_np1->mpicomm);
 
     char filename[PATH_MAX];
 
@@ -7346,16 +7329,16 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
 
     // Save the state:
     // choosing not to save the faces because we don't need them saved ? Elyce to-do double check this, 1/6/21
-    my_p4est_save_forest_and_data(path_to_folder, p4est, nodes, NULL,
+    my_p4est_save_forest_and_data(path_to_folder, p4est_np1, nodes_np1, NULL,
                                                   "p4est", fields_to_save);
 
-    ierr = PetscPrintf(p4est->mpicomm,"Saved solver state in ... %s \n",path_to_folder);CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_np1->mpicomm,"Saved solver state in ... %s \n",path_to_folder);CHKERRXX(ierr);
 }
 
 // Elyce to-do : why don't we pass vec_and_ptr?
 void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
-                splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* &p4est, p4est_nodes_t* &nodes,
-                p4est_ghost_t* &ghost, p4est_connectivity* &conn,
+                splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* &p4est_n, p4est_nodes_t* &nodes_n,
+                p4est_ghost_t* &ghost_n, p4est_connectivity* &conn,
                 Vec *phi, Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n,
                 Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM],Vec *vorticity){
 
@@ -7377,14 +7360,14 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
                                   v_NS, v_NS_nm1, vorticity);
 
   my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
-                                p4est, conn, P4EST_TRUE, ghost, nodes,
+                                p4est_n, conn, P4EST_TRUE, ghost_n, nodes_n,
                                 "p4est", fields_to_load);
 
-  P4EST_ASSERT(find_max_level(p4est) == sp->max_lvl);
+  P4EST_ASSERT(find_max_level(p4est_n) == sp->max_lvl);
 
   // Update the user pointer:
   splitting_criteria_cf_and_uniform_band_t* sp_new = new splitting_criteria_cf_and_uniform_band_t(*sp);
-  p4est->user_pointer = (void*) sp_new;
+  p4est_n->user_pointer = (void*) sp_new;
 
   PetscPrintf(mpi.comm(),"Loads forest and data \n");
 }
@@ -8182,7 +8165,6 @@ void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_u
                    ns,
                    dxyz_close_to_interface, dxyz_smallest,
                    load_tstep, last_tstep);
-  PetscPrintf(mpi.comm(), "CCC\n");
   // ------------------------------------------------------------
   // Initialize relevant boundary condition objects:
   // ------------------------------------------------------------
