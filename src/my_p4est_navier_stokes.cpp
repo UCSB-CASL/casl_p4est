@@ -496,7 +496,6 @@ void my_p4est_navier_stokes_t::set_phi(Vec phi)
     ierr = VecDestroy(this->phi); CHKERRXX(ierr); }
   this->phi = phi;
   ngbd_n->first_derivatives_central(phi, grad_phi);
-
   interp_phi->set_input(phi, linear);
   interp_grad_phi->set_input(grad_phi, linear, P4EST_DIM);
 

@@ -5553,7 +5553,8 @@ void initialize_ns_solver(my_p4est_navier_stokes_t* &ns,
                           p4est_t* p4est_np1,p4est_ghost_t* ghost_np1,
                           my_p4est_node_neighbors_t* ngbd_np1, my_p4est_node_neighbors_t* ngbd_n,
                           my_p4est_hierarchy_t* hierarchy_np1, my_p4est_brick_t* brick,
-                          vec_and_ptr_t& phi, vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
+                          vec_and_ptr_t& phi, vec_and_ptr_t& phi_eff,
+                          vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
                           my_p4est_faces_t* &faces_np1, my_p4est_cell_neighbors_t* &ngbd_c_np1){
 
   // Create the initial neigbhors and faces (after first step, NS grid update will handle this internally)
@@ -5563,9 +5564,12 @@ void initialize_ns_solver(my_p4est_navier_stokes_t* &ns,
   // Create the solver
   ns = new my_p4est_navier_stokes_t(ngbd_n,ngbd_np1,faces_np1);
 
+
   // Set the LSF:
-  ns->set_phi(phi.vec);
+  ns->set_phi((example_uses_inner_LSF ? phi_eff.vec:phi.vec));
+
   ns->set_dt(dt_nm1,dt);
+
   ns->set_velocities(v_nm1.vec, v_n.vec);
 
   PetscPrintf(p4est_np1->mpicomm,"CFL_NS: %0.2f, rho : %0.2f, mu : %0.3e \n",cfl_NS,rho_l,mu_l);
@@ -7240,10 +7244,10 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
 
 }
 
-// Elyce to-do : why don't we pass vec_and_ptr?
+
 void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned int n_saved,
                 splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* p4est, p4est_nodes_t* nodes,
-                Vec phi, Vec T_l_n,Vec T_l_nm1, Vec T_s_n,
+                Vec phi, Vec T_l_n, Vec T_l_nm1, Vec T_s_n,
                 Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM],Vec vorticity){
   PetscErrorCode ierr;
 
@@ -7351,8 +7355,8 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
 // Elyce to-do : why don't we pass vec_and_ptr?
 void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
                 splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* &p4est, p4est_nodes_t* &nodes,
-                p4est_ghost_t* &ghost,p4est_connectivity* &conn,
-                Vec *phi,Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n,
+                p4est_ghost_t* &ghost, p4est_connectivity* &conn,
+                Vec *phi, Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n,
                 Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM],Vec *vorticity){
 
   char filename[PATH_MAX];
@@ -7759,34 +7763,34 @@ void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical
 }
 
 
-void initialize_grids(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t& sp,
+void initialize_grids(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t& sp, my_p4est_level_set_t* &ls,
                       p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
                       my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
-                      p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t* &ghost,
-                      my_p4est_node_neighbors_t* &ngbd, my_p4est_hierarchy_t* &hierarchy,
+                      p4est_t* &p4est_n, p4est_nodes_t* &nodes_n, p4est_ghost_t* &ghost_n,
+                      my_p4est_node_neighbors_t* &ngbd_n, my_p4est_hierarchy_t* &hierarchy_n,
                       my_p4est_brick_t& brick, p4est_connectivity* &conn){
 
   // Create the p4est at time n:
-  p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
-  p4est->user_pointer = &sp;
+  p4est_n = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
+  p4est_n->user_pointer = &sp;
 
   for(int l=0; l<sp.max_lvl; l++){
-    my_p4est_refine(p4est,P4EST_FALSE,refine_levelset_cf,NULL);
-    my_p4est_partition(p4est,P4EST_FALSE,NULL);
+    my_p4est_refine(p4est_n,P4EST_FALSE,refine_levelset_cf,NULL);
+    my_p4est_partition(p4est_n,P4EST_FALSE,NULL);
   }
-  p4est_balance(p4est,P4EST_CONNECT_FULL,NULL);
-  my_p4est_partition(p4est,P4EST_FALSE,NULL);
+  p4est_balance(p4est_n,P4EST_CONNECT_FULL,NULL);
+  my_p4est_partition(p4est_n,P4EST_FALSE,NULL);
 
-  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est,ghost);
-  nodes = my_p4est_nodes_new(p4est, ghost); //same
+  ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_n,ghost_n);
+  nodes_n = my_p4est_nodes_new(p4est_n, ghost_n); //same
 
-  hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
-  ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
-  ngbd->init_neighbors();
+  hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, &brick);
+  ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
+  ngbd_n->init_neighbors();
 
   // Create the p4est at time np1:(this will be modified but is useful for initializing solvers):
-  p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
+  p4est_np1 = p4est_copy(p4est_n,P4EST_FALSE); // copy the grid but not the data
   p4est_np1->user_pointer = &sp;
   my_p4est_partition(p4est_np1,P4EST_FALSE,NULL);
 
@@ -7800,6 +7804,9 @@ void initialize_grids(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_
 
   // Initialize the neigbors:
   ngbd_np1->init_neighbors();
+
+  // Create the level set object:
+  ls = new my_p4est_level_set_t(ngbd_np1);
 
 }
 
@@ -7958,20 +7965,28 @@ void initialize_fields(mpi_environment_t& mpi, p4est_t* p4est_np1, p4est_nodes_t
 
 
 void initialize_grids_and_fields_from_load_state(int& load_tstep,
-                                      mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t& sp,
+                                      mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t& sp, my_p4est_level_set_t* &ls,
                                       p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
                                       my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
                                       p4est_t* &p4est_n, p4est_nodes_t* &nodes_n, p4est_ghost_t* &ghost_n,
                                       my_p4est_node_neighbors_t* &ngbd_n, my_p4est_hierarchy_t* &hierarchy_n,
                                       my_p4est_brick_t& brick, p4est_connectivity* &conn,
-                                      vec_and_ptr_t& phi,
+                                      vec_and_ptr_t& phi, vec_and_ptr_t& phi_substrate, vec_and_ptr_t& phi_eff,
                                       vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
+                                      vec_and_ptr_dim_t& T_l_d, vec_and_ptr_dim_t& T_s_d,
+                                      vec_and_ptr_dim_t& jump, vec_and_ptr_dim_t& v_interface,
                                       vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
-                                      vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes){
+                                      vec_and_ptr_t& vorticity,
+                                      double dxyz_smallest[P4EST_DIM], double& dxyz_close_to_interface){
 
   // Set everything to NULL at first:
   p4est_n=NULL;
-  conn=NULL;
+
+  if(conn!=NULL){ // Destroy conn and set to NULL to prep for load (since we still created a conn when we made the brick)
+    p4est_connectivity_destroy(conn);
+    conn=NULL;
+  }
+
   p4est_n=NULL; ghost_n=NULL;nodes_n=NULL;
   hierarchy_n=NULL;ngbd_n=NULL;
 
@@ -7992,9 +8007,10 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
   }
   PetscPrintf(mpi.comm(),"Load dir is:  %s \n",load_path);
 
-  load_state(mpi,load_path,&sp,p4est_n,nodes_n,ghost_n,conn,
-             &phi.vec,&T_l_n.vec,&T_l_nm1.vec,&T_s_n.vec,
-             v_n.vec,v_nm1.vec,&vorticity.vec);
+  load_state(mpi, load_path, &sp, p4est_n, nodes_n, ghost_n, conn,
+             &phi.vec, &T_l_n.vec, &T_l_nm1.vec, &T_s_n.vec,
+             v_n.vec, v_nm1.vec, &vorticity.vec);
+
 
   PetscPrintf(mpi.comm(),"State was loaded successfully from %s \n",load_path);
 
@@ -8021,8 +8037,36 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
   // Initialize the neigbors:
   ngbd_np1->init_neighbors();
 
-  // Initialize pressure vector (if navier stokes)
-//  if(solve_navier_stokes) press_nodes.create(p4est,nodes);
+  // Initialize the level set object
+  ls = new my_p4est_level_set_t(ngbd_np1);
+
+  // Create the additional phi_sub and phi_eff if required for this example
+  if(example_uses_inner_LSF){
+    create_and_compute_phi_sub_and_phi_eff(p4est_np1, nodes_np1,
+                                           ls,
+                                           phi, phi_substrate, phi_eff);
+  }
+
+
+
+  // Extend fields:
+  dxyz_min(p4est_np1, dxyz_smallest);
+  double min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
+  double extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
+  double extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
+  dxyz_close_to_interface = dxyz_close_to_interface_mult*max(dxyz_smallest[0],dxyz_smallest[1]);
+  extend_relevant_fields(p4est_np1, nodes_np1, ngbd_np1,
+                         *ls,
+                         phi, phi_substrate, phi_eff,
+                         T_l_n, T_s_n, extension_band_use_, extension_band_extend_);
+
+  // Compute vinterface:
+  v_interface.create(p4est_np1, nodes_np1);
+  compute_interfacial_velocity(T_l_n, T_s_n,
+                               T_l_d, T_s_d,
+                               jump, v_interface,
+                               phi, phi_eff, phi_substrate,
+                               p4est_np1, nodes_np1, ngbd_np1, extension_band_extend_);
 
   load_tstep =tstep;
   tstart=tn;
@@ -8087,18 +8131,19 @@ void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_u
 
   // Call the relevant initialization fxns
   if(loading_from_previous_state){
-    initialize_grids_and_fields_from_load_state(load_tstep, mpi, *sp,
+    initialize_grids_and_fields_from_load_state(load_tstep, mpi, *sp, ls,
                                                 p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
                                                 p4est_n, nodes_n, ghost_n, ngbd_n, hierarchy_n, brick, conn,
-                                                phi, T_l_n, T_s_n, T_l_nm1,
-                                                v_n, v_nm1, vorticity, press_nodes);
-    ls = new my_p4est_level_set_t(ngbd_np1);
+                                                phi, phi_substrate, phi_eff,
+                                                T_l_n, T_s_n, T_l_nm1,
+                                                T_l_d, T_s_d, jump, v_interface,
+                                                v_n, v_nm1, vorticity,
+                                                dxyz_smallest, dxyz_close_to_interface);
   }
   else{
-    initialize_grids(mpi, *sp,
+    initialize_grids(mpi, *sp, ls,
                      p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
                      p4est_n, nodes_n, ghost_n, ngbd_n, hierarchy_n, brick, conn);
-    ls = new my_p4est_level_set_t(ngbd_np1);
 
     initialize_fields(mpi,
                       p4est_np1, nodes_np1, ngbd_np1, ls,
@@ -8113,16 +8158,18 @@ void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_u
     tstep = 0;
     tn = tstart;
   }
+
   // ------------------------------------------------------------
   // Initialize Navier Stokes solver:
   // ------------------------------------------------------------
   if(solve_navier_stokes){
     initialize_ns_solver(ns, p4est_np1, ghost_np1, ngbd_np1, ngbd_n,
                          hierarchy_np1, &brick,
-                         (example_uses_inner_LSF ? phi_eff:phi),
+                         phi, phi_eff,
                          v_n, v_nm1,
                          faces_np1, ngbd_c_np1);
   }
+
 
   // ------------------------------------------------------------
   // Compute the initial timestep:
@@ -8135,6 +8182,7 @@ void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_u
                    ns,
                    dxyz_close_to_interface, dxyz_smallest,
                    load_tstep, last_tstep);
+  PetscPrintf(mpi.comm(), "CCC\n");
   // ------------------------------------------------------------
   // Initialize relevant boundary condition objects:
   // ------------------------------------------------------------
@@ -8197,6 +8245,7 @@ void perform_final_destructions(mpi_environment_t &mpi, splitting_criteria_cf_an
 
   // Final destructions
   phi.destroy();
+
   if(example_uses_inner_LSF){
     phi_substrate.destroy();
     phi_eff.destroy();
@@ -8273,6 +8322,7 @@ void perform_final_destructions(mpi_environment_t &mpi, splitting_criteria_cf_an
     ns->nullify_velocities_at_nodes();
     ns->nullify_vorticity();
     delete ns;
+    MPI_Barrier(mpi.comm());
   }
 }
 
@@ -8666,10 +8716,10 @@ int main(int argc, char** argv) {
                   lmin+grid_res_iter,lmax+grid_res_iter,
                   advection_sl_order,example_);
 
-          save_state(mpi,output,num_save_states,
+          save_state(mpi, output, num_save_states,
                      sp,p4est_np1,nodes_np1,
-                     phi.vec,T_l_n.vec,T_l_nm1.vec,T_s_n.vec,
-                     v_n.vec,v_nm1.vec,vorticity.vec);
+                     phi.vec, T_l_n.vec, T_l_nm1.vec, T_s_n.vec,
+                     v_n.vec, v_nm1.vec, vorticity.vec);
 
           PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
         }
@@ -8723,8 +8773,6 @@ int main(int argc, char** argv) {
                                       dxyz_close_to_interface,
                                       are_we_saving, out_idx);
       }
-      PetscPrintf(mpi.comm(), "At checking errors, tn = %f \n", tn);
-
 
       // ---------------------------------------------------
       // Advance the LSF/Update the grid :
@@ -8837,11 +8885,8 @@ int main(int argc, char** argv) {
       // -------------------------------
       // Update time:
       // -------------------------------
-//      if(tstep==0){dt_nm1 = dt;}
-
       tn+=dt;
       tstep++;
-      PetscPrintf(mpi.comm(), "At end of loop, tn = %f \n", tn);
     } // <-- End of for loop through time
 
   PetscPrintf(mpi.comm(),"Time loop exited \n");
@@ -8863,6 +8908,7 @@ int main(int argc, char** argv) {
   }// end of loop through number of splits
 
   MPI_Barrier(mpi.comm());
+  PetscPrintf(mpi.comm(), "Gets to here \n");
   w.stop(); w.read_duration();
   return 0;
 }
