@@ -45,7 +45,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: March 9, 2022.
+ * Updated: March 29, 2022.
  */
 namespace kml
 {
@@ -69,8 +69,8 @@ namespace kml
 	 *      mmm, mm0, mmp, m0m, m00, m0p, mpm, mp0, mpp  =>  Face for x = m
 	 *      0mm, 0m0, 0mp, 00m, 000, 00p, 0pm, 0p0, 0pp  =>  Face for x = 0
 	 *      pmm, pm0, pmp, p0m, p00, p0p, ppm, pp0, ppp  =>  Face for x = p
-	 * We have three such groups: phi, nx, ny, and nz, in that order.  At the end, we have ihk, the numerical dimension-
-	 * less curvature bilinearly interpolated at the interface.
+	 * We have four such groups: phi, nx, ny, and nz, in that order.  At the end, we have ihk and ih2kg --the numerical
+	 * dimension-less mean and Gaussian curvatures bilinearly interpolated at the interface.
 	 */
 	class Scaler
 	{

@@ -12,6 +12,7 @@
  *
  * Developer: Luis Ángel.
  * Created: March 19, 2022.
+ * Updated: March 29, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -54,18 +55,18 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<double>          minHK( pl, 0.005, "minHK"				, "Minimum mean dimensionless curvature for non-saddle points (default: 0.005)" );
+	param_t<double>          minHK( pl, 0.004, "minHK"				, "Minimum mean dimensionless curvature for non-saddle points (default: 0.004)" );
 	param_t<double>          maxHK( pl,  2./3, "maxHK"				, "Maximum mean dimensionless curvature (default: 2/3)" );
 	param_t<u_char>          maxRL( pl,     6, "maxRL"				, "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<u_short>   reinitIters( pl,    10, "reinitIters"		, "Number of iterations for reinitialization (default: 10)" );
 	param_t<int>       spheresPerH( pl,     2, "spheresPerH"		, "How many sphere radii to fit in a cell (default: 2)" );
-	param_t<double>   samplesPerH3( pl,   0.1, "samplesPerH3"		, "Samples per H^3 based on the average radius (default: 0.1)" );
-	param_t<int> keepEveryXSamples( pl,    10, "keepEveryXSamples"	, "Keep record every x samples next to Gamma randomly (default: 10)" );
+	param_t<double>   samplesPerH3( pl, 0.075, "samplesPerH3"		, "Samples per H^3 based on the average radius (default: 0.075)" );
+	param_t<int> keepEveryXSamples( pl,    17, "keepEveryXSamples"	, "Keep record every x samples next to Gamma randomly (default: 17)" );
 	param_t<size_t>  bufferMinSize( pl,   1e4, "bufferMinSize"		, "Buffer minimum overflow size to trigger storage (default: 10K)" );
 	param_t<std::string>    outDir( pl,   ".", "outDir"				, "Path where files will be written to (default: build folder)" );
 
 	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes (it's OK that it's not in sync among processes).
-	std::mt19937 genTrans{};	// NOLINT This engine is used for the random shift of the sphere.
+	std::mt19937 gen{};			// NOLINT This engine is used for the random shift of the sphere and to distribute curvature uniformly (only on rank 0).
 
 	try
 	{
@@ -90,7 +91,7 @@ int main ( int argc, char* argv[] )
 		const double MIN_RADIUS = 1. / MAX_K;
 		const double MAX_RADIUS = 1. / MIN_K;
 		const double D_DIM = ceil( MAX_RADIUS + 4 * h );	// Symmetric units around origin: [-DIM, +DIM]^{P4EST_DIM}.
-		const int NUM_SPHERES = ceil( spheresPerH() * ((MAX_RADIUS - MIN_RADIUS) / h + 1) );	// Number of circles is proportional to radii difference and H.
+		const int NUM_SPHERES = ceil( spheresPerH() * ((MAX_RADIUS - MIN_RADIUS) / h + 1) );	// Number of spheres is proportional to radii difference and h.
 
 		// Expected number of samples per distinct radius.
 		// First, we allow to generate a tentative number of samples.  Then, we randomly subsample.  This allows varying
@@ -103,7 +104,7 @@ int main ( int argc, char* argv[] )
 		const double AVG_RADIUS = (MAX_RADIUS + MIN_RADIUS) / 2.;
 		const int AVG_SAMPLES_PER_RADIUS = (int)ceil( samplesPerH3() * 4./3 * M_PI / CUBE( h ) * (CUBE( AVG_RADIUS ) - CUBE( AVG_RADIUS - h )) ) / keepEveryXSamples();
 
-		std::uniform_real_distribution<double> uniformDistribution( -h/2, +h/2 );	// Random translation.
+		std::uniform_real_distribution<double> uniformDistTrans( -h/2, +h/2 );	// Random translation.
 
 		/////////////////////////////////////////// Preparing data set files ///////////////////////////////////////////
 
@@ -124,8 +125,16 @@ int main ( int argc, char* argv[] )
 		// Variables to control the spread of spheres' radii.  These must vary depending on the uniform spread of mean curvature.
 		double meanKDistance = MIN_K - MAX_K;				// Radii are in [1/MAX_KAPPA, 1/MIN_KAPPA].
 		double rLinspace[NUM_SPHERES];
-		for( int i = 0; i < NUM_SPHERES; i++ )				// Uniform linear space from 0 to 1, with NUM_SPHERES steps.
-			rLinspace[i] = (double)(i) / (NUM_SPHERES - 1);
+		if( mpi.rank() == 0 )
+		{
+			std::uniform_real_distribution<double> uniformDist;
+			for( int i = 0; i < NUM_SPHERES; i++ )			// Uniform random dist in [0, 1] with NUM_SPHERES steps to
+				rLinspace[i] = uniformDist( gen );			// be shared among processes.
+			rLinspace[0] = 0;
+			rLinspace[NUM_SPHERES - 1] = 1;
+			std::sort( rLinspace, rLinspace + NUM_SPHERES );
+		}
+		SC_CHECK_MPI( MPI_Bcast( rLinspace, NUM_SPHERES, MPI_DOUBLE, 0, mpi.comm() ) );
 
 		std::vector<double> samplesPerRadius;
 		linspace( 0.75 * AVG_SAMPLES_PER_RADIUS, 1.25 * AVG_SAMPLES_PER_RADIUS, NUM_SPHERES, samplesPerRadius );
@@ -151,14 +160,14 @@ int main ( int argc, char* argv[] )
 
 			// Generate a given number of randomly centered spheres with the same radius and accumulate samples until we
 			// reach a quota.
-			double maxRE = 0;								// Maximum relative error.
+			double maxRE = 0;								// Maximum error.
 			int nSamplesLeftForSameRadius = 2 * (int)round( samplesPerRadius[nc] );		// Twice because of the augmentation.
 			while( nSamplesLeftForSameRadius > 0  )
 			{
 				double C[] = {
-					DIM( uniformDistribution( genTrans ),	// Center coords are randomly chosen around the origin.
-						 uniformDistribution( genTrans ),
-						 uniformDistribution( genTrans ) )
+					DIM( uniformDistTrans( gen ),			// Center coords are randomly chosen around the origin.
+						 uniformDistTrans( gen ),
+						 uniformDistTrans( gen ) )
 				};
 				SC_CHECK_MPI( MPI_Bcast( C, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random shift.
 
@@ -239,7 +248,7 @@ int main ( int argc, char* argv[] )
 				SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
 			}
 
-			PetscPrintf( mpi.comm(), "     (%d) Done with radius = %f.  Maximum relative error = %f.  Samples = %d;\n",
+			PetscPrintf( mpi.comm(), "     (%d) Done with radius = %f.  Maximum hk error = %f.  Samples = %d;\n",
 						 nc, R, maxRE, 2 * (int)round( samplesPerRadius[nc] ) );
 			nc++;
 
@@ -352,7 +361,7 @@ std::pair<double,double> collectSamples( const int& keepEveryXSamples, const dou
 					continue;
 			}
 			else
-				throw std::runtime_error( errorPrefix + "Found a sample with negative Gaussian curvature!" );
+				continue;									// Skip saddles (which appear for large radii).
 
 			// Up to this point, we got a good sample.  Populate its features.
 			std::vector<double> *sample;					// Points to new sample in the appropriate array.

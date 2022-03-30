@@ -30,7 +30,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 26, 2022.
- * Updated: March 12, 2022.
+ * Updated: March 29, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -64,19 +64,22 @@ void setupDomain( const Sinusoid& sinusoid, const double& N_WAVES, const double&
 				  const u_char& MAX_RL, double& samRadius, u_char& octreeMaxRL, double& uvLim, size_t& halfUV,
 				  int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] );
 
+void uniformRandomSpace( const mpi_environment_t& mpi, const double& start, const double& end, const int& n,
+						 std::vector<double>& values, std::mt19937& gen );
+
 
 int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<double>               minHK( pl, 0.005, "minHK"					, "Minimum mean dimensionless curvature for non-saddle points (default: 0.005)" );
+	param_t<double>               minHK( pl, 0.004, "minHK"					, "Minimum mean dimensionless curvature for non-saddle points (default: 0.004)" );
 	param_t<double>               maxHK( pl,  2./3, "maxHK"					, "Maximum mean dimensionless curvature (default: 2/3)" );
 	param_t<u_char>               maxRL( pl,     6, "maxRL"					, "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<u_short>        reinitIters( pl,    10, "reinitIters"			, "Number of iterations for reinitialization (default: 10)" );
 	param_t<double>    easeOffProbMaxHK( pl,  0.25, "easeOffProbMaxHK"		, "Easing-off probability for |hk*| upper bound for subsampling non-saddle points (default: 0.25)" );
 	param_t<double>    easeOffProbMinHK( pl, 0.005, "easeOffProbMinHK"		, "Easing-off probability for |hk*| lower bound for subsampling non-saddle points (default: 0.005)" );
-	param_t<double> easeOffProbMaxIH2KG( pl,  0.15, "easeOffProbMaxIH2KG"	, "Easing-off probability for |ih2kg| upper bound for subsampling saddle points (default: 0.15)" );
-	param_t<double> easeOffProbMinIH2KG( pl, 0.005, "easeOffProbMinIH2KG"	, "Easing-off probability for |ih2kg| lower bound for subsampling saddle points (default: 0.005)" );
+	param_t<double> easeOffProbMaxIH2KG( pl, 0.075, "easeOffProbMaxIH2KG"	, "Easing-off probability for |ih2kg| upper bound for subsampling saddle points (default: 0.075)" );
+	param_t<double> easeOffProbMinIH2KG( pl,0.0025, "easeOffProbMinIH2KG"	, "Easing-off probability for |ih2kg| lower bound for subsampling saddle points (default: 0.0025)" );
 	param_t<u_short>          startAIdx( pl,     0, "startAIdx"				, "Start index for sinusoidal amplitude (default: 0)" );
 	param_t<float>       histMedianFrac( pl,  1./3, "histMedianFrac"		, "Post-histogram subsampling median fraction (default: 1/3)" );
 	param_t<float>          histMinFold( pl,   1.5, "histMinFold"			, "Post-histogram subsampling min count fold (default: 1.5)" );
@@ -85,11 +88,11 @@ int main ( int argc, char* argv[] )
 	param_t<size_t>       bufferMinSize( pl,   3e5, "bufferMinSize"			, "Buffer minimum overflow size to trigger histogram-based subsampling and storage (default: 300K)" );
 	param_t<u_short>      numHKMaxSteps( pl,     7, "numHKMaxSteps" 		, "Number of steps to vary target max hk (default: 7)" );
 	param_t<u_short>          numThetas( pl,    10, "numThetas"				, "Number of angular steps from -pi/2 to +pi/2 (inclusive) (default: 10)" );
-	param_t<u_short>      numAmplitudes( pl,    11, "numAmplitudes"			, "Number of amplitude steps (default: 11)" );
+	param_t<u_short>      numAmplitudes( pl,    13, "numAmplitudes"			, "Number of amplitude steps (default: 13)" );
 	param_t<double>        numFullWaves( pl,   2.0, "numFullWaves"          , "How many full cycles we'd like to have inside the domain for sampling (default: 2.0)" );
 
 	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes (it's OK that it's not in sync among processes).
-	std::mt19937 genTrans{};	// NOLINT This engine is used for the random shift of the sinusoid's canonical frame.
+	std::mt19937 gen{};			// NOLINT This engine is used shifts and spacing out amplitudes, hk_max values, and angles.
 
 	try
 	{
@@ -158,14 +161,8 @@ int main ( int argc, char* argv[] )
 		PetscPrintf( mpi.comm(), ">> Began to generate dataset for %i distinct amplitudes, starting at A index %i, "
 								 "with MaxRL = %i and h = %g\n", numAmplitudes(), startAIdx(), maxRL(), h );
 
-		std::vector<double> linspaceA;						// Amplitude values.
-		linspace( MIN_A, MAX_A, numAmplitudes(), linspaceA );
-
-		std::vector<double> linspaceHK_MAX;					// HK_MAX values (i.e., the desired max hk at the peaks).
-		linspace( HK_MAX_LO, HK_MAX_UP, numHKMaxSteps(), linspaceHK_MAX );
-
-		std::vector<double> linspaceTheta;					// Angular values for each standard axis.
-		linspace( MIN_THETA, MAX_THETA, numThetas(), linspaceTheta );
+		std::vector<double> linspaceA;						// Random amplitude values from MIN_A to MAX_A.
+		uniformRandomSpace( mpi, MIN_A, MAX_A, numAmplitudes(), linspaceA, gen );
 
 		///////////////////////////////////////////// Data-production loop /////////////////////////////////////////////
 
@@ -203,6 +200,9 @@ int main ( int argc, char* argv[] )
 			for( int i = 0; i < SAMPLE_TYPES; i++ )
 				kml::utils::prepareSamplesFile( mpi, DATA_PATH, fileName[i], file[i] );
 
+			std::vector<double> linspaceHK_MAX;	// Random HK_MAX values for current A (i.e., the desired max hk at the peaks).
+			uniformRandomSpace( mpi, HK_MAX_LO, HK_MAX_UP, numHKMaxSteps(), linspaceHK_MAX, gen );
+
 			printLogHeader( mpi );
 			size_t iters = 0;
 
@@ -237,6 +237,9 @@ int main ( int argc, char* argv[] )
 						double maxHKError = 0, maxIH2KGError = 0;		// Tracking the maximum error and number of samples
 						size_t loggedSamples[SAMPLE_TYPES] = {0, 0};	// collectively shared across processes for this rot axis.
 
+						std::vector<double> linspaceTheta;				// Random angular values for each standard axis.
+						uniformRandomSpace( mpi, MIN_THETA, MAX_THETA, numThetas(), linspaceTheta, gen );
+
 						for( int nt = 0; nt < numThetas() - 1; nt++ )	// numThetas rotation angles for same axis (skip last one).
 						{
 							////////////////// Defining the transformed sinusoidal level-set function //////////////////
@@ -246,7 +249,7 @@ int main ( int argc, char* argv[] )
 							if( mpi.rank() == 0 )						// Only rank 0 determines the random shift and
 							{											// then broadcasts it.
 								for( auto& dim : TRANS )
-									dim = uniformDistributionH_2( genTrans );
+									dim = uniformDistributionH_2( gen );
 							}
 							SC_CHECK_MPI( MPI_Bcast( TRANS, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random shift.
 
@@ -458,6 +461,38 @@ bool saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>
 }
 
 /**
+ * Space out values in the range [start, end] uniformly using a random distribution that includes the end points.
+ * @note Compare this function with linspace.
+ * @param [in] mpi MPI environment.
+ * @param [in] start Initial value.
+ * @param [in] end End value.
+ * @param [in] n Number of values (including the end points).
+ * @param [out] values Vector of values.
+ * @param [in,out] gen Random generator.
+ */
+void uniformRandomSpace( const mpi_environment_t& mpi, const double& start, const double& end, const int& n,
+						 std::vector<double>& values, std::mt19937& gen )
+{
+	if( n < 2 )
+		throw std::invalid_argument( "uniformRandomSpace: n must be at least 2!" );
+
+	if( start >= end )
+		throw std::invalid_argument( "uniformRandomSpace: start must be strictly less than end!" );
+
+	values.resize( n );
+	if( mpi.rank() == 0 )
+	{
+		std::uniform_real_distribution<double> uniformDist( start, end );
+		for( int i = 0; i < n; i++ )						// Uniform random dist in [start, end] with n steps to be
+			values[i] = uniformDist( gen );					// shared among processes.
+		values[0] = start;									// Make sure we include the end points.
+		values[n - 1] = end;
+		std::sort( values.begin(), values.end() );
+	}
+	SC_CHECK_MPI( MPI_Bcast( values.data(), n, MPI_DOUBLE, 0, mpi.comm() ) );
+}
+
+/**
  * Set up the domain based on sinusoid shape parameters to ensure a good portion of the periodic surface resides inside Omega.
  * @param [in] sinusoid Configured sinusoid function.
  * @param [in] N_WAVES Desired number of full cycles for any direction.
@@ -478,7 +513,7 @@ void setupDomain( const Sinusoid& sinusoid, const double& N_WAVES, const double&
 {
 	samRadius = N_WAVES * 2.0 * M_PI * MAX( 1/sinusoid.wu(), 1/sinusoid.wv() );	// Choose the sampling radius based on longer distance that contains N_WAVES full cycles.
 	samRadius = MAX( samRadius, sinusoid.A() );					// Prevent the case of a very thin surface: we still want to sample the tips.
-	samRadius = 6 * h + MIN( MAX_A, samRadius );				// Then, bound that radius with the largest amplitude.  Add enough padding (for uv plane).
+	samRadius = 6 * h + MIN( 1.5 * MAX_A, samRadius );			// Then, bound that radius with the largest amplitude.  Add enough padding (for uv plane).
 
 	const double CUBE_SIDE_LEN = 2 * samRadius;					// We want a cubic domain with an effective, yet small size.
 	const u_char OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 5 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
