@@ -32,6 +32,7 @@
 
 
 #include <src/my_p4est_poisson_nodes_mls.h>
+#include <src/my_p4est_stefan_with_fluids.h>
 #include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_navier_stokes.h>
@@ -111,16 +112,26 @@ DEFINE_PARAMETER(pl, int, example_, 4,"example number: \n"
 // Save options:
 // ---------------------------------------
 // Options for saving to vtk:
-DEFINE_PARAMETER(pl, bool, save_to_vtk, true, "We save vtk files using a given dt increment if this is set to true \n");
-DEFINE_PARAMETER(pl, bool, save_using_dt, false, "We save vtk files using a given dt increment if this is set to true \n");
-DEFINE_PARAMETER(pl, bool, save_using_iter, false, "We save every prescribed number of iterations if this is set to true \n");
+DEFINE_PARAMETER(pl, bool, save_to_vtk, true, "We save vtk files using a "
+                                              "given dt increment if this is set to true \n");
 
-DEFINE_PARAMETER(pl, int, save_every_iter, 1, "Saves vtk every n number of iterations (default is 1)");
-DEFINE_PARAMETER(pl, double, save_every_dt, 1, "Saves vtk every dt amount of time in seconds of dimensional time (default is 1)");
+DEFINE_PARAMETER(pl, bool, save_using_dt, false, "We save vtk files using a "
+                                                 "given dt increment if this is set to true \n");
+
+DEFINE_PARAMETER(pl, bool, save_using_iter, false, "We save every prescribed number "
+                                                   "of iterations if this is set to true \n");
+
+DEFINE_PARAMETER(pl, int, save_every_iter, 1, "Saves vtk every n number "
+                                              "of iterations (default is 1)");
+
+DEFINE_PARAMETER(pl, double, save_every_dt, 1, "Saves vtk every dt amount of "
+                                               "time in seconds of dimensional time (default is 1)");
 
 // Options to compute and save fluid forces to a file:
 DEFINE_PARAMETER(pl, bool, save_fluid_forces, false, "Saves fluid forces if true (default: false) \n");
+
 DEFINE_PARAMETER(pl, bool, save_area_data, false, "Save area data if true (default: false, but some examples will set this to true automatically)");
+
 DEFINE_PARAMETER(pl, double, save_data_every_dt, 0.01, "Saves fluid forces and/or area data every dt amount of time in seconds of dimensional time (default is 1.0) \n");
 
 // Options to track and output island numbers for an evolving geometry:

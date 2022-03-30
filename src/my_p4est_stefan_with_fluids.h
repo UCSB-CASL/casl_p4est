@@ -38,79 +38,144 @@
 #endif
 
 
-enum problem_dimensionalization_type_t{
-  NONDIM_BY_FLUID_VELOCITY, // nondim by the characteristic fluid velocity
-  NONDIM_BY_SCALAR_DIFFUSIVITY, // nondimensionalized by the temperature or concentration fluid diffusivity
-  DIMENSIONAL // dimensional problem (highly not recommended)
-};
+//enum problem_dimensionalization_type_t{
+//  NONDIM_BY_FLUID_VELOCITY, // nondim by the characteristic fluid velocity
+//  NONDIM_BY_SCALAR_DIFFUSIVITY, // nondimensionalized by the temperature or concentration fluid diffusivity
+//  DIMENSIONAL // dimensional problem (highly not recommended)
+//};
 
 class my_p4est_stefan_with_fluids_t
 {
 public:
+
   my_p4est_stefan_with_fluids_t();
 
 private:
-  // -----------------------------------------------
-  // p4est variables
-  // -----------------------------------------------
 
-  p4est_t*              p4est;
-  p4est_nodes_t*        nodes;
-  p4est_ghost_t*        ghost;
-  p4est_connectivity_t* conn;
-  my_p4est_brick_t      brick;
-  my_p4est_hierarchy_t* hierarchy;
-  my_p4est_node_neighbors_t* ngbd;
+  // -----------------------------------------------
+  // Grid variables
+  // -----------------------------------------------
+  /* A note on grid variable notation:
+   * - The notation for grids is a bit confusing, but this is the way it's been done:
+   *
+   * - We refer to the grid p4est_np1 as the grid we are
+   *   currently solving for the fields at time np1,
+   *   a.k.a. the grid which has the *interface location* at time np1
+   *
+   * - This means that throughout the process, we will have
+   * the fields at time n *sampled* on the grid p4est_np1, and
+   * the fields at time nm1 *sampled* on the p4est_n
+   *
+   * - At each timestep we solve for the fields on the grid np1,
+   *   then using the interfacial velocity soln v_gamma^(np1),
+   *   we advect the LSF Gamma^np1 to find Gamma^np2
+   *
+   * - Then, we slide the grids so we delete p4est_n, slide p4est_np1 --> p4est_n, and
+   *   compute a new p4est_np1 corresponding to Gamma^np2 which will become Gamma^np1
+   *   for the next timestep
+   *
+   */
 
-  p4est_t               *p4est_np1;
-  p4est_nodes_t         *nodes_np1;
-  p4est_ghost_t         *ghost_np1;
+  // Grid at time n (usually housing nm1 variables, except for interface location @ n)
+  p4est_t*              p4est_n;
+  p4est_nodes_t*        nodes_n;
+  p4est_ghost_t*        ghost_n;
+  p4est_connectivity_t* conn_n;
+  my_p4est_brick_t      brick_n;
+  my_p4est_hierarchy_t* hierarchy_n;
+  my_p4est_node_neighbors_t* ngbd_n;
+
+  // Grid at time np1 (usually housing n variables, except for interface location @ np1)
+  p4est_t*               p4est_np1;
+  p4est_nodes_t*         nodes_np1;
+  p4est_ghost_t*         ghost_np1;
   my_p4est_hierarchy_t* hierarchy_np1;
   my_p4est_node_neighbors_t* ngbd_np1;
 
-  // Level set function(s):---------------------------
+  // Splitting criteria
+  splitting_criteria_cf_and_uniform_band_t* sp;
+
+  // Level set object
+  my_p4est_level_set_t *ls;
+
+  // -----------------------------------------------
+  // Level set function(s):
+  // -----------------------------------------------
   vec_and_ptr_t phi;
   vec_and_ptr_t phi_nm1; // LSF for previous timestep... we must keep this so that hodge fields can be updated correctly in NS process
 
-  vec_and_ptr_t phi_solid; // LSF for solid domain: -- This will be assigned within the loop as the negative of phi
-  vec_and_ptr_t phi_cylinder;   // LSF for the inner cylinder, if applicable (example ICE_OVER_CYLINDER)
+  // LSF for solid domain (internal use only) This will be assigned as needed as the negative of phi
+  vec_and_ptr_t phi_solid;
 
+  // LSF for the inner substrate (if applicable)
+  vec_and_ptr_t phi_substrate;
+
+  // Second derivatives of LSFs
   vec_and_ptr_dim_t phi_dd;
   vec_and_ptr_dim_t phi_solid_dd;
-  vec_and_ptr_dim_t phi_cylinder_dd;
+  vec_and_ptr_dim_t phi_substrate_dd;
 
-  // Interface geometry:------------------------------
+  // -----------------------------------------------
+  // Interface geometry:
+  // -----------------------------------------------
   vec_and_ptr_dim_t normal;
   vec_and_ptr_t curvature;
 
   vec_and_ptr_dim_t liquid_normals;
   vec_and_ptr_dim_t solid_normals;
-  vec_and_ptr_dim_t cyl_normals;
+  vec_and_ptr_dim_t substrate_normals;
 
-  // Poisson problem:---------------------------------
+  // Island numbers -- for cases where we are tracking evolving grain geometries
+  vec_and_ptr_t island_numbers;
+
+  // -----------------------------------------------
+  // Temperature/concentration problem:
+  // -----------------------------------------------
+  // Solvers and relevant parameters
   int cube_refinement = 1;
   my_p4est_poisson_nodes_mls_t *solver_Tl = NULL;  // will solve poisson problem for Temperature in liquid domains
   my_p4est_poisson_nodes_mls_t *solver_Ts = NULL;  // will solve poisson problem for Temperature in solid domain
 
+  // Fields related to the liquid temperature/concentration problem:
   vec_and_ptr_t T_l_n;
   vec_and_ptr_t T_l_nm1;
   vec_and_ptr_t T_l_backtrace;
   vec_and_ptr_t T_l_backtrace_nm1;
   vec_and_ptr_t rhs_Tl;
 
+  // Fields related to the solid temperature/concentration problem:
   vec_and_ptr_t T_s_n;
   vec_and_ptr_t rhs_Ts;
 
-  // Vectors to hold first derivatives of T
+  // First derivatives of T_l_n and T_s_n
   vec_and_ptr_dim_t T_l_d;
   vec_and_ptr_dim_t T_s_d;
+
+  // Second derivatives of T_l
   vec_and_ptr_dim_t T_l_dd;
 
-  // Stefan problem:------------------------------------
+  // Boundary conditions: // will figure out how to address this later
+  // perhaps have a fxn--> set bc_interface_val to Gibbs Thomson, or to dendrite, or to user defined?
+  CF_DIM* bc_interface_val_temp[2];
+  BoundaryConditionType bc_interface_type_temp;
+
+  CF_DIM* bc_wall_value_temp[2];
+  BoundaryConditionType bc_wall_type_temp;
+
+  CF_DIM* bc_interface_val_temp_substrate;
+  BoundaryConditionType bc_interface_type_temp_substrate;
+
+
+  // ----------------------------------------------
+  // Stefan problem:
+  // ----------------------------------------------
   vec_and_ptr_dim_t v_interface;;
   vec_and_ptr_dim_t jump;
 
-  // Navier-Stokes problem:-----------------------------
+  // ----------------------------------------------
+  // Navier-Stokes problem:
+  // ----------------------------------------------
+
   my_p4est_navier_stokes_t* ns = NULL;
 
   PCType pc_face = PCSOR;
@@ -126,21 +191,63 @@ private:
 
   vec_and_ptr_t press_nodes;
 
-  Vec dxyz_hodge_old[P4EST_DIM];
-
   my_p4est_cell_neighbors_t *ngbd_c_np1 = NULL;
   my_p4est_faces_t *faces_np1 = NULL;
 
-  // Related to domain: -------------------------------
+  // Boundary conditions:
+  BoundaryConditionsDIM bc_velocity[P4EST_DIM];
+  BoundaryConditionsDIM bc_pressure;
+
+  CF_DIM* bc_interface_value_velocity[P4EST_DIM];
+  BoundaryConditionType bc_interface_type_velocity[P4EST_DIM];
+
+  CF_DIM* bc_wall_value_velocity[P4EST_DIM];
+  BoundaryConditionType bc_wall_type_velocity[P4EST_DIM];
+
+  CF_DIM* bc_interface_value_pressure;
+  BoundaryConditionType bc_interface_type_pressure;
+
+  CF_DIM* bc_wall_value_pressure;
+  BoundaryConditionType bc_wall_type_pressure;
+
+  // ----------------------------------------------
+  // Related to domain:
+  // ----------------------------------------------
   double xyz_min[P4EST_DIM]; double xyz_max[P4EST_DIM];
   int ntrees[P4EST_DIM];
   bool periodicity[P4EST_DIM];
 
-  // Number of fields to transfer between grids
+  // Variables for refining the fields
+  int lmin, lint, lmax;
+  double uniform_band;
+
+  bool use_uniform_band;
+  bool refine_by_d2T;
+  double vorticity_threshold;
+  double gradT_threshold;
+
+  // ----------------------------------------------
+  // Related to interpolation bw grids:
+  // ----------------------------------------------
   int num_fields_interp;
+  interpolation_method interp_bw_grids = quadratic_non_oscillatory_continuous_v2;
 
+  // ----------------------------------------------
+  // Related to current grid size:
+  // ----------------------------------------------
+  double dxyz_smallest[P4EST_DIM];
+  double dxyz_close_to_interface;
 
-  // Related to time/timestepping: --------------------
+  // ----------------------------------------------
+  // Variables used for extension of fields:
+  // ----------------------------------------------
+  double min_volume_;
+  double extension_band_use_;
+  double extension_band_extend_;
+
+  // ----------------------------------------------
+  // Related to time/timestepping:
+  // ----------------------------------------------
   double tn;
   double dt;
   double dt_nm1;
@@ -152,14 +259,18 @@ private:
   double cfl_Stefan;
   double cfl_NS;
 
+  // ----------------------------------------------
   // Related to dimensionalization type:
+  // ----------------------------------------------
   int problem_dimensionalization_type;
 
   // Converting nondim to dim:
   double time_nondim_to_dim;
   double vel_nondim_to_dim;
 
+  // ----------------------------------------------
   // Nondimensional groups
+  // ----------------------------------------------
   double Re; // Reynolds number (rho Uinf l_char)/mu_l
   double Pr; // Prandtl number - (mu_l/(rho_l * alpha_l)) = (nu_l/alpha_l)
   double Sc; // Schmidt number - (mu_l/(rho_l * D)) = (nu_l/D)
@@ -169,7 +280,9 @@ private:
   double RaT; // Rayleigh number by temperature TO-DO: add definition
   double RaC; // Rayleigh number by concentration TO-DO: add definition
 
+  // ----------------------------------------------
   // Physical parameters:
+  // ----------------------------------------------
   double l_char; // Characteristic length scale (assumed in meters)
 
   double T0; // characteristic solid temperature of the problem
@@ -196,27 +309,8 @@ private:
   double k_diss; // Dissolution rate constant per unit area of reactive surface (m/s)
 
 
-  // Interp method: -------------------------------------
-  interpolation_method interp_bw_grids = quadratic_non_oscillatory_continuous_v2;
 
 
-  // Variables for extension band and grid size: ---------
-  double dxyz_smallest[P4EST_DIM];
-  double dxyz_close_to_interface;
-
-  double min_volume_;
-  double extension_band_use_;
-  double extension_band_extend_;
-  double extension_band_check_;
-
-  // Variables for refining the fields
-  int lmin, lint, lmax;
-  double uniform_band;
-
-  bool use_uniform_band;
-  bool refine_by_d2T;
-  double vorticity_threshold;
-  double gradT_threshold;
 
 
 

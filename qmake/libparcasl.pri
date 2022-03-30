@@ -123,6 +123,7 @@ HEADERS += \
 # $$PARCASL/src/my_p4est_curvature_ml.h \
   $$PARCASL/src/my_p4est_shs_channel.h \
   $$PARCASL/src/my_p4est_solve_lsqr.h \
+  $$PARCASL/src/my_p4est_stefan_with_fluids.h \
   $$PARCASL/src/my_p4est_surfactant.h \
   $$PARCASL/src/my_p4est_trajectory_of_point.h \
   $$PARCASL/src/my_p4est_utils.h \
@@ -179,6 +180,7 @@ SOURCES += \
 # $$PARCASL/src/my_p4est_semi_lagrangian_ml.cpp \
 # $$PARCASL/src/my_p4est_curvature_ml.cpp \
   $$PARCASL/src/my_p4est_solve_lsqr.cpp \
+  $$PARCASL/src/my_p4est_stefan_with_fluids.cpp \
   $$PARCASL/src/my_p4est_surfactant.cpp \
   $$PARCASL/src/my_p4est_trajectory_of_point.cpp \
   $$PARCASL/src/my_p4est_utils.cpp \
