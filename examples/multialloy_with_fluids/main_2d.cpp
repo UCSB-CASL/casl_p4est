@@ -600,7 +600,7 @@ void set_geometry(){
       x0_lsf = 0.; y0_lsf = 0.; // TO-DO: can remove the x0_lsf and y0_lsf since they are not being used
 
       // Number of trees:
-      nx = 2; ny = 2;
+      nx = 1; ny = 1;
       px = 0; py = 0;
 
       // Radius of the level set function:
@@ -625,12 +625,12 @@ void set_geometry(){
       // TO-DO: clean this out
       // (WIP) : was added to further verify coupled solver by demonstrating dendritic solidification of a pure substance, but never fully fledged this out.
       // Domain size:
-      xmin = 0.; xmax = 1600.;
-      ymin = 0.; ymax = 1600.;
+      xmin = 0.; xmax = 3200.;
+      ymin = 0.; ymax = 3200.;
 
       // Number of trees and periodicity:
       nx = 2; ny = 2;
-      px = 1; py = 0;
+      px = 0; py = 0;
 
       // level set size (initial seed size)
       r0 = 30.; // to match the paper we are comparing with
@@ -964,6 +964,9 @@ void set_physical_properties(){
       break;
     }
     case DENDRITE_TEST:{
+      mu_l=1.0;//660000;
+      rho_l=1.0;//1000;
+      alpha_l=1.0;//28.5714;
       // can be specified by the user
       break;
     }
@@ -1182,6 +1185,7 @@ void set_nondimensional_groups(){
     // From these, we compute a characteristic velocity, Peclet number, Stefan number, etc.
     // This is also then used to specify the time_nondim_to_dim and vel_nondim_to_dim conversions
     u_inf = (Re*mu_l)/(rho_l * l_char);
+    // Rochi temp change
 
     if(!is_dissolution_case){
       Pe = l_char * u_inf/alpha_l;
@@ -1342,7 +1346,7 @@ void set_NS_info(){
     }
     case DENDRITE_TEST:{
       u0 = 0.;
-      v0 = -1.;
+      v0 = -0.035;
       hodge_percentage_of_max_u = 1.e-2;
       break;
     }
@@ -2279,11 +2283,12 @@ public:
       }
       case DENDRITE_TEST:{
         // check this later to-do
-        double noise = 0.3;
+        double noise = 0.001;
         double xc =xmax/2.0;
         double yc =ymax/2.0;
         double theta = atan2(y-yc,x-xc);
-        return r0*(1.0 - noise*fabs(sin(theta)) - noise*fabs(cos(theta))) - sqrt(SQR(x - xc) + SQR(y - yc));
+        //return r0*(1.0 - noise*fabs(sin(theta)) - noise*fabs(cos(theta))) - sqrt(SQR(x - xc) + SQR(y - yc));
+        return r0*(1.0 - noise*fabs(pow(sin(2*theta),2)))- sqrt(SQR(x - xc) + SQR(y - yc));
       }
       case PLANE_POIS_FLOW:{
         if(y > r0){
@@ -2696,7 +2701,7 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
   switch(example_){
     case DENDRITE_TEST:{
     // Dirichlet on y upper wall (where bulk flow is incoming
-      return ( yupper_wall(DIM(x,y,z)) );
+      return ( yupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)));
     }
     case FLOW_PAST_CYLINDER:
     case EVOLVING_POROUS_MEDIA:{
@@ -3098,7 +3103,6 @@ public:
       case PLANE_POIS_FLOW:
         return 0.; // homogeneous dirichlet no slip
       case FLOW_PAST_CYLINDER:
-      case DENDRITE_TEST:
       case EVOLVING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
@@ -3126,6 +3130,9 @@ public:
       case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:
         return (*velocity_field[dir])(x,y);
+      case DENDRITE_TEST:{
+        return 0.0;
+      }
     default:
       throw std::runtime_error("BC INTERFACE VALUE VELOCITY: unrecognized example ");
       }
@@ -5809,6 +5816,7 @@ void check_collapse_on_substrate(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, m
 
 
 
+//        my_p4est_interpolation_nodes_t interp(ngbd_);
 
 
   // Begin procedure of checking distance bw LSF and substrate, and collapsing if necessary

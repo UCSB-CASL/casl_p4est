@@ -12,30 +12,30 @@ message( "" )
 if( CMAKE_BUILD_TYPE MATCHES Debug )
 	message( "******* CASL CMAKE IN DEBUG MODE *******" )
 
-	set( PETSC_DIR /usr/local/petsc-3.12.0-debug )	# PETSc.
-	set( P4EST_DIR /usr/local/p4est-2.2-debug )		# p4est.
-	set( VORO_DIR  /usr/local )						# Voro++.
+	set( PETSC_DIR /home/ebayat/workspace/libraries/PETSC/debug )	# PETSc.
+	set( P4EST_DIR /home/ebayat/workspace/libraries/P4EST/debug )   # p4est.
+	set( VORO_DIR  /home/ebayat/workspace/libraries/VORO++ )	    # Voro++.
 
 elseif( CMAKE_BUILD_TYPE MATCHES Release )
 	message( "******* CASL CMAKE IN RELEASE MODE *******" )
 
-	set( PETSC_DIR /usr/local/petsc )				# PETSc.
-	set( P4EST_DIR /usr/local/p4est-2.2 )			# p4est.
-	set( VORO_DIR  /usr/local )						# Voro++
+	set( PETSC_DIR /home/ebayat/workspace/libraries/PETSC/release )				# PETSc.
+	set( P4EST_DIR /home/ebayat/workspace/libraries/P4EST/release )			# p4est.
+	set( VORO_DIR  /home/ebayat/workspace/libraries/VORO++ )						# Voro++
 
 else()
 	message( FATAL_ERROR "Invalid or missing CMAKE_BUILD_TYPE macro --it should be 'Debug' or 'Release'." )
 endif()
 
 # MPI.
-set( MPI_DIR /usr/local )
+set( MPI_DIR /usr/local/bin )
 
 # Boost.  For header-only functions, you don't need to specify a particular component in
 # `link_libraries`-- just add the path to boost headers in `include_directories`.  If you need
 # some component use:
 # find_package( Boost COMPONENTS filesystem REQUIRED )  <-- filesystem component.
 # then `link_libraries( ${Boost_FILESYSTEM_LIBRARY} )` and  `include_directories( ${Boost_INCLUDE_DIR} )`.
-set( BOOST_DIR /usr/local/boost )
+set( BOOST_DIR /home/ebayat/workspace/libraries/boost-build )
 
 # Let's add libraries to the lists.
 list( APPEND INC_DIRS					# Include directories.
