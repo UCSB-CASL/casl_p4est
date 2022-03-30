@@ -986,22 +986,22 @@ void set_physical_properties(){
 }
 
 
-enum:int{NONDIM_BY_FLUID_VELOCITY, NONDIM_BY_DIFFUSIVITY, DIMENSIONAL};
+//enum:int{NONDIM_BY_FLUID_VELOCITY, NONDIM_BY_SCALAR_DIFFUSIVITY, DIMENSIONAL};
 // NONDIM_BY_FLUID_VELOCITY -- corresponds to nondimensionalization where the velocities in the problem are nondimensionalized by
 //                             a characteristic fluid velocity, and Reynolds number is used to setup the Navier-Stokes equations
 
-// NONDIM_BY_DIFFUSIVITY -- corresponds to nondimensionalization where the velocities in the problem are nondimensionalized by
+// NONDIM_BY_SCALAR_DIFFUSIVITY -- corresponds to nondimensionalization where the velocities in the problem are nondimensionalized by
 //                          a characteristic velocity defined by the fluid's thermal or concentration diffisuvity and char. length scale,
 //                          and Prandtl/Schmidt number is used to setup the Navier-Stokes equations
 
 // DIMENSIONAL -- corresponds to solving the dimensional problem
 
-int problem_dimensionalization_type;
+problem_dimensionalization_type_t problem_dimensionalization_type;
 
 void select_problem_nondim_or_dim_formulation(){
   switch(example_){
   case FRANK_SPHERE:{
-    problem_dimensionalization_type = NONDIM_BY_DIFFUSIVITY;
+    problem_dimensionalization_type = NONDIM_BY_SCALAR_DIFFUSIVITY;
     break;
   }
   case NS_GIBOU_EXAMPLE:{
@@ -1025,7 +1025,7 @@ void select_problem_nondim_or_dim_formulation(){
     break;
   }
   case DENDRITE_TEST:{
-    problem_dimensionalization_type = NONDIM_BY_DIFFUSIVITY;
+    problem_dimensionalization_type = NONDIM_BY_SCALAR_DIFFUSIVITY;
     break;
   }
   case MELTING_ICE_SPHERE:{
@@ -1040,7 +1040,7 @@ void select_problem_nondim_or_dim_formulation(){
     break;
   }
   case DISSOLVING_DISK_BENCHMARK:{
-    problem_dimensionalization_type = NONDIM_BY_DIFFUSIVITY; // elyce to-do : will want to run this benchmark using the other formulation as well
+    problem_dimensionalization_type = NONDIM_BY_SCALAR_DIFFUSIVITY; // elyce to-do : will want to run this benchmark using the other formulation as well
     break;
   }
   case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
@@ -1057,7 +1057,7 @@ void select_problem_nondim_or_dim_formulation(){
   }
   } // end of switch case
   if(nondim_type_used>=0){
-    problem_dimensionalization_type = nondim_type_used;
+    problem_dimensionalization_type = (problem_dimensionalization_type_t)nondim_type_used;
   }
 };
 
@@ -1210,7 +1210,7 @@ void set_nondimensional_groups(){
 
     break;
   }
-  case NONDIM_BY_DIFFUSIVITY:{
+  case NONDIM_BY_SCALAR_DIFFUSIVITY:{
     double u_char = (is_dissolution_case? (Dl/l_char):(alpha_l/l_char));
     vel_nondim_to_dim = u_char;
     time_nondim_to_dim = l_char/u_char;
@@ -1293,7 +1293,7 @@ void set_NS_info(){
           v0 = 0.;
           break;
         }
-        case NONDIM_BY_DIFFUSIVITY:{
+        case NONDIM_BY_SCALAR_DIFFUSIVITY:{
           u0 = (u_inf)/(Dl/l_char);
 
           v0 = 0.;
@@ -1422,7 +1422,7 @@ void set_nondimensional_groups(){
      time_nondim_to_dim = d_length_scale/u_inf;
 
    }
-   else if(problem_dimensionalization_type==NONDIM_BY_DIFFUSIVITY){
+   else if(problem_dimensionalization_type==NONDIM_BY_SCALAR_DIFFUSIVITY){
      double d_length_scale = 0.;
      if(example_ == ICE_AROUND_CYLINDER){
        d_length_scale=d_cyl;
@@ -2457,7 +2457,7 @@ public:
       case NONDIM_BY_FLUID_VELOCITY:{
         return (theta_interface - (sigma_/l_char)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT));
       }
-      case NONDIM_BY_DIFFUSIVITY:{
+      case NONDIM_BY_SCALAR_DIFFUSIVITY:{
         return (theta_interface - (sigma_/l_char)*((*kappa_interp)(x,y))*(theta_interface + Tinfty/deltaT));
       }
       case DIMENSIONAL:{
@@ -3344,7 +3344,7 @@ public:
             pressure_drop_nondim = pressure_drop/(rho_l * u_inf * u_inf);
             break;
           }
-          case NONDIM_BY_DIFFUSIVITY:{
+          case NONDIM_BY_SCALAR_DIFFUSIVITY:{
             pressure_drop_nondim = is_dissolution_case?
                                                        (pressure_drop*l_char*l_char/rho_l/Dl/Dl):
                                                        (pressure_drop*l_char*l_char/rho_l/alpha_l/alpha_l);
@@ -3675,7 +3675,7 @@ double interfacial_velocity_expression(double Tl_d, double Ts_d){
         return -1.*(gamma_diss/Pe)*Tl_d;
       }
     }
-    case NONDIM_BY_DIFFUSIVITY:{
+    case NONDIM_BY_SCALAR_DIFFUSIVITY:{
       if(!is_dissolution_case){
         return ( -1.*(St)*(alpha_s/alpha_l)*( (k_l/k_s)*Tl_d - Ts_d ) );
       }
@@ -3878,14 +3878,7 @@ void compute_timestep( p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                        vec_and_ptr_t& phi, vec_and_ptr_dim_t& v_interface,
                        my_p4est_navier_stokes_t* ns,
                        double dxyz_close_to_interface, double dxyz_smallest[P4EST_DIM],
-                       int load_tstep, int &last_tstep)
-
-
-
-    /*vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& phi,
-                      double dxyz_close_to_interface, double dxyz_smallest[P4EST_DIM],
-                      p4est_nodes_t *nodes_np1, p4est_t *p4est_np1, my_p4est_navier_stokes_t* ns,
-                      const int load_tstep, int &last_tstep )*/{
+                       int load_tstep, int &last_tstep){
 
   int mpicomm = p4est_np1->mpicomm;
 
@@ -5115,7 +5108,7 @@ void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
       }
       break;
     }
-    case NONDIM_BY_DIFFUSIVITY:{
+    case NONDIM_BY_SCALAR_DIFFUSIVITY:{
       if(!is_dissolution_case){
         solver_Tl->set_mu(1.);
         if(do_we_solve_for_Ts) solver_Ts->set_mu((alpha_s/alpha_l));
@@ -5437,7 +5430,7 @@ void set_ns_parameters(my_p4est_navier_stokes_t* ns){
       ns->set_parameters((1./Re), 1.0, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
       break;
     }
-    case NONDIM_BY_DIFFUSIVITY:{
+    case NONDIM_BY_SCALAR_DIFFUSIVITY:{
       if(!is_dissolution_case){
         ns->set_parameters(Pr, 1.0, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
       }
@@ -5713,7 +5706,7 @@ void setup_and_solve_navier_stokes_problem(mpi_environment_t& mpi, my_p4est_navi
       ierr = VecScaleGhost(T_l_n.vec, -1.);
       break;
     }
-    case NONDIM_BY_DIFFUSIVITY:{
+    case NONDIM_BY_SCALAR_DIFFUSIVITY:{
       ns->boussinesq_approx=true;
               if(!is_dissolution_case){
         ierr = VecScaleGhost(T_l_n.vec, -1.*RaT*Pr);
@@ -7176,8 +7169,8 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
 
 void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_save_np1,
                                      vector<save_or_load_element_t> &fields_to_save_n,
-                                     Vec *phi, Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n,
-                                     Vec v_NS[P4EST_DIM], Vec v_NS_nm1[P4EST_DIM]/*, Vec *vorticity*/){
+                                     vec_and_ptr_t& phi, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1, vec_and_ptr_t& T_s_n,
+                                     vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1){
 
   save_or_load_element_t to_add;
   // ----------------------
@@ -7187,10 +7180,8 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
   to_add.name = "phi";
   to_add.DATA_SAMPLING = NODE_DATA;
   to_add.nvecs = 1;
-  to_add.pointer_to_vecs = phi;
+  to_add.pointer_to_vecs = &phi.vec;
   fields_to_save_np1.push_back(to_add);
-
-
 
   // Temperature fields
   if(solve_stefan){
@@ -7198,7 +7189,7 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
     to_add.name = "T_l_n";
     to_add.DATA_SAMPLING = NODE_DATA;
     to_add.nvecs = 1;
-    to_add.pointer_to_vecs = T_l_n;
+    to_add.pointer_to_vecs = &T_l_n.vec;
     fields_to_save_np1.push_back(to_add);
 
     if(advection_sl_order==2 && solve_navier_stokes){
@@ -7206,7 +7197,7 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
       to_add.name = "T_l_nm1";
       to_add.DATA_SAMPLING = NODE_DATA;
       to_add.nvecs = 1;
-      to_add.pointer_to_vecs = T_l_nm1;
+      to_add.pointer_to_vecs = &T_l_nm1.vec;
       fields_to_save_n.push_back(to_add);
     }
 
@@ -7215,7 +7206,7 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
       to_add.name = "T_s_n";
       to_add.DATA_SAMPLING = NODE_DATA;
       to_add.nvecs = 1;
-      to_add.pointer_to_vecs = T_s_n;
+      to_add.pointer_to_vecs = &T_s_n.vec;
       fields_to_save_np1.push_back(to_add);
     }
   }
@@ -7225,21 +7216,14 @@ void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_s
     to_add.name = "v_NS_n";
     to_add.DATA_SAMPLING = NODE_DATA;
     to_add.nvecs = P4EST_DIM;
-    to_add.pointer_to_vecs = v_NS;
+    to_add.pointer_to_vecs = v_n.vec;
     fields_to_save_np1.push_back(to_add);
 
     to_add.name = "v_NS_nm1";
     to_add.DATA_SAMPLING = NODE_DATA;
     to_add.nvecs = P4EST_DIM;
-    to_add.pointer_to_vecs = v_NS_nm1;
+    to_add.pointer_to_vecs = v_nm1.vec;
     fields_to_save_n.push_back(to_add);
-
-//    to_add.name = "vorticity";
-//    to_add.DATA_SAMPLING = NODE_DATA;
-//    to_add.nvecs = 1;
-//    to_add.pointer_to_vecs = vorticity;
-//    fields_to_save.push_back(to_add);
-
   }
 
 }
@@ -7249,8 +7233,10 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
                 splitting_criteria_cf_and_uniform_band_t* sp,
                 p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                 p4est_t* p4est_n, p4est_nodes_t* nodes_n,
-                Vec phi, Vec T_l_n, Vec T_l_nm1, Vec T_s_n,
-                Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM]/*,Vec vorticity*/){
+                vec_and_ptr_t& phi, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1, vec_and_ptr_t& T_s_n,
+                vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1
+                /*Vec phi, Vec T_l_n, Vec T_l_nm1, Vec T_s_n,
+                Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM]*//*,Vec vorticity*/){
   PetscErrorCode ierr;
 
   if(!file_exists(path_to_directory)){
@@ -7343,8 +7329,8 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
 
 
     prepare_fields_for_save_or_load(fields_to_save_np1, fields_to_save_n,
-                                    &phi, &T_l_n, &T_l_nm1, &T_s_n,
-                                    v_NS, v_NS_nm1/*, &vorticity*/);
+                                    phi, T_l_n, T_l_nm1, T_s_n,
+                                    v_n, v_nm1/*, &vorticity*/);
 
     // Save the state:
     // choosing not to save the faces because we don't need them saved ? Elyce to-do double check this, 1/6/21
@@ -7364,8 +7350,10 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
                 p4est_ghost_t* &ghost_np1,
                 p4est_t* &p4est_n, p4est_nodes_t* &nodes_n,
                 p4est_ghost_t* &ghost_n, p4est_connectivity* &conn,
-                Vec *phi, Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n,
-                Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM]/*,Vec *vorticity*/){
+                vec_and_ptr_t& phi, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1, vec_and_ptr_t& T_s_n,
+                vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1
+                /*Vec *phi, Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n,
+                Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM]*//*,Vec *vorticity*/){
 
   char filename[PATH_MAX];
   if(!is_folder(path_to_folder)) throw std::invalid_argument("Load state: path to directory is invalid \n");
@@ -7383,7 +7371,7 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
   prepare_fields_for_save_or_load(fields_to_load_np1,
                                   fields_to_load_n,
                                   phi, T_l_n, T_l_nm1, T_s_n,
-                                  v_NS, v_NS_nm1);
+                                  v_n, v_nm1);
 
   // Load the time n grid:
   my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
@@ -8024,7 +8012,7 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
 
           break;
         }
-        case NONDIM_BY_DIFFUSIVITY:{
+        case NONDIM_BY_SCALAR_DIFFUSIVITY:{
           if(is_dissolution_case){
             // Output file for fluid forces or area data
             sprintf(name_data,"%s/area_and_or_force_data_Sc_%0.2f_gamma_%0.2f_lmin_%d_lmax_%d.dat",
@@ -8438,8 +8426,7 @@ void initialize_grids_and_fields_from_load_state(int& load_tstep,
   load_state(mpi, load_path, &sp,
              p4est_np1, nodes_np1, ghost_np1,
              p4est_n, nodes_n, ghost_n, conn,
-             &phi.vec, &T_l_n.vec, &T_l_nm1.vec, &T_s_n.vec,
-             v_n.vec, v_nm1.vec/*, &vorticity.vec*/);
+             phi, T_l_n, T_l_nm1, T_s_n, v_n, v_nm1);
 
 
   PetscPrintf(mpi.comm(),"State was loaded successfully from %s \n",load_path);
@@ -9378,8 +9365,7 @@ int main(int argc, char** argv) {
                    sp,
                    p4est_np1, nodes_np1,
                    p4est_n, nodes_n,
-                   phi.vec, T_l_n.vec, T_l_nm1.vec, T_s_n.vec,
-                   v_n.vec, v_nm1.vec/*, vorticity.vec*/);
+                   phi, T_l_n, T_l_nm1, T_s_n, v_n, v_nm1);
 
         PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
       }

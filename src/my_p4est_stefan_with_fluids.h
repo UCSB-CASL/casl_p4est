@@ -38,11 +38,11 @@
 #endif
 
 
-//enum problem_dimensionalization_type_t{
-//  NONDIM_BY_FLUID_VELOCITY, // nondim by the characteristic fluid velocity
-//  NONDIM_BY_SCALAR_DIFFUSIVITY, // nondimensionalized by the temperature or concentration fluid diffusivity
-//  DIMENSIONAL // dimensional problem (highly not recommended)
-//};
+enum problem_dimensionalization_type_t{
+  NONDIM_BY_FLUID_VELOCITY, // nondim by the characteristic fluid velocity
+  NONDIM_BY_SCALAR_DIFFUSIVITY, // nondimensionalized by the temperature or concentration fluid diffusivity
+  DIMENSIONAL // dimensional problem (highly not recommended)
+};
 
 class my_p4est_stefan_with_fluids_t
 {
@@ -308,10 +308,62 @@ private:
   double Dl, Ds; //Concentration diffusion coefficient m^2/s,
   double k_diss; // Dissolution rate constant per unit area of reactive surface (m/s)
 
+  // ----------------------------------------------
+  // Booleans related to what kind of physics we are solving
+  // ----------------------------------------------
+  bool solve_stefan;
+  bool solve_navier_stokes;
+  bool there_is_a_substrate/*example_uses_inner_LSF*/;
+
+  bool do_we_solve_for_Ts;
+
+  bool use_boussinesq;
+
+  bool is_dissolution_case;
+
+  bool force_interfacial_velocity_to_zero;
+
+  // ----------------------------------------------
+  // Specific to diff cases --> may change these now that they are within a class structure
+  // ----------------------------------------------
+  bool analytical_IC_BC_forcing_term;
+  bool example_is_a_test_case;
+
+  bool interfacial_temp_bc_requires_curvature;
+  bool interfacial_temp_bc_requires_normal;
+
+  bool interfacial_vel_bc_requires_vint;
 
 
+  //bool example_requires_area_computation;
 
 
+  bool example_has_known_max_vint;
+
+  // ----------------------------------------------
+  // Related to any front regularization:
+  // ----------------------------------------------
+  bool use_regularize_front;
+  bool use_collapse_onto_substrate;
+
+  double proximity_smoothing;
+  double proxmity_collapse;
+
+  // ----------------------------------------------
+  // Related to LSF reinitialization
+  // ----------------------------------------------
+  int reinit_every_iter = 1;
+
+  // ----------------------------------------------
+  // Temperature problem variables -- nondim:
+  // ----------------------------------------------
+  // These things get computed depending on the provided dimensional quantities and case
+  double deltaT;
+  double theta_infty, theta_interface, theta0;
+
+  // ----------------------------------------------
+  //
+  // ----------------------------------------------
 
 
 };
