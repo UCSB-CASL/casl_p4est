@@ -1,13 +1,16 @@
-/*
+/**
  * The navier stokes solver applied for super-hydrophobic surfaces simulations
  *
  * run the program with the -help flag to see the available options
+ *
+ * Author: Raphael Egan, with updates by Luis Ángel.
+ * Updated: March 30, 2022.
  */
 
 // System
 #include <mpi.h>
 #include <iterator>
-#include <stdio.h>
+#include <cstdio>
 
 // p4est Library
 #ifdef P4_TO_P8
@@ -29,7 +32,7 @@
 #undef MAX
 
 // --> extra info to be printed when -help is invoked
-const std::string extra_info =
+const std::string extra_info =		// NOLINT.
       std::string("This program provides a general setup for superhydrophobic channel flow simulations.\n\n")
     + std::string("It assumes no solid object and no passive scalar (i.e. no smoke) in the channel. If no dimension is set by the user, the \n")
     + std::string("channel is set to be 6 x 2 (x 3) by default. If the number of trees in the streamwise (spanwise) direction, i.e. nx (nz),\n")
@@ -68,15 +71,15 @@ const std::string extra_info =
     + std::string("Developers: Raphael Egan (raphaelegan@ucsb.edu) with Fernando Temprano-Coleto's help for the analytical solutions.\n");
 
 #if defined(POD_CLUSTER)
-const std::string default_export_dir  = "/scratch/regan/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/scratch/regan/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";	// NOLINT.
 #elif defined(STAMPEDE)
-const std::string default_export_dir  = "/scratch/04965/tg842642/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/scratch/04965/tg842642/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";	// NOLINT.
 #elif defined(LAPTOP)
-const std::string default_export_dir  = "/home/raphael/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/home/raphael/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";	// NOLINT.
 #elif defined(JUPITER)
-const std::string default_export_dir  = "/home/temprano/Output/p4est_ns_shs/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/home/temprano/Output/p4est_ns_shs/" + std::to_string(P4EST_DIM) + "D_channel";	// NOLINT.
 #else
-const std::string default_export_dir  = "/home/regan/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/home/regan/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";	// NOLINT.
 #endif
 
 const int default_lmin                        = 4;
@@ -101,22 +104,22 @@ const double default_u_tol                    = 1.0e-6;
 const unsigned int default_n_hodge            = 10;
 const hodge_control def_hodge_control         = uvw_components;
 const unsigned int default_grid_update        = 1;
-const std::string default_pc_cell             = "sor";
-const std::string default_cell_solver         = "bicgstab";
-const std::string default_pc_face             = "sor";
+const std::string default_pc_cell             = "sor";			// NOLINT.
+const std::string default_cell_solver         = "bicgstab";		// NOLINT.
+const std::string default_pc_face             = "sor";			// NOLINT.
 const unsigned int default_save_nstates       = 1;
 const unsigned int default_nexport_avg        = 100;
 const int default_nterms                      = 2500;
 const int periodicity[P4EST_DIM]              = {DIM(1, 0, 1)};
-const std::string drag_output_format          = std::string("%g %g %g") ONLY3D(+ std::string(" %g")) + std::string("\n");
+const std::string drag_output_format          = std::string("%g %g %g") ONLY3D(+ std::string(" %g")) + std::string("\n");	// NOLINT.
 
 class external_force_per_unit_mass_t : public CF_DIM {
 private:
   double forcing_term;
 public:
-  external_force_per_unit_mass_t(const double &forcing_term_) : forcing_term(forcing_term_) {}
+  explicit external_force_per_unit_mass_t(const double &forcing_term_) : forcing_term(forcing_term_) {}
   external_force_per_unit_mass_t(): external_force_per_unit_mass_t(0.0) {}
-  double operator()(DIM(double, double, double)) const  { return forcing_term; }
+  double operator()(DIM(double, double, double)) const override  { return forcing_term; }
   void update_term(const double &correction)            { forcing_term += correction; }
   double get_value() const                              { return forcing_term; }
   void set_value(const double &new_forcing_term)        { forcing_term = new_forcing_term; }
@@ -158,7 +161,7 @@ public:
   double read_latest_mass_flow() const    { return latest_mass_flow; }
   double targeted_bulk_velocity() const   { P4EST_ASSERT(forcing_is_on); return desired_bulk_velocity; }
 
-  ~mass_flow_controller_t(){}
+  ~mass_flow_controller_t()= default;
 };
 
 struct simulation_setup
@@ -972,8 +975,7 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   if (ORD(cmd.contains("nx"), cmd.contains("ny"), cmd.contains("nz")) || ORD(cmd.contains("length"), cmd.contains("height"), cmd.contains("width")))
     throw std::invalid_argument("load_solver_from_state: the length, height and width as well as the numbers of trees along x, y and z cannot be reset when restarting a simulation.");
 
-  if (ns != NULL)
-    delete  ns;
+  delete  ns;
 
   ns                      = new my_p4est_navier_stokes_t(mpi, backup_directory.c_str(), setup.tstart);
   setup.dt                = ns->get_dt();
@@ -983,23 +985,22 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
     if (is_periodic(p4est_n, dir) != periodicity[dir] || is_periodic(p4est_nm1, dir) != periodicity[dir])
       throw std::invalid_argument("load_solver_from_state: the periodicity from the loaded state does not match the requirements.");
 
-  if (brick != NULL && brick->nxyz_to_treeid != NULL)
+  if (brick != nullptr && brick->nxyz_to_treeid != nullptr)
   {
-    P4EST_FREE(brick->nxyz_to_treeid); brick->nxyz_to_treeid = NULL;
-    delete brick; brick = NULL;
+    P4EST_FREE(brick->nxyz_to_treeid); brick->nxyz_to_treeid = nullptr;
+    delete brick; brick = nullptr;
   }
-  P4EST_ASSERT(brick == NULL);
+  P4EST_ASSERT(brick == nullptr);
   brick                   = ns->get_brick();
   channel.configure(brick, DIM(cmd.get<double>("pitch", default_pitch_to_height*ns->get_height_of_domain()),
                                cmd.get<double>("GF", default_gas_fraction),
-                               cmd.contains("spanwise")), cmd.get<int>("lmax", ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl));
+                               cmd.contains("spanwise")), (char)cmd.get<int>("lmax", ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl));
 
-  if (controller != NULL)
-    delete controller;
+  delete controller;
   controller = new mass_flow_controller_t(dir::x, brick->xyz_min[dir::x]);
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
-    if(external_acceleration[dir] != NULL)
+    if(external_acceleration[dir] != nullptr)
       delete external_acceleration[dir];
     external_acceleration[dir] = new external_force_per_unit_mass_t;
   }
@@ -1055,10 +1056,10 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
 
 p4est_connectivity_t* build_brick_and_get_connectivity(my_p4est_brick_t* &brick, const cmdParser &cmd)
 {
-  const double length     = cmd.get<double>("length", default_length);
-  const double height     = cmd.get<double>("height", default_height);
+  const auto length     = cmd.get<double>("length", default_length);
+  const auto height     = cmd.get<double>("height", default_height);
 #ifdef P4_TO_P8
-  const double width      = cmd.get<double>("width",  default_width);
+  const auto width      = cmd.get<double>("width",  default_width);
 #endif
   double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
   int n_tree_xyz[P4EST_DIM];
@@ -1067,12 +1068,12 @@ p4est_connectivity_t* build_brick_and_get_connectivity(my_p4est_brick_t* &brick,
 #ifdef P4_TO_P8
   n_tree_xyz[2]           = cmd.get<int>("nz", (int) (default_ntree_y*width/height));   xyz_min[2] = -0.5*width;  xyz_max[2] = 0.5*width;
 #endif
-  if (brick != NULL && brick->nxyz_to_treeid != NULL)
+  if (brick != nullptr && brick->nxyz_to_treeid != nullptr)
   {
-    P4EST_FREE(brick->nxyz_to_treeid); brick->nxyz_to_treeid = NULL;
-    delete brick; brick = NULL;
+    P4EST_FREE(brick->nxyz_to_treeid); brick->nxyz_to_treeid = nullptr;
+    delete brick; brick = nullptr;
   }
-  P4EST_ASSERT(brick == NULL);
+  P4EST_ASSERT(brick == nullptr);
   brick = new my_p4est_brick_t;
   return my_p4est_brick_new(n_tree_xyz, xyz_min, xyz_max, brick, periodicity);
 }
@@ -1083,16 +1084,17 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
                                 mass_flow_controller_t* &controller, simulation_setup &setup)
 {
   p4est_connectivity_t* connectivity = build_brick_and_get_connectivity(brick, cmd);
-  channel.configure(brick, DIM(cmd.get<double>("pitch", default_pitch_to_height*(brick->xyz_max[1] - brick->xyz_min[1])), cmd.get<double>("GF", default_gas_fraction), cmd.contains("spanwise")), cmd.get<int>("lmax", default_lmax));
+  channel.configure(brick, DIM(cmd.get<double>("pitch", default_pitch_to_height*(brick->xyz_max[1] - brick->xyz_min[1])),
+      cmd.get<double>("GF", default_gas_fraction), cmd.contains("spanwise")), (char)cmd.get<int>("lmax", default_lmax));
   // create grid at time nm1
-  p4est_t *p4est_nm1        = NULL;
-  p4est_ghost_t* ghost_nm1  = NULL;
-  p4est_nodes_t* nodes_nm1  = NULL;
+  p4est_t *p4est_nm1        = nullptr;
+  p4est_ghost_t* ghost_nm1  = nullptr;
+  p4est_nodes_t* nodes_nm1  = nullptr;
   channel.create_p4est_ghost_and_nodes(p4est_nm1, ghost_nm1, nodes_nm1, data, connectivity, mpi,
                                        cmd.get<int>("lmin", default_lmin), cmd.get<unsigned int>("wall_layer", default_wall_layer),
                                        cmd.get<double>("lmid_delta_percent", default_lmid_delta_percent), cmd.get<double>("lip", default_lip));
-  my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
-  my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
+  auto *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
+  auto *ngbd_nm1      = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
   /* create the initial forest at time n (copy of the former one) */
   p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
   p4est_n->user_pointer = p4est_nm1->user_pointer; // just to make sure
@@ -1104,10 +1106,10 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
     my_p4est_ghost_expand(p4est_n, ghost_n);
 
   p4est_nodes_t *nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
-  my_p4est_hierarchy_t *hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
-  my_p4est_node_neighbors_t *ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
-  my_p4est_cell_neighbors_t *ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_n);
-  my_p4est_faces_t *faces_n         = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
+  auto *hierarchy_n      = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
+  auto *ngbd_n           = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
+  auto *ngbd_c           = new my_p4est_cell_neighbors_t(hierarchy_n);
+  auto *faces_n          = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
 
   Vec phi;
   PetscErrorCode ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
@@ -1117,12 +1119,11 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   ns = new my_p4est_navier_stokes_t(ngbd_nm1, ngbd_n, faces_n);
   ns->set_phi(phi);
 
-  if (controller != NULL)
-    delete controller;
+  delete controller;
   controller = new mass_flow_controller_t(dir::x, brick->xyz_min[dir::x]);
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
-    if(external_acceleration[dir] != NULL)
+    if(external_acceleration[dir] != nullptr)
       delete external_acceleration[dir];
     external_acceleration[dir] = new external_force_per_unit_mass_t;
   }
@@ -1296,14 +1297,18 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
   setup.accuracy_check_done = true;
 }
 
-void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, const cmdParser &cmd, const my_p4est_shs_channel_t &channel, simulation_setup &setup,  velocity_profiler_t* &profiler)
+void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, const cmdParser &cmd,
+											const my_p4est_shs_channel_t &channel, simulation_setup &setup,
+											velocity_profiler_t* &profiler, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM])
 {
   PetscErrorCode ierr;
   ierr = PetscPrintf(ns->get_mpicomm(), (std::string("Parameters : ") + (setup.flow_condition == constant_pressure_gradient ? std::string("Re_tau") : std::string("Re_b"))
                                          + std::string(" = %g, domain is %dx2") ONLY3D(+ std::string("x%d")) + std::string(" (delta units), P/delta = %g, GF = %g\n")).c_str(),
                      DIM(setup.Reynolds, (int) (channel.length()/channel.delta()), (int) (channel.width()/channel.delta())), channel.pitch_to_delta(), channel.GF()); CHKERRXX(ierr);
 
-  ierr = PetscPrintf(ns->get_mpicomm(), "cfl = %g, wall layer = %u, rho = %g, mu = %g (1/mu = %g)\n", ns->get_cfl(), channel.ncells_layering_walls_from_ns_solver(ns->get_uniform_band()), ns->get_rho(), ns->get_mu(), 1.0/ns->get_mu());
+  ierr = PetscPrintf(ns->get_mpicomm(), "cfl = %g, wall layer = %u, rho = %g, mu = %g (1/mu = %g), u_tau = %g\n",
+					 ns->get_cfl(), channel.ncells_layering_walls_from_ns_solver(ns->get_uniform_band()), ns->get_rho(),
+					 ns->get_mu(), 1.0/ns->get_mu(), channel.canonical_u_tau(external_acceleration[0]->get_value()));
   CHKERRXX( ierr );
 
   if (create_directory(setup.export_dir, ns->get_mpirank(), ns->get_mpicomm()))
@@ -1328,7 +1333,8 @@ void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, 
     profiler = new velocity_profiler_t(cmd, ns, setup, channel);
 }
 
-bool monitor_simulation(const simulation_setup &setup, const mass_flow_controller_t* controller, my_p4est_navier_stokes_t* ns, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], const my_p4est_shs_channel_t &channel)
+bool monitor_simulation(const simulation_setup &setup, const mass_flow_controller_t* controller, my_p4est_navier_stokes_t* ns,
+						external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], const my_p4est_shs_channel_t &channel)
 {
   if (ns->get_mpirank() == 0)
   {
@@ -1483,7 +1489,7 @@ int main (int argc, char* argv[])
     create_solver_from_scratch(mpi, cmd, ns, brick, channel, external_acceleration, data, flow_controller, setup);
 
   velocity_profiler_t *profiler = nullptr;
-  initialize_exportations_and_monitoring(ns, cmd, channel, setup, profiler);
+  initialize_exportations_and_monitoring(ns, cmd, channel, setup, profiler, external_acceleration);
 
   if(setup.save_timing)
     ns->activate_timer();
@@ -1574,7 +1580,9 @@ int main (int argc, char* argv[])
 
     // exporting velocity profiles if desired
     if (setup.save_profiles)
-      profiler->gather_and_dump_profiles(setup, ns, (setup.flow_condition == constant_pressure_gradient ? channel.canonical_u_tau(external_acceleration[0]->get_value()) : flow_controller->targeted_bulk_velocity()) ONLY3D(COMMA channel.spanwise_grooves()));
+      profiler->gather_and_dump_profiles(setup, ns,
+										 (setup.flow_condition == constant_pressure_gradient ? channel.canonical_u_tau(external_acceleration[0]->get_value()) : flow_controller->targeted_bulk_velocity())
+										 ONLY3D(COMMA channel.spanwise_grooves()));
 
     if (setup.time_to_save_vtk() && !setup.do_accuracy_check)
     {
