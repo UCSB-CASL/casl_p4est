@@ -7462,25 +7462,6 @@ void solve_all_fields_for_one_timestep(mpi_environment_t &mpi, int grid_res_iter
                      dt, dt*(time_nondim_to_dim),
                      ((tn-t_original_start)/(tfinal-t_original_start))*100.0,num_nodes);
 
-
-//  if((timing_every_n>0) && (tstep%timing_every_n == 0)) {
-//    PetscPrintf(mpi.comm(),"Current time info : \n");
-//    w.read_duration_current();
-//  }
-/*
-  // -------------------------------
-  // Set up analytical ICs/BCs/forcing terms if needed
-  // -------------------------------
-  if(analytical_IC_BC_forcing_term) {
-    if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up analytical ICs/BCs/forcing terms... \n");
-    setup_analytical_ics_and_bcs_for_this_tstep(bc_interface_val_temp, bc_wall_value_temp,
-                                                analytical_T, external_heat_source_T,
-                                                analytical_soln_v, bc_interface_value_velocity, bc_wall_value_velocity,
-                                                bc_wall_value_pressure,
-                                                external_force_components, external_force_components_with_BA,
-                                                external_forces_NS);
-  }
-*/
   // ------------------------------------------------------------
   // (1) Poisson Problem at Nodes (for temp and/or conc scalar fields):
   // Setup and solve a Poisson problem on both the liquid and solidified subdomains
@@ -8501,23 +8482,7 @@ void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_u
                              vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
                              vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes,
                              double dxyz_smallest[P4EST_DIM], double& dxyz_close_to_interface,
-                             int load_tstep, int last_tstep,
-                             temperature_field* analytical_T[2],
-                             BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
-                             BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
-                             external_heat_source* external_heat_source_T[2],
-                             velocity_component* analytical_soln_v[P4EST_DIM],
-                             BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
-                             BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
-                             BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM],
-                             BC_INTERFACE_VALUE_PRESSURE& bc_interface_value_pressure,
-                             BC_WALL_VALUE_PRESSURE& bc_wall_value_pressure,
-                             BC_WALL_TYPE_PRESSURE& bc_wall_type_pressure,
-                             external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
-                             external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM],
-                             FILE* fich_errors, char name_errors[],
-                             FILE* fich_data, char name_data[],
-                             FILE* fich_mem, char name_mem[]){
+                             int load_tstep, int last_tstep){
 
   setup_initial_parameters_and_report(mpi);
 
@@ -8590,6 +8555,7 @@ void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_u
                    ns,
                    dxyz_close_to_interface, dxyz_smallest,
                    load_tstep, last_tstep);
+  /*
   // ------------------------------------------------------------
   // Initialize relevant boundary condition objects:
   // ------------------------------------------------------------
@@ -8623,7 +8589,7 @@ void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_u
 
 
   // ------------------------------------------------------------
-
+  */
 }
 
 
@@ -8935,14 +8901,39 @@ int main(int argc, char** argv) {
                             phi, phi_nm1, phi_substrate, phi_eff,
                             T_l_n, T_s_n, T_l_nm1, T_l_d, T_s_d, jump, v_interface,
                             v_n,v_nm1, vorticity, press_nodes,
-                            dxyz_smallest, dxyz_close_to_interface, load_tstep, last_tstep,
-                            analytical_T, bc_interface_val_temp, bc_wall_value_temp, external_heat_source_T,
-                            analytical_soln_v, bc_interface_value_velocity, bc_wall_value_velocity, bc_wall_type_velocity,
-                            bc_interface_value_pressure, bc_wall_value_pressure, bc_wall_type_pressure,
-                            external_force_components, external_force_components_with_BA,
-                            fich_errors, name_errors,
-                            fich_data, name_data,
-                            fich_mem, name_mem);
+                            dxyz_smallest, dxyz_close_to_interface, load_tstep, last_tstep);
+    // ------------------------------------------------------------
+    // Initialize relevant boundary condition objects:
+    // ------------------------------------------------------------
+    if(print_checkpoints)PetscPrintf(mpi.comm(),"Initializing all BCs/ICs/forcing terms ... \n");
+
+    initialize_all_relevant_bcs_ics_forcing_terms(analytical_T,
+                                                  bc_interface_val_temp,
+                                                  bc_wall_value_temp,
+                                                  external_heat_source_T,
+                                                  analytical_soln_v,
+                                                  bc_interface_value_velocity,
+                                                  bc_wall_value_velocity,
+                                                  bc_wall_type_velocity,
+                                                  bc_interface_value_pressure,
+                                                  bc_wall_value_pressure,
+                                                  bc_wall_type_pressure,
+                                                  external_force_components,
+                                                  external_force_components_with_BA);
+
+    // -----------------------------------------------
+    // Initialize files to output various data of interest:
+    // -----------------------------------------------
+    if(print_checkpoints)PetscPrintf(mpi.comm(),"Initializing output files ... \n");
+
+
+    initialize_error_files_for_test_cases(mpi, sp,
+                                          fich_errors, name_errors,
+                                          fich_data, name_data,
+                                          fich_mem, name_mem);
+
+
+    // ------------------------------------------------------------
 
     // ---------------------------------------
     // Begin time loop
@@ -8952,7 +8943,10 @@ int main(int argc, char** argv) {
     double hodge_percentage_steady = hodge_percentage_of_max_u;
 
     while(tn<=tfinal){
-
+      if((timing_every_n>0) && (tstep%timing_every_n == 0)) {
+        PetscPrintf(mpi.comm(),"Current time info : \n");
+        w.read_duration_current();
+      }
 
       // -------------------------------
       // Set up analytical ICs/BCs/forcing terms if needed
@@ -9091,7 +9085,6 @@ int main(int argc, char** argv) {
   }// end of loop through number of splits
 
   MPI_Barrier(mpi.comm());
-  PetscPrintf(mpi.comm(), "Gets to here \n");
   w.stop(); w.read_duration();
   return 0;
 }
