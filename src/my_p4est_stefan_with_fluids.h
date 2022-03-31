@@ -274,14 +274,21 @@ private:
   double dt_NS;
 
   int tstep;
+  int load_tstep;
+  int last_tstep;
 
   double cfl_Stefan;
   double cfl_NS;
+  void set_cfl_Stefan(double cfl_stefan_){cfl_Stefan = cfl_stefan_;}
+  void set_cfl_NS(double cfl_ns_){cfl_NS = cfl_ns_;}
 
   // ----------------------------------------------
   // Related to dimensionalization type:
   // ----------------------------------------------
-  int problem_dimensionalization_type;
+  problem_dimensionalization_type_t problem_dimensionalization_type;
+  void set_problem_dimensionalization_type(problem_dimensionalization_type_t prob_dim_type_){
+    problem_dimensionalization_type = prob_dim_type_;
+  }
 
   // Converting nondim to dim:
   double time_nondim_to_dim;
@@ -342,16 +349,6 @@ private:
 
   bool force_interfacial_velocity_to_zero;
 
-  // ----------------------------------------------
-  // Variables related to what kind boundary condition values we are applying:
-  // ----------------------------------------------
-  // For temperature problem:
-//  enum:int{}
-//  int bc_interface_temperature_option;
-
-
-
-
 
   // ----------------------------------------------
   // Specific to diff cases --> may change these now that they are within a class structure
@@ -363,10 +360,6 @@ private:
   bool interfacial_temp_bc_requires_normal;
 
   bool interfacial_vel_bc_requires_vint;
-
-
-  //bool example_requires_area_computation;
-
 
   bool example_has_known_max_vint;
 
