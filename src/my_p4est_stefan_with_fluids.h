@@ -44,17 +44,24 @@ enum problem_dimensionalization_type_t{
   DIMENSIONAL // dimensional problem (highly not recommended)
 };
 
+enum domain_phase_t{
+  LIQUID_DOMAIN=0, SOLID_DOMAIN=1
+};
+
 class my_p4est_stefan_with_fluids_t
 {
-public:
-
-  my_p4est_stefan_with_fluids_t();
 
 private:
 
   // TO-DO: documentation:
   // Write a list of all the parameters/inputs that the user *must* provide for this to work
   // WRite a list of option parameters and how those cases will be handled
+
+  // Misc useful things:
+  // ---------------------
+  mpi_environment_t mpi;
+  PetscErrorCode ierr;
+
 
   // -----------------------------------------------
   // Grid variables
@@ -143,7 +150,7 @@ private:
   // Fields related to the liquid temperature/concentration problem:
   vec_and_ptr_t T_l_n;
   vec_and_ptr_t T_l_nm1;
-  vec_and_ptr_t T_l_backtrace;
+  vec_and_ptr_t T_l_backtrace_n;
   vec_and_ptr_t T_l_backtrace_nm1;
   vec_and_ptr_t rhs_Tl;
 
@@ -276,6 +283,10 @@ private:
   double dt_nm1;
   double dt_Stefan;
   double dt_NS;
+
+  int advection_sl_order;
+  double advection_alpha_coeff;
+  double advection_beta_coeff;
 
   int tstep;
   int load_tstep;
@@ -465,6 +476,10 @@ private:
 
   bool force_interfacial_velocity_to_zero;
 
+  // ----------------------------------------------
+  // Booleans (misc)
+  // ----------------------------------------------
+  bool print_checkpoints; // can set this to true to debug where code might be crashing
 
   // ----------------------------------------------
   // Specific to diff cases --> may change these now that they are within a class structure
@@ -520,6 +535,19 @@ private:
 
 
 
+
+
+  // -------------------------------------------------------
+  // Functions related to scalar temp/conc problem:
+  // -------------------------------------------------------
+  void setup_rhs_for_scalar_temp_conc_problem();
+  void do_backtrace_for_scalar_temp_conc_problem();
+
+
+  // --------------------------------------------------------
+  public:
+
+    my_p4est_stefan_with_fluids_t();
 
 };
 

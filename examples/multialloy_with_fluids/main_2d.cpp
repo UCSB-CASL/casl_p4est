@@ -87,7 +87,7 @@ enum:int {
 };
 // Elyce to-do: add dissolving porous media example
 
-enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
+//enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
 
 // ---------------------------------------
 // Example/application options:
@@ -4740,6 +4740,7 @@ void update_the_grid(splitting_criteria_cf_and_uniform_band_t sp,
 
 };
 
+// setup_rhs -- TRANSFERRED TO CLASS
 void setup_rhs(vec_and_ptr_t& phi, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& rhs_Tl, vec_and_ptr_t& rhs_Ts, vec_and_ptr_t& T_l_backtrace_n, vec_and_ptr_t& T_l_backtrace_nm1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t *ngbd_np1, external_heat_source* external_heat_source_term[2]){
 
   // In building RHS, if we are doing advection, we have two options:
@@ -4854,6 +4855,7 @@ void setup_rhs(vec_and_ptr_t& phi, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, v
   }
 }
 
+// do_backtrace -- TRANSFERRED TO CLASS
 void do_backtrace(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1,
                   vec_and_ptr_t& T_l_backtrace_n, vec_and_ptr_t& T_l_backtrace_nm1,
                   vec_and_ptr_dim_t& v_n_NS, vec_and_ptr_dim_t& v_nm1_NS,
