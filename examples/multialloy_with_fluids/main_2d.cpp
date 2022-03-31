@@ -611,7 +611,7 @@ void set_geometry(){
       x0_lsf = 0.; y0_lsf = 0.; // TO-DO: can remove the x0_lsf and y0_lsf since they are not being used
 
       // Number of trees:
-      nx = 1; ny = 1;
+      nx = 2; ny = 2;
       px = 0; py = 0;
 
       // Radius of the level set function:
