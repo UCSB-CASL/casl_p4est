@@ -385,31 +385,31 @@ struct simulation_setup
 
 void truncate_exportation_file_up_to_tstart(const double &tstart, const std::string &filename, const bool &two_header_lines = false)
 {
-  FILE* fp = fopen(filename.c_str(), "r+");
-  char* read_line = NULL;
+  FILE* file = fopen(filename.c_str(), "r+");
+  char* read_line = nullptr;
   size_t len = 0;
   ssize_t len_read;
   long size_to_keep = 0;
-  if (((len_read = getline(&read_line, &len, fp)) != -1))
+  if (((len_read = getline(&read_line, &len, file)) != -1))
     size_to_keep += (long) len_read;
   else
     throw std::runtime_error("simulation_setup::truncate_exportation_file_up_to_tstart: couldn't read the first header line of " + filename);
   if(two_header_lines)
   {
-    if (((len_read = getline(&read_line, &len, fp)) != -1))
+    if (((len_read = getline(&read_line, &len, file)) != -1))
       size_to_keep += (long) len_read;
     else
       throw std::runtime_error("simulation_setup::truncate_exportation_file_up_to_tstart: couldn't read the second header line of " + filename);
   }
   double time;
-  while ((len_read = getline(&read_line, &len, fp)) != -1) {
-    sscanf(read_line, "%lg %*[^\n]", &time);
+  while ((len_read = getline(&read_line, &len, file)) != -1) {
+    sscanf(read_line, "%lg %*[^\n]", &time);	// NOLINT.
     if (time <= tstart - (1.0e-12)*pow(10.0, ceil(log10(tstart)))) // (1.0e-12)*pow(10.0, ceil(log10(tstart))) == given precision when exporting
       size_to_keep += (long) len_read;
     else
       break;
   }
-  fclose(fp);
+  fclose(file);
   if (read_line)
     free(read_line);
   if (truncate(filename.c_str(), size_to_keep))
@@ -423,7 +423,7 @@ void initialize_velocity_profile_file(const std::string &filename, const my_p4es
     if (!file_exists(filename))
     {
       FILE* fp_avg_profile = fopen(filename.c_str(), "w");
-      if (fp_avg_profile == NULL)
+      if (fp_avg_profile == nullptr)
         throw std::invalid_argument("initialize_velocity_profile_file: could not open file " + filename + ".");
       fprintf(fp_avg_profile, "%% __ | coordinates along y axis \n");
       fprintf(fp_avg_profile, "%% tn");
@@ -483,6 +483,7 @@ class velocity_profiler_t
   vector<unsigned int>      bin_index;
   int                       iter_export_profile;
   unsigned int              nbins;
+
   void set_number_of_bins(const unsigned int &nbins_)
   {
     nbins = nbins_;
@@ -499,13 +500,15 @@ class velocity_profiler_t
     ierr = PetscPrintf(ns->get_mpicomm(), "Saving slice-averaged velocity profile in %s\n", file_slice_avg_velocity_profile.c_str()); CHKERRXX(ierr);
     initialize_velocity_profile_file(file_slice_avg_velocity_profile, ns, tstart);
   #ifdef P4_TO_P8
-    const double smallest_traverse_length_scale = (channel.spanwise_grooves() ? channel.length()/(ns->get_brick()->nxyztrees[0]*(1 << ns->get_lmax())) : channel.width()/(ns->get_brick()->nxyztrees[2]*(1 << ns->get_lmax())));
+    const double smallest_traverse_length_scale = (channel.spanwise_grooves() ?
+		channel.length()/(ns->get_brick()->nxyztrees[0]*(1 << ns->get_lmax())) :
+		channel.width()/(ns->get_brick()->nxyztrees[2]*(1 << ns->get_lmax())));
   #else
     const double smallest_traverse_length_scale = channel.length()/(ns->get_brick()->nxyztrees[0]*(1 << ns->get_lmax()));
   #endif
 
-    const unsigned int nb_cells_in_groove = (unsigned int) (channel.get_pitch()*channel.GF()/smallest_traverse_length_scale);
-    const unsigned int nb_cells_in_ridge  = (unsigned int) (channel.get_pitch()*(1.0 - channel.GF())/smallest_traverse_length_scale);
+    const auto nb_cells_in_groove = (unsigned int) (channel.get_pitch()*channel.GF()/smallest_traverse_length_scale);
+    const auto nb_cells_in_ridge  = (unsigned int) (channel.get_pitch()*(1.0 - channel.GF())/smallest_traverse_length_scale);
     const unsigned int nb_cells_to_map = nb_cells_in_groove + nb_cells_in_ridge;
     P4EST_ASSERT(nb_cells_to_map == (unsigned int) (channel.get_pitch()/smallest_traverse_length_scale));
     bin_index.resize(nb_cells_to_map);
@@ -561,14 +564,15 @@ class velocity_profiler_t
     for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx) {
       file_line_avg_velocity_profile[bin_idx] = std::string(profile_path) + "/line_averaged_velocity_profile_index_" + std::to_string(bin_idx) + ".dat";
       ierr = PetscPrintf(ns->get_mpicomm(), "Saving line-averaged velocity profile in %s\n", file_line_avg_velocity_profile[bin_idx].c_str()); CHKERRXX(ierr);
-      initialize_velocity_profile_file(file_line_avg_velocity_profile[bin_idx].c_str(), ns, tstart);
+      initialize_velocity_profile_file(file_line_avg_velocity_profile[bin_idx], ns, tstart);
     }
     int mpiret = MPI_Barrier(ns->get_mpicomm()); SC_CHECK_MPI(mpiret);
   }
 
 public:
-  velocity_profiler_t(const cmdParser cmd, const my_p4est_navier_stokes_t* ns, const simulation_setup &setup, const my_p4est_shs_channel_t &channel)
+  velocity_profiler_t(const cmdParser& cmd, const my_p4est_navier_stokes_t* ns, const simulation_setup &setup, const my_p4est_shs_channel_t &channel)
   {
+	nbins = -1;
     profile_path = setup.export_dir +  "/profiles";
     if (create_directory(profile_path, ns->get_mpirank(), ns->get_mpicomm()))
       throw std::runtime_error("velocity_profiler_t::velocity_profiler_t(...): could not create exportation directory for velocity profiles " + profile_path);
@@ -580,7 +584,7 @@ public:
     {
       bool all_binary_files_nm1_are_there = true;
       if (ns->get_mpirank() == 0)
-        all_binary_files_nm1_are_there = all_binary_files_nm1_are_there && file_exists(profile_path + "/slice_velocity_profile_nm1.bin");
+        all_binary_files_nm1_are_there = file_exists( profile_path + "/slice_velocity_profile_nm1.bin");
 
       for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx)
         if ((unsigned int) ns->get_mpirank() == bin_idx%ns->get_mpisize())
@@ -589,7 +593,7 @@ public:
       int load_binary_files = (all_binary_files_nm1_are_there ? 1 : 0);
       int mpiret = MPI_Allreduce(MPI_IN_PLACE, &load_binary_files, 1, MPI_INT, MPI_LAND, ns->get_mpicomm()); SC_CHECK_MPI(mpiret);
 
-      if (load_binary_files)
+      if (load_binary_files)	// If we are restarting, this should evaluate to true.
       {
         if (ns->get_mpirank() == 0)
         {
@@ -613,6 +617,8 @@ public:
 
   void gather_and_dump_profiles(const simulation_setup &setup, my_p4est_navier_stokes_t* ns, const double& u_scaling ONLY3D(COMMA const bool& spanwise))
   {
+	// First part works on the slice averaged velocity profile.  Note we are interested on the x-component (i.e., u) of
+	// the velocity, which gets averaged for every "height" along the y-axis.
     ns->get_slice_averaged_vnp1_profile(dir::x, dir::y, slice_averaged_profile, u_scaling);
     if (ns->get_mpirank() == 0)
     {
@@ -664,6 +670,8 @@ public:
         t_slice_average = setup.tn;
       }
     }
+
+	// Second part works on line averaged velocity profiles.
     ns->get_line_averaged_vnp1_profiles(DIM(dir::x, dir::y, spanwise ? dir::z : dir::x), bin_index, line_averaged_profiles, u_scaling);
     for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx) {
       if ((unsigned int) ns->get_mpirank() == bin_idx%ns->get_mpisize())

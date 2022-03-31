@@ -3986,3 +3986,153 @@ void my_p4est_navier_stokes_t::coupled_problem_partial_destructor()
   delete ngbd_c;
 
 }
+
+
+#ifdef P4_TO_P8
+void my_p4est_navier_stokes_t::get_slice_averaged_comp_prod_vnp1_profile( const u_char& velComp1, const u_char& velComp2,
+																		  const u_char& axis, std::vector<double>& avgProfile,
+																		  const double& uScaling )
+{
+	P4EST_ASSERT( velComp1 < P4EST_DIM && velComp2 < P4EST_DIM && axis < P4EST_DIM );
+
+	auto* data = (splitting_criteria_t*) p4est_n->user_pointer;
+	unsigned int ndouble = brick->nxyztrees[axis]*(1 << data->max_lvl);	// Equivalent number of data for a uniform grid with max level of refinement.
+#ifdef P4EST_ENABLE_DEBUG
+	avgProfile.resize( ndouble * (1 + 1), 0 );	// Slice-averaged velocity component product + area of the slice.
+#else
+	avgProfile.resize( ndouble, 0 ); 			// Slice-averaged velocity component product.
+#endif
+	const double elementaryArea = dxyz_min[(axis + 1)%P4EST_DIM] * dxyz_min[(axis + 2)%P4EST_DIM];
+	for( double & k : avgProfile )				// Initialize average values.
+		k = 0;
+
+	PetscErrorCode ierr;
+	const double *velComp1ReadPtr, *velComp2ReadPtr;
+	CHKERRXX( VecGetArrayRead( vnp1[velComp1], &velComp1ReadPtr ) );
+	CHKERRXX( VecGetArrayRead( vnp1[velComp2], &velComp2ReadPtr ) );
+
+	p4est_locidx_t quadIdx;		// Ids of current cell under evaluation and its owning tree.
+	p4est_topidx_t treeIdx;
+#ifdef P4EST_ENABLE_DEBUG
+	p4est_topidx_t nbTreeIdx = -1;
+#endif
+	set_of_neighboring_quadrants ngbd;
+	p4est_quadrant_t quad, nbQuad;
+
+	// Check all local faces in the direction of the velocity component of interest.
+	for( p4est_locidx_t faceIdx = 0; faceIdx < faces_n->num_local[velComp1]; faceIdx++ )
+	{
+		faces_n->f2q( faceIdx, velComp1, quadIdx, treeIdx );	// Get index of local cell and the index of the tree that owns it.
+
+		P4EST_ASSERT( quadIdx < p4est_n->local_num_quadrants );	// Retrieve the tree and cell objects.
+		p4est_tree_t *tree = p4est_tree_array_index( p4est_n->trees, treeIdx );
+		const p4est_quadrant_t *quadPtr = p4est_quadrant_array_index( &tree->quadrants, quadIdx - tree->quadrants_offset );
+
+		// Locate the face on the cell: there are two choices (front and back, left or right, top or bottom, according to vel component).
+		u_char faceIdxInCell;
+		if( faces_n->q2f( quadIdx, 2 * velComp1 ) == faceIdx )
+			faceIdxInCell = 2 * velComp1;
+		else
+		{
+			P4EST_ASSERT( faces_n->q2f( quadIdx, 2 * velComp1 + 1 ) == faceIdx );
+			faceIdxInCell = 2 * velComp1 + 1;
+		}
+
+		quad = *quadPtr;										// The actual cell.
+		quad.p.piggy3.local_num = quadIdx;						// Remember the local cell id.
+		ngbd.clear();
+		ngbd_c->find_neighbor_cells_of_cell( ngbd, quadIdx, treeIdx, faceIdxInCell );
+		P4EST_ASSERT( ngbd.size() == 1 );						// Neighbor has to be the same size or bigger, and there MUST be 1 neighbor.
+		nbQuad = *ngbd.begin();
+#ifdef P4EST_ENABLE_DEBUG
+		nbTreeIdx = nbQuad.p.piggy3.which_tree;
+#endif
+
+		// Find the index of the tree owning the local cell in the global brick structure.  After this, we'll get the "coordinate" of the
+		// tree for the axis of interest.
+		p4est_topidx_t cartesianTreeIdxAlongAxis = -1;
+#ifdef P4EST_ENABLE_DEBUG
+		p4est_topidx_t cartesianNbTreeIdxAlongAxis = -1;
+#endif
+		bool found = false;
+		for( p4est_topidx_t tt = 0; !found && tt < conn->num_trees; tt++ )
+		{
+			if( brick->nxyz_to_treeid[tt] == treeIdx )
+				cartesianTreeIdxAlongAxis = tt;
+#ifdef P4EST_ENABLE_DEBUG
+			if ( brick->nxyz_to_treeid[tt] == nbTreeIdx )
+				cartesianNbTreeIdxAlongAxis = tt;
+			found = (cartesianTreeIdxAlongAxis != -1 && cartesianNbTreeIdxAlongAxis != -1);
+#else
+			found = cartesianTreeIdxAlongAxis != -1;
+#endif
+		}
+		P4EST_ASSERT( found );
+
+		// Next, find what index (on the chosen axis) corresponds to the global tree found above.  Consider each tree as a macro cell, and
+		// all trees are arranged in a big box.  Since these macrocells are enumerated in a sequence, we want to get the "coordinate" on the
+		// axis of interest for that tree.  Think of this as the temperature problem in cs111 for the 3d domain.
+		switch( axis )
+		{
+			case dir::x:
+				cartesianTreeIdxAlongAxis = cartesianTreeIdxAlongAxis % brick->nxyztrees[0];
+#ifdef P4EST_ENABLE_DEBUG
+				cartesianNbTreeIdxAlongAxis = cartesianNbTreeIdxAlongAxis % brick->nxyztrees[0];
+#endif
+				break;
+			case dir::y:
+				cartesianTreeIdxAlongAxis = (cartesianTreeIdxAlongAxis / brick->nxyztrees[0]) % brick->nxyztrees[1];
+#ifdef P4EST_ENABLE_DEBUG
+				cartesianNbTreeIdxAlongAxis = (cartesianNbTreeIdxAlongAxis / brick->nxyztrees[0]) % brick->nxyztrees[1];
+#endif
+				break;
+			case dir::z:
+				cartesianTreeIdxAlongAxis = cartesianTreeIdxAlongAxis / (brick->nxyztrees[0] * brick->nxyztrees[1]);
+#ifdef P4EST_ENABLE_DEBUG
+				cartesianNbTreeIdxAlongAxis = cartesianNbTreeIdxAlongAxis / (brick->nxyztrees[0] * brick->nxyztrees[1]);
+#endif
+				break;
+			default:
+				throw std::invalid_argument( "my_p4est_navier_stokes_t::get_slice_averaged_comp_prod_vnp1_profile: Invalid axis!" );
+		}
+		P4EST_ASSERT( cartesianTreeIdxAlongAxis == cartesianNbTreeIdxAlongAxis );
+
+		// Finally, accumulate velocity component over all the "uniform" locations in the avgProfile vector.  Think of this as the cell
+		// "covering" one or many locations in avgProfile --like a projection.
+		u_int idxInProfile;
+		p4est_qcoord_t quadCoord = (axis == dir::x? quad.x : (axis == dir::y? quad.y : quad.z));
+		double weightingArea = 0.5 * elementaryArea * ((1 << (data->max_lvl - nbQuad.level)) + (1 << (data->max_lvl - quad.level)))
+													* (1 << (data->max_lvl - quad.level));		// This is a multiple of dx*dz -- the contribution of virtual quad around face.
+		for( int k = 0; k < (1 << (data->max_lvl - quad.level)); k++ )	// k indicates how many slots in the profile vector the current cell covers.
+		{
+			idxInProfile = cartesianTreeIdxAlongAxis * (1 << data->max_lvl) + (quadCoord / (1 << (P4EST_MAXLEVEL - data->max_lvl))) + k;
+			avgProfile[idxInProfile] += velComp1ReadPtr[faceIdx] * weightingArea / uScaling;
+#ifdef P4EST_ENABLE_DEBUG
+			avgProfile[ndouble + idxInProfile] += weightingArea;
+#endif
+		}
+	}
+
+	// Clean up.
+	CHKERRXX( VecRestoreArrayRead( vnp1[velComp1], &velComp1ReadPtr ) );
+	CHKERRXX( VecRestoreArrayRead( vnp1[velComp2], &velComp2ReadPtr ) );
+
+	int mpiret;
+	if( p4est_n->mpirank == 0 )
+		SC_CHECK_MPI( MPI_Reduce( MPI_IN_PLACE, avgProfile.data(), (int)avgProfile.size(), MPI_DOUBLE, MPI_SUM, 0, p4est_n->mpicomm ) );
+	else
+		SC_CHECK_MPI( MPI_Reduce( avgProfile.data(), avgProfile.data(), (int)avgProfile.size(), MPI_DOUBLE, MPI_SUM, 0, p4est_n->mpicomm ) );
+
+	// Apply the normalization to keep the average on space along the way.
+	const double expectedSliceArea = (xyz_max[(axis + 1) % P4EST_DIM] - xyz_min[(axis + 1) % P4EST_DIM]) * (xyz_max[(axis + 2) % P4EST_DIM] - xyz_min[(axis + 2) % P4EST_DIM]);
+	if( p4est_n->mpirank == 0 )
+	{
+		for( u_int k = 0; k < ndouble; k++ )
+		{
+			P4EST_ASSERT( ABS( avgProfile[ndouble + k] - expectedSliceArea ) < 10 * EPS * MAX( avgProfile[ndouble + k], expectedSliceArea ) );
+			avgProfile[k] /= expectedSliceArea;
+		}
+	}
+}
+
+#endif

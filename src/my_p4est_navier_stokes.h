@@ -846,6 +846,28 @@ public:
    */
   void get_slice_averaged_vnp1_profile(const unsigned char& vel_component, const unsigned char& axis, std::vector<double>& avg_velocity_profile, const double u_scaling = 1.0);
 
+#ifdef P4_TO_P8
+  /**
+   * Calculates a slice-averaged profile for the product of two velocity components in the domain.
+   * The profile is calculated as mapped to an equivalent uniform grid of the finest refinement level. The velocity component product
+   * associated with a face that is bigger than the finest possible is considered constant on the entire face and its associated weighting
+   * area is defined as
+   * (half the sum of the lengths of neighboring quads in one transverse direction) x (length of the face in the other transverse direction)
+   * @note 1: only proc 0 has the correct result after completion.
+   * @note 2: assumes no interface in the domain, i.e., phi < 0 everywhere.
+   * @note local complexity: every processor loops through their local faces only once.
+   * @note communication: MPI_reduce to proc 0, who is the only holding the correct results after completion.
+   * @param [in] velComp1 first velocity component of interest in the profile, 0 <= velComp1 < P4EST_DIM.
+   * @param [in] velComp2 second velocity component of interest in the profile, 0 <= velComp2 < P4EST_DIM.
+   * @param [in] axis direction along which the profile is calculated, 0 <= axis < P4EST_DIM.
+   * @param [in,out] avgProfile vector containing the values of the desired product of velocity components (slice-averaged) along the
+   * 				 profile axis.  This vector is resized (if needed) to contain brick->nxyztrees[axis]*(1<<data->max_lvl) elements as if
+   * 				 the grid was uniform.
+   */
+  void get_slice_averaged_comp_prod_vnp1_profile( const u_char& velComp1, const u_char& velComp2,
+												  const u_char& axis, std::vector<double>& avgProfile, const double& uScaling=1.0 );
+#endif
+
   /*!
    * \brief get_line_averaged_vnp1_profiles: calculates line-averaged profiles for a velocity component in the domain. The direction along which
    * the profile is calculated (i.e. axis) cannot be equal to the velocity component (i.e. vel_component). The computational domain must be periodic
