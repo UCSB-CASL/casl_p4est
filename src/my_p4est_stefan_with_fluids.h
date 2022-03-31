@@ -165,7 +165,16 @@ private:
   CF_DIM* bc_interface_val_temp_substrate;
   BoundaryConditionType bc_interface_type_temp_substrate;
 
+  // User provided heat source term: (And the means to set it)
+  CF_DIM* user_provided_external_heat_source[2];
+  bool there_is_user_provided_heat_source = false;
 
+  void set_user_provided_external_heat_source(CF_DIM* user_heat_source_[2]){
+    for (unsigned int i=0; i<2; i++){
+      user_provided_external_heat_source[i] = user_heat_source_[i];
+    }
+    there_is_user_provided_heat_source = true;
+  }
   // ----------------------------------------------
   // Stefan problem:
   // ----------------------------------------------
@@ -210,6 +219,16 @@ private:
   CF_DIM* bc_wall_value_pressure;
   BoundaryConditionType bc_wall_type_pressure;
 
+  // User provided forcing terms: (And the means to set it)
+  CF_DIM* user_provided_external_forces_NS[P4EST_DIM];
+  bool there_is_user_provided_external_force_NS = false;
+
+  void set_user_provided_external_force_NS(CF_DIM* user_external_forces_NS_[2]){
+    foreach_dimension(d){
+      user_provided_external_forces_NS[d] = user_external_forces_NS_[d];
+    }
+    there_is_user_provided_external_force_NS = true;
+  }
   // ----------------------------------------------
   // Related to domain:
   // ----------------------------------------------
@@ -324,6 +343,17 @@ private:
   bool force_interfacial_velocity_to_zero;
 
   // ----------------------------------------------
+  // Variables related to what kind boundary condition values we are applying:
+  // ----------------------------------------------
+  // For temperature problem:
+//  enum:int{}
+//  int bc_interface_temperature_option;
+
+
+
+
+
+  // ----------------------------------------------
   // Specific to diff cases --> may change these now that they are within a class structure
   // ----------------------------------------------
   bool analytical_IC_BC_forcing_term;
@@ -362,8 +392,18 @@ private:
   double theta_infty, theta_interface, theta0;
 
   // ----------------------------------------------
-  //
+  /* Classes related to temperature and velocity boundary conditions
+   * (which depend on fields owned by the class that need to be updated in time)
+   *  i.e. ) bc temp interface condition may depend on kappa or normals
+   *  i.e.) bc velocity interface condition may depend on vinterface
+   *  i.e.) both of these values may depend on some analytical form
+   */
+  // Classes related to temperature and velocity boundary conditions
+  // (which depend on fields owned by the class that need to be updated in time, i.e.
   // ----------------------------------------------
+
+
+
 
 
 };
