@@ -52,6 +52,10 @@ public:
 
 private:
 
+  // TO-DO: documentation:
+  // Write a list of all the parameters/inputs that the user *must* provide for this to work
+  // WRite a list of option parameters and how those cases will be handled
+
   // -----------------------------------------------
   // Grid variables
   // -----------------------------------------------
@@ -306,15 +310,107 @@ private:
   double RaT; // Rayleigh number by temperature TO-DO: add definition
   double RaC; // Rayleigh number by concentration TO-DO: add definition
 
+  // Note: we will give the user the option to set the above nondimensional groups.
+  // If the user specifies the group, the group will be accepted and used to compute other
+  // quantities of interest relevant to the nondim problem (i.e. uinf to convert time_nondim to time_dim)
+
+  // Otherwise, these groups will be computed by the solver using the provided physical parameters
+
+  void set_nondimensional_groups(){
+    // Setup the temperature stuff properly first:
+//    set_temp_conc_nondim_defns(); -- IN CLASS SETTING WE ASSUME THE USER SETS THESE
+
+    // Compute the stuff that doesn't depend on velocity nondim:
+    if(Pr<0.) Pr = mu_l/(alpha_l * rho_l);
+
+    if(Sc<0.) Sc = mu_l/(Dl*rho_l);
+
+    if(St<0.) St = cp_s * deltaT/L;
+
+
+    if(is_dissolution_case){
+      // if deltaT is set to zero, we are using the C/Cinf nondim and set gamma_diss = Vm * Cinf/stoic_coeff. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set gamma_diss = Vm * deltaC/stoic_coeff
+      // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
+      if(fabs(deltaT/Tinfty) < EPS){
+        gamma_diss = molar_volume_diss*Tinfty/stoich_coeff_diss;
+      }
+      else{
+        gamma_diss = molar_volume_diss*deltaT/stoich_coeff_diss;
+      }
+      if(Da<0.) Da = k_diss*l_char/Dl;
+    }
+
+    // Elyce To-do 12/14/21: add Rayleigh number computations if you are solving boussinesq
+    switch(problem_dimensionalization_type){
+    case NONDIM_BY_FLUID_VELOCITY:{
+      // In this case, we assume a prescribed:
+      // (1) free-stream Reynolds number, (2) characteristic length scale, (3) characteristic temperature/concentrations
+      // From these, we compute a characteristic velocity, Peclet number, Stefan number, etc.
+      // This is also then used to specify the time_nondim_to_dim and vel_nondim_to_dim conversions
+      u_inf = (Re*mu_l)/(rho_l * l_char);
+      // Rochi temp change
+
+      if(!is_dissolution_case){
+        Pe = l_char * u_inf/alpha_l;
+      }
+      else{
+        Pe = l_char * u_inf/Dl;
+      }
+
+      vel_nondim_to_dim = u_inf;
+      time_nondim_to_dim = l_char/u_inf;
+
+      break;
+    }
+    case NONDIM_BY_SCALAR_DIFFUSIVITY:{
+      double u_char = (is_dissolution_case? (Dl/l_char):(alpha_l/l_char));
+      vel_nondim_to_dim = u_char;
+      time_nondim_to_dim = l_char/u_char;
+
+      if(!is_dissolution_case){
+        // Elyce to-do: this is a work in progress
+        if(RaC<0.) RaC = beta_C * grav * deltaT * pow(l_char, 3.)/(Dl * (mu_l/rho_l)) ; // note that here deltaT actually corresponds to a change in concentration
+        // T variable in this code refers to either temp or conc
+      }
+      else{
+        if(RaT<0.) RaT = beta_T * grav * deltaT * pow(l_char, 3.)/(alpha_l * (mu_l/rho_l)) ;
+      }
+      break;
+    }
+    case DIMENSIONAL:{
+      vel_nondim_to_dim = 1.0;
+      time_nondim_to_dim = 1.0;
+    }
+    break;
+    default:{
+      throw std::runtime_error("set_nondimensional_groups: unrecognized nondim formulation in switch case \n");
+      break;
+    }
+    } // end of switch case
+  } // end of function
+
+
+
   // ----------------------------------------------
   // Physical parameters:
+  // Note: these must be provided for the solver to run !
   // ----------------------------------------------
   double l_char; // Characteristic length scale (assumed in meters)
+  double u_inf; // Characteristic velocity scale (assumed in m/s)
+
+  void set_l_char(double l_char_){l_char = l_char_;}
 
   double T0; // characteristic solid temperature of the problem
   double Tinterface; // Interface temperature or concentration
   double Tinfty; // Freestream fluid temperature or concentration
   double Tflush; // Flush temperature (K) or concentration that inlet BC is changed to if flush_dim_time is activated
+  void set_dim_temp_conc_variables(double Tinfty_, double Tinterface_, double T0_){
+    Tinfty = Tinfty_;
+    Tinterface = Tinterface_;
+    T0 = T0_;
+  };
+
+  void set_Tflush(double Tflush_){Tflush = Tflush_;}
 
   double alpha_l, alpha_s; // Liquid and solid thermal diffusivities, [m^2/s]
   double k_l, k_s; // Liquid and solid thermal conductivities, [W/(mK)]
@@ -333,6 +429,26 @@ private:
 
   double Dl, Ds; //Concentration diffusion coefficient m^2/s,
   double k_diss; // Dissolution rate constant per unit area of reactive surface (m/s)
+
+  void set_alpha_l(double alpha_l_){alpha_l = alpha_l_;}
+  void set_alpha_s(double alpha_s_){alpha_s = alpha_s_;}
+  void set_k_l(double k_l_){k_l = k_l_;}
+  void set_k_s(double k_s_){k_s = k_s_;}
+  void set_rho_l(double rho_l_){rho_l = rho_l_;}
+  void set_rho_s(double rho_s_){rho_s = rho_s_;}
+  void set_cp_s(double cp_s_){cp_s = cp_s_;}
+  void set_L(double L_){L = L_;}
+  void set_mu_l(double mu_l_){mu_l = mu_l_;}
+  void set_grav(double grav_){grav = grav_;}
+  void set_beta_T(double beta_T_){beta_T = beta_T_;}
+  void set_beta_C(double beta_C_){beta_C = beta_C_;}
+  void set_gamma_diss(double gamma_diss_){gamma_diss = gamma_diss_;}
+  void set_stoich_coeff_diss(double stoich_coeff_diss_){stoich_coeff_diss = stoich_coeff_diss_;}
+  void set_molar_volume_diss(double molar_volume_diss_){molar_volume_diss = molar_volume_diss_;}
+  void set_Dl(double Dl_){Dl = Dl_;}
+  void set_Ds(double Ds_){Ds = Ds_;}
+  void set_k_diss(double k_diss_){k_diss = k_diss_;}
+
 
   // ----------------------------------------------
   // Booleans related to what kind of physics we are solving
@@ -383,6 +499,13 @@ private:
   // These things get computed depending on the provided dimensional quantities and case
   double deltaT;
   double theta_infty, theta_interface, theta0;
+  void set_nondim_temp_conc_variables(double theta_infty_, double theta_interface_,
+                                      double theta0_, double deltaT_){
+    theta_infty = theta_infty_;
+    theta_interface = theta_interface_;
+    theta0 = theta0_;
+    deltaT = deltaT_;
+  };
 
   // ----------------------------------------------
   /* Classes related to temperature and velocity boundary conditions
@@ -394,7 +517,6 @@ private:
   // Classes related to temperature and velocity boundary conditions
   // (which depend on fields owned by the class that need to be updated in time, i.e.
   // ----------------------------------------------
-
 
 
 

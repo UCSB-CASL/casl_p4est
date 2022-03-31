@@ -1238,9 +1238,6 @@ void set_nondimensional_groups(){
 } // end of function
 
 
-
-
-
 //-----------------------------------------
 // Properties to set if you are solving NS
 // ----------------------------------------
@@ -3898,105 +3895,60 @@ void compute_timestep( p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
       global_max_vnorm = max_vint_known_for_ex;
   }
 
-  // Compute initial timestep if relevant:
-  if(tstep<0){
-    dxyz_min(p4est_np1,dxyz_smallest);
-
-    // Initialize timesteps to use:
-    if(solve_stefan){
-        dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;
-        if (example_==MELTING_ICE_SPHERE_NAT_CONV){
-            dt_Stefan=cfl*min(dxyz_smallest[0],dxyz_smallest[1])/1.0;
-        }
-    }
-
-    if(solve_navier_stokes){
-      dt_NS = cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/max(u0,v0);
-
-      if (example_==MELTING_ICE_SPHERE_NAT_CONV){
-          dt_NS=cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/1.0;
-      }
-    }
-    if(solve_stefan && solve_navier_stokes){
-        dt = min(dt_Stefan, dt_NS);
-        dt = min(dt, dt_max_allowed);
-
-    }
-    else if(solve_stefan && !solve_navier_stokes){
-        dt = min(dt_Stefan, dt_max_allowed);
-    }
-    else if(!solve_stefan && solve_navier_stokes){
-        dt = min(dt_NS, dt_max_allowed);
-    }
-    else{
-        throw std::runtime_error("Setting initial timestep: you are not solving any of the possible physics \n");
-    }
-
-    dt_nm1 = dt;
-  } // end of if tstep == 0
-  else{
-      // Compute dt_Stefan (and interfacial velocity if needed)
-      if(solve_stefan){
-          if(!example_has_known_max_vint){
-              // Check the values of v_interface locally:
-              v_interface.get_array();
-              phi.get_array();
-              foreach_local_node(n, nodes_np1){
-                  if (fabs(phi.ptr[n]) < uniform_band*dxyz_close_to_interface){
-                      max_v_norm = max(max_v_norm,sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n])));
-                  }
+  // Compute dt_Stefan (and interfacial velocity if needed)
+  if(solve_stefan){
+      if(!example_has_known_max_vint){
+          // Check the values of v_interface locally:
+          v_interface.get_array();
+          phi.get_array();
+          foreach_local_node(n, nodes_np1){
+              if (fabs(phi.ptr[n]) < uniform_band*dxyz_close_to_interface){
+                  max_v_norm = max(max_v_norm,sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n])));
               }
-              v_interface.restore_array();
-              phi.restore_array();
-
-              // Get the maximum v norm across all the processors:
-              int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_vnorm,1,MPI_DOUBLE,MPI_MAX,p4est_np1->mpicomm);
-              SC_CHECK_MPI(mpi_ret);
           }
-          else{
-              global_max_vnorm = max_vint_known_for_ex;
-          }
+          v_interface.restore_array();
+          phi.restore_array();
 
-          // Compute new Stefan timestep:
-          dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;
-     } // end of if solve stefan
+          // Get the maximum v norm across all the processors:
+          int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_vnorm,1,MPI_DOUBLE,MPI_MAX,p4est_np1->mpicomm);
+          SC_CHECK_MPI(mpi_ret);
+      }
+      else{
+          global_max_vnorm = max_vint_known_for_ex;
+      }
 
-    // Compute dt_NS if necessary
-     if(solve_navier_stokes/* && tstep>0*/){
-        ns->compute_dt();
-        dt_NS = ns->get_dt();
-        // Address the case where we are loading a simulation state
-        if(tstep==load_tstep){
-            dt_NS=dt_nm1;
-        }
-    }
+      // Compute new Stefan timestep:
+      dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;
+ } // end of if solve stefan
 
-    // Compute the timestep that will be used depending on what physics we have:
-    if(solve_stefan && solve_navier_stokes){
-        // Take the minimum timestep of the NS and Stefan (dt_Stefan computed previously):
-        dt = min(dt_Stefan,dt_NS);
-        dt = min(dt, dt_max_allowed);
+  // Compute dt_NS if necessary
+  if(solve_navier_stokes){
+    ns->compute_dt();
+    dt_NS = ns->get_dt();
+    // Address the case where we are loading a simulation state
+    if(tstep==load_tstep){
+        dt_NS=dt_nm1;
     }
-    else if(solve_stefan && !solve_navier_stokes){
-        dt = min(dt_Stefan, dt_max_allowed);
-    }
-    else if(!solve_stefan && solve_navier_stokes){
-        dt = min(dt_NS, dt_max_allowed);
-    }
-    else{
-        throw std::runtime_error("setting the timestep : you are not solving any of the possible physics ... \n");
-    }
+}
 
-  // Removed below 12-7: this is redundant bc max vint is already constant so we will have a constant timestep
-//  // Note: changed frank sphere problem to have a constant time step value during the Elyce Rochi merge 11/24
-//  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)
-//          || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP) || (example_ == FRANK_SPHERE)){
-//    double N = tfinal*global_max_vnorm/cfl/min(dxyz_smallest[0],dxyz_smallest[1]);
-//    dt_Stefan = tfinal/N;
-//  }
+  // Compute the timestep that will be used depending on what physics we have:
+  if(solve_stefan && solve_navier_stokes){
+      // Take the minimum timestep of the NS and Stefan (dt_Stefan computed previously):
+      dt = min(dt_Stefan,dt_NS);
+      dt = min(dt, dt_max_allowed);
+  }
+  else if(solve_stefan && !solve_navier_stokes){
+      dt = min(dt_Stefan, dt_max_allowed);
+  }
+  else if(!solve_stefan && solve_navier_stokes){
+      dt = min(dt_NS, dt_max_allowed);
+  }
+  else{
+      throw std::runtime_error("setting the timestep : you are not solving any of the possible physics ... \n");
+  }
 
   v_interface_max_norm = global_max_vnorm;
-  } // ends else (if tstep is not zero)
+
 
   // Clip the timestep if we are near the end of our simulation, to get the proper end time:
   if((tn + dt > tfinal) && (last_tstep<0)){
@@ -4014,20 +3966,6 @@ void compute_timestep( p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
       PetscPrintf(mpicomm,"Final tstep will be %d \n",last_tstep);
   }
 
-  // Clip time and switch vel direction for coupled problem example:
-  if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)){
-      if(((tn+dt) >= tfinal/2.0) && !vel_has_switched){
-          if((tfinal/2. - tn)>dt_min_allowed){ // if we have some uneven situation
-              PetscPrintf(mpicomm,"uneven situation \n");
-              dt = (tfinal/2.) - tn;
-          }
-          PetscPrintf(mpicomm,"SWITCH SIGN : %0.1f \n",coupled_test_sign);
-          coupled_test_switch_sign();
-          vel_has_switched=true;
-          PetscPrintf(mpicomm,"SWITCH SIGN : %0.1f \n dt : %e \n",coupled_test_sign,dt);
-
-      }
-  }
   // Print the interface velocity info:
   PetscPrintf(mpicomm,"\n"
                        "Computed interfacial velocity: \n"
@@ -8555,41 +8493,6 @@ void perform_initializations(mpi_environment_t &mpi, splitting_criteria_cf_and_u
                    ns,
                    dxyz_close_to_interface, dxyz_smallest,
                    load_tstep, last_tstep);
-  /*
-  // ------------------------------------------------------------
-  // Initialize relevant boundary condition objects:
-  // ------------------------------------------------------------
-  if(print_checkpoints)PetscPrintf(mpi.comm(),"Initializing all BCs/ICs/forcing terms ... \n");
-
-  initialize_all_relevant_bcs_ics_forcing_terms(analytical_T,
-                                                bc_interface_val_temp,
-                                                bc_wall_value_temp,
-                                                external_heat_source_T,
-                                                analytical_soln_v,
-                                                bc_interface_value_velocity,
-                                                bc_wall_value_velocity,
-                                                bc_wall_type_velocity,
-                                                bc_interface_value_pressure,
-                                                bc_wall_value_pressure,
-                                                bc_wall_type_pressure,
-                                                external_force_components,
-                                                external_force_components_with_BA);
-
-  // -----------------------------------------------
-  // Initialize files to output various data of interest:
-  // -----------------------------------------------
-  if(print_checkpoints)PetscPrintf(mpi.comm(),"Initializing output files ... \n");
-
-
-  initialize_error_files_for_test_cases(mpi, sp,
-                                        fich_errors, name_errors,
-                                        fich_data, name_data,
-                                        fich_mem, name_mem);
-
-
-
-  // ------------------------------------------------------------
-  */
 }
 
 
@@ -8946,6 +8849,26 @@ int main(int argc, char** argv) {
       if((timing_every_n>0) && (tstep%timing_every_n == 0)) {
         PetscPrintf(mpi.comm(),"Current time info : \n");
         w.read_duration_current();
+      }
+
+      // -------------------------------
+      // Clip time and switch vel direction
+      // for coupled problem examples:
+      // --------------------------------
+      bool examples_w_switch_sign = (example_ == COUPLED_PROBLEM_EXAMPLE)||
+                                    (example_ == COUPLED_TEST_2) ||
+                                    (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP);
+      if(examples_w_switch_sign){
+        if(((tn+dt) >= tfinal/2.0) && !vel_has_switched){
+          if((tfinal/2. - tn)>dt_min_allowed){ // if we have some uneven situation
+            PetscPrintf(mpi.comm(),"uneven situation \n");
+            dt = (tfinal/2.) - tn;
+          }
+          PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n", coupled_test_sign);
+          coupled_test_switch_sign();
+          vel_has_switched=true;
+          PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n dt : %e \n", coupled_test_sign,dt);
+        }
       }
 
       // -------------------------------

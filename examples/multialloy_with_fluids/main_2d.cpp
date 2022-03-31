@@ -1238,9 +1238,6 @@ void set_nondimensional_groups(){
 } // end of function
 
 
-
-
-
 //-----------------------------------------
 // Properties to set if you are solving NS
 // ----------------------------------------
