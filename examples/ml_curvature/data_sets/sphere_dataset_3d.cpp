@@ -12,7 +12,7 @@
  *
  * Developer: Luis Ángel.
  * Created: March 19, 2022.
- * Updated: March 29, 2022.
+ * Updated: March 31, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -236,6 +236,9 @@ int main ( int argc, char* argv[] )
 				PetscPrintf( mpi.comm(), ":: Number of samples left: %d\n", nSamplesLeftForSameRadius );
 #endif
 
+				// Clean up.
+				CHKERRXX( VecDestroy( phi ) );
+
 				// Destroy the p4est and its connectivity structure.
 				delete ngbd;
 				delete hierarchy;
@@ -432,15 +435,14 @@ std::pair<double,double> collectSamples( const int& keepEveryXSamples, const dou
 }
 
 /**
- * Save samples in buffer if it has overflowed the user-defined min size, or if user wants to bypass the condition beca-
- * use the
+ * Save samples in buffer if it has overflowed the user-defined min size, or if we're done collecting the predefined quota.
  * Upon exiting, the buffer will be emptied and re-reserved, and the buffer size will be reset if we saved to a file.
  * @param [in] mpi MPI environment.
  * @param [in,out] buffer Sample buffer.
  * @param [in,out] bufferSize Current buffer's size.
  * @param [in,out] file File where to write samples.
  * @param [in] fileName File names array.
- * @param [in] bufferMinSize Predefined minimum size to trigger file saving (same value for non-saddles and saddles).
+ * @param [in] bufferMinSize Predefined minimum size to trigger file saving.
  * @param [in] samplesLeftToSave How many samples do we still need to collect/save to meet the quota.
  * @return Number of samples stored to a file if we did that (already shared across processes).
  */

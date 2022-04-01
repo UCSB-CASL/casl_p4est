@@ -498,7 +498,7 @@ void uniformRandomSpace( const mpi_environment_t& mpi, const double& start, cons
  * @param [in] N_WAVES Desired number of full cycles for any direction.
  * @param [in] h Mesh size.
  * @param [in] MAX_A Maximum amplitude.  It's used to avoid unecessarily big domains by limiting the sampling radius.
- * @param [in] MAX_RL Maximum level of refinement per unit octant (i.e., h = 2^{MAX_RL}).
+ * @param [in] MAX_RL Maximum level of refinement per unit octant (i.e., h = 2^{-MAX_RL}).
  * @param [out] samRadius Sampling radius on the uv plane that resides fully within the domain.
  * @param [out] octreeMaxRL Effective individual octree maximum level of refinement to achieve the desired h.
  * @param [out] uvLim Limiting radius for triangulating sinusoid.
