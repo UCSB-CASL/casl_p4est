@@ -427,8 +427,8 @@ double theta_interface;
 double theta0;
 
 // For surface tension: (used to apply some interfacial BC's in temperature) // TO-DO revisit this?
-double sigma; // set in set_physical_properties()
-//DEFINE_PARAMETER(pl,double,sigma,4.20e-10,"Interfacial tension [m] between ice and water, default: 2*2.10e-10");
+//double sigma; // set in set_physical_properties()
+DEFINE_PARAMETER(pl,double,sigma,4.20e-10,"Interfacial tension [m] between ice and water, default: 2*2.10e-10");
 
 // For the coupled test case where we have to swtich sign:
 double coupled_test_sign; // in header -- to define only for that example
@@ -2471,9 +2471,6 @@ public:
   }
   double operator()(DIM(double x, double y, double z)) const
   {
-    if(kappa.vec!=NULL){
-
-    }
     switch(example_){
     case FRANK_SPHERE:{ // Frank sphere case, no surface tension
         return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
@@ -4978,6 +4975,7 @@ void do_backtrace(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1,
 }
 
 
+// poisson_step -- TRANSFERRED TO CLASS
 void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
                   vec_and_ptr_dim_t& phi_dd, vec_and_ptr_dim_t& phi_solid_dd,
                   vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
@@ -5119,7 +5117,7 @@ void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
   delete solver_Tl;
   if(do_we_solve_for_Ts) delete solver_Ts;
 }
-
+// setup_and_solve_poisson -- TRANSFERRED TO CLASS
 void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
                                      p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
                                      p4est_t* p4est_n, p4est_nodes_t* nodes_n, my_p4est_node_neighbors_t* ngbd_n,
@@ -5371,7 +5369,7 @@ void setup_analytical_ics_and_bcs_for_this_tstep(BC_INTERFACE_VALUE_TEMP* bc_int
   bc_wall_value_pressure.t=tn+dt;
 
 }
-
+// set ns param -- TRANSFERRED TO CLASS
 void set_ns_parameters(my_p4est_navier_stokes_t* ns){
   switch(problem_dimensionalization_type){
     case NONDIM_BY_FLUID_VELOCITY:{
@@ -5394,7 +5392,7 @@ void set_ns_parameters(my_p4est_navier_stokes_t* ns){
 
 } // end function
 
-
+// navier_stokes_Step -- TRANSFERRED TO CLASS
 void navier_stokes_step(my_p4est_navier_stokes_t* ns,
                         p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                         vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
@@ -5504,7 +5502,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
 }
 
-
+// initialize_ns_solver -- TRANSFERRED TO CLASS
 void initialize_ns_solver(my_p4est_navier_stokes_t* &ns,
                           p4est_t* p4est_np1,p4est_ghost_t* ghost_np1,
                           my_p4est_node_neighbors_t* ngbd_np1, my_p4est_node_neighbors_t* ngbd_n,
@@ -5565,6 +5563,7 @@ bool are_we_saving_data(double& tn_,bool is_load_step, int& out_idx, bool get_ne
   return out;
 }
 
+// setup_and_solve_ns --> TRANSFERRED TO CLASS
 void setup_and_solve_navier_stokes_problem(mpi_environment_t& mpi, my_p4est_navier_stokes_t* ns,
                                            p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
                                            vec_and_ptr_t& phi, vec_and_ptr_t& phi_eff,

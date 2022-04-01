@@ -87,12 +87,14 @@ private:
    *
    */
 
+  p4est_connectivity_t* conn;
+  my_p4est_brick_t      brick;
+
   // Grid at time n (usually housing nm1 variables, except for interface location @ n)
   p4est_t*              p4est_n;
   p4est_nodes_t*        nodes_n;
   p4est_ghost_t*        ghost_n;
-  p4est_connectivity_t* conn_n;
-  my_p4est_brick_t      brick_n;
+
   my_p4est_hierarchy_t* hierarchy_n;
   my_p4est_node_neighbors_t* ngbd_n;
 
@@ -120,6 +122,9 @@ private:
 
   // LSF for the inner substrate (if applicable)
   vec_and_ptr_t phi_substrate;
+
+  // Effective LSF used when we have a substrate -- this will be used by the extension, interfacial velocity computation, and navier stokes steps
+  vec_and_ptr_t phi_eff;
 
   // Second derivatives of LSFs
   vec_and_ptr_dim_t phi_dd;
@@ -166,19 +171,21 @@ private:
   vec_and_ptr_dim_t T_l_dd;
 
   // Boundary conditions: // will figure out how to address this later
-  // perhaps have a fxn--> set bc_interface_val to Gibbs Thomson, or to dendrite, or to user defined?
-  CF_DIM* bc_interface_val_temp[2];
-  BoundaryConditionType bc_interface_type_temp;
+//interfacial_bc_temp_t* bc_interface_val_temp[2]; // <-- this gets declared later bc the type is a nested class within stefan w fluids, but I have included it here for readability
+  BoundaryConditionType* bc_interface_type_temp[2];
+  CF_DIM* bc_interface_robin_coeff_temp[2];
 
   CF_DIM* bc_wall_value_temp[2];
-  BoundaryConditionType bc_wall_type_temp;
+  BoundaryConditionType* bc_wall_type_temp[2];
 
-  CF_DIM* bc_interface_val_temp_substrate;
-  BoundaryConditionType bc_interface_type_temp_substrate;
+  CF_DIM* bc_interface_val_temp_substrate[2];
+  BoundaryConditionType* bc_interface_type_temp_substrate[2];
+  CF_DIM* bc_interface_robin_coeff_temp_substrate[2];
 
   // User provided heat source term: (And the means to set it)
   CF_DIM* user_provided_external_heat_source[2];
   bool there_is_user_provided_heat_source = false;
+
 
   void set_user_provided_external_heat_source(CF_DIM* user_heat_source_[2]){
     for (unsigned int i=0; i<2; i++){
@@ -198,6 +205,8 @@ private:
 
   my_p4est_navier_stokes_t* ns = NULL;
 
+  my_p4est_poisson_faces_t* face_solver;
+  my_p4est_poisson_cells_t* cell_solver;
   PCType pc_face = PCSOR;
   KSPType face_solver_type = KSPBCGS;
   PCType pc_cell = PCSOR;
@@ -211,6 +220,8 @@ private:
 
   vec_and_ptr_t press_nodes;
 
+  Vec dxyz_hodge_old[P4EST_DIM];
+
   my_p4est_cell_neighbors_t *ngbd_c_np1 = NULL;
   my_p4est_faces_t *faces_np1 = NULL;
 
@@ -218,7 +229,7 @@ private:
   BoundaryConditionsDIM bc_velocity[P4EST_DIM];
   BoundaryConditionsDIM bc_pressure;
 
-  CF_DIM* bc_interface_value_velocity[P4EST_DIM];
+//interfacial_bc_fluid_velocity_t* bc_interface_value_velocity[P4EST_DIM];// <-- this gets declared later bc the type is a nested class within stefan w fluids, but I have included it here for readability
   BoundaryConditionType bc_interface_type_velocity[P4EST_DIM];
 
   CF_DIM* bc_wall_value_velocity[P4EST_DIM];
@@ -240,6 +251,26 @@ private:
     }
     there_is_user_provided_external_force_NS = true;
   }
+
+  // Other parameters:
+  double NS_norm; // for keeping track of NS norm
+  double NS_max_allowed;
+  void set_NS_max_allowed(double NS_norm_max_allowed_){NS_max_allowed = NS_norm_max_allowed_;}
+
+  double hodge_tolerance;
+  double hodge_percentage_of_max_u;
+  void set_hodge_percentage_of_max_u(double max_perc){
+    hodge_percentage_of_max_u = max_perc;
+  }
+  int hodge_max_it;
+  void set_hodge_max_iteration(int max_it){hodge_max_it = max_it;}
+
+  // whether or not to compute pressure for a given tstep
+  // (this saves computational time bc we don't need to compute pressure
+  // unless we are going to visualize and/or compute forces )
+  bool compute_pressure_;
+
+
   // ----------------------------------------------
   // Related to domain:
   // ----------------------------------------------
@@ -284,7 +315,8 @@ private:
   double dt_Stefan;
   double dt_NS;
 
-  int advection_sl_order;
+  int advection_sl_order; // advec order for scalar temp/conc problem
+  int NS_advection_sl_order; // advec order for Navier Stokes problem
   double advection_alpha_coeff;
   double advection_beta_coeff;
 
@@ -430,6 +462,8 @@ private:
   double L; // Latent heat of fusion [J/kg]
   double mu_l; // Fluid viscosity [Pa s]
 
+  double sigma; // Interfacial tension [m] between the solid and liquid phase, used in solidification contexts
+
   double grav; // Gravity
   double beta_T; // Thermal expansion coefficient for the boussinesq approx
   double beta_C; // Concentration expansion coefficient for the boussinesq approx
@@ -450,6 +484,7 @@ private:
   void set_cp_s(double cp_s_){cp_s = cp_s_;}
   void set_L(double L_){L = L_;}
   void set_mu_l(double mu_l_){mu_l = mu_l_;}
+  void set_sigma(double sigma_){sigma = sigma_;}
   void set_grav(double grav_){grav = grav_;}
   void set_beta_T(double beta_T_){beta_T = beta_T_;}
   void set_beta_C(double beta_C_){beta_C = beta_C_;}
@@ -477,9 +512,11 @@ private:
   bool force_interfacial_velocity_to_zero;
 
   // ----------------------------------------------
-  // Booleans (misc)
+  // Other misc parameters
   // ----------------------------------------------
   bool print_checkpoints; // can set this to true to debug where code might be crashing
+
+  double scale_vgamma_by; // Used in coupled convergence test to switch the sign of the interface velocity
 
   // ----------------------------------------------
   // Specific to diff cases --> may change these now that they are within a class structure
@@ -522,29 +559,152 @@ private:
     deltaT = deltaT_;
   };
 
-  // ----------------------------------------------
-  /* Classes related to temperature and velocity boundary conditions
-   * (which depend on fields owned by the class that need to be updated in time)
-   *  i.e. ) bc temp interface condition may depend on kappa or normals
-   *  i.e.) bc velocity interface condition may depend on vinterface
-   *  i.e.) both of these values may depend on some analytical form
-   */
-  // Classes related to temperature and velocity boundary conditions
-  // (which depend on fields owned by the class that need to be updated in time, i.e.
-  // ----------------------------------------------
-
-
-
-
 
   // -------------------------------------------------------
   // Functions related to scalar temp/conc problem:
   // -------------------------------------------------------
-  void setup_rhs_for_scalar_temp_conc_problem();
-  void do_backtrace_for_scalar_temp_conc_problem();
 
+  void do_backtrace_for_scalar_temp_conc_problem();
+  void setup_rhs_for_scalar_temp_conc_problem();
+  void poisson_nodes_step_for_scalar_temp_conc_problem();
+  void setup_and_solve_poisson_nodes_problem_for_scalar_temp_conc();
+
+
+  // -------------------------------------------------------
+  // Functions related to interfacial velocity and timestep:
+  // -------------------------------------------------------
+
+  // -------------------------------------------------------
+  // Functions related to Navier-Stokes problem:
+  // -------------------------------------------------------
+  void set_ns_parameters();
+  void initialize_ns_solver();
+  bool navier_stokes_step(); // output is whether or not it crashed, if it crashes we save a vtk crash file
 
   // --------------------------------------------------------
+
+  // -------------------------------------------------------
+  // Classes and/or options for handling coupled boundary conditions:
+  // -------------------------------------------------------
+  // Interfacial bc value for temp/concentration:
+  // -------------------------
+  /* This allows the user to inherit this class in the main and set the
+   * BC values they want by overloading the operator() function
+   *
+   * The user may either have the operator() return the Gibbs Thomson function
+   * as already developed here in the class .cpp file, or they can
+   * define an operator themselves, making use of curvature and normals as desired
+   *
+  */
+
+  class interfacial_bc_temp_t: public CF_DIM{
+    private:
+      my_p4est_stefan_with_fluids_t* owner;
+
+      my_p4est_node_neighbors_t* ngbd_bc_temp;
+
+      // Curvature interp:
+      my_p4est_interpolation_nodes_t* kappa_interp;
+
+      // Normals interp:
+      my_p4est_interpolation_nodes_t* nx_interp;
+      my_p4est_interpolation_nodes_t* ny_interp;
+      // TO-DO: add 3d case
+
+      bool do_we_use_curvature;
+      bool do_we_use_normals;
+
+    public:
+      interfacial_bc_temp_t (my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_curvature_, bool do_we_use_normals_) :
+            owner(parent_solver), do_we_use_curvature(do_we_use_curvature_), do_we_use_normals(do_we_use_normals_){
+
+
+        // Set the appropriate flags in the owning class to apply the BC's we want:
+        owner->interfacial_temp_bc_requires_curvature = do_we_use_curvature;
+        owner->interfacial_temp_bc_requires_normal = do_we_use_normals;
+
+      }
+      void set_kappa_interp(my_p4est_node_neighbors_t* ngbd_, Vec &kappa){
+        ngbd_bc_temp = ngbd_;
+        kappa_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
+        kappa_interp->set_input(kappa, linear);
+      }
+      void clear_kappa_interp(){
+        kappa_interp->clear();
+        delete kappa_interp;
+      }
+      void set_normals_interp(my_p4est_node_neighbors_t* ngbd_, Vec &nx, Vec &ny){
+        ngbd_bc_temp = ngbd_;
+        nx_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
+        nx_interp->set_input(nx, linear);
+
+        ny_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
+        ny_interp->set_input(ny, linear);
+      }
+      void clear_normals_interp(){
+        nx_interp->clear();
+        delete nx_interp;
+
+        ny_interp->clear();
+        delete ny_interp;
+      }
+      double Gibbs_Thomson(DIM(double x, double y, double z)) const;
+      virtual double operator()(DIM(double x, double y, double z)) const {
+        throw std::runtime_error("my_p4est_stefan_with_fluids_t::interfacial_bc_temp_t::operator() -- to properly use this BC, the user needs to define an overloaded definition of the operator. \n You may either return Gibbs_Thomsom(DIM(x,y,z)) in which the solver will use the standard Gibbs Thomson condition, or you need to define a different user defined function which may or may not make use of curvature and normals. \n");
+
+      }
+  }; // end of nested class interfacial_bc_temp_t
+
+  // Declaration of the bc associated with this:
+  interfacial_bc_temp_t* bc_interface_val_temp[2];
+
+  // -------------------------
+  // Interfacial bc value for fluid velocity
+  // -------------------------
+
+  class interfacial_bc_fluid_velocity_t: public CF_DIM{
+    private:
+        my_p4est_stefan_with_fluids_t* owner;
+
+        my_p4est_node_neighbors_t* ngbd_bc_vNS;
+        my_p4est_interpolation_nodes_t* v_interface_interp;
+        const unsigned char dir; // the dimension we are talking about (i.e. x, y, or z)
+        bool do_we_use_v_interface; // Note that here v_interface refers to the velocity of the moving interface
+
+    public:
+        // Constructor:
+        interfacial_bc_fluid_velocity_t(my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_vgamma_for_bc, const unsigned char dir_):
+            owner(parent_solver), dir(dir_), do_we_use_v_interface(do_we_use_vgamma_for_bc) {
+          // Set the appropriate flags in the owning stefan_w_fluids class to apply the BCs we want:
+          owner->interfacial_vel_bc_requires_vint = do_we_use_v_interface;
+        }
+        // Functions to set/clear:
+        void set(my_p4est_node_neighbors_t* ngbd_, Vec v_interface){
+          v_interface_interp = new my_p4est_interpolation_nodes_t(ngbd_);
+          v_interface_interp->set_input(v_interface, linear);
+        }
+        void clear(){
+          v_interface_interp->clear();
+          delete v_interface_interp;
+        }
+
+        // Functions for diff options: (in cpp)
+        double Conservation_of_Mass(DIM(double x, double y, double z)) const;
+        double Strict_No_Slip(DIM(double x, double y, double z)) const;
+
+        // Operator:
+        virtual double operator()(DIM(double x, double y, double z)) const{
+          throw std::runtime_error("my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t::operator() -- to properly use this BC, the user needs to define an overloaded definition of the operator. \n "
+                                   "You may either return Conservation_of_Mass(DIM(x,y,z)) which will enforce the cons of mass condition, Strict_No_Slip(DIM(x, y, z)) which will enforce a component-wise equality of vgamma and vNS, or you need to define a different user-defined function which may or may not make use of the interfacial velocity (vel of moving interface). i.e. you could just return 0. for a homogeneous no slip sort of deal. Or if you're using a Neumann condition for some reason, then you will definitely want to provide your own fxn. \n");
+        }
+  }; // end of nested class interfacial_bc_temp_t
+
+  // Declaration of the bc associated with this:
+  interfacial_bc_fluid_velocity_t* bc_interface_value_velocity[P4EST_DIM];
+
+
+
+
   public:
 
     my_p4est_stefan_with_fluids_t();
