@@ -230,16 +230,16 @@ private:
   BoundaryConditionsDIM bc_pressure;
 
 //interfacial_bc_fluid_velocity_t* bc_interface_value_velocity[P4EST_DIM];// <-- this gets declared later bc the type is a nested class within stefan w fluids, but I have included it here for readability
-  BoundaryConditionType bc_interface_type_velocity[P4EST_DIM];
+  BoundaryConditionType* bc_interface_type_velocity[P4EST_DIM];
 
   CF_DIM* bc_wall_value_velocity[P4EST_DIM];
-  BoundaryConditionType bc_wall_type_velocity[P4EST_DIM];
+  WallBCDIM* bc_wall_type_velocity[P4EST_DIM];
 
   CF_DIM* bc_interface_value_pressure;
   BoundaryConditionType bc_interface_type_pressure;
 
   CF_DIM* bc_wall_value_pressure;
-  BoundaryConditionType bc_wall_type_pressure;
+  WallBCDIM* bc_wall_type_pressure;
 
   // User provided forcing terms: (And the means to set it)
   CF_DIM* user_provided_external_forces_NS[P4EST_DIM];
@@ -314,6 +314,13 @@ private:
   double dt_nm1;
   double dt_Stefan;
   double dt_NS;
+  double dt_max_allowed;
+
+  double v_interface_max_norm; // for keeping track of max norm of vinterface
+  double v_interface_max_allowed; // max allowable value before we trigger a crash state
+
+
+  void set_dt_max_allowed(double dt_max_allowed_){dt_max_allowed = dt_max_allowed_;}
 
   int advection_sl_order; // advec order for scalar temp/conc problem
   int NS_advection_sl_order; // advec order for Navier Stokes problem
@@ -323,6 +330,9 @@ private:
   int tstep;
   int load_tstep;
   int last_tstep;
+
+  int out_idx; // for vtk
+  int data_save_out_idx; // for saving to files
 
   double cfl_Stefan;
   double cfl_NS;
@@ -516,8 +526,8 @@ private:
   // ----------------------------------------------
   bool print_checkpoints; // can set this to true to debug where code might be crashing
 
-  double scale_vgamma_by; // Used in coupled convergence test to switch the sign of the interface velocity
-
+  double scale_vgamma_by = 1.; // Used in coupled convergence test to switch the sign of the interface velocity
+  void set_scale_vgamma_by(double scale_vgamma_by_){scale_vgamma_by = scale_vgamma_by_;}
   // ----------------------------------------------
   // Specific to diff cases --> may change these now that they are within a class structure
   // ----------------------------------------------
@@ -530,6 +540,9 @@ private:
   bool interfacial_vel_bc_requires_vint;
 
   bool example_has_known_max_vint;
+
+  bool track_evolving_geometries;
+  void set_track_evolving_geometries(bool track_evo_geom_){track_evolving_geometries = track_evo_geom_;}
 
   // ----------------------------------------------
   // Related to any front regularization:
@@ -573,6 +586,9 @@ private:
   // -------------------------------------------------------
   // Functions related to interfacial velocity and timestep:
   // -------------------------------------------------------
+  double interfacial_velocity_expression(double Tl_d, double Ts_d);
+  bool compute_interfacial_velocity();
+  void compute_timestep();
 
   // -------------------------------------------------------
   // Functions related to Navier-Stokes problem:
@@ -580,8 +596,29 @@ private:
   void set_ns_parameters();
   void initialize_ns_solver();
   bool navier_stokes_step(); // output is whether or not it crashed, if it crashes we save a vtk crash file
-
+  void setup_and_solve_navier_stokes_problem();
   // --------------------------------------------------------
+
+  // -------------------------------------------------------
+  // Functions related to LSF advection/grid update:
+  // -------------------------------------------------------
+
+
+
+
+
+
+
+  // -------------------------------------------------------
+  // Functions related to LSF regularization:
+  // -------------------------------------------------------
+
+
+  // -------------------------------------------------------
+  // Functions related to VTK saving:
+  // -------------------------------------------------------
+  void save_fields_to_vtk(bool is_crash=false, char crash_type[]=NULL);
+
 
   // -------------------------------------------------------
   // Classes and/or options for handling coupled boundary conditions:

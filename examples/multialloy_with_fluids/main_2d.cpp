@@ -3665,7 +3665,7 @@ void interpolate_fields_onto_new_grid(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n
   P4EST_ASSERT(i==num_fields_interp);
 } // end of slide_and_interpolate_fields_onto_new_grid
 
-
+// TRANSFERRED (V)
 double interfacial_velocity_expression(double Tl_d, double Ts_d){
   switch(problem_dimensionalization_type){
     // Note: removed curvature from Stefan condition after discussing w frederic and looking at Daniil's thesis 11/24/2020
@@ -3702,7 +3702,7 @@ double interfacial_velocity_expression(double Tl_d, double Ts_d){
     }
   }
 }
-
+// TRANSFERRED (V)
 void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
                                   vec_and_ptr_dim_t& T_l_d, vec_and_ptr_dim_t& T_s_d,
                                   vec_and_ptr_dim_t& jump, vec_and_ptr_dim_t &v_interface,
@@ -3875,7 +3875,7 @@ void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
       }
   }
 }
-
+// TRANSFERRED (V)
 void compute_timestep( p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                        vec_and_ptr_t& phi, vec_and_ptr_dim_t& v_interface,
                        my_p4est_navier_stokes_t* ns,
@@ -3987,6 +3987,7 @@ void compute_timestep( p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                         dxyz_close_to_interface);
 } // ends function
 
+// (V) want to handle this in main
 void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, double cfl_NS_steady, double hodge_percentage_steady){
 
   // -----------------------------
@@ -4021,7 +4022,6 @@ void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, double cfl_NS_
       if(example_ == EVOLVING_POROUS_MEDIA){
         hodge_percentage_of_max_u = hodge_percentage_steady; // to-do : clean up, num startup iterations should be a user intput, instead of just being set to 10
       }
-
     }
   }
 
@@ -6143,6 +6143,7 @@ void create_and_compute_phi_sub_and_phi_eff(p4est_t* p4est_np1, p4est_nodes_t* n
 // --------------------------------------------------------------------------------------------------------------
 // Function for saving to VTK:
 // --------------------------------------------------------------------------------------------------------------
+// TRANSFERRED
 void save_fields_to_vtk(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                        p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1,
                        int out_idx, int grid_res_iter,
@@ -7504,11 +7505,11 @@ void solve_all_fields_for_one_timestep(mpi_environment_t &mpi, int grid_res_iter
                                           bc_wall_value_velocity, bc_wall_type_velocity,
                                           bc_interface_value_pressure, bc_wall_value_pressure, bc_wall_type_pressure,
                                           external_forces_NS);
-    if(did_crash){
-      save_fields_to_vtk(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
-                         out_idx, grid_res_iter, phi, phi_eff, phi_substrate,
-                         T_l_n, T_s_n, v_interface, v_n, press_nodes, vorticity, island_numbers, true);
-    }
+//    if(did_crash){
+//      save_fields_to_vtk(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
+//                         out_idx, grid_res_iter, phi, phi_eff, phi_substrate,
+//                         T_l_n, T_s_n, v_interface, v_n, press_nodes, vorticity, island_numbers, true);
+//    }
   } // End of "if solve navier stokes"
 
 
