@@ -3466,6 +3466,7 @@ public:
 // --------------------------------------------------------------------------------------------------------------
 // Auxiliary functions for solving the problem!:
 // --------------------------------------------------------------------------------------------------------------
+//(V) TRANSFERRED
 void extend_relevant_fields(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                             my_p4est_node_neighbors_t* ngbd_np1, my_p4est_level_set_t& ls,
                             vec_and_ptr_t& phi, vec_and_ptr_t& phi_sub, vec_and_ptr_t& phi_eff,
@@ -3594,7 +3595,7 @@ void extend_relevant_fields(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
   }
 }
 
-
+//(V) TRANSFERRED
 void interpolate_fields_onto_new_grid(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
 //                                      vec_and_ptr_dim_t& v_interface,
                                       vec_and_ptr_dim_t& v_n,
@@ -4068,6 +4069,7 @@ void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, double cfl_NS_
   }
 }
 
+// TRANSFERRED (V)
 void prepare_refinement_fields(vec_and_ptr_t& phi, vec_and_ptr_t& vorticity, vec_and_ptr_t& vorticity_refine, vec_and_ptr_dim_t& T_l_dd, my_p4est_node_neighbors_t* ngbd_n, bool refine_by_vorticity_){
   PetscErrorCode ierr;
 
@@ -4136,6 +4138,7 @@ void prepare_refinement_fields(vec_and_ptr_t& phi, vec_and_ptr_t& vorticity, vec
   phi.restore_array();
 }
 
+// TRANSFERRED (V)
 void perform_reinitialization(int mpi_comm, my_p4est_level_set_t ls, vec_and_ptr_t& phi){
   // Time to reinitialize in a clever way depending on the scenario:
 
@@ -4160,7 +4163,7 @@ void perform_reinitialization(int mpi_comm, my_p4est_level_set_t ls, vec_and_ptr
   }
 };
 
-// (WIP :)
+// TRANSFERRED (V)
 void regularize_front(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1, vec_and_ptr_t& phi)
 {
   // FUNCTION FOR REGULARIZING THE SOLIDIFICATION FRONT:
@@ -4381,7 +4384,7 @@ void regularize_front(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_nod
   ierr = PetscLogEventEnd(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-
+//(V) TRANSFERRED
 void refine_and_coarsen_grid_and_advect_lsf_if_applicable(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_uniform_band_t sp,
                      p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
                      p4est_t* &p4est_n, p4est_nodes_t* &nodes_n,
@@ -4641,7 +4644,7 @@ void refine_and_coarsen_grid_and_advect_lsf_if_applicable(my_p4est_semi_lagrangi
   custom_lmax.clear(); custom_lmax.shrink_to_fit();
 };
 
-
+//(V) TRANSFERRED
 void update_the_grid(splitting_criteria_cf_and_uniform_band_t sp,
                      p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, my_p4est_node_neighbors_t* &ngbd_np1,
                      p4est_ghost_t* &ghost_np1, my_p4est_hierarchy_t* &hierarchy_np1,
@@ -4737,7 +4740,7 @@ void update_the_grid(splitting_criteria_cf_and_uniform_band_t sp,
 
 };
 
-// setup_rhs -- TRANSFERRED TO CLASS
+//(V) TRANSFERRED
 void setup_rhs(vec_and_ptr_t& phi, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& rhs_Tl, vec_and_ptr_t& rhs_Ts, vec_and_ptr_t& T_l_backtrace_n, vec_and_ptr_t& T_l_backtrace_nm1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t *ngbd_np1, external_heat_source* external_heat_source_term[2]){
 
   // In building RHS, if we are doing advection, we have two options:
@@ -4852,7 +4855,7 @@ void setup_rhs(vec_and_ptr_t& phi, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, v
   }
 }
 
-// do_backtrace -- TRANSFERRED TO CLASS
+//(V) TRANSFERRED
 void do_backtrace(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1,
                   vec_and_ptr_t& T_l_backtrace_n, vec_and_ptr_t& T_l_backtrace_nm1,
                   vec_and_ptr_dim_t& v_n_NS, vec_and_ptr_dim_t& v_nm1_NS,
@@ -4975,7 +4978,7 @@ void do_backtrace(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1,
 }
 
 
-// poisson_step -- TRANSFERRED TO CLASS
+//(V) TRANSFERREDSS
 void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
                   vec_and_ptr_dim_t& phi_dd, vec_and_ptr_dim_t& phi_solid_dd,
                   vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
@@ -5117,7 +5120,7 @@ void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
   delete solver_Tl;
   if(do_we_solve_for_Ts) delete solver_Ts;
 }
-// setup_and_solve_poisson -- TRANSFERRED TO CLASS
+//(V) TRANSFERRED
 void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
                                      p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
                                      p4est_t* p4est_n, p4est_nodes_t* nodes_n, my_p4est_node_neighbors_t* ngbd_n,
@@ -5313,7 +5316,7 @@ void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
   if(do_we_solve_for_Ts) rhs_Ts.destroy();
 
 }
-
+// want to handle this in main (V)
 void setup_analytical_ics_and_bcs_for_this_tstep(BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
                                              BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
                                              temperature_field* analytical_T[2],
@@ -5369,7 +5372,7 @@ void setup_analytical_ics_and_bcs_for_this_tstep(BC_INTERFACE_VALUE_TEMP* bc_int
   bc_wall_value_pressure.t=tn+dt;
 
 }
-// set ns param -- TRANSFERRED TO CLASS
+//(V) TRANSFERRED
 void set_ns_parameters(my_p4est_navier_stokes_t* ns){
   switch(problem_dimensionalization_type){
     case NONDIM_BY_FLUID_VELOCITY:{
@@ -5392,7 +5395,7 @@ void set_ns_parameters(my_p4est_navier_stokes_t* ns){
 
 } // end function
 
-// navier_stokes_Step -- TRANSFERRED TO CLASS
+//(V) TRANSFERRED
 void navier_stokes_step(my_p4est_navier_stokes_t* ns,
                         p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                         vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
@@ -5502,7 +5505,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
 }
 
-// initialize_ns_solver -- TRANSFERRED TO CLASS
+//(V) TRANSFERRED
 void initialize_ns_solver(my_p4est_navier_stokes_t* &ns,
                           p4est_t* p4est_np1,p4est_ghost_t* ghost_np1,
                           my_p4est_node_neighbors_t* ngbd_np1, my_p4est_node_neighbors_t* ngbd_n,
@@ -5533,6 +5536,7 @@ void initialize_ns_solver(my_p4est_navier_stokes_t* &ns,
 
 }
 
+// Want to handle this in main (V)
 bool are_we_saving_vtk(double tstep_, double tn_,bool is_load_step, int& out_idx, bool get_new_outidx){
   bool out = false;
   if(save_to_vtk){
@@ -5551,7 +5555,7 @@ bool are_we_saving_vtk(double tstep_, double tn_,bool is_load_step, int& out_idx
   }
   return out;
 }
-
+// Want to handle this in main (V)
 bool are_we_saving_data(double& tn_,bool is_load_step, int& out_idx, bool get_new_outidx){
   bool out = false;
   if(save_fluid_forces || save_area_data){
@@ -5563,7 +5567,7 @@ bool are_we_saving_data(double& tn_,bool is_load_step, int& out_idx, bool get_ne
   return out;
 }
 
-// setup_and_solve_ns --> TRANSFERRED TO CLASS
+// TRANSFERRED (V)
 void setup_and_solve_navier_stokes_problem(mpi_environment_t& mpi, my_p4est_navier_stokes_t* ns,
                                            p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
                                            vec_and_ptr_t& phi, vec_and_ptr_t& phi_eff,
@@ -5708,7 +5712,7 @@ void setup_and_solve_navier_stokes_problem(mpi_environment_t& mpi, my_p4est_navi
 
 
 }
-
+//(V) TRANSFERRED
 void check_collapse_on_substrate(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1, vec_and_ptr_t& phi, vec_and_ptr_t& phi_substrate){
   // Some things to set if you want to save collapse results and see what's going on:
   bool save_collapse_vtk = false; // set this to true if you want to save collapse files
@@ -5969,7 +5973,7 @@ void check_collapse_on_substrate(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, m
   }
 }
 
-
+//(V) TRANSFERRED
 void track_evolving_geometry(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
                              vec_and_ptr_t& phi, vec_and_ptr_t& island_numbers, int out_idx){
 
@@ -6113,7 +6117,7 @@ void track_evolving_geometry(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4
 
 } // end of track evolving geometry
 
-
+//(V) TRANSFERRED
 void create_and_compute_phi_sub_and_phi_eff(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                                             my_p4est_level_set_t* ls,
                                             vec_and_ptr_t& phi,
@@ -6143,7 +6147,7 @@ void create_and_compute_phi_sub_and_phi_eff(p4est_t* p4est_np1, p4est_nodes_t* n
 // --------------------------------------------------------------------------------------------------------------
 // Function for saving to VTK:
 // --------------------------------------------------------------------------------------------------------------
-// TRANSFERRED
+// TRANSFERRED (V)
 void save_fields_to_vtk(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
                        p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1,
                        int out_idx, int grid_res_iter,
@@ -7338,6 +7342,7 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
 // --------------------------------------------------------------------------------------------------------------
 // Initializations and destructions:
 // --------------------------------------------------------------------------------------------------------------
+//(V) TRANSFERRED
 void solve_all_fields_for_one_timestep(mpi_environment_t &mpi, int grid_res_iter,
                           p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
                           my_p4est_node_neighbors_t* &ngbd_np1,
@@ -7775,75 +7780,80 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi){
   // -----------------------------------------------
   // Report relevant information:
   // -----------------------------------------------
-  PetscPrintf(mpi.comm(),"------------------------------------"
-                          "\n \n"
-                          "INITIAL PROBLEM INFORMATION\n"
-                          "------------------------------------\n\n",example_);
 
-  PetscPrintf(mpi.comm(),"Example number %d \n \n",example_);
-  PetscPrintf(mpi.comm(), "The nondimensionalizaton formulation being used is %s \n \n",
-              (problem_dimensionalization_type == 0)?
-                                                     ("NONDIM BY FLUID VELOCITY"):
-                                                     ((problem_dimensionalization_type == 1) ?
-                                                                                             ("NONDIM BY DIFFUSIVITY") : ("DIMENSIONAL")));
+    PetscPrintf(mpi.comm(),"------------------------------------"
+                            "\n \n"
+                            "--> We are running EXAMPLE %d \n"
+                            "------------------------------------\n\n",example_);
+//  PetscPrintf(mpi.comm(),"------------------------------------"
+//                          "\n \n"
+//                          "INITIAL PROBLEM INFORMATION\n"
+//                          "------------------------------------\n\n",example_);
 
-  PetscPrintf(mpi.comm(), "Nondim = %d \n"
-                          "lmin = %d, lmax = %d \n"
-                          "Number of mpi tasks: %d \n"
-                          "Stefan = %d, NS = %d \n \n ", problem_dimensionalization_type,
-              lmin, lmax,
-              mpi.size(),
-              solve_stefan, solve_navier_stokes);
-  PetscPrintf(mpi.comm(),"The nondimensional groups are: \n"
-                          "Re = %f \n"
-                          "Pr = %f \n"
-                          "Sc = %f \n"
-                          "Pe = %f \n"
-                          "St = %f \n"
-                          "Da = %f \n"
-                          "gamma_diss = %f \n"
-                          "With: \n"
-                          "u_inf = %0.3e [m/s]\n"
-                          "delta T = %0.2f [K]\n"
-                          "sigma = %0.3e, l_char = %0.3e, sigma/l_char = %0.3e \n \n",
-              Re, Pr, Sc, Pe, St, Da, gamma_diss,
-              u_inf,deltaT,sigma,l_char,sigma/l_char);
+//  PetscPrintf(mpi.comm(),"Example number %d \n \n",example_);
+//  PetscPrintf(mpi.comm(), "The nondimensionalizaton formulation being used is %s \n \n",
+//              (problem_dimensionalization_type == 0)?
+//                                                     ("NONDIM BY FLUID VELOCITY"):
+//                                                     ((problem_dimensionalization_type == 1) ?
+//                                                                                             ("NONDIM BY DIFFUSIVITY") : ("DIMENSIONAL")));
 
-
-
-
-  PetscPrintf(mpi.comm(),"Simulation time: %0.4f [min] = %0.4f [sec] = %0.4f [nondim]\n\n",
-              tfinal*time_nondim_to_dim/60.,
-              tfinal*time_nondim_to_dim,
-              tfinal);
-
-  bool using_startup = (startup_dim_time>0.) || (startup_nondim_time >0.);
-  bool using_dim_startup = using_startup && (startup_dim_time>0.);
-
-  PetscPrintf(mpi.comm(),"Are we using startup time? %s \n \n",using_startup? "Yes": "No");
-  if(using_startup){
-    PetscPrintf(mpi.comm(),"Startup time: %s = %0.2f %s \n", using_dim_startup? "Dimensional" : "Nondimensional", using_dim_startup? startup_dim_time:startup_nondim_time,using_dim_startup? "[seconds]": "[nondim]");
-  }
+//  PetscPrintf(mpi.comm(), "Nondim = %d \n"
+//                          "lmin = %d, lmax = %d \n"
+//                          "Number of mpi tasks: %d \n"
+//                          "Stefan = %d, NS = %d \n \n ", problem_dimensionalization_type,
+//              lmin, lmax,
+//              mpi.size(),
+//              solve_stefan, solve_navier_stokes);
+//  PetscPrintf(mpi.comm(),"The nondimensional groups are: \n"
+//                          "Re = %f \n"
+//                          "Pr = %f \n"
+//                          "Sc = %f \n"
+//                          "Pe = %f \n"
+//                          "St = %f \n"
+//                          "Da = %f \n"
+//                          "gamma_diss = %f \n"
+//                          "With: \n"
+//                          "u_inf = %0.3e [m/s]\n"
+//                          "delta T = %0.2f [K]\n"
+//                          "sigma = %0.3e, l_char = %0.3e, sigma/l_char = %0.3e \n \n",
+//              Re, Pr, Sc, Pe, St, Da, gamma_diss,
+//              u_inf,deltaT,sigma,l_char,sigma/l_char);
 
 
-  PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n \n ",uniform_band);
 
-  PetscPrintf(mpi.comm(),"Are we ramping bcs? %s \n t_ramp = %0.2f [nondim] = %0.2f [seconds] \n \n",ramp_bcs?"Yes":"No",t_ramp,t_ramp*time_nondim_to_dim);
 
-  PetscPrintf(mpi.comm(),"Are we loading from previous state? %s \n"
-                          "Starting timestep = %d \n"
-                          "Save state every iter = %d \n"
-                          "Save to vtk? %s \n"
-                          "Save using %s \n"
-                          "Save every dt = %0.5e [nondim] = %0.2f [seconds]\n"
-                          "Save every iter = %d \n \n",loading_from_previous_state?"Yes":"No",
-              tstep,
-              save_state_every_iter,
-              save_to_vtk?"Yes":"No",
-              save_using_dt? "dt" :"iter",
-              save_every_dt, save_every_dt*time_nondim_to_dim,
-              save_every_iter);
-  PetscPrintf(mpi.comm(),"------------------------------------\n\n");
+//  PetscPrintf(mpi.comm(),"Simulation time: %0.4f [min] = %0.4f [sec] = %0.4f [nondim]\n\n",
+//              tfinal*time_nondim_to_dim/60.,
+//              tfinal*time_nondim_to_dim,
+//              tfinal);
+
+//  bool using_startup = (startup_dim_time>0.) || (startup_nondim_time >0.);
+//  bool using_dim_startup = using_startup && (startup_dim_time>0.);
+
+//  PetscPrintf(mpi.comm(),"Are we using startup time? %s \n \n",using_startup? "Yes": "No");
+//  if(using_startup){
+//    PetscPrintf(mpi.comm(),"Startup time: %s = %0.2f %s \n", using_dim_startup? "Dimensional" : "Nondimensional", using_dim_startup? startup_dim_time:startup_nondim_time,using_dim_startup? "[seconds]": "[nondim]");
+//  }
+
+
+//  PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n \n ",uniform_band);
+
+//  PetscPrintf(mpi.comm(),"Are we ramping bcs? %s \n t_ramp = %0.2f [nondim] = %0.2f [seconds] \n \n",ramp_bcs?"Yes":"No",t_ramp,t_ramp*time_nondim_to_dim);
+
+//  PetscPrintf(mpi.comm(),"Are we loading from previous state? %s \n"
+//                          "Starting timestep = %d \n"
+//                          "Save state every iter = %d \n"
+//                          "Save to vtk? %s \n"
+//                          "Save using %s \n"
+//                          "Save every dt = %0.5e [nondim] = %0.2f [seconds]\n"
+//                          "Save every iter = %d \n \n",loading_from_previous_state?"Yes":"No",
+//              tstep,
+//              save_state_every_iter,
+//              save_to_vtk?"Yes":"No",
+//              save_using_dt? "dt" :"iter",
+//              save_every_dt, save_every_dt*time_nondim_to_dim,
+//              save_every_iter);
+//  PetscPrintf(mpi.comm(),"------------------------------------\n\n");
 
 
 }
@@ -7997,7 +8007,7 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
 
 
 
-
+//(V) want to keep this in main
 void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical_T[2],
                                                    BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
                                                    BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],

@@ -148,9 +148,9 @@ private:
   // Temperature/concentration problem:
   // -----------------------------------------------
   // Solvers and relevant parameters
-  int cube_refinement = 1;
-  my_p4est_poisson_nodes_mls_t *solver_Tl = NULL;  // will solve poisson problem for Temperature in liquid domains
-  my_p4est_poisson_nodes_mls_t *solver_Ts = NULL;  // will solve poisson problem for Temperature in solid domain
+  int cube_refinement;
+  my_p4est_poisson_nodes_mls_t *solver_Tl;  // will solve poisson problem for Temperature in liquid domains
+  my_p4est_poisson_nodes_mls_t *solver_Ts;  // will solve poisson problem for Temperature in solid domain
 
   // Fields related to the liquid temperature/concentration problem:
   vec_and_ptr_t T_l_n;
@@ -184,7 +184,7 @@ private:
 
   // User provided heat source term: (And the means to set it)
   CF_DIM* user_provided_external_heat_source[2];
-  bool there_is_user_provided_heat_source = false;
+  bool there_is_user_provided_heat_source;
 
 
   void set_user_provided_external_heat_source(CF_DIM* user_heat_source_[2]){
@@ -203,14 +203,14 @@ private:
   // Navier-Stokes problem:
   // ----------------------------------------------
 
-  my_p4est_navier_stokes_t* ns = NULL;
+  my_p4est_navier_stokes_t* ns;
 
   my_p4est_poisson_faces_t* face_solver;
   my_p4est_poisson_cells_t* cell_solver;
-  PCType pc_face = PCSOR;
-  KSPType face_solver_type = KSPBCGS;
-  PCType pc_cell = PCSOR;
-  KSPType cell_solver_type = KSPBCGS;
+  PCType pc_face;
+  KSPType face_solver_type;
+  PCType pc_cell;
+  KSPType cell_solver_type;
 
   vec_and_ptr_dim_t v_n;
   vec_and_ptr_dim_t v_nm1;
@@ -222,8 +222,8 @@ private:
 
   Vec dxyz_hodge_old[P4EST_DIM];
 
-  my_p4est_cell_neighbors_t *ngbd_c_np1 = NULL;
-  my_p4est_faces_t *faces_np1 = NULL;
+  my_p4est_cell_neighbors_t *ngbd_c_np1;
+  my_p4est_faces_t *faces_np1;
 
   // Boundary conditions:
   BoundaryConditionsDIM bc_velocity[P4EST_DIM];
@@ -243,7 +243,7 @@ private:
 
   // User provided forcing terms: (And the means to set it)
   CF_DIM* user_provided_external_forces_NS[P4EST_DIM];
-  bool there_is_user_provided_external_force_NS = false;
+  bool there_is_user_provided_external_force_NS;
 
   void set_user_provided_external_force_NS(CF_DIM* user_external_forces_NS_[2]){
     foreach_dimension(d){
@@ -276,28 +276,95 @@ private:
   // ----------------------------------------------
   double xyz_min[P4EST_DIM]; double xyz_max[P4EST_DIM];
   int ntrees[P4EST_DIM];
-  bool periodicity[P4EST_DIM];
+  int periodicity[P4EST_DIM];
 
   // Variables for refining the fields
   int lmin, lint, lmax;
   double uniform_band;
 
   bool use_uniform_band;
+  bool refine_by_vorticity;
   bool refine_by_d2T;
   double vorticity_threshold;
-  double gradT_threshold;
+  double d2T_threshold;
+
+  // For initializationg from load state:
+  bool loading_from_previous_state;
+
+
+  void set_xyz_min(double xyz_min_[P4EST_DIM]){
+    foreach_dimension(d){
+      xyz_min[d] = xyz_min_[d];
+    }
+  }
+  void set_xyz_max(double xyz_max_[P4EST_DIM]){
+    foreach_dimension(d){
+      xyz_max[d] = xyz_max_[d];
+    }
+  }
+
+  void set_ntrees(int ntrees_[P4EST_DIM]){
+    foreach_dimension(d){
+      ntrees[d] = ntrees_[d];
+    }
+  }
+
+  void set_periodicity(int periodicity_[P4EST_DIM]){
+    foreach_dimension(d){
+      periodicity[d] = periodicity_[d];
+    }
+  }
+
+  void set_lmin_lint_lmax(int lmin_, int lint_, int lmax_){
+    lmin = lmin_; lint = lint_; lmax= lmax_;
+  }
+  // If you set a uniform band, we assume you use it
+  void set_uniform_band(double uniform_band_){
+    use_uniform_band = true;
+    uniform_band = uniform_band_;}
+
+  // NOTE: ref by vorticity is assumed true whenever navier stokes is solved
+  void set_refine_by_d2T(bool ref_by_d2T_){refine_by_d2T = ref_by_d2T_;}
+
+  void set_vorticity_ref_threshold(double vort_thresh){
+    vorticity_threshold = vort_thresh;
+  }
+  void set_d2T_ref_threshold(double d2T_thresh){d2T_threshold = d2T_thresh;}
+  void set_loading_from_previous_state(bool loading_from_prev_state_){
+    loading_from_previous_state = loading_from_prev_state_;
+  }
+
+
+  // Functions to check initialization status:
+  // Used to make sure user has set the domain info before attempting initializations
+  bool check_if_domain_info_is_set(){
+    bool check = true;
+
+    foreach_dimension(d){
+      check = check && (xyz_min[d]<DBL_MAX);
+      check = check && (xyz_max[d]<DBL_MAX);
+      check = check && (periodicity[d]<INT_MAX);
+      check = check && (ntrees[d]<INT_MAX);
+    }
+    return check;
+  }
 
   // ----------------------------------------------
   // Related to interpolation bw grids:
   // ----------------------------------------------
   int num_fields_interp;
-  interpolation_method interp_bw_grids = quadratic_non_oscillatory_continuous_v2;
+  interpolation_method interp_bw_grids;
+  // TO-DO: need to have a place where interp_bw_grids is defined??
 
   // ----------------------------------------------
   // Related to current grid size:
   // ----------------------------------------------
   double dxyz_smallest[P4EST_DIM];
   double dxyz_close_to_interface;
+  double dxyz_close_to_interface_mult; // multiplier set by user on dxyz_close_to_interface
+  void set_dxyz_close_to_interface_mult(double dxyz_close_to_interface_mult_){
+    dxyz_close_to_interface_mult = dxyz_close_to_interface_mult_;
+  }
 
   // ----------------------------------------------
   // Variables used for extension of fields:
@@ -315,6 +382,9 @@ private:
   double dt_Stefan;
   double dt_NS;
   double dt_max_allowed;
+
+  double tstart; // for tracking percentage done
+  double tfinal;
 
   double v_interface_max_norm; // for keeping track of max norm of vinterface
   double v_interface_max_allowed; // max allowable value before we trigger a crash state
@@ -350,6 +420,13 @@ private:
   // Converting nondim to dim:
   double time_nondim_to_dim;
   double vel_nondim_to_dim;
+
+  double get_time_nondim_to_dim(){
+    return time_nondim_to_dim;
+  }
+  double get_vel_nondim_to_dim(){
+    return vel_nondim_to_dim;
+  }
 
   // ----------------------------------------------
   // Nondimensional groups
@@ -485,6 +562,34 @@ private:
   double Dl, Ds; //Concentration diffusion coefficient m^2/s,
   double k_diss; // Dissolution rate constant per unit area of reactive surface (m/s)
 
+  // Let the user check that they set what they think they set:
+  void print_physical_parameters(){
+    PetscPrintf(mpi.comm(), "alpha_l = %e, alpha_s= %e \n"
+                            "k_l = %e, k_s = %e \n"
+                            "rho_l = %e, rho_s = %e \n"
+                            "cp_s = %e \n"
+                            "L = %e \n"
+                            "mu_l = %e \n"
+                            "sigma = %e \n"
+                            "grav = %e \n"
+                            "betaT = %e, betaC = %e \n"
+                            "gamma_diss = %e, stoich_coeff_diss = %e, \n "
+                            "molar_volume_diss = %e, k_diss = %e \n"
+                            "Dl = %e, Ds = %e \n",
+                            alpha_l, alpha_s,
+                            k_l, k_s,
+                            rho_l, rho_s,
+                            cp_s,
+                            L,
+                            mu_l,
+                            sigma,
+                            grav,
+                            beta_T, beta_C,
+                            gamma_diss, stoich_coeff_diss,
+                            molar_volume_diss, k_diss,
+                            Dl, Ds);
+  }
+
   void set_alpha_l(double alpha_l_){alpha_l = alpha_l_;}
   void set_alpha_s(double alpha_s_){alpha_s = alpha_s_;}
   void set_k_l(double k_l_){k_l = k_l_;}
@@ -512,6 +617,7 @@ private:
   bool solve_stefan;
   bool solve_navier_stokes;
   bool there_is_a_substrate/*example_uses_inner_LSF*/;
+  bool start_w_merged_grains; // performs a front regularization during initialization to merge any geom in initial LSF
 
   bool do_we_solve_for_Ts;
 
@@ -551,12 +657,18 @@ private:
   bool use_collapse_onto_substrate;
 
   double proximity_smoothing;
-  double proxmity_collapse;
+  double proximity_collapse;
 
   // ----------------------------------------------
   // Related to LSF reinitialization
   // ----------------------------------------------
   int reinit_every_iter = 1;
+
+  // ----------------------------------------------
+  // Level set functions
+  // ----------------------------------------------
+  CF_DIM* level_set;
+  CF_DIM* substrate_level_set;
 
   // ----------------------------------------------
   // Temperature problem variables -- nondim:
@@ -574,6 +686,63 @@ private:
 
 
   // -------------------------------------------------------
+  // Auxiliary initializations:
+  // -------------------------------------------------------
+  bool grids_are_initialized;
+  bool fields_are_initialized;
+
+  CF_DIM* initial_refinement_CF; // fxn for initial refinement criteria, can be LSF or something else
+
+  CF_DIM* initial_temp_n[2];
+  CF_DIM* initial_temp_nm1[2];
+  CF_DIM* initial_NS_velocity_n[P4EST_DIM];
+  CF_DIM* initial_NS_velocity_nm1[P4EST_DIM];
+
+  void set_initial_temp_n(CF_DIM* init_temp_n_[2]){
+    for(unsigned char i=0; i<2; i++){
+      initial_temp_n[i] = init_temp_n_[i];
+    }
+  }
+  void set_initial_temp_nm1(CF_DIM* init_temp_nm1_[2]){
+    for(unsigned char i=0; i<2; i++){
+      initial_temp_nm1[i] = init_temp_nm1_[i];
+    }
+  }
+
+  void set_initial_NS_velocity_n_(CF_DIM* init_vel_n_[P4EST_DIM]){
+    foreach_dimension(d){
+      initial_NS_velocity_n[d] = init_vel_n_[d];
+    }
+  }
+
+  void set_initial_NS_velocity_nm1_(CF_DIM* init_vel_nm1_[P4EST_DIM]){
+    foreach_dimension(d){
+      initial_NS_velocity_nm1[d] = init_vel_nm1_[d];
+    }
+  }
+
+
+  /*!
+   * \brief initialize_grids:This function initializes the grids p4est_n and p4est_np1 depending on the
+   * domain, periodicity, and grid min level/max level information provided by the user
+   *
+   * Note: this function is intended for internal use by the fxn perform_initializations
+  */
+  void initialize_grids();
+  /*!
+   * \brief initialize_fields:This function initializes the fields phi, T_l_n, T_l_nm1, T_s_n, v_n (navier stokes), and v_nm1 (navier stokes)
+   * It does so either by CF_DIM's provided by the user for each of these fields, or by vectors provided by the user (WIP)
+   *
+   * It then computes an initial interfacial velocity, which is used only to compute an initial timestep for the problem
+   *
+   * Note: this function is intended for internal use by the fxn perform_initializations
+  */
+  void initialize_fields();
+  void initialize_grids_and_fields_from_load_state();
+  void perform_initializations();
+
+
+  // -------------------------------------------------------
   // Functions related to scalar temp/conc problem:
   // -------------------------------------------------------
 
@@ -584,8 +753,9 @@ private:
 
 
   // -------------------------------------------------------
-  // Functions related to interfacial velocity and timestep:
+  // Functions related to computation of the interfacial velocity and timestep:
   // -------------------------------------------------------
+  void extend_relevant_fields();
   double interfacial_velocity_expression(double Tl_d, double Ts_d);
   bool compute_interfacial_velocity();
   void compute_timestep();
@@ -597,28 +767,48 @@ private:
   void initialize_ns_solver();
   bool navier_stokes_step(); // output is whether or not it crashed, if it crashes we save a vtk crash file
   void setup_and_solve_navier_stokes_problem();
-  // --------------------------------------------------------
 
   // -------------------------------------------------------
   // Functions related to LSF advection/grid update:
   // -------------------------------------------------------
-
-
-
-
-
+  void prepare_refinement_fields();
+  void perform_reinitialization();
+  void refine_and_coarsen_grid_and_advect_lsf_if_applicable();
+  void update_the_grid();
+  void interpolate_fields_onto_new_grid();
+  void perform_lsf_advection_grid_update_and_interp_of_fields();
 
 
   // -------------------------------------------------------
-  // Functions related to LSF regularization:
+  // Functions related to compound LSF, LSF regularization and tracking geometries:
   // -------------------------------------------------------
+  void create_and_compute_phi_sub_and_phi_eff();
+  void track_evolving_geometry();
 
+  void regularize_front();
+  void check_collapse_on_substrate();
+
+  // -------------------------------------------------------
+  // Function(s) that solve one timestep of the desired coupled problem:
+  // -------------------------------------------------------
+  void solve_all_fields_for_one_timestep();
 
   // -------------------------------------------------------
   // Functions related to VTK saving:
   // -------------------------------------------------------
   void save_fields_to_vtk(bool is_crash=false, char crash_type[]=NULL);
 
+  // -------------------------------------------------------
+  // Functions and variables related to save state/load state:
+  // -------------------------------------------------------
+
+  void fill_or_load_double_parameters(save_or_load flag, PetscInt num, PetscReal *data);
+  void fill_or_load_integer_parameters(save_or_load flag, PetscInt num, PetscInt *data);
+  void save_or_load_parameters(const char* filename, save_or_load flag);
+  void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_save_np1,
+                                       vector<save_or_load_element_t> &fields_to_save_n);
+  void save_state(const char* path_to_directory, unsigned int n_saved);
+  void load_state(const char* path_to_folder);
 
   // -------------------------------------------------------
   // Classes and/or options for handling coupled boundary conditions:
@@ -745,6 +935,7 @@ private:
   public:
 
     my_p4est_stefan_with_fluids_t();
+    ~my_p4est_stefan_with_fluids_t();
 
 };
 
