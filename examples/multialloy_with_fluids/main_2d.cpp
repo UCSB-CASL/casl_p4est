@@ -2187,282 +2187,219 @@ double ramp_BC(double initial,double goal_value){
     }
 }
 
+
+
 // --------------------------------------------------------------------------------------------------------------
-// Interfacial temperature boundary condition objects/functions:
+// Initial temperature condition objects/functions:
 // --------------------------------------------------------------------------------------------------------------
-
-BoundaryConditionType interface_bc_type_temp;
-void interface_bc_temp(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
-  switch(example_){
-    case FRANK_SPHERE:
-    case DENDRITE_TEST:
-    case FLOW_PAST_CYLINDER:
-
-    case MELTING_ICE_SPHERE_NAT_CONV:
-    case MELTING_ICE_SPHERE:
-    case ICE_AROUND_CYLINDER:
-    case COUPLED_TEST_2:
-    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-    case COUPLED_PROBLEM_EXAMPLE:
-      interface_bc_type_temp = DIRICHLET;
-      break;
-    case DISSOLVING_DISK_BENCHMARK:
-      interface_bc_type_temp = ROBIN;
-      break;
-    case EVOLVING_POROUS_MEDIA:
-      if(is_dissolution_case){
-        interface_bc_type_temp = ROBIN;
-      }
-      else{
-        interface_bc_type_temp = DIRICHLET;
-      }
-      break;
-    }
-}
-
-BoundaryConditionType inner_interface_bc_type_temp;
-void inner_interface_bc_temp(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
-  switch(example_){
-    case EVOLVING_POROUS_MEDIA:
-      inner_interface_bc_type_temp = DIRICHLET;
-      break;
-    case FLOW_PAST_CYLINDER:
-    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-    case COUPLED_PROBLEM_EXAMPLE:
-    case COUPLED_TEST_2:
-    case DENDRITE_TEST:
-    case MELTING_ICE_SPHERE_NAT_CONV:
-    case MELTING_ICE_SPHERE:
-    case FRANK_SPHERE:{
-        throw std::invalid_argument("This option may not be used for the particular example being called");
-    }
-    case ICE_AROUND_CYLINDER:
-      inner_interface_bc_type_temp = DIRICHLET;
-      break;
-    }
-}
-
-bool print_stuff; // TO-DO: remove this?
-class BC_INTERFACE_VALUE_TEMP: public CF_DIM{ // TO CHECK -- changed how interp is initialized
-private:
-  // Have interpolation objects for case with surface tension included in boundary condition: can interpolate the curvature in a timestep to the interface points while applying the boundary condition
-  my_p4est_node_neighbors_t* ngbd;
-
-  my_p4est_interpolation_nodes_t* kappa_interp;
+class INITIAL_TEMP: public CF_DIM
+{
+  public:
+  const unsigned char dom;
   temperature_field** temperature_;
-  unsigned const char dom;
-
-  // For normals (in dendritic case)
-  my_p4est_interpolation_nodes_t* nx_interp;
-  my_p4est_interpolation_nodes_t* ny_interp;
-
-  // Relevant vectors:
-  vec_and_ptr_t kappa;
-  vec_and_ptr_dim_t normal;
-
-public:
-
-  BC_INTERFACE_VALUE_TEMP(my_p4est_node_neighbors_t *ngbd_=NULL, Vec kappa = NULL, temperature_field** analytical_T=NULL, unsigned const char& dom_= NULL): ngbd(ngbd_),temperature_(analytical_T),dom(dom_)
-  {
-    if((ngbd!=NULL) && (kappa!=NULL) ){
-      kappa_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      kappa_interp->set_input(kappa,linear);
-    }
-  }
-  double Gibbs_Thomson(double sigma_, DIM(double x, double y, double z)) const {
-    switch(problem_dimensionalization_type){
-      // Note slight difference in condition bw diff nondim types -- T0 vs Tinf
-      case NONDIM_BY_FLUID_VELOCITY:{
-        return (theta_interface - (sigma_/l_char)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT));
-      }
-      case NONDIM_BY_SCALAR_DIFFUSIVITY:{
-        return (theta_interface - (sigma_/l_char)*((*kappa_interp)(x,y))*(theta_interface + Tinfty/deltaT));
-      }
-      case DIMENSIONAL:{
-        return (Tinterface*(1 - sigma_*((*kappa_interp)(x,y))));
-      }
-      default:{
-        throw std::runtime_error("Gibbs_thomson: unrecognized problem dimensionalization type \n");
-      }
-    }
-  }
-  double operator()(DIM(double x, double y, double z)) const
+  INITIAL_TEMP(const unsigned char &dom_,temperature_field** analytical_T=NULL):dom(dom_),temperature_(analytical_T){}
+  double operator() (DIM(double x, double y, double z)) const
   {
     switch(example_){
-    case FRANK_SPHERE:{ // Frank sphere case, no surface tension
-        return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
-      }
-    case DENDRITE_TEST:{
-      double eps = 0.05;
-      // double theta_ = atan2((*ny_interp)(x,y),(*nx_interp)(x,y));
-
-      double cos_theta_ = (*nx_interp)(x,y);
-      double cos_4_theta = 8.0*pow(cos_theta_,4.)-8.0*pow(cos_theta_,2.)+1;
-      double int_val =1. + (-l_char)*(1. - 15.*eps*cos_4_theta)*((*kappa_interp)(x,y))/St;
-
-
-//        double int_val =1. + (-l_char)*(1. - 15.*eps*1.)*((*kappa_interp)(x,y))/St;
-//        printf("the term: %f \n"
-//               "15epscos = %f \n"
-//               "kappa = %f \n", (-l_char)*(1. - 15.*eps*cos(4.*theta_))*((*kappa_interp)(x,y))/St,
-//               15.*eps*cos(4.*theta_),
-//               (*kappa_interp)(x,y));
-//        if(fabs(int_val - 1.0)>0.5){
-//          printf("Interface value = %f \n"
-//                 "Theta = %f \n"
-//                 "Kappa = %f \n"
-//                 "(x,y) = (%f, %f) \n \n", int_val, theta_*180./PI, (*kappa_interp)(x,y), x, y );
-//        }
-
-
-        return int_val;
+    case FRANK_SPHERE:{
+      double r = sqrt(SQR(x) + SQR(y));
+      double sval = s(r,t);
+      return frank_sphere_solution_t(sval); // Initial distribution is the analytical solution of Frank Sphere problem at t = tstart
     }
-    case EVOLVING_POROUS_MEDIA:{
-      if(is_dissolution_case){
-        // Dissolution case,
-        // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
-        // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
-        if(fabs(deltaT/Tinfty) < EPS){
-          return 0.0;
-        }
-        else{
-          return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
-        }
+    case DENDRITE_TEST:{
+      if(level_set(DIM(x,y,z))<0){
+        return theta_infty;
       }
       else{
-        // temperature case, go with usual Gibbs-Thomson
-        double interface_val = Gibbs_Thomson(sigma, DIM(x,y,z));
-
-        // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
-        if(ramp_bcs){
-          return ramp_BC(theta_infty,interface_val);
-        }
-        else {
-          return interface_val;
-        }
+        return theta_interface;
       }
     }
+    case EVOLVING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE_NAT_CONV:
-    case MELTING_ICE_SPHERE:
-    case ICE_AROUND_CYLINDER: {
-        double interface_val = Gibbs_Thomson(sigma, DIM(x,y,z));
-
-        // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
+    case MELTING_ICE_SPHERE:{
+      switch(dom){
+      case LIQUID_DOMAIN:{
+        return theta_infty;
+      }
+      case SOLID_DOMAIN:{
+        return theta0; // coolest temp
+      }
+      default:{
+        throw std::runtime_error("Initial condition for temperature: unrecognized domain \n");
+      }
+      }
+    }
+    case ICE_AROUND_CYLINDER:{ // TO-DO: is this best initial condition? might be missing on serious initial interface growth...
+      switch(dom){
+      case LIQUID_DOMAIN:{
+        return theta_infty;
+      }
+      case SOLID_DOMAIN:{
         if(ramp_bcs){
-          return ramp_BC(theta_infty,interface_val);
+          return theta_infty;
         }
-        else {
-          return interface_val;
+        else{
+          return theta_interface;
         }
+      }
+      default:{
+        throw std::runtime_error("Initial condition for temperature: unrecognized domain \n");
+      }
+      }
+    }
+    case DISSOLVING_DISK_BENCHMARK:{
+      return theta_infty;
     }
     case COUPLED_TEST_2:
     case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:{
       return temperature_[dom]->T(DIM(x,y,z));
     }
-    case DISSOLVING_DISK_BENCHMARK:{
-      // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
-      // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
-      if(fabs(deltaT/Tinfty) < EPS){
-        return 0.0;
-      }
-      else{
-        return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
-      }
     }
-    default:
-      throw std::runtime_error("BC INTERFACE VALUE TEMP: unrecognized example \n");
-      }
-  }
-  void clear(){
-    kappa_interp->clear();
-    delete kappa_interp;
-  }
-  void set(my_p4est_node_neighbors_t* &ngbd_, Vec kappa){
-    if(ngbd_!=NULL){
-      ngbd = ngbd_;
-
-      kappa_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      kappa_interp->set_input(kappa, linear);
-    }
-
-  }
-  void set_normals(my_p4est_node_neighbors_t *ngbd_, Vec nx, Vec ny){
-    if((ngbd_!=NULL) && (nx !=NULL) && (ny!=NULL)){
-      ngbd = ngbd_;
-
-      nx_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      nx_interp->set_input(nx, linear);
-
-      ny_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      ny_interp->set_input(ny, linear);
-    }
-  }
-  void clear_normals(){
-    nx_interp->clear();
-    ny_interp->clear();
-
-    delete nx_interp;
-    delete ny_interp;
   }
 };
 
-class BC_interface_coeff: public CF_DIM{
-public:
-  double operator()(double x, double y) const
-  {
+// --------------------------------------------------------------------------------------------------------------
+// Initial fluid velocity condition objects/functions: for fluid velocity vector = (u,v,w)
+// --------------------------------------------------------------------------------------------------------------
+struct INITIAL_VELOCITY : CF_DIM
+{
+  const unsigned char dir;
+  velocity_component** velocity_field;
 
-    switch(example_){
-      case FRANK_SPHERE:
-      case DENDRITE_TEST:
-      case EVOLVING_POROUS_MEDIA:
-      case MELTING_ICE_SPHERE_NAT_CONV:
-      case MELTING_ICE_SPHERE:
-      case ICE_AROUND_CYLINDER:
-      case COUPLED_TEST_2:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:
-        return 1.0;
-      case DISSOLVING_DISK_BENCHMARK:
-        // Elyce to-do 12/14/21: update this appropriately (may have to adjust depending on nondim type)
-//        double Da = k_diss*l_char/D;
-        //return Da/Pe;//(k_diss*l_diss/D_diss);//(k_diss/u_inf); // Coefficient in front of C
-        // ^^^ 12/17/21 why on earth did i have an effing peclet number there ???? aahhhhhhh
-        return Da;
-      }
+  INITIAL_VELOCITY(const unsigned char& dir_,velocity_component** analytical_soln=NULL):dir(dir_), velocity_field(analytical_soln){
+    P4EST_ASSERT(dir<P4EST_DIM);
   }
-}bc_interface_coeff;
 
-class BC_interface_value_inner: public CF_DIM{
-public:
-  double operator()(double x, double y) const
-  {
+  double operator() (DIM(double x, double y,double z)) const{
     switch(example_){
-      case EVOLVING_POROUS_MEDIA:
-      case ICE_AROUND_CYLINDER:
-        if(ramp_bcs){
-            return ramp_BC(theta_infty,theta0);
+    case DENDRITE_TEST:
+    case PLANE_POIS_FLOW:{
+      switch(dir){
+      case dir::x:
+        return u0;
+      case dir::y:
+        return v0;
+      default:
+        throw std::runtime_error("initial velocity direction unrecognized \n");
+      }
+    }
+
+    case EVOLVING_POROUS_MEDIA: {
+      //        return 0.0;
+      //        double h_ = ymax - ymin;
+      //        double U = G_press/(2.* Re);
+      //        double Uy = (Da_init/porosity_init) *U*(y)*(h_ - y);
+
+      //        double lsf_dist = 0.1;
+
+      //        if(fabs(level_set.operator()(DIM(x,y,z)))<lsf_dist){
+      //          return (Uy/lsf_dist)*(-1.*level_set.operator()(DIM(x,y,z)));
+      //        }
+      //        else{
+      //          switch(dir){
+      //          case dir::x:{
+      //            return Uy;}
+      //          case dir::y:
+      //            return 0.;
+      //          default:
+      //              throw std::runtime_error("Unrecognized direction for velocity initial condition \n");
+      //          }
+      //        }
+
+      switch(dir){
+      case dir::x:
+        return u0;
+      case dir::y:
+        return v0;
+      default:
+        throw std::runtime_error("initial velocity direction unrecognized \n");
+      }
+
+    }
+    case MELTING_ICE_SPHERE_NAT_CONV:{
+      if(ramp_bcs) return 0.;
+      else{
+        switch(dir){
+        case dir::x:
+          if(perturb_initial_flow){
+            return u0*(1 + perturb_flow_noise*sin(2.*PI*x/xmax));
           }
-        else return theta0;
+          else{
+            return u0;
+          }
+        case dir::y:
+          if(perturb_initial_flow){
+            return v0*(1 + perturb_flow_noise*sin(2.*PI*x/xmax));
+          }
+          else{
+            return v0;
+          }
+        default:
+          throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
+        }
       }
+    }
+    case ICE_AROUND_CYLINDER:
+    case FLOW_PAST_CYLINDER:
+    case MELTING_ICE_SPHERE:{
+      if(ramp_bcs) return 0.;
+      else{
+        switch(dir){
+        case dir::x:
+          if(perturb_initial_flow){
+            return u0*(1 + perturb_flow_noise*sin(2.*PI*y/ymax));
+          }
+          else{
+            return u0;
+          }
+        case dir::y:
+          if(perturb_initial_flow){
+            return v0*(1 + perturb_flow_noise*sin(2.*PI*y/ymax));
+          }
+          else{
+            return v0;
+          }
+        default:
+          throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
+        }
+      }
+    }
+    case DISSOLVING_DISK_BENCHMARK:{
+      switch(dir){
+      case dir::x:
+        return u0;
+      case dir::y:
+        return v0;
+      default:
+        throw std::runtime_error("initial velocity direction unrecognized \n");
+      }
+    }
+    case NS_GIBOU_EXAMPLE:
+    case COUPLED_TEST_2:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:
+      switch(dir){
+      case dir::x:
+        return (*velocity_field[0])(x,y);
+      case dir::y:
+        return (*velocity_field[1])(x,y);
+      default:
+        throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
+      }
+    default:
+      throw std::runtime_error("vel initial: unrecognized example_ being run \n");
+    }
   }
-}bc_interface_val_inner;
+} ;
 
-class BC_interface_coeff_inner: public CF_DIM{
-public:
-  double operator()(double x, double y) const
-  {
-    switch(example_){
-      case EVOLVING_POROUS_MEDIA:
-      case ICE_AROUND_CYLINDER:
-        return 1.0;
-      }
-  }
-}bc_interface_coeff_inner;
 
 // --------------------------------------------------------------------------------------------------------------
-// Wall functions -- these evaluate to true or false depending on if the location is on the wall --  they just add coding simplicity for wall boundary conditions
+// Auxiliary fxns for evaluating BCs
 // --------------------------------------------------------------------------------------------------------------
+// Wall functions -- these evaluate to true or false depending on
+// if the location is on the wall --  they just add coding simplicity for wall boundary conditions
+// --------------------------
 bool xlower_wall(DIM(double x, double y, doublze z)){
   // Front x wall, excluding the top and bottom corner points in y
   return ((fabs(x - xmin) <= EPS) && (fabs(y - ymin)>EPS) && (fabs(y - ymax)>EPS));
@@ -2497,83 +2434,380 @@ double sign_neumann_wall(DIM(double x,double y,double z)){
   }
 };
 
+// --------------------------
+// BC Type settings for temperature:
+// --------------------------
 bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
   switch(example_){
-    case FRANK_SPHERE:{
-      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
-     }
-    case DENDRITE_TEST:{
-      // Dirichlet on y upper wall (where bulk flow is incoming)
-      return (yupper_wall(DIM(x,y,z)));
-    }
-    case EVOLVING_POROUS_MEDIA:
-    case MELTING_ICE_SPHERE:
-    case ICE_AROUND_CYLINDER:{
-      return (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
-    }
-    case MELTING_ICE_SPHERE_NAT_CONV:{
-      return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
-    }
-    case DISSOLVING_DISK_BENCHMARK:{
-      return xlower_wall(DIM(x,y,z));
-    }
-    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-    case COUPLED_PROBLEM_EXAMPLE:{
-      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)));
-    }
-    case COUPLED_TEST_2:{
-      return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z)));
-    }
+  case FRANK_SPHERE:{
+    return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+  }
+  case DENDRITE_TEST:{
+    // Dirichlet on y upper wall (where bulk flow is incoming)
+    return (yupper_wall(DIM(x,y,z)));
+  }
+  case EVOLVING_POROUS_MEDIA:
+  case MELTING_ICE_SPHERE:
+  case ICE_AROUND_CYLINDER:{
+    return (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
+  }
+  case MELTING_ICE_SPHERE_NAT_CONV:{
+    return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+  }
+  case DISSOLVING_DISK_BENCHMARK:{
+    return xlower_wall(DIM(x,y,z));
+  }
+  case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+  case COUPLED_PROBLEM_EXAMPLE:{
+    return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)));
+  }
+  case COUPLED_TEST_2:{
+    return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z)));
+  }
   }
 };
 
+// --------------------------
+// BC type settings for velocity:
+// --------------------------
 bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
   switch(example_){
-    case DENDRITE_TEST:{
+  case DENDRITE_TEST:{
     // Dirichlet on y upper wall (where bulk flow is incoming
-      return ( yupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)));
+    return ( yupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)));
+  }
+  case FLOW_PAST_CYLINDER:
+  case EVOLVING_POROUS_MEDIA:{
+    // no dirichlet wall velocity conditions
+    return 0.;/*(ylower_wall(DIM(x,y,z)) || (yupper_wall(DIM(x,y,z))))*/;
+  }
+  case MELTING_ICE_SPHERE_NAT_CONV:
+  case MELTING_ICE_SPHERE:
+  case ICE_AROUND_CYLINDER:{
+    return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+  }
+  case DISSOLVING_DISK_BENCHMARK:{
+    return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+  }
+  case NS_GIBOU_EXAMPLE:{
+    return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) ||ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+  }
+  case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+  case COUPLED_PROBLEM_EXAMPLE:{
+    return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
+  }
+  case COUPLED_TEST_2:{
+    return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z)));
+
+    //      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
+  }
+  case PLANE_POIS_FLOW:{
+    return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,y)));
+  }
+  case FRANK_SPHERE:{
+    throw std::runtime_error("dirichlet velocity walls: invalid example: frank sphere");
+  }
+  }
+};
+
+// --------------------------------------------------------------------------------------------------------------
+// Boundary conditions for scalar temp/conc problem:
+// --------------------------------------------------------------------------------------------------------------
+// Interface:
+//----------------
+// Value:
+class BC_INTERFACE_VALUE_TEMP: public CF_DIM{ // TO CHECK -- changed how interp is initialized
+  private:
+  // Have interpolation objects for case with surface tension included in boundary condition: can interpolate the curvature in a timestep to the interface points while applying the boundary condition
+  my_p4est_node_neighbors_t* ngbd;
+
+  my_p4est_interpolation_nodes_t* kappa_interp;
+  temperature_field** temperature_;
+  unsigned const char dom;
+
+  // For normals (in dendritic case)
+  my_p4est_interpolation_nodes_t* nx_interp;
+  my_p4est_interpolation_nodes_t* ny_interp;
+
+  // Relevant vectors:
+  vec_and_ptr_t kappa;
+  vec_and_ptr_dim_t normal;
+
+  public:
+
+  BC_INTERFACE_VALUE_TEMP(my_p4est_node_neighbors_t *ngbd_=NULL, Vec kappa = NULL, temperature_field** analytical_T=NULL, unsigned const char& dom_= NULL): ngbd(ngbd_),temperature_(analytical_T),dom(dom_)
+  {
+    if((ngbd!=NULL) && (kappa!=NULL) ){
+      kappa_interp = new my_p4est_interpolation_nodes_t(ngbd);
+      kappa_interp->set_input(kappa,linear);
     }
-    case FLOW_PAST_CYLINDER:
+  }
+  double Gibbs_Thomson(double sigma_, DIM(double x, double y, double z)) const {
+    switch(problem_dimensionalization_type){
+    // Note slight difference in condition bw diff nondim types -- T0 vs Tinf
+    case NONDIM_BY_FLUID_VELOCITY:{
+      return (theta_interface - (sigma_/l_char)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT));
+    }
+    case NONDIM_BY_SCALAR_DIFFUSIVITY:{
+      return (theta_interface - (sigma_/l_char)*((*kappa_interp)(x,y))*(theta_interface + Tinfty/deltaT));
+    }
+    case DIMENSIONAL:{
+      return (Tinterface*(1 - sigma_*((*kappa_interp)(x,y))));
+    }
+    default:{
+      throw std::runtime_error("Gibbs_thomson: unrecognized problem dimensionalization type \n");
+    }
+    }
+  }
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch(example_){
+    case FRANK_SPHERE:{ // Frank sphere case, no surface tension
+      return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
+    }
+    case DENDRITE_TEST:{
+      double eps = 0.05;
+      // double theta_ = atan2((*ny_interp)(x,y),(*nx_interp)(x,y));
+
+      double cos_theta_ = (*nx_interp)(x,y);
+      double cos_4_theta = 8.0*pow(cos_theta_,4.)-8.0*pow(cos_theta_,2.)+1;
+      double int_val =1. + (-l_char)*(1. - 15.*eps*cos_4_theta)*((*kappa_interp)(x,y))/St;
+
+
+      //        double int_val =1. + (-l_char)*(1. - 15.*eps*1.)*((*kappa_interp)(x,y))/St;
+      //        printf("the term: %f \n"
+      //               "15epscos = %f \n"
+      //               "kappa = %f \n", (-l_char)*(1. - 15.*eps*cos(4.*theta_))*((*kappa_interp)(x,y))/St,
+      //               15.*eps*cos(4.*theta_),
+      //               (*kappa_interp)(x,y));
+      //        if(fabs(int_val - 1.0)>0.5){
+      //          printf("Interface value = %f \n"
+      //                 "Theta = %f \n"
+      //                 "Kappa = %f \n"
+      //                 "(x,y) = (%f, %f) \n \n", int_val, theta_*180./PI, (*kappa_interp)(x,y), x, y );
+      //        }
+
+
+      return int_val;
+    }
     case EVOLVING_POROUS_MEDIA:{
-      // no dirichlet wall velocity conditions
-      return 0.;/*(ylower_wall(DIM(x,y,z)) || (yupper_wall(DIM(x,y,z))))*/;
+      if(is_dissolution_case){
+        // Dissolution case,
+        // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
+        // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
+        if(fabs(deltaT/Tinfty) < EPS){
+          return 0.0;
+        }
+        else{
+          return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
+        }
+      }
+      else{
+        // temperature case, go with usual Gibbs-Thomson
+        double interface_val = Gibbs_Thomson(sigma, DIM(x,y,z));
+
+        // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
+        if(ramp_bcs){
+          return ramp_BC(theta_infty,interface_val);
+        }
+        else {
+          return interface_val;
+        }
+      }
     }
     case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
-    case ICE_AROUND_CYLINDER:{
-      return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+    case ICE_AROUND_CYLINDER: {
+      double interface_val = Gibbs_Thomson(sigma, DIM(x,y,z));
+
+      // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
+      if(ramp_bcs){
+        return ramp_BC(theta_infty,interface_val);
+      }
+      else {
+        return interface_val;
+      }
     }
-    case DISSOLVING_DISK_BENCHMARK:{
-      return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
-    }
-    case NS_GIBOU_EXAMPLE:{
-      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) ||ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
-    }
+    case COUPLED_TEST_2:
     case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:{
-      return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
+      return temperature_[dom]->T(DIM(x,y,z));
     }
-    case COUPLED_TEST_2:{
-      return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z)));
+    case DISSOLVING_DISK_BENCHMARK:{
+      // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
+      // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
+      if(fabs(deltaT/Tinfty) < EPS){
+        return 0.0;
+      }
+      else{
+        return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
+      }
+    }
+    default:
+      throw std::runtime_error("BC INTERFACE VALUE TEMP: unrecognized example \n");
+    }
+  }
+  void clear(){
+    kappa_interp->clear();
+    delete kappa_interp;
+  }
+  void set(my_p4est_node_neighbors_t* &ngbd_, Vec kappa){
+    if(ngbd_!=NULL){
+      ngbd = ngbd_;
 
-//      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
+      kappa_interp = new my_p4est_interpolation_nodes_t(ngbd);
+      kappa_interp->set_input(kappa, linear);
     }
-    case PLANE_POIS_FLOW:{
-      return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,y)));
+
+  }
+  void set_normals(my_p4est_node_neighbors_t *ngbd_, Vec nx, Vec ny){
+    if((ngbd_!=NULL) && (nx !=NULL) && (ny!=NULL)){
+      ngbd = ngbd_;
+
+      nx_interp = new my_p4est_interpolation_nodes_t(ngbd);
+      nx_interp->set_input(nx, linear);
+
+      ny_interp = new my_p4est_interpolation_nodes_t(ngbd);
+      ny_interp->set_input(ny, linear);
     }
+  }
+  void clear_normals(){
+    nx_interp->clear();
+    ny_interp->clear();
+
+    delete nx_interp;
+    delete ny_interp;
+  }
+};
+
+// Type:
+BoundaryConditionType interface_bc_type_temp;
+void interface_bc_temp(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
+  switch(example_){
+  case FRANK_SPHERE:
+  case DENDRITE_TEST:
+  case FLOW_PAST_CYLINDER:
+
+  case MELTING_ICE_SPHERE_NAT_CONV:
+  case MELTING_ICE_SPHERE:
+  case ICE_AROUND_CYLINDER:
+  case COUPLED_TEST_2:
+  case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+  case COUPLED_PROBLEM_EXAMPLE:
+    interface_bc_type_temp = DIRICHLET;
+    break;
+  case DISSOLVING_DISK_BENCHMARK:
+    interface_bc_type_temp = ROBIN;
+    break;
+  case EVOLVING_POROUS_MEDIA:
+    if(is_dissolution_case){
+      interface_bc_type_temp = ROBIN;
+    }
+    else{
+      interface_bc_type_temp = DIRICHLET;
+    }
+    break;
+  }
+}
+
+// Robin coeff:
+class BC_interface_coeff: public CF_DIM{
+  public:
+  double operator()(double x, double y) const
+  {
+
+    switch(example_){
+    case FRANK_SPHERE:
+    case DENDRITE_TEST:
+    case EVOLVING_POROUS_MEDIA:
+    case MELTING_ICE_SPHERE_NAT_CONV:
+    case MELTING_ICE_SPHERE:
+    case ICE_AROUND_CYLINDER:
+    case COUPLED_TEST_2:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:
+      return 1.0;
+    case DISSOLVING_DISK_BENCHMARK:
+      // Elyce to-do 12/14/21: update this appropriately (may have to adjust depending on nondim type)
+      //        double Da = k_diss*l_char/D;
+      //return Da/Pe;//(k_diss*l_diss/D_diss);//(k_diss/u_inf); // Coefficient in front of C
+      // ^^^ 12/17/21 why on earth did i have an effing peclet number there ???? aahhhhhhh
+      return Da;
+    }
+  }
+}bc_interface_coeff;
+
+//----------------
+// Wall:
+//----------------
+// Value:
+
+class BC_WALL_VALUE_TEMP: public CF_DIM
+{
+  public:
+  const unsigned char dom;
+  temperature_field** temperature_;
+  BC_WALL_VALUE_TEMP(const unsigned char& dom_, temperature_field** analytical_soln=NULL): dom(dom_),temperature_(analytical_soln){
+    P4EST_ASSERT(dom>=0 && dom<=1);
+  }
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch(example_){
     case FRANK_SPHERE:{
-      throw std::runtime_error("dirichlet velocity walls: invalid example: frank sphere");
+      if (dirichlet_temperature_walls(DIM(x,y,z))){
+        double r= sqrt(SQR(x) + SQR(y));;
+        double sval = r/sqrt(tn + dt);
+        return frank_sphere_solution_t(sval);
+      }
+      break;
+    }
+    case DENDRITE_TEST:
+    case EVOLVING_POROUS_MEDIA:
+    case MELTING_ICE_SPHERE:
+    case MELTING_ICE_SPHERE_NAT_CONV:
+    case ICE_AROUND_CYLINDER:{
+      if(dirichlet_temperature_walls(DIM(x,y,z))){
+        return theta_infty;
+      }
+      else{
+        return back_wall_temp_flux;
+      }
+    }
+    case DISSOLVING_DISK_BENCHMARK:{
+      if(dirichlet_temperature_walls(DIM(x,y,z))){
+        return theta_infty;
+      }
+      else{
+        return back_wall_temp_flux;
+      }
+      break;
+    }
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:
+    case COUPLED_TEST_2:{
+      if (dirichlet_temperature_walls(DIM(x,y,z))){ // dirichlet case
+        return temperature_[dom]->T(DIM(x,y,z));
+      }
+      else{ // neumann case
+        if(is_x_wall(DIM(x,y,z))){
+          return sign_neumann_wall(DIM(x,y,z))*temperature_[dom]->dT_d(dir::x,DIM(x,y,z));
+        }
+        if(is_y_wall(DIM(x,y,z))){
+          return sign_neumann_wall(DIM(x,y,z))*temperature_[dom]->dT_d(dir::y,DIM(x,y,z));
+        }
+        break;
+      }
+    }
+    default:
+      throw std::runtime_error("WALL BC TYPE TEMP: unrecognized example \n");
     }
   }
 };
-// --------------------------------------------------------------------------------------------------------------
-// Wall temperature boundary condition objects/functions:
-// --------------------------------------------------------------------------------------------------------------
 
-
+// Type:
 class BC_WALL_TYPE_TEMP: public WallBCDIM
 {
-public:
+  public:
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
     if(dirichlet_temperature_walls(DIM(x,y,z))){
@@ -2583,148 +2817,309 @@ public:
       return NEUMANN;
     }
   }
-
-
-
-
 }bc_wall_type_temp;
 
-
-class BC_WALL_VALUE_TEMP: public CF_DIM
-{
-public:
-  const unsigned char dom;
-  temperature_field** temperature_;
-  BC_WALL_VALUE_TEMP(const unsigned char& dom_, temperature_field** analytical_soln=NULL): dom(dom_),temperature_(analytical_soln){
-    P4EST_ASSERT(dom>=0 && dom<=1);
-  }
-  double operator()(DIM(double x, double y, double z)) const
+//----------------
+// Substrate interface:
+//----------------
+// Value:
+class BC_interface_value_inner: public CF_DIM{
+  public:
+  double operator()(double x, double y) const
   {
     switch(example_){
-      case FRANK_SPHERE:{
-        if (dirichlet_temperature_walls(DIM(x,y,z))){
-          double r= sqrt(SQR(x) + SQR(y));;
-          double sval = r/sqrt(tn + dt);
-          return frank_sphere_solution_t(sval);
-        }
-        break;
+    case EVOLVING_POROUS_MEDIA:
+    case ICE_AROUND_CYLINDER:
+      if(ramp_bcs){
+        return ramp_BC(theta_infty,theta0);
       }
-      case DENDRITE_TEST:
-      case EVOLVING_POROUS_MEDIA:
-      case MELTING_ICE_SPHERE:
-      case MELTING_ICE_SPHERE_NAT_CONV:
-      case ICE_AROUND_CYLINDER:{
-        if(dirichlet_temperature_walls(DIM(x,y,z))){
-          return theta_infty;
-        }
-        else{
-          return back_wall_temp_flux;
-        }
-      }
-      case DISSOLVING_DISK_BENCHMARK:{
-        if(dirichlet_temperature_walls(DIM(x,y,z))){
-          return theta_infty;
-        }
-        else{
-          return back_wall_temp_flux;
-        }
-        break;
-      }
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:
-      case COUPLED_TEST_2:{
-        if (dirichlet_temperature_walls(DIM(x,y,z))){ // dirichlet case
-          return temperature_[dom]->T(DIM(x,y,z));
-        }
-        else{ // neumann case
-          if(is_x_wall(DIM(x,y,z))){
-            return sign_neumann_wall(DIM(x,y,z))*temperature_[dom]->dT_d(dir::x,DIM(x,y,z));
-          }
-          if(is_y_wall(DIM(x,y,z))){
-             return sign_neumann_wall(DIM(x,y,z))*temperature_[dom]->dT_d(dir::y,DIM(x,y,z));
-          }
-          break;
-        }
-      }
-      default:
-        throw std::runtime_error("WALL BC TYPE TEMP: unrecognized example \n");
-      }
+      else return theta0;
+    }
   }
-};
+}bc_interface_val_inner;
 
-// --------------------------------------------------------------------------------------------------------------
-// Initial temperature condition objects/functions:
-// --------------------------------------------------------------------------------------------------------------
-class INITIAL_TEMP: public CF_DIM
-{
+// Type:
+BoundaryConditionType inner_interface_bc_type_temp;
+void inner_interface_bc_temp(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
+  switch(example_){
+  case EVOLVING_POROUS_MEDIA:
+    inner_interface_bc_type_temp = DIRICHLET;
+    break;
+  case FLOW_PAST_CYLINDER:
+  case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+  case COUPLED_PROBLEM_EXAMPLE:
+  case COUPLED_TEST_2:
+  case DENDRITE_TEST:
+  case MELTING_ICE_SPHERE_NAT_CONV:
+  case MELTING_ICE_SPHERE:
+  case FRANK_SPHERE:{
+    throw std::invalid_argument("This option may not be used for the particular example being called");
+  }
+  case ICE_AROUND_CYLINDER:
+    inner_interface_bc_type_temp = DIRICHLET;
+    break;
+  }
+}
+
+// Robin coeff:
+class BC_interface_coeff_inner: public CF_DIM{
 public:
-  const unsigned char dom;
-  temperature_field** temperature_;
-  INITIAL_TEMP(const unsigned char &dom_,temperature_field** analytical_T=NULL):dom(dom_),temperature_(analytical_T){}
-  double operator() (DIM(double x, double y, double z)) const
+  double operator()(double x, double y) const
   {
     switch(example_){
-      case FRANK_SPHERE:{
-        double r = sqrt(SQR(x) + SQR(y));
-        double sval = s(r,t);
-        return frank_sphere_solution_t(sval); // Initial distribution is the analytical solution of Frank Sphere problem at t = tstart
-      }
-      case DENDRITE_TEST:{
-        if(level_set(DIM(x,y,z))<0){
-          return theta_infty;
-        }
-        else{
-          return theta_interface;
-        }
-      }
       case EVOLVING_POROUS_MEDIA:
-      case MELTING_ICE_SPHERE_NAT_CONV:
-      case MELTING_ICE_SPHERE:{
-        switch(dom){
-          case LIQUID_DOMAIN:{
-            return theta_infty;
-          }
-          case SOLID_DOMAIN:{
-            return theta0; // coolest temp
-          }
-          default:{
-            throw std::runtime_error("Initial condition for temperature: unrecognized domain \n");
-          }
-        }
+      case ICE_AROUND_CYLINDER:
+        return 1.0;
       }
-      case ICE_AROUND_CYLINDER:{ // TO-DO: is this best initial condition? might be missing on serious initial interface growth...
-        switch(dom){
-          case LIQUID_DOMAIN:{
-            return theta_infty;
-          }
-          case SOLID_DOMAIN:{
-            if(ramp_bcs){
-              return theta_infty;
-            }
-            else{
-              return theta_interface;
-            }
-          }
-          default:{
-            throw std::runtime_error("Initial condition for temperature: unrecognized domain \n");
-          }
-        }
+  }
+}bc_interface_coeff_inner;
+
+
+// --------------------------------------------------------------------------------------------------------------
+// Boundary conditions for Navier-Stokes problem:
+// --------------------------------------------------------------------------------------------------------------
+// Velocity interface:
+//----------------
+// Value:
+// Interfacial condition:
+class BC_interface_value_velocity: public CF_DIM{
+  private:
+  my_p4est_node_neighbors_t* ngbd;
+  my_p4est_interpolation_nodes_t* v_interface_interp;
+
+  public:
+  const unsigned char dir;
+  velocity_component** velocity_field;
+  BC_interface_value_velocity(const unsigned char& dir_, my_p4est_node_neighbors_t* ngbd_=NULL, Vec v_interface=NULL,velocity_component** analyical_soln=NULL): ngbd(ngbd_),dir(dir_),velocity_field(analyical_soln){
+    P4EST_ASSERT(dir<P4EST_DIM);
+    if((ngbd_!=NULL) && (v_interface!=NULL)){
+      v_interface_interp = new my_p4est_interpolation_nodes_t(ngbd);
+      v_interface_interp->set_input(v_interface,linear);
+    }
+  }
+  double operator()(double x, double y) const
+  {
+    switch(example_){
+    case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+    case PLANE_POIS_FLOW:
+      return 0.; // homogeneous dirichlet no slip
+    case FLOW_PAST_CYLINDER:
+    case EVOLVING_POROUS_MEDIA:
+    case MELTING_ICE_SPHERE_NAT_CONV:
+    case MELTING_ICE_SPHERE:
+    case DISSOLVING_DISK_BENCHMARK:
+      if(!solve_stefan) return 0.;
+      else{
+        // 9/23/21 -- currently evalulating effect of diff BC's on result
+        // return (*v_interface_interp)(x,y); // no slip condition
+
+        return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // cons of mass condition
+        // 12/15/21 -- changed back to cons of mass condition -- Rochi and Elyce -- if your results don't work check this
       }
-      case DISSOLVING_DISK_BENCHMARK:{
-        return theta_infty;
+    case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
+      if(!solve_stefan) return 0.;
+      else{
+        return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // Condition derived from mass balance across interface
+
       }
-      case COUPLED_TEST_2:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:{
-          return temperature_[dom]->T(DIM(x,y,z));
-      }
+    }
+      //      case DISSOLVING_DISK_BENCHMARK:{
+      //        return 0.0;
+      //      }
+    case NS_GIBOU_EXAMPLE:
+    case COUPLED_TEST_2:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:
+      return (*velocity_field[dir])(x,y);
+    case DENDRITE_TEST:{
+      return 0.0;
+    }
+    default:
+      throw std::runtime_error("BC INTERFACE VALUE VELOCITY: unrecognized example ");
+    }
+  }
+  void clear(){
+    v_interface_interp->clear();
+    delete v_interface_interp;
+  }
+  void set(my_p4est_node_neighbors_t* ngbd_, Vec v_interface){
+    if((ngbd_!=NULL) && (v_interface!=NULL)){
+      ngbd = ngbd_;
+      v_interface_interp = new my_p4est_interpolation_nodes_t(ngbd);
+      v_interface_interp->set_input(v_interface,linear);
     }
   }
 };
 
-// --------------------------------------------------------------------------------------------------------------
-// Wall fluid velocity boundary condition objects/functions: for fluid velocity vector = (u,v,w)
-// --------------------------------------------------------------------------------------------------------------
+// Type:
+BoundaryConditionType interface_bc_type_velocity[P4EST_DIM];
+void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
+  switch(example_){
+  case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+  case PLANE_POIS_FLOW:
+  case FLOW_PAST_CYLINDER:
+  case DENDRITE_TEST:
+  case DISSOLVING_DISK_BENCHMARK:
+  case EVOLVING_POROUS_MEDIA:
+  case MELTING_ICE_SPHERE_NAT_CONV:
+  case MELTING_ICE_SPHERE:
+  case ICE_AROUND_CYLINDER:
+    interface_bc_type_velocity[dir] = DIRICHLET;
+    break;
+  case NS_GIBOU_EXAMPLE:
+    interface_bc_type_velocity[dir] = DIRICHLET;
+    break;
+  case COUPLED_TEST_2:
+  case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+  case COUPLED_PROBLEM_EXAMPLE:{
+    interface_bc_type_velocity[dir] = DIRICHLET;
+    break;
+  }
+  }
+}
+
+//----------------
+// Velocity wall:
+//----------------
+// Value:
+class BC_WALL_VALUE_VELOCITY: public CF_DIM
+{
+  public:
+  const unsigned char dir;
+  velocity_component** velocity_field;
+
+  BC_WALL_VALUE_VELOCITY(const unsigned char& dir_, velocity_component** analytical_soln=NULL):dir(dir_),velocity_field(analytical_soln){
+    P4EST_ASSERT(dir<P4EST_DIM);
+  }
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch(example_){
+    //------------------------------------------------------------------
+    case FRANK_SPHERE:{
+      throw std::invalid_argument("Navier Stokes solution is not compatible with this example, please choose another \n");
+    }
+    case DENDRITE_TEST:{
+      if(dirichlet_velocity_walls(DIM(x,y,z))){
+        switch(dir){
+        case dir::x:{
+          return u0;
+        }
+        case dir::y:{
+          return v0;
+        }
+        default:
+          throw std::runtime_error("unrecognized cartesian direction for bc wall value velocity \n");
+        }
+      }
+      else{
+        return 0.0; // homogeneous neumann
+      }
+    }
+    case FLOW_PAST_CYLINDER:
+    case EVOLVING_POROUS_MEDIA:{
+      if(dirichlet_velocity_walls(DIM(x,y,z))){
+        return 0.0; // no slip at walls
+      }
+      else{
+        return 0.0; // homogeneous neumann
+      }
+    }
+    case MELTING_ICE_SPHERE_NAT_CONV:{
+      if (dirichlet_velocity_walls(DIM(x,y,z))){
+        if(ylower_wall(DIM(x,y,z))){
+          return 0.0;
+        }
+        if(yupper_wall(DIM(x,y,z))){
+          return 0.0;
+        }
+      }
+    }
+    case MELTING_ICE_SPHERE:
+    case ICE_AROUND_CYLINDER:{
+      if (dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
+        if(ramp_bcs && tn<=t_ramp){
+
+          switch(dir){
+          case dir::x:
+            return ramp_BC(0.,u0);
+          case dir::y:
+            return ramp_BC(0.,v0);
+          default:
+            throw std::runtime_error("WALL BC VELOCITY: unrecognized Cartesian direction \n");
+          }
+        } // end of ramp BC case
+        else{
+
+          switch(dir){
+          case dir::x:
+            return u0;
+          case dir::y:
+            return v0;
+          default:
+            throw std::runtime_error("WALL BC VELOCITY: unrecognized Cartesian direction \n");
+          }
+        }
+      }
+      else { // Neumann case
+        switch(dir){
+        case dir::x:
+          return outflow_u;
+        case dir::y:
+          return outflow_v;
+        default:
+          throw std::runtime_error("WALL BC VELOCITY: unrecognized Cartesian direction \n");
+        }
+      }
+    }
+    case DISSOLVING_DISK_BENCHMARK:{
+      if(dirichlet_velocity_walls(DIM(x,y,z))){
+        if(xlower_wall(DIM(x,y,z))){
+          switch(dir){
+          case dir::x:
+            return u0;
+          case dir::y:
+            return v0;
+          default:
+            throw std::runtime_error("Velocity boundary condition at wall - unrecognized direction \n");
+          }
+        }
+        else{
+          return 0.0; // no slip on y walls
+        }
+      }
+      else{
+        return 0.0;// homogeneous neumann
+      }
+      break;
+    }
+    case NS_GIBOU_EXAMPLE:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:
+    case COUPLED_TEST_2:{
+      if(dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
+        return (*velocity_field[dir])(DIM(x,y,z));
+      }
+      else{ // neumann case
+        if(is_x_wall(DIM(x,y,z))){
+          return sign_neumann_wall(DIM(x,y,z))*velocity_field[dir]->_d(dir::x,DIM(x,y,z));
+        }
+        if(is_y_wall(DIM(x,y,z))){
+          return sign_neumann_wall(DIM(x,y,z))*velocity_field[dir]->_d(dir::y,DIM(x,y,z));
+        }
+      }
+      break;
+    }
+    case PLANE_POIS_FLOW:{
+      return 0.; // homogeneous dirichlet on y walls (no slip), homogeneous neumann on x walls (prescribed pressure)
+    }
+    default:
+      throw std::runtime_error("WALL BC VALUE VELOCITY: unrecognized example \n");
+    }
+  }
+};
+
+
+// Type:
 class BC_WALL_TYPE_VELOCITY: public WallBCDIM
 {
 public:
@@ -2743,380 +3138,151 @@ public:
   }
 };
 
+//----------------
+// Pressure interface:
+//----------------
+// Value:
+class BC_INTERFACE_VALUE_PRESSURE: public CF_DIM{
+  public:
+  double operator()(DIM(double x, double y,double z)) const
+  {
+    switch(example_){
+    case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+    case DENDRITE_TEST:
+    case FLOW_PAST_CYLINDER:
+    case EVOLVING_POROUS_MEDIA:
+    case DISSOLVING_DISK_BENCHMARK:
+    case MELTING_ICE_SPHERE_NAT_CONV:
+    case MELTING_ICE_SPHERE:
+    case ICE_AROUND_CYLINDER: // Ice solidifying around a cylinder
+      return 0.0;
 
-class BC_WALL_VALUE_VELOCITY: public CF_DIM
-{
-public:
-  const unsigned char dir;
-  velocity_component** velocity_field;
-
-  BC_WALL_VALUE_VELOCITY(const unsigned char& dir_, velocity_component** analytical_soln=NULL):dir(dir_),velocity_field(analytical_soln){
-    P4EST_ASSERT(dir<P4EST_DIM);
+    case PLANE_POIS_FLOW:
+    case NS_GIBOU_EXAMPLE: // Benchmark NS
+    case COUPLED_TEST_2:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:
+      return 0.0;
+    default:
+      throw std::runtime_error("INTERFACE BC VAL PRESSURE: unrecognized example \n");
+    }
   }
+};
+
+// Type:
+static BoundaryConditionType interface_bc_type_pressure;
+void interface_bc_pressure(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
+  switch(example_){
+  case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+  case NS_GIBOU_EXAMPLE:
+  case COUPLED_TEST_2:
+  case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+  case COUPLED_PROBLEM_EXAMPLE:
+  case DENDRITE_TEST:
+  case PLANE_POIS_FLOW:
+  case FLOW_PAST_CYLINDER:
+  case EVOLVING_POROUS_MEDIA:
+  case DISSOLVING_DISK_BENCHMARK:
+  case MELTING_ICE_SPHERE_NAT_CONV:
+  case MELTING_ICE_SPHERE:
+  case ICE_AROUND_CYLINDER:
+    interface_bc_type_pressure = NEUMANN;
+    break;
+  }
+}
+
+//----------------
+// Pressure wall:
+//----------------
+// Value:
+class BC_WALL_VALUE_PRESSURE: public CF_DIM
+{
+  public:
   double operator()(DIM(double x, double y, double z)) const
   {
     switch(example_){
-      //------------------------------------------------------------------
-      case FRANK_SPHERE:{
-        throw std::invalid_argument("Navier Stokes solution is not compatible with this example, please choose another \n");
-      }
-      case DENDRITE_TEST:{
-        if(dirichlet_velocity_walls(DIM(x,y,z))){
-          switch(dir){
-            case dir::x:{
-              return u0;
-            }
-            case dir::y:{
-              return v0;
-            }
-            default:
-              throw std::runtime_error("unrecognized cartesian direction for bc wall value velocity \n");
-            }
-        }
-        else{
-          return 0.0; // homogeneous neumann
-        }
-      }
-      case FLOW_PAST_CYLINDER:
-      case EVOLVING_POROUS_MEDIA:{
-        if(dirichlet_velocity_walls(DIM(x,y,z))){
-          return 0.0; // no slip at walls
-        }
-        else{
-          return 0.0; // homogeneous neumann
-        }
-      }
-      case MELTING_ICE_SPHERE_NAT_CONV:{
-        if (dirichlet_velocity_walls(DIM(x,y,z))){
-            if(ylower_wall(DIM(x,y,z))){
-                return 0.0;
-            }
-            if(yupper_wall(DIM(x,y,z))){
-                return 0.0;
-            }
-        }
-      }
-      case MELTING_ICE_SPHERE:
-      case ICE_AROUND_CYLINDER:{
-        if (dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
-            if(ramp_bcs && tn<=t_ramp){
-
-              switch(dir){
-                case dir::x:
-                  return ramp_BC(0.,u0);
-                case dir::y:
-                  return ramp_BC(0.,v0);
-                default:
-                  throw std::runtime_error("WALL BC VELOCITY: unrecognized Cartesian direction \n");
-                }
-            } // end of ramp BC case
-            else{
-
-              switch(dir){
-              case dir::x:
-                return u0;
-              case dir::y:
-                return v0;
-              default:
-                throw std::runtime_error("WALL BC VELOCITY: unrecognized Cartesian direction \n");
-              }
-            }
-          }
-        else { // Neumann case
-          switch(dir){
-          case dir::x:
-            return outflow_u;
-          case dir::y:
-            return outflow_v;
-          default:
-            throw std::runtime_error("WALL BC VELOCITY: unrecognized Cartesian direction \n");
-          }
-        }
-      }
-      case DISSOLVING_DISK_BENCHMARK:{
-        if(dirichlet_velocity_walls(DIM(x,y,z))){
-          if(xlower_wall(DIM(x,y,z))){
-            switch(dir){
-            case dir::x:
-              return u0;
-            case dir::y:
-              return v0;
-            default:
-              throw std::runtime_error("Velocity boundary condition at wall - unrecognized direction \n");
-            }
-          }
-          else{
-            return 0.0; // no slip on y walls
-          }
-        }
-        else{
-          return 0.0;// homogeneous neumann
-        }
-        break;
-      }
-      case NS_GIBOU_EXAMPLE:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:
-      case COUPLED_TEST_2:{
-        if(dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
-          return (*velocity_field[dir])(DIM(x,y,z));
-        }
-        else{ // neumann case
-          if(is_x_wall(DIM(x,y,z))){
-            return sign_neumann_wall(DIM(x,y,z))*velocity_field[dir]->_d(dir::x,DIM(x,y,z));
-          }
-          if(is_y_wall(DIM(x,y,z))){
-            return sign_neumann_wall(DIM(x,y,z))*velocity_field[dir]->_d(dir::y,DIM(x,y,z));
-          }
-        }
-        break;
-      }
-      case PLANE_POIS_FLOW:{
-        return 0.; // homogeneous dirichlet on y walls (no slip), homogeneous neumann on x walls (prescribed pressure)
-      }
-      default:
-        throw std::runtime_error("WALL BC VALUE VELOCITY: unrecognized example \n");
+    case FRANK_SPHERE:
+      throw std::invalid_argument("Navier Stokes solution is not "
+                                  "compatible with this example, please choose another \n");
+    case DENDRITE_TEST:{
+      return 0.0; // homogeneous dirichlet or neumann
     }
-  }
-};
-
-// --------------------------------------------------------------------------------------------------------------
-// Interfacial fluid velocity condition objects/functions: for fluid velocity vector = (u,v,w)
-// --------------------------------------------------------------------------------------------------------------
-
-BoundaryConditionType interface_bc_type_velocity[P4EST_DIM];
-void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
-  switch(example_){
-    case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
-    case PLANE_POIS_FLOW:
     case FLOW_PAST_CYLINDER:
-    case DENDRITE_TEST:
-    case DISSOLVING_DISK_BENCHMARK:
-    case EVOLVING_POROUS_MEDIA:
-    case MELTING_ICE_SPHERE_NAT_CONV:
-    case MELTING_ICE_SPHERE:
-    case ICE_AROUND_CYLINDER:
-      interface_bc_type_velocity[dir] = DIRICHLET;
-      break;
-    case NS_GIBOU_EXAMPLE:
-      interface_bc_type_velocity[dir] = DIRICHLET;
-      break;
-    case COUPLED_TEST_2:
-    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-    case COUPLED_PROBLEM_EXAMPLE:{
-      interface_bc_type_velocity[dir] = DIRICHLET;
-      break;
-      }
-    }
-}
-
-// Interfacial condition:
-class BC_interface_value_velocity: public CF_DIM{
-private:
-  my_p4est_node_neighbors_t* ngbd;
-  my_p4est_interpolation_nodes_t* v_interface_interp;
-
-public:
-  const unsigned char dir;
-  velocity_component** velocity_field;
-  BC_interface_value_velocity(const unsigned char& dir_, my_p4est_node_neighbors_t* ngbd_=NULL, Vec v_interface=NULL,velocity_component** analyical_soln=NULL): ngbd(ngbd_),dir(dir_),velocity_field(analyical_soln){
-    P4EST_ASSERT(dir<P4EST_DIM);
-    if((ngbd_!=NULL) && (v_interface!=NULL)){
-      v_interface_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      v_interface_interp->set_input(v_interface,linear);
-    }
-  }
-  double operator()(double x, double y) const
-  {
-    switch(example_){
-      case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
-      case PLANE_POIS_FLOW:
-        return 0.; // homogeneous dirichlet no slip
-      case FLOW_PAST_CYLINDER:
-      case EVOLVING_POROUS_MEDIA:
-      case MELTING_ICE_SPHERE_NAT_CONV:
-      case MELTING_ICE_SPHERE:
-      case DISSOLVING_DISK_BENCHMARK:
-        if(!solve_stefan) return 0.;
-        else{
-          // 9/23/21 -- currently evalulating effect of diff BC's on result
-          // return (*v_interface_interp)(x,y); // no slip condition
-
-          return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // cons of mass condition
-          // 12/15/21 -- changed back to cons of mass condition -- Rochi and Elyce -- if your results don't work check this
+    case EVOLVING_POROUS_MEDIA:{
+      // Dirichlet prescribed pressure on xlower wall, all other walls are either dirichlet zero or neumann zero
+      if(xlower_wall(DIM(x,y,z))){
+        double pressure_drop_nondim;
+        switch(problem_dimensionalization_type){
+        case NONDIM_BY_FLUID_VELOCITY:{
+          pressure_drop_nondim = pressure_drop/(rho_l * u_inf * u_inf);
+          break;
         }
-      case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
-        if(!solve_stefan) return 0.;
-        else{
-          return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // Condition derived from mass balance across interface
+        case NONDIM_BY_SCALAR_DIFFUSIVITY:{
+          pressure_drop_nondim = is_dissolution_case?
+                                                     (pressure_drop*l_char*l_char/rho_l/Dl/Dl):
+                                                     (pressure_drop*l_char*l_char/rho_l/alpha_l/alpha_l);
 
+          break;
         }
+        case DIMENSIONAL:{
+          pressure_drop_nondim = pressure_drop;
+          break;
+        }
+        default:{
+          throw std::runtime_error("Unrecognized dimensionalization type \n");
+        }
+        }
+        return pressure_drop_nondim;
       }
-//      case DISSOLVING_DISK_BENCHMARK:{
-//        return 0.0;
-//      }
-      case NS_GIBOU_EXAMPLE:
-      case COUPLED_TEST_2:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:
-        return (*velocity_field[dir])(x,y);
-      case DENDRITE_TEST:{
+      else{
         return 0.0;
       }
-    default:
-      throw std::runtime_error("BC INTERFACE VALUE VELOCITY: unrecognized example ");
+    }
+    case DISSOLVING_DISK_BENCHMARK:
+      return 0.0; // returns homogeneous condition either way
+    case MELTING_ICE_SPHERE_NAT_CONV:
+    case MELTING_ICE_SPHERE:
+    case ICE_AROUND_CYLINDER:{ // coupled problem
+      return 0.0;
+    }
+
+    case NS_GIBOU_EXAMPLE:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:
+    case COUPLED_TEST_2:{
+      pressure_field_analytical.t= this->t;
+      if(!dirichlet_velocity_walls(DIM(x,y,z))){
+        return pressure_field_analytical(DIM(x,y,z));
       }
-  }
-  void clear(){
-    v_interface_interp->clear();
-    delete v_interface_interp;
-  }
-  void set(my_p4est_node_neighbors_t* ngbd_, Vec v_interface){
-    if((ngbd_!=NULL) && (v_interface!=NULL)){
-      ngbd = ngbd_;
-      v_interface_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      v_interface_interp->set_input(v_interface,linear);
+      else {
+        if(is_x_wall(DIM(x,y,z))){
+          return sign_neumann_wall(DIM(x,y,z))*pressure_field_analytical.gradP(dir::x,DIM(x,y,z));
+        }
+        if(is_y_wall(DIM(x,y,z))){
+          return sign_neumann_wall(DIM(x,y,z))*pressure_field_analytical.gradP(dir::y,DIM(x,y,z));
+        }
+      }
+    }
+    case PLANE_POIS_FLOW:{
+      if(!dirichlet_velocity_walls(DIM(x,y,z))){
+        if(xlower_wall(DIM(x,y,z))){
+          return pressure_drop;
+        }
+        else{
+          return 0.0;
+        }
+      }
+      else{
+        return 0.; // homogeneous neumann
+      }
+    }
+    default:
+      throw std::runtime_error("WALL BC VALUE PRESSURE: unrecognized example \n");
     }
   }
 };
 
-// --------------------------------------------------------------------------------------------------------------
-// Initial fluid velocity condition objects/functions: for fluid velocity vector = (u,v,w)
-// --------------------------------------------------------------------------------------------------------------
-struct INITIAL_VELOCITY : CF_DIM
-{
-  const unsigned char dir;
-  velocity_component** velocity_field;
-
-  INITIAL_VELOCITY(const unsigned char& dir_,velocity_component** analytical_soln=NULL):dir(dir_), velocity_field(analytical_soln){
-    P4EST_ASSERT(dir<P4EST_DIM);
-  }
-
-  double operator() (DIM(double x, double y,double z)) const{
-    switch(example_){
-      case DENDRITE_TEST:
-      case PLANE_POIS_FLOW:{
-        switch(dir){
-        case dir::x:
-          return u0;
-        case dir::y:
-          return v0;
-        default:
-          throw std::runtime_error("initial velocity direction unrecognized \n");
-        }
-      }
-
-      case EVOLVING_POROUS_MEDIA: {
-        //        return 0.0;
-        //        double h_ = ymax - ymin;
-        //        double U = G_press/(2.* Re);
-        //        double Uy = (Da_init/porosity_init) *U*(y)*(h_ - y);
-
-        //        double lsf_dist = 0.1;
-
-        //        if(fabs(level_set.operator()(DIM(x,y,z)))<lsf_dist){
-        //          return (Uy/lsf_dist)*(-1.*level_set.operator()(DIM(x,y,z)));
-        //        }
-        //        else{
-        //          switch(dir){
-        //          case dir::x:{
-        //            return Uy;}
-        //          case dir::y:
-        //            return 0.;
-        //          default:
-        //              throw std::runtime_error("Unrecognized direction for velocity initial condition \n");
-        //          }
-        //        }
-
-        switch(dir){
-        case dir::x:
-          return u0;
-        case dir::y:
-          return v0;
-        default:
-          throw std::runtime_error("initial velocity direction unrecognized \n");
-        }
-
-      }
-      case MELTING_ICE_SPHERE_NAT_CONV:{
-        if(ramp_bcs) return 0.;
-        else{
-          switch(dir){
-          case dir::x:
-            if(perturb_initial_flow){
-              return u0*(1 + perturb_flow_noise*sin(2.*PI*x/xmax));
-            }
-            else{
-              return u0;
-            }
-          case dir::y:
-            if(perturb_initial_flow){
-              return v0*(1 + perturb_flow_noise*sin(2.*PI*x/xmax));
-            }
-            else{
-              return v0;
-            }
-          default:
-            throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
-          }
-        }
-      }
-      case ICE_AROUND_CYLINDER:
-      case FLOW_PAST_CYLINDER:
-      case MELTING_ICE_SPHERE:{
-        if(ramp_bcs) return 0.;
-        else{
-          switch(dir){
-          case dir::x:
-            if(perturb_initial_flow){
-              return u0*(1 + perturb_flow_noise*sin(2.*PI*y/ymax));
-            }
-            else{
-              return u0;
-            }
-          case dir::y:
-            if(perturb_initial_flow){
-              return v0*(1 + perturb_flow_noise*sin(2.*PI*y/ymax));
-            }
-            else{
-              return v0;
-            }
-          default:
-            throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
-          }
-        }
-      }
-      case DISSOLVING_DISK_BENCHMARK:{
-        switch(dir){
-        case dir::x:
-          return u0;
-        case dir::y:
-          return v0;
-        default:
-          throw std::runtime_error("initial velocity direction unrecognized \n");
-        }
-      }
-      case NS_GIBOU_EXAMPLE:
-      case COUPLED_TEST_2:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:
-        switch(dir){
-        case dir::x:
-          return (*velocity_field[0])(x,y);
-        case dir::y:
-          return (*velocity_field[1])(x,y);
-        default:
-          throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
-        }
-      default:
-        throw std::runtime_error("vel initial: unrecognized example_ being run \n");
-      }
-  }
-} ;
-
-// --------------------------------------------------------------------------------------------------------------
-// Wall fluid pressure boundary condition objects/functions:
-// --------------------------------------------------------------------------------------------------------------
+// Type:
 class BC_WALL_TYPE_PRESSURE: public WallBCDIM
 {
 public:
@@ -3138,145 +3304,6 @@ public:
         return NEUMANN;
       }
     }
-  }
-};
-
-class BC_WALL_VALUE_PRESSURE: public CF_DIM
-{
-public:
-  double operator()(DIM(double x, double y, double z)) const
-  {
-    switch(example_){
-      case FRANK_SPHERE:
-        throw std::invalid_argument("Navier Stokes solution is not "
-                                    "compatible with this example, please choose another \n");
-      case DENDRITE_TEST:{
-        return 0.0; // homogeneous dirichlet or neumann
-      }
-      case FLOW_PAST_CYLINDER:
-      case EVOLVING_POROUS_MEDIA:{
-        // Dirichlet prescribed pressure on xlower wall, all other walls are either dirichlet zero or neumann zero
-        if(xlower_wall(DIM(x,y,z))){
-          double pressure_drop_nondim;
-          switch(problem_dimensionalization_type){
-          case NONDIM_BY_FLUID_VELOCITY:{
-            pressure_drop_nondim = pressure_drop/(rho_l * u_inf * u_inf);
-            break;
-          }
-          case NONDIM_BY_SCALAR_DIFFUSIVITY:{
-            pressure_drop_nondim = is_dissolution_case?
-                                                       (pressure_drop*l_char*l_char/rho_l/Dl/Dl):
-                                                       (pressure_drop*l_char*l_char/rho_l/alpha_l/alpha_l);
-
-            break;
-          }
-          case DIMENSIONAL:{
-            pressure_drop_nondim = pressure_drop;
-            break;
-          }
-          default:{
-            throw std::runtime_error("Unrecognized dimensionalization type \n");
-          }
-          }
-          return pressure_drop_nondim;
-        }
-        else{
-          return 0.0;
-        }
-      }
-      case DISSOLVING_DISK_BENCHMARK:
-        return 0.0; // returns homogeneous condition either way
-      case MELTING_ICE_SPHERE_NAT_CONV:
-      case MELTING_ICE_SPHERE:
-      case ICE_AROUND_CYLINDER:{ // coupled problem
-        return 0.0;
-      }
-
-      case NS_GIBOU_EXAMPLE:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:
-      case COUPLED_TEST_2:{
-        pressure_field_analytical.t= this->t;
-        if(!dirichlet_velocity_walls(DIM(x,y,z))){
-          return pressure_field_analytical(DIM(x,y,z));
-        }
-        else {
-          if(is_x_wall(DIM(x,y,z))){
-            return sign_neumann_wall(DIM(x,y,z))*pressure_field_analytical.gradP(dir::x,DIM(x,y,z));
-          }
-          if(is_y_wall(DIM(x,y,z))){
-            return sign_neumann_wall(DIM(x,y,z))*pressure_field_analytical.gradP(dir::y,DIM(x,y,z));
-          }
-        }
-      }
-      case PLANE_POIS_FLOW:{
-        if(!dirichlet_velocity_walls(DIM(x,y,z))){
-          if(xlower_wall(DIM(x,y,z))){
-            return pressure_drop;
-          }
-          else{
-            return 0.0;
-          }
-        }
-        else{
-          return 0.; // homogeneous neumann
-        }
-      }
-      default:
-        throw std::runtime_error("WALL BC VALUE PRESSURE: unrecognized example \n");
-    }
-  }
-};
-
-
-// --------------------------------------------------------------------------------------------------------------
-// Interfacial fluid pressure boundary condition objects/functions:
-// --------------------------------------------------------------------------------------------------------------
-static BoundaryConditionType interface_bc_type_pressure;
-void interface_bc_pressure(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
-  switch(example_){
-    case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
-    case NS_GIBOU_EXAMPLE:
-    case COUPLED_TEST_2:
-    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-    case COUPLED_PROBLEM_EXAMPLE:
-    case DENDRITE_TEST:
-    case PLANE_POIS_FLOW:
-    case FLOW_PAST_CYLINDER:
-    case EVOLVING_POROUS_MEDIA:
-    case DISSOLVING_DISK_BENCHMARK:
-    case MELTING_ICE_SPHERE_NAT_CONV:
-    case MELTING_ICE_SPHERE:
-    case ICE_AROUND_CYLINDER:
-      interface_bc_type_pressure = NEUMANN;
-      break;
-    }
-}
-
-class BC_INTERFACE_VALUE_PRESSURE: public CF_DIM{
-public:
-  double operator()(DIM(double x, double y,double z)) const
-  {
-    switch(example_){
-      case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
-      case DENDRITE_TEST:
-      case FLOW_PAST_CYLINDER:
-      case EVOLVING_POROUS_MEDIA:
-      case DISSOLVING_DISK_BENCHMARK:
-      case MELTING_ICE_SPHERE_NAT_CONV:
-      case MELTING_ICE_SPHERE:
-      case ICE_AROUND_CYLINDER: // Ice solidifying around a cylinder
-        return 0.0;
-
-      case PLANE_POIS_FLOW:
-      case NS_GIBOU_EXAMPLE: // Benchmark NS
-      case COUPLED_TEST_2:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:
-        return 0.0;
-      default:
-        throw std::runtime_error("INTERFACE BC VAL PRESSURE: unrecognized example \n");
-      }
   }
 };
 
