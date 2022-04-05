@@ -222,7 +222,7 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   // ----------------------------------------------
   // Nondimensional groups
   // ----------------------------------------------
-  Re = Pr = Sc = Pe = St = Da = RaT = RaC = 0.;
+  Re = Pr = Sc = Pe = St = Da = RaT = RaC = -1.;
 
   // -------------------------------
   // Physical parameters:
@@ -387,31 +387,9 @@ void my_p4est_stefan_with_fluids_t::initialize_fields(){
   // Temperature/conc fields:
   // ---------------------------------
 
-//  INITIAL_TEMP *T_init_cf[2];
-//  temperature_field* analytical_temp[2];
+
   if(solve_stefan){
     if(print_checkpoints) PetscPrintf(mpi->comm(),"Initializing the temperature fields (s) ... \n");
-
-    // TO-DO: commented out below, make sure it's handled in main
-//    if(analytical_IC_BC_forcing_term){
-//      coupled_test_sign = 1.;
-//      vel_has_switched=false;
-
-//      for(unsigned char d=0;d<2;++d){
-//        analytical_temp[d]= new temperature_field(d);
-//        analytical_temp[d]->t = tstart;
-//      }
-//      for(unsigned char d=0;d<2;++d){
-//        T_init_cf[d]= new INITIAL_TEMP(d,analytical_temp);
-//      }
-
-//    }
-//    else{
-//      for(unsigned char d=0;d<2;++d){
-//        T_init_cf[d] = new INITIAL_TEMP(d);
-//        T_init_cf[d]->t = tstart;
-//      }
-//    }
 
     T_l_n.create(p4est_np1, nodes_np1);
     sample_cf_on_nodes(p4est_np1, nodes_np1, *initial_temp_n[LIQUID_DOMAIN], T_l_n.vec);
@@ -428,14 +406,17 @@ void my_p4est_stefan_with_fluids_t::initialize_fields(){
 
     // Extend fields:
     // TO-DO: if we change defn's/declarations of extension bands elsewhere, make sure they're changed here as well
+    if(print_checkpoints) PetscPrintf(mpi->comm(),"Doing initial field extension  ... \n");
     dxyz_min(p4est_np1, dxyz_smallest);
     min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
     extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
     extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
     dxyz_close_to_interface = dxyz_close_to_interface_mult*MAX(dxyz_smallest[0],dxyz_smallest[1]);
+
     extend_relevant_fields();
 
     // Compute vinterface:
+    if(print_checkpoints) PetscPrintf(mpi->comm(),"Computing initial velocity ... \n");
     v_interface.create(p4est_np1, nodes_np1);
     compute_interfacial_velocity();
 
@@ -1456,10 +1437,6 @@ void my_p4est_stefan_with_fluids_t::extend_relevant_fields(){
   // -------------------------------
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Calling extension over phi \n");
 
-
-
-
-
   // Extend liquid temperature:
   ls->extend_Over_Interface_TVD_Full((there_is_a_substrate? phi_eff.vec : phi.vec)/*phi.vec*/, T_l_n.vec,
                                     50, 2,
@@ -1467,16 +1444,13 @@ void my_p4est_stefan_with_fluids_t::extend_relevant_fields(){
                                     liquid_normals.vec, NULL,
                                     /*&Tl_bc*/NULL, false, NULL,NULL);
 
+
   // Extend solid temperature:
   ls->extend_Over_Interface_TVD_Full((there_is_a_substrate? phi_solid_eff.vec : phi_solid.vec), T_s_n.vec,
                                     50, 2,
                                     extension_band_use_, extension_band_extend_,
                                     solid_normals.vec, NULL,
                                     /*&Ts_bc*/NULL, false, NULL, NULL);
-
-
-
-
 
   // -------------------------------
   // Destroy all fields that were created for the procedure:

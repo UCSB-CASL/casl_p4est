@@ -1062,8 +1062,8 @@ void select_problem_nondim_or_dim_formulation(){
 };
 
 // For defining appropriate nondimensional groups:
-double time_nondim_to_dim;
-double vel_nondim_to_dim;
+double time_nondim_to_dim = 1.;
+double vel_nondim_to_dim = 1.;
 
 void set_temp_conc_nondim_defns(){
   switch(example_){
@@ -1164,81 +1164,7 @@ void set_temp_conc_nondim_defns(){
   }
 }
 DEFINE_PARAMETER(pl, double, u_inf, 0., "Freestream velocity value (in m/s). Default is 0. This is usually overwritten bc it is computed by a provided Reynolds number. However, in dissolving disk benchmark example with diffusivity nondimensionalization, this can be used to pass in the freestream fluid boundary condition at the wall. \n"); // physical value of freestream velocity
-/*
-void set_nondimensional_groups(){
-  // Setup the temperature stuff properly first:
-  set_temp_conc_nondim_defns();
 
-  // Compute the stuff that doesn't depend on velocity nondim:
-  if(Pr<0.) Pr = mu_l/(alpha_l * rho_l);
-
-  if(Sc<0.) Sc = mu_l/(Dl*rho_l);
-
-  if(St<0.) St = cp_s * deltaT/L;
-
-
-  if(is_dissolution_case){
-    // if deltaT is set to zero, we are using the C/Cinf nondim and set gamma_diss = Vm * Cinf/stoic_coeff. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set gamma_diss = Vm * deltaC/stoic_coeff
-    // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
-    if(fabs(deltaT/Tinfty) < EPS){
-      gamma_diss = molar_volume_diss*Tinfty/stoich_coeff_diss;
-    }
-    else{
-      gamma_diss = molar_volume_diss*deltaT/stoich_coeff_diss;
-    }
-    if(Da<0.) Da = k_diss*l_char/Dl;
-  }
-
-  // Elyce To-do 12/14/21: add Rayleigh number computations if you are solving boussinesq
-  switch(problem_dimensionalization_type){
-  case NONDIM_BY_FLUID_VELOCITY:{
-    // In this case, we assume a prescribed:
-    // (1) free-stream Reynolds number, (2) characteristic length scale, (3) characteristic temperature/concentrations
-    // From these, we compute a characteristic velocity, Peclet number, Stefan number, etc.
-    // This is also then used to specify the time_nondim_to_dim and vel_nondim_to_dim conversions
-    u_inf = (Re*mu_l)/(rho_l * l_char);
-    // Rochi temp change
-
-    if(!is_dissolution_case){
-      Pe = l_char * u_inf/alpha_l;
-    }
-    else{
-      Pe = l_char * u_inf/Dl;
-    }
-
-    vel_nondim_to_dim = u_inf;
-    time_nondim_to_dim = l_char/u_inf;
-
-    break;
-  }
-  case NONDIM_BY_SCALAR_DIFFUSIVITY:{
-    double u_char = (is_dissolution_case? (Dl/l_char):(alpha_l/l_char));
-    vel_nondim_to_dim = u_char;
-    time_nondim_to_dim = l_char/u_char;
-
-    if(!is_dissolution_case){
-      // Elyce to-do: this is a work in progress
-      if(RaC<0.) RaC = beta_C * grav * deltaT * pow(l_char, 3.)/(Dl * (mu_l/rho_l)) ; // note that here deltaT actually corresponds to a change in concentration
-      // T variable in this code refers to either temp or conc
-    }
-    else{
-      if(RaT<0.) RaT = beta_T * grav * deltaT * pow(l_char, 3.)/(alpha_l * (mu_l/rho_l)) ;
-    }
-    break;
-  }
-  case DIMENSIONAL:{
-    vel_nondim_to_dim = 1.0;
-    time_nondim_to_dim = 1.0;
-  }
-  break;
-  default:{
-    throw std::runtime_error("set_nondimensional_groups: unrecognized nondim formulation in switch case \n");
-    break;
-  }
-  } // end of switch case
-} // end of function
-
-*/
 //-----------------------------------------
 // Properties to set if you are solving NS
 // ----------------------------------------
@@ -4354,8 +4280,15 @@ void perform_saving_tasks_of_interest(mpi_environment_t &mpi, splitting_criteria
 // --------------------------------------------------------------------------------------------------------------
 
 
-void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver){
+void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver, int grid_res_iter){
   select_solvers(); // Note, this function must be called "BEFORE" set_geometry()
+
+  stefan_w_fluids_solver->set_solve_stefan(solve_stefan);
+  stefan_w_fluids_solver->set_solve_navier_stokes(solve_navier_stokes);
+  stefan_w_fluids_solver->set_there_is_substrate(example_uses_inner_LSF);
+  stefan_w_fluids_solver->set_do_we_solve_for_Ts(do_we_solve_for_Ts);
+  stefan_w_fluids_solver->set_is_dissolution_case(is_dissolution_case);
+
 
   // ------------------------------
   // Make sure your flags are set to solve at least one of the problems:
@@ -4384,8 +4317,9 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   stefan_w_fluids_solver->set_periodicity(periodicity);
   stefan_w_fluids_solver->set_ntrees(ntrees);
 
-
-
+  // TO-DO: update this to include grid res iter
+  stefan_w_fluids_solver->set_lmin_lint_lmax(lmin+grid_res_iter, (lint>0) ? lint+grid_res_iter: lint, lmax+grid_res_iter);
+  // Note: we only pass lint if it was already specified as nonzero, otherwise just pass whatever the user passed
 
   //
   // if porous media example, create the porous media geometry:
@@ -4396,7 +4330,7 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   }
 
 
-  // INSERT HERE: set the LSF
+  // Set the LSF(s):
   stefan_w_fluids_solver->set_LSF_CF(&level_set);
   if(example_uses_inner_LSF) stefan_w_fluids_solver->set_substrate_LSF_CF(&substrate_level_set);
 
@@ -4404,11 +4338,15 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   // Set applicable parameters and nondim groups:
   // -----------------------------------------------
   select_problem_nondim_or_dim_formulation();
-  // INSERT HERE: Set values in solver
   stefan_w_fluids_solver->set_problem_dimensionalization_type(problem_dimensionalization_type);
 
+  // Set the defn's for the nondim temp/conc problem, and pass to solver:
+  set_temp_conc_nondim_defns();
+  stefan_w_fluids_solver->set_dim_temp_conc_variables(Tinfty, Tinterface, T0);
+  stefan_w_fluids_solver->set_nondim_temp_conc_variables(theta_infty, theta_interface, theta0, deltaT);
+
+  // Set the physical properties and pass to solver:
   set_physical_properties();
-  // INSERT HERE: Set values in solver
   stefan_w_fluids_solver->set_alpha_l(alpha_l);
   stefan_w_fluids_solver->set_alpha_s(alpha_s);
 
@@ -4428,7 +4366,7 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   stefan_w_fluids_solver->set_beta_T(beta_T);
   stefan_w_fluids_solver->set_beta_C(beta_C);
 
-  stefan_w_fluids_solver->set_gamma_diss(gamma_diss);
+//  stefan_w_fluids_solver->set_gamma_diss(gamma_diss); // this one gets computed in the solver
   stefan_w_fluids_solver->set_stoich_coeff_diss(stoich_coeff_diss);
   stefan_w_fluids_solver->set_molar_volume_diss(molar_volume_diss);
   stefan_w_fluids_solver->set_k_diss(k_diss);
@@ -4440,8 +4378,17 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   stefan_w_fluids_solver->print_physical_parameters();
 
 
+  // Set nondim groups (if they've been prescribed, a.k.a not the default of -1):
+  if(Re>=0.) stefan_w_fluids_solver->set_Re(Re);
+  if(Pr>=0.) stefan_w_fluids_solver->set_Pr(Pr);
+  if(Sc>=0.) stefan_w_fluids_solver->set_Sc(Sc);
+  if(Pe>=0.) stefan_w_fluids_solver->set_Pe(Pe);
+  if(St>=0.) stefan_w_fluids_solver->set_St(St);
+  if(Da>=0.) stefan_w_fluids_solver->set_Da(Da);
+  if(RaT>=0.) stefan_w_fluids_solver->set_RaT(RaT);
+  if(RaC>=0.) stefan_w_fluids_solver->set_RaC(RaC);
 
-
+  // The solver will automatically set nondim groups during the initializations
 
   if(solve_navier_stokes){
     set_NS_info();
@@ -4452,12 +4399,17 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   // INSERT HERE: set_nondimensional_groups() (from solver);
 
 
+
   // -----------------------------------------------
   // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
   // -----------------------------------------------
 
   simulation_time_info(); // INSERT HERE: update in solver as necessary
   stefan_w_fluids_solver->set_tn(tstart);
+  stefan_w_fluids_solver->set_dt_max_allowed(dt_max_allowed);
+
+  // Other:
+  stefan_w_fluids_solver->set_print_checkpoints(print_checkpoints);
 
 
   // -----------------------------------------------
@@ -4620,7 +4572,8 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
 
 
 //(V) want to keep this in main
-void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical_T[2],
+void initialize_all_relevant_bcs_ics_forcing_terms(my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver,
+                                                   temperature_field* analytical_T[2],
                                                    BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
                                                    BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
                                                    external_heat_source* external_heat_source_T[2],
@@ -4632,7 +4585,9 @@ void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical
                                                    BC_WALL_VALUE_PRESSURE& bc_wall_value_pressure,
                                                    BC_WALL_TYPE_PRESSURE& bc_wall_type_pressure,
                                                    external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
-                                                   external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM]){
+                                                   external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM],
+                                                   INITIAL_TEMP* T_init_cf[2], temperature_field* analytical_temp_init[2],
+                                                   INITIAL_VELOCITY* v_init_cf[P4EST_DIM], velocity_component* analytical_soln_v_init[P4EST_DIM]){
 
   // ------------------------------
   // Analytical v (used for some coupled cases so has to be
@@ -4715,6 +4670,140 @@ void initialize_all_relevant_bcs_ics_forcing_terms(temperature_field* analytical
     interface_bc_pressure(); // sets the interfacial bc type for pressure
     bc_wall_value_pressure.t = tn+dt;
   }
+
+
+
+  // ------------------------------
+  // Initial condition fields:
+  // ------------------------------
+//  INITIAL_TEMP *T_init_cf[2];
+//  temperature_field* analytical_temp[2];
+  if(solve_stefan){
+    if(analytical_IC_BC_forcing_term){
+      coupled_test_sign = 1.;
+      vel_has_switched=false;
+
+      for(unsigned char d=0;d<2;++d){
+        analytical_temp_init[d]= new temperature_field(d);
+        analytical_temp_init[d]->t = tstart;
+      }
+      for(unsigned char d=0;d<2;++d){
+        T_init_cf[d]= new INITIAL_TEMP(d,analytical_temp_init);
+      }
+
+    }
+    else{
+      for(unsigned char d=0;d<2;++d){
+        T_init_cf[d] = new INITIAL_TEMP(d);
+        T_init_cf[d]->t = tstart;
+      }
+    }
+  }
+
+//  INITIAL_VELOCITY *v_init_cf[P4EST_DIM];
+//  velocity_component* analytical_soln[P4EST_DIM];
+  if(solve_navier_stokes){
+    if(analytical_IC_BC_forcing_term)
+    {
+      for(unsigned char d=0;d<P4EST_DIM;++d){
+        analytical_soln_v_init[d] = new velocity_component(d);
+        analytical_soln_v_init[d]->t = tstart;
+      }
+    }
+    for(unsigned char d=0;d<P4EST_DIM;++d){
+      if(analytical_IC_BC_forcing_term){
+        v_init_cf[d] = new INITIAL_VELOCITY(d,analytical_soln_v_init);
+        v_init_cf[d]->t = tstart;
+      }
+      else {
+        v_init_cf[d] = new INITIAL_VELOCITY(d);
+      }
+    }
+  }
+
+  // TO-DO: check that these new guys get deleted, I think it might be okay bc they're defined within the fxn?
+
+  // ------------------------------
+  // Set initial fields for the solver!
+  // ------------------------------
+  // Initial fields:
+  CF_DIM* initial_temp[2] = {T_init_cf[0], T_init_cf[1]};
+  stefan_w_fluids_solver->set_initial_temp_n(initial_temp);
+  stefan_w_fluids_solver->set_initial_temp_nm1(initial_temp);
+
+  CF_DIM* initial_velocity[P4EST_DIM] = {DIM(v_init_cf[0], v_init_cf[1], v_init_cf[2])};
+  stefan_w_fluids_solver->set_initial_NS_velocity_n_(initial_velocity);
+  stefan_w_fluids_solver->set_initial_NS_velocity_nm1_(initial_velocity);
+
+  stefan_w_fluids_solver->set_initial_refinement_CF(&initial_refinement_cf);
+
+  // ------------------------------
+  // Set temp/conc BC's and forcing terms
+  // ------------------------------
+  // Interface:
+  // ------------
+  // Value:
+
+  // Type:
+
+  // Robin coeff:
+
+  // ------------
+  // Wall:
+  // ------------
+  // Value:
+  CF_DIM* bc_wall_value_temp_[2] = {bc_wall_value_temp[LIQUID_DOMAIN], bc_wall_value_temp[SOLID_DOMAIN]};
+  stefan_w_fluids_solver->set_bc_wall_value_temp(bc_wall_value_temp_);
+
+  // Type:
+  WallBCDIM* bc_wall_type_temp_[2] = {&bc_wall_type_temp, &bc_wall_type_temp};
+  stefan_w_fluids_solver->set_bc_wall_type_temp(bc_wall_type_temp_);
+
+
+  // ------------
+  // Substrate interface:
+  // ------------
+  // Value:
+
+  // Type:
+
+  // Robin coeff:
+
+  // ------------
+  // External heat source:
+  // ------------
+  CF_DIM* external_heat_source_[2] = {external_heat_source_T[LIQUID_DOMAIN], external_heat_source_T[SOLID_DOMAIN]};
+  if(analytical_IC_BC_forcing_term) stefan_w_fluids_solver->set_user_provided_external_heat_source(external_heat_source_);
+
+
+  // ------------------------------
+  // Set NS BC's and forcing terms
+  // ------------------------------
+  // Velocity interface:
+  // ------------
+
+
+  // ------------
+  // Velocity wall:
+  // ------------
+
+
+
+  // ------------
+  // Pressure interface
+  // ------------
+
+
+  // ------------
+  // Pressure wall
+  // ------------
+
+
+
+  // ------------
+  // External force terms
+  // ------------
+
 }
 
 
@@ -4727,7 +4816,9 @@ void destroy_all_relevant_bcs_ics_forcing_terms(mpi_environment_t &mpi,
                                 external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM],
                                 BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
                                 BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
-                                BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM])
+                                BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM],
+                                                INITIAL_TEMP* T_init_cf[2], temperature_field* analytical_temp_init[2],
+                                                INITIAL_VELOCITY* v_init_cf[P4EST_DIM], velocity_component* analytical_soln_v_init[P4EST_DIM])
 {
   // Destroy all the bcs/ics/forcing terms we created
   if(solve_stefan){
@@ -4761,6 +4852,27 @@ void destroy_all_relevant_bcs_ics_forcing_terms(mpi_environment_t &mpi,
       delete bc_wall_type_velocity[d];
     }
 
+  }
+
+  // Destroy IC objects:
+  // TO-DO: clean thisup
+
+  if(solve_stefan){
+    for(unsigned char d=0;d<2;++d){
+      if(analytical_IC_BC_forcing_term){
+        delete analytical_temp_init[d];
+      }
+      delete T_init_cf[d];
+    }
+  }
+
+  if(solve_navier_stokes){
+    for(unsigned char d=0;d<P4EST_DIM;++d){
+      if(analytical_IC_BC_forcing_term){
+        delete analytical_soln_v_init[d];
+      }
+      delete v_init_cf[d];
+    }
   }
 }
 
@@ -4878,6 +4990,11 @@ int main(int argc, char** argv) {
   BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2];
   BC_WALL_VALUE_TEMP* bc_wall_value_temp[2];
 
+
+  // Initial conditions:
+  INITIAL_TEMP* T_init_cf[2];
+  temperature_field* analytical_temp_init[2];
+
   // Navier-Stokes boundary conditions: -----------------
   BoundaryConditions2D bc_velocity[P4EST_DIM];
   BoundaryConditions2D bc_pressure;
@@ -4904,6 +5021,10 @@ int main(int argc, char** argv) {
   vec_and_ptr_t external_forces_Ts;
   vec_and_ptr_dim_t external_forces_ns;
 
+  // Initial conditions:
+  INITIAL_VELOCITY* v_init_cf[P4EST_DIM];
+  velocity_component* analytical_soln_v_init[P4EST_DIM];
+
 
   // Files for outputting relevant information : ---------
   FILE *fich_errors = NULL;
@@ -4926,8 +5047,32 @@ int main(int argc, char** argv) {
     stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(mpi_p);
 
     // Set all the things needed:
-    setup_initial_parameters_and_report(mpi, stefan_w_fluids_solver);
+    setup_initial_parameters_and_report(mpi, stefan_w_fluids_solver, grid_res_iter);
 
+
+
+
+    // ------------------------------------------------------------
+    // Initialize relevant boundary condition objects:
+    // ------------------------------------------------------------
+    if(print_checkpoints)PetscPrintf(mpi.comm(),"Initializing all BCs/ICs/forcing terms ... \n");
+
+    initialize_all_relevant_bcs_ics_forcing_terms(stefan_w_fluids_solver,
+                                                  analytical_T,
+                                                  bc_interface_val_temp,
+                                                  bc_wall_value_temp,
+                                                  external_heat_source_T,
+                                                  analytical_soln_v,
+                                                  bc_interface_value_velocity,
+                                                  bc_wall_value_velocity,
+                                                  bc_wall_type_velocity,
+                                                  bc_interface_value_pressure,
+                                                  bc_wall_value_pressure,
+                                                  bc_wall_type_pressure,
+                                                  external_force_components,
+                                                  external_force_components_with_BA,
+                                                  T_init_cf, analytical_temp_init,
+                                                  v_init_cf, analytical_soln_v_init);
 
     // -----------------------------------------------
     // Perform grid and field initializations
@@ -4946,38 +5091,16 @@ int main(int argc, char** argv) {
 
     double t_original_start = tstart;
 
-    /*
-    perform_initializations(mpi, sp, grid_res_iter,
-                            p4est_np1, nodes_np1, ghost_np1,
-                            ngbd_np1, hierarchy_np1,
-                            faces_np1, ngbd_c_np1,
-                            p4est_n, nodes_n, ghost_n,
-                            ngbd_n, hierarchy_n,
-                            brick, conn,
-                            ns, ls,
-                            phi, phi_nm1, phi_substrate, phi_eff,
-                            T_l_n, T_s_n, T_l_nm1, T_l_d, T_s_d, jump, v_interface,
-                            v_n,v_nm1, vorticity, press_nodes,
-                            dxyz_smallest, dxyz_close_to_interface, load_tstep, last_tstep);
-    */
-    // ------------------------------------------------------------
-    // Initialize relevant boundary condition objects:
-    // ------------------------------------------------------------
-    if(print_checkpoints)PetscPrintf(mpi.comm(),"Initializing all BCs/ICs/forcing terms ... \n");
+    stefan_w_fluids_solver->perform_initializations();
 
-    initialize_all_relevant_bcs_ics_forcing_terms(analytical_T,
-                                                  bc_interface_val_temp,
-                                                  bc_wall_value_temp,
-                                                  external_heat_source_T,
-                                                  analytical_soln_v,
-                                                  bc_interface_value_velocity,
-                                                  bc_wall_value_velocity,
-                                                  bc_wall_type_velocity,
-                                                  bc_interface_value_pressure,
-                                                  bc_wall_value_pressure,
-                                                  bc_wall_type_pressure,
-                                                  external_force_components,
-                                                  external_force_components_with_BA);
+    // TO-DO: see if there is a better place to put this every dt saving stuff:
+    time_nondim_to_dim = stefan_w_fluids_solver->get_time_nondim_to_dim();
+
+    if(save_using_dt){
+      save_every_dt/=time_nondim_to_dim;
+      stefan_w_fluids_solver->set_dt_max_allowed(save_every_dt - EPS);
+    }
+
 
     // -----------------------------------------------
     // Initialize files to output various data of interest:
@@ -5131,7 +5254,9 @@ int main(int argc, char** argv) {
                                              analytical_soln_v,
                                              external_force_components, external_force_components_with_BA,
                                              bc_interface_value_velocity, bc_wall_value_velocity,
-                                             bc_wall_type_velocity);
+                                             bc_wall_type_velocity,
+                                             T_init_cf, analytical_temp_init,
+                                             v_init_cf, analytical_soln_v_init);
   // INSERT HERE: call destructor
 
 //  perform_final_destructions(mpi, sp, p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,

@@ -176,7 +176,7 @@ private:
   CF_DIM* bc_interface_robin_coeff_temp[2];
 
   CF_DIM* bc_wall_value_temp[2];
-  BoundaryConditionType* bc_wall_type_temp[2];
+  WallBCDIM* bc_wall_type_temp[2];
 
   CF_DIM* bc_interface_val_temp_substrate[2];
   BoundaryConditionType* bc_interface_type_temp_substrate[2];
@@ -848,7 +848,7 @@ public:
     }
   }
 
-  void set_bc_wall_type_temp(BoundaryConditionType* bc_wall_type_temp_[2]){
+  void set_bc_wall_type_temp(WallBCDIM* bc_wall_type_temp_[2]){
     for(unsigned char i=0; i<2; i++){
       bc_wall_type_temp[i] = bc_wall_type_temp_[i];
     }
@@ -1177,6 +1177,11 @@ public:
       initial_temp_n[i] = init_temp_n_[i];
     }
   }
+
+//  void set_initial_temp_n(CF_DIM &init_T, int domain_){
+//    initial_temp_n[domain_] = &init_T;
+//  }
+
   void set_initial_temp_nm1(CF_DIM* init_temp_nm1_[2]){
     for(unsigned char i=0; i<2; i++){
       initial_temp_nm1[i] = init_temp_nm1_[i];
