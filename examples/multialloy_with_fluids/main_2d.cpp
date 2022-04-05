@@ -1265,6 +1265,7 @@ double perturb_flow_noise =0.25;
 
 
 //double G_press; // corresponds to porous media example, it is the prescribed pressure gradient across the channel, applied as a pressure drop, aka (P1 - P2)/L = G --> specified
+// TO-DO: clean this out so we have only what is actually used
 void set_NS_info(){
   pressure_prescribed_flux = 0.0; // For the Neumann condition on the two x walls and lower y wall
   pressure_prescribed_value = 0.0; // For the Dirichlet condition on the back y wall
@@ -4370,8 +4371,23 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   // -----------------------------------------------
   // domain size information
   set_geometry();
-  // INSERT HERE: Set values in solver
 
+
+  // INSERT HERE: Set values in solver
+  double xyz_min[P4EST_DIM] = {DIM(xmin, ymin, 0)};
+  double xyz_max[P4EST_DIM] = {DIM(xmax, ymax, 0)};
+  int periodicity[P4EST_DIM] = {DIM(px, py, 0)};
+  int ntrees[P4EST_DIM] = {DIM(nx, ny, 0)};
+
+  stefan_w_fluids_solver->set_xyz_min(xyz_min);
+  stefan_w_fluids_solver->set_xyz_max(xyz_max);
+  stefan_w_fluids_solver->set_periodicity(periodicity);
+  stefan_w_fluids_solver->set_ntrees(ntrees);
+
+
+
+
+  //
   // if porous media example, create the porous media geometry:
   // do this operation on one process so they don't have different grain defn's.
   /*if(mpi.rank() == 0) */
@@ -4379,17 +4395,59 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
     make_LSF_for_porous_media(mpi);
   }
 
+
+  // INSERT HERE: set the LSF
+  stefan_w_fluids_solver->set_LSF_CF(&level_set);
+  if(example_uses_inner_LSF) stefan_w_fluids_solver->set_substrate_LSF_CF(&substrate_level_set);
+
   // -----------------------------------------------
   // Set applicable parameters and nondim groups:
   // -----------------------------------------------
   select_problem_nondim_or_dim_formulation();
   // INSERT HERE: Set values in solver
+  stefan_w_fluids_solver->set_problem_dimensionalization_type(problem_dimensionalization_type);
 
   set_physical_properties();
   // INSERT HERE: Set values in solver
+  stefan_w_fluids_solver->set_alpha_l(alpha_l);
+  stefan_w_fluids_solver->set_alpha_s(alpha_s);
+
+  stefan_w_fluids_solver->set_k_l(k_l);
+  stefan_w_fluids_solver->set_k_s(k_s);
+
+  stefan_w_fluids_solver->set_rho_l(rho_l);
+  stefan_w_fluids_solver->set_rho_s(rho_s);
+
+  stefan_w_fluids_solver->set_cp_s(cp_s);
+  stefan_w_fluids_solver->set_L(L);
+  stefan_w_fluids_solver->set_sigma(sigma);
+
+  stefan_w_fluids_solver->set_mu_l(mu_l);
+
+  stefan_w_fluids_solver->set_grav(grav);
+  stefan_w_fluids_solver->set_beta_T(beta_T);
+  stefan_w_fluids_solver->set_beta_C(beta_C);
+
+  stefan_w_fluids_solver->set_gamma_diss(gamma_diss);
+  stefan_w_fluids_solver->set_stoich_coeff_diss(stoich_coeff_diss);
+  stefan_w_fluids_solver->set_molar_volume_diss(molar_volume_diss);
+  stefan_w_fluids_solver->set_k_diss(k_diss);
+
+  stefan_w_fluids_solver->set_Dl(Dl);
+  stefan_w_fluids_solver->set_Ds(Ds);
+
+  // Check that the parameters were set:
+  stefan_w_fluids_solver->print_physical_parameters();
+
+
+
+
+
   if(solve_navier_stokes){
     set_NS_info();
   }
+  stefan_w_fluids_solver->set_hodge_percentage_of_max_u(hodge_percentage_of_max_u);
+  stefan_w_fluids_solver->set_hodge_max_iteration(100);
   // INSERT HERE: Set values in solver?
   // INSERT HERE: set_nondimensional_groups() (from solver);
 
@@ -4399,7 +4457,7 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   // -----------------------------------------------
 
   simulation_time_info(); // INSERT HERE: update in solver as necessary
-
+  stefan_w_fluids_solver->set_tn(tstart);
 
 
   // -----------------------------------------------
@@ -4410,77 +4468,6 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
                             "\n \n"
                             "--> We are running EXAMPLE %d \n"
                             "------------------------------------\n\n",example_);
-//  PetscPrintf(mpi.comm(),"------------------------------------"
-//                          "\n \n"
-//                          "INITIAL PROBLEM INFORMATION\n"
-//                          "------------------------------------\n\n",example_);
-
-//  PetscPrintf(mpi.comm(),"Example number %d \n \n",example_);
-//  PetscPrintf(mpi.comm(), "The nondimensionalizaton formulation being used is %s \n \n",
-//              (problem_dimensionalization_type == 0)?
-//                                                     ("NONDIM BY FLUID VELOCITY"):
-//                                                     ((problem_dimensionalization_type == 1) ?
-//                                                                                             ("NONDIM BY DIFFUSIVITY") : ("DIMENSIONAL")));
-
-//  PetscPrintf(mpi.comm(), "Nondim = %d \n"
-//                          "lmin = %d, lmax = %d \n"
-//                          "Number of mpi tasks: %d \n"
-//                          "Stefan = %d, NS = %d \n \n ", problem_dimensionalization_type,
-//              lmin, lmax,
-//              mpi.size(),
-//              solve_stefan, solve_navier_stokes);
-//  PetscPrintf(mpi.comm(),"The nondimensional groups are: \n"
-//                          "Re = %f \n"
-//                          "Pr = %f \n"
-//                          "Sc = %f \n"
-//                          "Pe = %f \n"
-//                          "St = %f \n"
-//                          "Da = %f \n"
-//                          "gamma_diss = %f \n"
-//                          "With: \n"
-//                          "u_inf = %0.3e [m/s]\n"
-//                          "delta T = %0.2f [K]\n"
-//                          "sigma = %0.3e, l_char = %0.3e, sigma/l_char = %0.3e \n \n",
-//              Re, Pr, Sc, Pe, St, Da, gamma_diss,
-//              u_inf,deltaT,sigma,l_char,sigma/l_char);
-
-
-
-
-//  PetscPrintf(mpi.comm(),"Simulation time: %0.4f [min] = %0.4f [sec] = %0.4f [nondim]\n\n",
-//              tfinal*time_nondim_to_dim/60.,
-//              tfinal*time_nondim_to_dim,
-//              tfinal);
-
-//  bool using_startup = (startup_dim_time>0.) || (startup_nondim_time >0.);
-//  bool using_dim_startup = using_startup && (startup_dim_time>0.);
-
-//  PetscPrintf(mpi.comm(),"Are we using startup time? %s \n \n",using_startup? "Yes": "No");
-//  if(using_startup){
-//    PetscPrintf(mpi.comm(),"Startup time: %s = %0.2f %s \n", using_dim_startup? "Dimensional" : "Nondimensional", using_dim_startup? startup_dim_time:startup_nondim_time,using_dim_startup? "[seconds]": "[nondim]");
-//  }
-
-
-//  PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n \n ",uniform_band);
-
-//  PetscPrintf(mpi.comm(),"Are we ramping bcs? %s \n t_ramp = %0.2f [nondim] = %0.2f [seconds] \n \n",ramp_bcs?"Yes":"No",t_ramp,t_ramp*time_nondim_to_dim);
-
-//  PetscPrintf(mpi.comm(),"Are we loading from previous state? %s \n"
-//                          "Starting timestep = %d \n"
-//                          "Save state every iter = %d \n"
-//                          "Save to vtk? %s \n"
-//                          "Save using %s \n"
-//                          "Save every dt = %0.5e [nondim] = %0.2f [seconds]\n"
-//                          "Save every iter = %d \n \n",loading_from_previous_state?"Yes":"No",
-//              tstep,
-//              save_state_every_iter,
-//              save_to_vtk?"Yes":"No",
-//              save_using_dt? "dt" :"iter",
-//              save_every_dt, save_every_dt*time_nondim_to_dim,
-//              save_every_iter);
-//  PetscPrintf(mpi.comm(),"------------------------------------\n\n");
-
-
 }
 
 
@@ -4789,6 +4776,7 @@ void destroy_all_relevant_bcs_ics_forcing_terms(mpi_environment_t &mpi,
 int main(int argc, char** argv) {
   // prepare parallel enviroment
   mpi_environment_t mpi;
+  mpi_environment_t* mpi_p = &mpi;
   mpi.init(argc, argv);
   PetscErrorCode ierr;
   PetscViewer viewer;
@@ -4935,8 +4923,10 @@ int main(int argc, char** argv) {
   // -----------------------------------------------
   for(int grid_res_iter=0;grid_res_iter<=num_splits;grid_res_iter++){
     // Create the solver:
-    stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(/*mpi*/);
-//    PetscPrintf(mpi.comm(), "Creates solver \n");
+    stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(mpi_p);
+
+    // Set all the things needed:
+    setup_initial_parameters_and_report(mpi, stefan_w_fluids_solver);
 
 
     // -----------------------------------------------
@@ -5010,11 +5000,32 @@ int main(int argc, char** argv) {
     double cfl_NS_steady = cfl_NS;
     double hodge_percentage_steady = hodge_percentage_of_max_u;
 
-    while(tn<=tfinal){
+    // TO-DO: change while loop back to normal once ready
+    while(tstep<5/*tn<=tfinal*/){
       if((timing_every_n>0) && (tstep%timing_every_n == 0)) {
         PetscPrintf(mpi.comm(),"Current time info : \n");
         w.read_duration_current();
       }
+
+      // ---------------------------------------
+      // Print iteration information:
+      // ---------------------------------------
+      // TO-DO: uncomment below when ready
+//      int num_nodes = stefan_w_fluids_solver->get_nodes_np1()->num_owned_indeps;
+//      MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
+      int num_nodes = 1;
+      ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
+                                     "Iteration %d , Time: %0.3f [nondim] "
+                                     "= Time: %0.3f [nondim] "
+                                     "= %0.3f [sec] "
+                                     "= %0.3f [min],"
+                                     " Timestep: %0.3e [nondim] = %0.3e [sec],"
+                                     " Percent Done : %0.2f %"
+                                     " \n ------------------------------------------- \n"
+                                     "Number of nodes : %d \n \n",
+                         tstep,tn,tn,tn*time_nondim_to_dim,tn*(time_nondim_to_dim)/60.,
+                         dt, dt*(time_nondim_to_dim),
+                         ((tn-t_original_start)/(tfinal-t_original_start))*100.0,num_nodes);
 
       // -------------------------------
       // Clip time and switch vel direction

@@ -186,13 +186,6 @@ private:
   CF_DIM* user_provided_external_heat_source[2];
   bool there_is_user_provided_heat_source;
 
-
-  void set_user_provided_external_heat_source(CF_DIM* user_heat_source_[2]){
-    for (unsigned int i=0; i<2; i++){
-      user_provided_external_heat_source[i] = user_heat_source_[i];
-    }
-    there_is_user_provided_heat_source = true;
-  }
   // ----------------------------------------------
   // Stefan problem:
   // ----------------------------------------------
@@ -245,25 +238,15 @@ private:
   CF_DIM* user_provided_external_forces_NS[P4EST_DIM];
   bool there_is_user_provided_external_force_NS;
 
-  void set_user_provided_external_force_NS(CF_DIM* user_external_forces_NS_[2]){
-    foreach_dimension(d){
-      user_provided_external_forces_NS[d] = user_external_forces_NS_[d];
-    }
-    there_is_user_provided_external_force_NS = true;
-  }
 
   // Other parameters:
   double NS_norm; // for keeping track of NS norm
   double NS_max_allowed;
-  void set_NS_max_allowed(double NS_norm_max_allowed_){NS_max_allowed = NS_norm_max_allowed_;}
 
   double hodge_tolerance;
   double hodge_percentage_of_max_u;
-  void set_hodge_percentage_of_max_u(double max_perc){
-    hodge_percentage_of_max_u = max_perc;
-  }
+
   int hodge_max_it;
-  void set_hodge_max_iteration(int max_it){hodge_max_it = max_it;}
 
   // whether or not to compute pressure for a given tstep
   // (this saves computational time bc we don't need to compute pressure
@@ -290,50 +273,6 @@ private:
 
   // For initializationg from load state:
   bool loading_from_previous_state;
-
-
-  void set_xyz_min(double xyz_min_[P4EST_DIM]){
-    foreach_dimension(d){
-      xyz_min[d] = xyz_min_[d];
-    }
-  }
-  void set_xyz_max(double xyz_max_[P4EST_DIM]){
-    foreach_dimension(d){
-      xyz_max[d] = xyz_max_[d];
-    }
-  }
-
-  void set_ntrees(int ntrees_[P4EST_DIM]){
-    foreach_dimension(d){
-      ntrees[d] = ntrees_[d];
-    }
-  }
-
-  void set_periodicity(int periodicity_[P4EST_DIM]){
-    foreach_dimension(d){
-      periodicity[d] = periodicity_[d];
-    }
-  }
-
-  void set_lmin_lint_lmax(int lmin_, int lint_, int lmax_){
-    lmin = lmin_; lint = lint_; lmax= lmax_;
-  }
-  // If you set a uniform band, we assume you use it
-  void set_uniform_band(double uniform_band_){
-    use_uniform_band = true;
-    uniform_band = uniform_band_;}
-
-  // NOTE: ref by vorticity is assumed true whenever navier stokes is solved
-  void set_refine_by_d2T(bool ref_by_d2T_){refine_by_d2T = ref_by_d2T_;}
-
-  void set_vorticity_ref_threshold(double vort_thresh){
-    vorticity_threshold = vort_thresh;
-  }
-  void set_d2T_ref_threshold(double d2T_thresh){d2T_threshold = d2T_thresh;}
-  void set_loading_from_previous_state(bool loading_from_prev_state_){
-    loading_from_previous_state = loading_from_prev_state_;
-  }
-
 
   // Functions to check initialization status:
   // Used to make sure user has set the domain info before attempting initializations
@@ -362,9 +301,7 @@ private:
   double dxyz_smallest[P4EST_DIM];
   double dxyz_close_to_interface;
   double dxyz_close_to_interface_mult; // multiplier set by user on dxyz_close_to_interface
-  void set_dxyz_close_to_interface_mult(double dxyz_close_to_interface_mult_){
-    dxyz_close_to_interface_mult = dxyz_close_to_interface_mult_;
-  }
+
 
   // ----------------------------------------------
   // Variables used for extension of fields:
@@ -383,10 +320,6 @@ private:
   double dt_NS;
   double dt_max_allowed;
 
-  void set_tn(double tn_){tn = tn_;}
-  void set_dt(double dt_){dt = dt_;}
-  void set_dt_nm1(double dt_nm1_){dt_nm1 = dt_nm1_;}
-  void set_dt_max_allowed(double dt_max_allowed_){dt_max_allowed = dt_max_allowed_;}
 
 
   double tstart; // for tracking percentage done // TO-DO: revisit if this is needed
@@ -394,7 +327,6 @@ private:
   double v_interface_max_norm; // for keeping track of max norm of vinterface
   double v_interface_max_allowed; // max allowable value before we trigger a crash state
 
-  void set_v_interface_max_allowed(double vint_max_all_){v_interface_max_allowed = vint_max_all_;}
 
 
   int advection_sl_order; // advec order for scalar temp/conc problem
@@ -407,32 +339,23 @@ private:
 //  int last_tstep; // this is not needed
 
   int out_idx; // for vtk
-  void set_out_idx(int out_idx_vtk){out_idx = out_idx_vtk;}
 //  int data_save_out_idx; // for saving to files // TO-DO: handle properly in main
 
   double cfl_Stefan;
   double cfl_NS;
-  void set_cfl_Stefan(double cfl_stefan_){cfl_Stefan = cfl_stefan_;}
-  void set_cfl_NS(double cfl_ns_){cfl_NS = cfl_ns_;}
+
 
   // ----------------------------------------------
   // Related to dimensionalization type:
   // ----------------------------------------------
   problem_dimensionalization_type_t problem_dimensionalization_type;
-  void set_problem_dimensionalization_type(problem_dimensionalization_type_t prob_dim_type_){
-    problem_dimensionalization_type = prob_dim_type_;
-  }
+
 
   // Converting nondim to dim:
   double time_nondim_to_dim;
   double vel_nondim_to_dim;
 
-  double get_time_nondim_to_dim(){
-    return time_nondim_to_dim;
-  }
-  double get_vel_nondim_to_dim(){
-    return vel_nondim_to_dim;
-  }
+
 
   // ----------------------------------------------
   // Nondimensional groups
@@ -526,14 +449,7 @@ private:
   } // end of function
 
   // TO-DO: make set_X fxns for all nondim groups? Altho idk if that will allow for consistent usage??? Check this
-  void set_Re(double Re_){Re = Re_;}
-  void set_Pr(double Pr_){Pr = Pr_;}
-  void set_Sc(double Sc_){Sc = Sc_;}
-  void set_Pe(double Pe_){Pe = Pe_;}
-  void set_St(double St_){St = St_;}
-  void set_Da(double Da_){Da = Da_;}
-  void set_RaT(double RaT_){RaT = RaT_;}
-  void set_RaC(double RaC_){RaC = RaC_;}
+
 
 
   // ----------------------------------------------
@@ -543,21 +459,15 @@ private:
   double l_char; // Characteristic length scale (assumed in meters)
   double u_inf; // Characteristic velocity scale (assumed in m/s)
 
-  void set_l_char(double l_char_){l_char = l_char_;}
-  void set_u_inf(double u_inf_){u_inf = u_inf_;}
+
 
   double T0; // characteristic solid temperature of the problem
   double Tinterface; // Interface temperature or concentration
   double Tinfty; // Freestream fluid temperature or concentration
   double Tflush; // Flush temperature (K) or concentration that inlet BC is changed to if flush_dim_time is activated
 
-  void set_dim_temp_conc_variables(double Tinfty_, double Tinterface_, double T0_){
-    Tinfty = Tinfty_;
-    Tinterface = Tinterface_;
-    T0 = T0_;
-  };
 
-  void set_Tflush(double Tflush_){Tflush = Tflush_;}
+
 
   double alpha_l, alpha_s; // Liquid and solid thermal diffusivities, [m^2/s]
   double k_l, k_s; // Liquid and solid thermal conductivities, [W/(mK)]
@@ -579,53 +489,6 @@ private:
   double Dl, Ds; //Concentration diffusion coefficient m^2/s,
   double k_diss; // Dissolution rate constant per unit area of reactive surface (m/s)
 
-  // Let the user check that they set what they think they set:
-  void print_physical_parameters(){
-    PetscPrintf(mpi.comm(), "alpha_l = %e, alpha_s= %e \n"
-                            "k_l = %e, k_s = %e \n"
-                            "rho_l = %e, rho_s = %e \n"
-                            "cp_s = %e \n"
-                            "L = %e \n"
-                            "mu_l = %e \n"
-                            "sigma = %e \n"
-                            "grav = %e \n"
-                            "betaT = %e, betaC = %e \n"
-                            "gamma_diss = %e, stoich_coeff_diss = %e, \n "
-                            "molar_volume_diss = %e, k_diss = %e \n"
-                            "Dl = %e, Ds = %e \n",
-                            alpha_l, alpha_s,
-                            k_l, k_s,
-                            rho_l, rho_s,
-                            cp_s,
-                            L,
-                            mu_l,
-                            sigma,
-                            grav,
-                            beta_T, beta_C,
-                            gamma_diss, stoich_coeff_diss,
-                            molar_volume_diss, k_diss,
-                            Dl, Ds);
-  }
-
-  void set_alpha_l(double alpha_l_){alpha_l = alpha_l_;}
-  void set_alpha_s(double alpha_s_){alpha_s = alpha_s_;}
-  void set_k_l(double k_l_){k_l = k_l_;}
-  void set_k_s(double k_s_){k_s = k_s_;}
-  void set_rho_l(double rho_l_){rho_l = rho_l_;}
-  void set_rho_s(double rho_s_){rho_s = rho_s_;}
-  void set_cp_s(double cp_s_){cp_s = cp_s_;}
-  void set_L(double L_){L = L_;}
-  void set_mu_l(double mu_l_){mu_l = mu_l_;}
-  void set_sigma(double sigma_){sigma = sigma_;}
-  void set_grav(double grav_){grav = grav_;}
-  void set_beta_T(double beta_T_){beta_T = beta_T_;}
-  void set_beta_C(double beta_C_){beta_C = beta_C_;}
-  void set_gamma_diss(double gamma_diss_){gamma_diss = gamma_diss_;}
-  void set_stoich_coeff_diss(double stoich_coeff_diss_){stoich_coeff_diss = stoich_coeff_diss_;}
-  void set_molar_volume_diss(double molar_volume_diss_){molar_volume_diss = molar_volume_diss_;}
-  void set_Dl(double Dl_){Dl = Dl_;}
-  void set_Ds(double Ds_){Ds = Ds_;}
-  void set_k_diss(double k_diss_){k_diss = k_diss_;}
 
 
   // ----------------------------------------------
@@ -650,7 +513,6 @@ private:
   bool print_checkpoints; // can set this to true to debug where code might be crashing
 
   double scale_vgamma_by; // Used in coupled convergence test to switch the sign of the interface velocity
-  void set_scale_vgamma_by(double scale_vgamma_by_){scale_vgamma_by = scale_vgamma_by_;}
   // ----------------------------------------------
   // Specific to diff cases --> may change these now that they are within a class structure
   // ----------------------------------------------
@@ -665,7 +527,6 @@ private:
 //  bool example_has_known_max_vint;
 
   bool track_evolving_geometries;
-  void set_track_evolving_geometries(bool track_evo_geom_){track_evolving_geometries = track_evo_geom_;}
 
   // ----------------------------------------------
   // Related to any front regularization:
@@ -676,14 +537,7 @@ private:
   double proximity_smoothing;
   double proximity_collapse;
 
-  void set_use_regularize_front(bool use_reg_front_ ){ use_regularize_front = use_reg_front_;}
-  void set_use_collapse_onto_substrate(bool use_collapse_onto_sub_){ use_collapse_onto_substrate = use_collapse_onto_sub_;}
-  void set_proximity_smoothing(double prox_smoothing_){
-    proximity_smoothing = prox_smoothing_;
-  }
-  void set_proximity_collapse(double prox_collapse_){
-    proximity_collapse = prox_collapse_;
-  }
+
   // ----------------------------------------------
   // Related to LSF reinitialization
   // ----------------------------------------------
@@ -701,13 +555,6 @@ private:
   // These things get computed depending on the provided dimensional quantities and case
   double deltaT;
   double theta_infty, theta_interface, theta0;
-  void set_nondim_temp_conc_variables(double theta_infty_, double theta_interface_,
-                                      double theta0_, double deltaT_){
-    theta_infty = theta_infty_;
-    theta_interface = theta_interface_;
-    theta0 = theta0_;
-    deltaT = deltaT_;
-  };
 
 
   // -------------------------------------------------------
@@ -723,29 +570,21 @@ private:
   CF_DIM* initial_NS_velocity_n[P4EST_DIM];
   CF_DIM* initial_NS_velocity_nm1[P4EST_DIM];
 
-  void set_initial_temp_n(CF_DIM* init_temp_n_[2]){
-    for(unsigned char i=0; i<2; i++){
-      initial_temp_n[i] = init_temp_n_[i];
-    }
-  }
-  void set_initial_temp_nm1(CF_DIM* init_temp_nm1_[2]){
-    for(unsigned char i=0; i<2; i++){
-      initial_temp_nm1[i] = init_temp_nm1_[i];
-    }
-  }
 
-  void set_initial_NS_velocity_n_(CF_DIM* init_vel_n_[P4EST_DIM]){
-    foreach_dimension(d){
-      initial_NS_velocity_n[d] = init_vel_n_[d];
-    }
-  }
 
-  void set_initial_NS_velocity_nm1_(CF_DIM* init_vel_nm1_[P4EST_DIM]){
-    foreach_dimension(d){
-      initial_NS_velocity_nm1[d] = init_vel_nm1_[d];
-    }
-  }
 
+public:
+  // -------------------------------------------------------
+  // Constructor/Destructor:
+  // -------------------------------------------------------
+
+  my_p4est_stefan_with_fluids_t(mpi_environment_t* mpi_);
+  ~my_p4est_stefan_with_fluids_t();
+
+
+  // -------------------------------------------------------
+  // Auxiliary initialization fxns:
+  // -------------------------------------------------------
 
   /*!
    * \brief initialize_grids:This function initializes the grids p4est_n and p4est_np1 depending on the
@@ -851,60 +690,60 @@ private:
 
   class interfacial_bc_temp_t: public CF_DIM{
     private:
-      my_p4est_stefan_with_fluids_t* owner;
+    my_p4est_stefan_with_fluids_t* owner;
 
-      my_p4est_node_neighbors_t* ngbd_bc_temp;
+    my_p4est_node_neighbors_t* ngbd_bc_temp;
 
-      // Curvature interp:
-      my_p4est_interpolation_nodes_t* kappa_interp;
+    // Curvature interp:
+    my_p4est_interpolation_nodes_t* kappa_interp;
 
-      // Normals interp:
-      my_p4est_interpolation_nodes_t* nx_interp;
-      my_p4est_interpolation_nodes_t* ny_interp;
-      // TO-DO: add 3d case
+    // Normals interp:
+    my_p4est_interpolation_nodes_t* nx_interp;
+    my_p4est_interpolation_nodes_t* ny_interp;
+    // TO-DO: add 3d case
 
-      bool do_we_use_curvature;
-      bool do_we_use_normals;
+    bool do_we_use_curvature;
+    bool do_we_use_normals;
 
-    public:
-      interfacial_bc_temp_t (my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_curvature_, bool do_we_use_normals_) :
-            owner(parent_solver), do_we_use_curvature(do_we_use_curvature_), do_we_use_normals(do_we_use_normals_){
+public:
+    interfacial_bc_temp_t (my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_curvature_, bool do_we_use_normals_) :
+        owner(parent_solver), do_we_use_curvature(do_we_use_curvature_), do_we_use_normals(do_we_use_normals_){
 
 
-        // Set the appropriate flags in the owning class to apply the BC's we want:
-        owner->interfacial_temp_bc_requires_curvature = do_we_use_curvature;
-        owner->interfacial_temp_bc_requires_normal = do_we_use_normals;
+      // Set the appropriate flags in the owning class to apply the BC's we want:
+      owner->interfacial_temp_bc_requires_curvature = do_we_use_curvature;
+      owner->interfacial_temp_bc_requires_normal = do_we_use_normals;
 
-      }
-      void set_kappa_interp(my_p4est_node_neighbors_t* ngbd_, Vec &kappa){
-        ngbd_bc_temp = ngbd_;
-        kappa_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
-        kappa_interp->set_input(kappa, linear);
-      }
-      void clear_kappa_interp(){
-        kappa_interp->clear();
-        delete kappa_interp;
-      }
-      void set_normals_interp(my_p4est_node_neighbors_t* ngbd_, Vec &nx, Vec &ny){
-        ngbd_bc_temp = ngbd_;
-        nx_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
-        nx_interp->set_input(nx, linear);
+    }
+    void set_kappa_interp(my_p4est_node_neighbors_t* ngbd_, Vec &kappa){
+      ngbd_bc_temp = ngbd_;
+      kappa_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
+      kappa_interp->set_input(kappa, linear);
+    }
+    void clear_kappa_interp(){
+      kappa_interp->clear();
+      delete kappa_interp;
+    }
+    void set_normals_interp(my_p4est_node_neighbors_t* ngbd_, Vec &nx, Vec &ny){
+      ngbd_bc_temp = ngbd_;
+      nx_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
+      nx_interp->set_input(nx, linear);
 
-        ny_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
-        ny_interp->set_input(ny, linear);
-      }
-      void clear_normals_interp(){
-        nx_interp->clear();
-        delete nx_interp;
+      ny_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
+      ny_interp->set_input(ny, linear);
+    }
+    void clear_normals_interp(){
+      nx_interp->clear();
+      delete nx_interp;
 
-        ny_interp->clear();
-        delete ny_interp;
-      }
-      double Gibbs_Thomson(DIM(double x, double y, double z)) const;
-      virtual double operator()(DIM(double x, double y, double z)) const {
-        throw std::runtime_error("my_p4est_stefan_with_fluids_t::interfacial_bc_temp_t::operator() -- to properly use this BC, the user needs to define an overloaded definition of the operator. \n You may either return Gibbs_Thomsom(DIM(x,y,z)) in which the solver will use the standard Gibbs Thomson condition, or you need to define a different user defined function which may or may not make use of curvature and normals. \n");
+      ny_interp->clear();
+      delete ny_interp;
+    }
+    double Gibbs_Thomson(DIM(double x, double y, double z)) const;
+    virtual double operator()(DIM(double x, double y, double z)) const {
+      throw std::runtime_error("my_p4est_stefan_with_fluids_t::interfacial_bc_temp_t::operator() -- to properly use this BC, the user needs to define an overloaded definition of the operator. \n You may either return Gibbs_Thomsom(DIM(x,y,z)) in which the solver will use the standard Gibbs Thomson condition, or you need to define a different user defined function which may or may not make use of curvature and normals. \n");
 
-      }
+    }
   }; // end of nested class interfacial_bc_temp_t
 
   // Declaration of the bc associated with this:
@@ -915,40 +754,40 @@ private:
   // -------------------------
 
   class interfacial_bc_fluid_velocity_t: public CF_DIM{
-    private:
-        my_p4est_stefan_with_fluids_t* owner;
+private:
+    my_p4est_stefan_with_fluids_t* owner;
 
-        my_p4est_node_neighbors_t* ngbd_bc_vNS;
-        my_p4est_interpolation_nodes_t* v_interface_interp;
-        const unsigned char dir; // the dimension we are talking about (i.e. x, y, or z)
-        bool do_we_use_v_interface; // Note that here v_interface refers to the velocity of the moving interface
+    my_p4est_node_neighbors_t* ngbd_bc_vNS;
+    my_p4est_interpolation_nodes_t* v_interface_interp;
+    const unsigned char dir; // the dimension we are talking about (i.e. x, y, or z)
+    bool do_we_use_v_interface; // Note that here v_interface refers to the velocity of the moving interface
 
-    public:
-        // Constructor:
-        interfacial_bc_fluid_velocity_t(my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_vgamma_for_bc, const unsigned char dir_):
-            owner(parent_solver), dir(dir_), do_we_use_v_interface(do_we_use_vgamma_for_bc) {
-          // Set the appropriate flags in the owning stefan_w_fluids class to apply the BCs we want:
-          owner->interfacial_vel_bc_requires_vint = do_we_use_v_interface;
-        }
-        // Functions to set/clear:
-        void set(my_p4est_node_neighbors_t* ngbd_, Vec v_interface){
-          v_interface_interp = new my_p4est_interpolation_nodes_t(ngbd_);
-          v_interface_interp->set_input(v_interface, linear);
-        }
-        void clear(){
-          v_interface_interp->clear();
-          delete v_interface_interp;
-        }
+public:
+    // Constructor:
+    interfacial_bc_fluid_velocity_t(my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_vgamma_for_bc, const unsigned char dir_):
+        owner(parent_solver), dir(dir_), do_we_use_v_interface(do_we_use_vgamma_for_bc) {
+      // Set the appropriate flags in the owning stefan_w_fluids class to apply the BCs we want:
+      owner->interfacial_vel_bc_requires_vint = do_we_use_v_interface;
+    }
+    // Functions to set/clear:
+    void set(my_p4est_node_neighbors_t* ngbd_, Vec v_interface){
+      v_interface_interp = new my_p4est_interpolation_nodes_t(ngbd_);
+      v_interface_interp->set_input(v_interface, linear);
+    }
+    void clear(){
+      v_interface_interp->clear();
+      delete v_interface_interp;
+    }
 
-        // Functions for diff options: (in cpp)
-        double Conservation_of_Mass(DIM(double x, double y, double z)) const;
-        double Strict_No_Slip(DIM(double x, double y, double z)) const;
+    // Functions for diff options: (in cpp)
+    double Conservation_of_Mass(DIM(double x, double y, double z)) const;
+    double Strict_No_Slip(DIM(double x, double y, double z)) const;
 
-        // Operator:
-        virtual double operator()(DIM(double x, double y, double z)) const{
-          throw std::runtime_error("my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t::operator() -- to properly use this BC, the user needs to define an overloaded definition of the operator. \n "
-                                   "You may either return Conservation_of_Mass(DIM(x,y,z)) which will enforce the cons of mass condition, Strict_No_Slip(DIM(x, y, z)) which will enforce a component-wise equality of vgamma and vNS, or you need to define a different user-defined function which may or may not make use of the interfacial velocity (vel of moving interface). i.e. you could just return 0. for a homogeneous no slip sort of deal. Or if you're using a Neumann condition for some reason, then you will definitely want to provide your own fxn. \n");
-        }
+    // Operator:
+    virtual double operator()(DIM(double x, double y, double z)) const{
+      throw std::runtime_error("my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t::operator() -- to properly use this BC, the user needs to define an overloaded definition of the operator. \n "
+                               "You may either return Conservation_of_Mass(DIM(x,y,z)) which will enforce the cons of mass condition, Strict_No_Slip(DIM(x, y, z)) which will enforce a component-wise equality of vgamma and vNS, or you need to define a different user-defined function which may or may not make use of the interfacial velocity (vel of moving interface). i.e. you could just return 0. for a homogeneous no slip sort of deal. Or if you're using a Neumann condition for some reason, then you will definitely want to provide your own fxn. \n");
+    }
   }; // end of nested class interfacial_bc_temp_t
 
   // Declaration of the bc associated with this:
@@ -957,10 +796,404 @@ private:
 
 
 
-  public:
 
-    my_p4est_stefan_with_fluids_t(/*mpi_environment_t& mpi_*/);
-    ~my_p4est_stefan_with_fluids_t();
+  // -----------------------------------------------------------------------
+  // Functions for setting / getting!
+  // -----------------------------------------------------------------------
+  // -----------------------------------------------
+  // Grid variables
+  // -----------------------------------------------
+  p4est_nodes* get_nodes_np1(){return nodes_np1;}
+  // (WIP)
+
+  // -----------------------------------------------
+  // Level set function(s):
+  // -----------------------------------------------
+
+  // (WIP)
+
+  // -----------------------------------------------
+  // Interface geometry:
+  // -----------------------------------------------
+
+  // (WIP)
+
+  // -----------------------------------------------
+  // Temperature/concentration problem:
+  // -----------------------------------------------
+  // Interface:
+  // ------
+  void set_bc_interface_value_temp(interfacial_bc_temp_t* bc_interface_value_temp_[2]){
+    for(unsigned char i=0; i<2; i++){
+      bc_interface_val_temp[i] = bc_interface_value_temp_[i];
+    }
+  }
+
+  void set_bc_interface_type_temp(BoundaryConditionType* bc_interface_type_temp_[2]){
+    for(unsigned char i=0; i<2; i++){
+      bc_interface_type_temp[i] = bc_interface_type_temp_[i];
+    }
+  }
+  void set_bc_interface_robin_coeff_temp(CF_DIM* bc_interface_robin_coeff_temp_[2]){
+    for(unsigned char i=0; i<2; i++){
+      bc_interface_robin_coeff_temp[i] = bc_interface_robin_coeff_temp_[i];
+    }
+  }
+  // ------
+  // Wall:
+  // ------
+  void set_bc_wall_value_temp(CF_DIM* bc_wall_value_temp_[2]){
+    for(unsigned char i=0; i<2; i++){
+      bc_wall_value_temp[i] = bc_wall_value_temp_[i];
+    }
+  }
+
+  void set_bc_wall_type_temp(BoundaryConditionType* bc_wall_type_temp_[2]){
+    for(unsigned char i=0; i<2; i++){
+      bc_wall_type_temp[i] = bc_wall_type_temp_[i];
+    }
+  }
+  // ------
+  // Substrate interface:
+  // ------
+  void set_bc_interface_value_temp_substrate(interfacial_bc_temp_t* bc_interface_value_temp_substrate_[2]){
+    for(unsigned char i=0; i<2; i++){
+      bc_interface_val_temp_substrate[i] = bc_interface_value_temp_substrate_[i];
+    }
+  }
+
+  void set_bc_interface_type_temp_substrate(BoundaryConditionType* bc_interface_type_temp_substrate_[2]){
+    for(unsigned char i=0; i<2; i++){
+      bc_interface_type_temp_substrate[i] = bc_interface_type_temp_substrate_[i];
+    }
+  }
+  void set_bc_interface_robin_coeff_temp_substrate(CF_DIM* bc_interface_robin_coeff_temp_substrate_[2]){
+    for(unsigned char i=0; i<2; i++){
+      bc_interface_robin_coeff_temp_substrate[i] = bc_interface_robin_coeff_temp_substrate_[i];
+    }
+  }
+
+  // ------
+  // External heat sources:
+  // ------
+  void set_user_provided_external_heat_source(CF_DIM* user_heat_source_[2]){
+    for (unsigned int i=0; i<2; i++){
+      user_provided_external_heat_source[i] = user_heat_source_[i];
+    }
+    there_is_user_provided_heat_source = true;
+  }
+
+
+  // ----------------------------------------------
+  // Navier-Stokes problem:
+  // ----------------------------------------------
+  // Interface velocity:
+  // ------
+  void set_bc_interface_value_velocity(interfacial_bc_fluid_velocity_t* bc_interface_value_velocity_[P4EST_DIM]){
+    foreach_dimension(d){
+      bc_interface_value_velocity[d] = bc_interface_value_velocity_[d];
+    }
+  }
+
+  void set_bc_interface_type_velocity(BoundaryConditionType* bc_interface_type_velocity_[P4EST_DIM]){
+    foreach_dimension(d){
+      bc_interface_type_velocity[d] = bc_interface_type_velocity_[d];
+    }
+  }
+
+  // ------
+  // Wall velocity:
+  // ------
+  void set_bc_wall_value_velocity(CF_DIM* bc_wall_value_velocity_[P4EST_DIM]){
+    foreach_dimension(d){
+      bc_wall_value_velocity[d] = bc_wall_value_velocity_[d];
+    }
+  }
+
+  void set_bc_wall_type_velocity(WallBCDIM* bc_wall_type_velocity_[P4EST_DIM]){
+    foreach_dimension(d){
+      bc_wall_type_velocity[d] = bc_wall_type_velocity_[d];
+    }
+  }
+
+  // ------
+  // Interface pressure:
+  // ------
+  void set_bc_interface_value_pressure(CF_DIM* bc_interface_value_pressure_){
+    bc_interface_value_pressure = bc_interface_value_pressure_;
+  }
+  void set_bc_interface_type_pressure(BoundaryConditionType bc_interface_type_pressure_){
+    bc_interface_type_pressure = bc_interface_type_pressure_;
+  }
+
+  // ------
+  // Wall pressure:
+  // ------
+  void set_bc_wall_value_pressure(CF_DIM* bc_wall_value_pressure_){
+    bc_wall_value_pressure = bc_wall_value_pressure_;
+  }
+  void set_bc_wall_type_pressure(WallBCDIM* bc_wall_type_pressure_){
+    bc_wall_type_pressure = bc_wall_type_pressure_;
+  }
+
+  // ------
+  // User provided force terms
+  // ------
+  void set_user_provided_external_force_NS(CF_DIM* user_external_forces_NS_[2]){
+    foreach_dimension(d){
+      user_provided_external_forces_NS[d] = user_external_forces_NS_[d];
+    }
+    there_is_user_provided_external_force_NS = true;
+  }
+  // ------
+  // Other parameters
+  // ------
+  void set_NS_max_allowed(double NS_norm_max_allowed_){NS_max_allowed = NS_norm_max_allowed_;}
+  void set_hodge_percentage_of_max_u(double max_perc){
+    hodge_percentage_of_max_u = max_perc;
+  }
+  void set_hodge_max_iteration(int max_it){hodge_max_it = max_it;}
+
+  // ----------------------------------------------
+  // Related to domain:
+  // ----------------------------------------------
+  void set_xyz_min(double xyz_min_[P4EST_DIM]){
+    foreach_dimension(d){
+      xyz_min[d] = xyz_min_[d];
+    }
+  }
+  void set_xyz_max(double xyz_max_[P4EST_DIM]){
+    foreach_dimension(d){
+      xyz_max[d] = xyz_max_[d];
+    }
+  }
+
+  void set_ntrees(int ntrees_[P4EST_DIM]){
+    foreach_dimension(d){
+      ntrees[d] = ntrees_[d];
+    }
+  }
+
+  void set_periodicity(int periodicity_[P4EST_DIM]){
+    foreach_dimension(d){
+      periodicity[d] = periodicity_[d];
+    }
+  }
+
+  void set_lmin_lint_lmax(int lmin_, int lint_, int lmax_){
+    lmin = lmin_; lint = lint_; lmax= lmax_;
+  }
+  // If you set a uniform band, we assume you use it
+  void set_uniform_band(double uniform_band_){
+    use_uniform_band = true;
+    uniform_band = uniform_band_;}
+
+  // NOTE: ref by vorticity is assumed true whenever navier stokes is solved
+  void set_refine_by_d2T(bool ref_by_d2T_){refine_by_d2T = ref_by_d2T_;}
+
+  void set_vorticity_ref_threshold(double vort_thresh){
+    vorticity_threshold = vort_thresh;
+  }
+  void set_d2T_ref_threshold(double d2T_thresh){d2T_threshold = d2T_thresh;}
+  void set_loading_from_previous_state(bool loading_from_prev_state_){
+    loading_from_previous_state = loading_from_prev_state_;
+  }
+
+  // ----------------------------------------------
+  // Related to current grid size:
+  // ----------------------------------------------
+  void set_dxyz_close_to_interface_mult(double dxyz_close_to_interface_mult_){
+    dxyz_close_to_interface_mult = dxyz_close_to_interface_mult_;
+  }
+
+  // ----------------------------------------------
+  // Related to time/timestepping:
+  // ----------------------------------------------
+  void set_tn(double tn_){tn = tn_;}
+  void set_dt(double dt_){dt = dt_;}
+  void set_dt_nm1(double dt_nm1_){dt_nm1 = dt_nm1_;}
+  void set_dt_max_allowed(double dt_max_allowed_){dt_max_allowed = dt_max_allowed_;}
+  void set_v_interface_max_allowed(double vint_max_all_){v_interface_max_allowed = vint_max_all_;}
+
+  //  For vtk saving:
+  void set_out_idx(int out_idx_vtk){out_idx = out_idx_vtk;}
+
+  void set_cfl_Stefan(double cfl_stefan_){cfl_Stefan = cfl_stefan_;}
+  void set_cfl_NS(double cfl_ns_){cfl_NS = cfl_ns_;}
+
+  // ----------------------------------------------
+  // Related to dimensionalization type:
+  // ----------------------------------------------
+  void set_problem_dimensionalization_type(problem_dimensionalization_type_t prob_dim_type_){
+    problem_dimensionalization_type = prob_dim_type_;
+  }
+  double get_time_nondim_to_dim(){
+    return time_nondim_to_dim;
+  }
+  double get_vel_nondim_to_dim(){
+    return vel_nondim_to_dim;
+  }
+
+  void set_Re(double Re_){Re = Re_;}
+  void set_Pr(double Pr_){Pr = Pr_;}
+  void set_Sc(double Sc_){Sc = Sc_;}
+  void set_Pe(double Pe_){Pe = Pe_;}
+  void set_St(double St_){St = St_;}
+  void set_Da(double Da_){Da = Da_;}
+  void set_RaT(double RaT_){RaT = RaT_;}
+  void set_RaC(double RaC_){RaC = RaC_;}
+
+  // ----------------------------------------------
+  // Physical parameters:
+  // Note: these must be provided for the solver to run !
+  // ----------------------------------------------
+  void set_l_char(double l_char_){l_char = l_char_;}
+  void set_u_inf(double u_inf_){u_inf = u_inf_;}
+
+  void set_dim_temp_conc_variables(double Tinfty_, double Tinterface_, double T0_){
+    Tinfty = Tinfty_;
+    Tinterface = Tinterface_;
+    T0 = T0_;
+  };
+
+  void set_Tflush(double Tflush_){Tflush = Tflush_;}
+
+  void set_alpha_l(double alpha_l_){alpha_l = alpha_l_;}
+  void set_alpha_s(double alpha_s_){alpha_s = alpha_s_;}
+  void set_k_l(double k_l_){k_l = k_l_;}
+  void set_k_s(double k_s_){k_s = k_s_;}
+  void set_rho_l(double rho_l_){rho_l = rho_l_;}
+  void set_rho_s(double rho_s_){rho_s = rho_s_;}
+  void set_cp_s(double cp_s_){cp_s = cp_s_;}
+  void set_L(double L_){L = L_;}
+  void set_mu_l(double mu_l_){mu_l = mu_l_;}
+  void set_sigma(double sigma_){sigma = sigma_;}
+  void set_grav(double grav_){grav = grav_;}
+  void set_beta_T(double beta_T_){beta_T = beta_T_;}
+  void set_beta_C(double beta_C_){beta_C = beta_C_;}
+  void set_gamma_diss(double gamma_diss_){gamma_diss = gamma_diss_;}
+  void set_stoich_coeff_diss(double stoich_coeff_diss_){stoich_coeff_diss = stoich_coeff_diss_;}
+  void set_molar_volume_diss(double molar_volume_diss_){molar_volume_diss = molar_volume_diss_;}
+  void set_Dl(double Dl_){Dl = Dl_;}
+  void set_Ds(double Ds_){Ds = Ds_;}
+  void set_k_diss(double k_diss_){k_diss = k_diss_;}
+
+  // Let the user check that they set what they think they set:
+  void print_physical_parameters(){
+    PetscPrintf(mpi->comm(), "alpha_l = %e, alpha_s= %e \n"
+                             "k_l = %e, k_s = %e \n"
+                             "rho_l = %e, rho_s = %e \n"
+                             "cp_s = %e \n"
+                             "L = %e \n"
+                             "mu_l = %e \n"
+                             "sigma = %e \n"
+                             "grav = %e \n"
+                             "betaT = %e, betaC = %e \n"
+                             "gamma_diss = %e, stoich_coeff_diss = %e, \n "
+                             "molar_volume_diss = %e, k_diss = %e \n"
+                             "Dl = %e, Ds = %e \n",
+                alpha_l, alpha_s,
+                k_l, k_s,
+                rho_l, rho_s,
+                cp_s,
+                L,
+                mu_l,
+                sigma,
+                grav,
+                beta_T, beta_C,
+                gamma_diss, stoich_coeff_diss,
+                molar_volume_diss, k_diss,
+                Dl, Ds);
+  }
+
+  // ----------------------------------------------
+  // Booleans related to what kind of physics we are solving
+  // ----------------------------------------------
+  void set_solve_stefan(bool solve_){solve_stefan = solve_;}
+  void set_solve_navier_stokes(bool solve_){solve_navier_stokes = solve_;}
+  void set_do_we_solve_for_Ts(bool solve_){do_we_solve_for_Ts = solve_;}
+  void set_use_boussinesq(bool do_we_use){use_boussinesq = do_we_use;}
+  void set_is_dissolution_case(bool is_disso){is_dissolution_case =  is_disso;}
+  void set_force_interfacial_velocity_to_zero(bool force_){force_interfacial_velocity_to_zero = force_;}
+
+  void set_there_is_substrate(bool there_is_sub ){there_is_a_substrate = there_is_sub;}
+
+  void set_start_w_merged_grains(bool start_w_merged){start_w_merged_grains  = start_w_merged;}
+
+  // ----------------------------------------------
+  // Other misc parameters
+  // ----------------------------------------------
+  void set_print_checkpoints(bool print_){print_checkpoints = print_;}
+  void set_scale_vgamma_by(double scale_vgamma_by_){scale_vgamma_by = scale_vgamma_by_;}
+
+  // ----------------------------------------------
+  // Specific to diff cases
+  // ----------------------------------------------
+  void set_track_evolving_geometries(bool track_evo_geom_){track_evolving_geometries = track_evo_geom_;}
+
+  // ----------------------------------------------
+  // Related to any front regularization:
+  // ----------------------------------------------
+  void set_use_regularize_front(bool use_reg_front_ ){ use_regularize_front = use_reg_front_;}
+  void set_use_collapse_onto_substrate(bool use_collapse_onto_sub_){ use_collapse_onto_substrate = use_collapse_onto_sub_;}
+  void set_proximity_smoothing(double prox_smoothing_){
+    proximity_smoothing = prox_smoothing_;
+  }
+  void set_proximity_collapse(double prox_collapse_){
+    proximity_collapse = prox_collapse_;
+  }
+
+  // ----------------------------------------------
+  // Related to LSF reinitialization
+  // ----------------------------------------------
+  void set_reinit_every_iter(int reinit_every_iter_){reinit_every_iter = reinit_every_iter_;}
+
+  // ----------------------------------------------
+  // Level set functions
+  // ----------------------------------------------
+  void set_LSF_CF(CF_DIM* lsf_CF){level_set = lsf_CF;}
+  void set_substrate_LSF_CF(CF_DIM* sub_lsf_CF){substrate_level_set = sub_lsf_CF;}
+
+  // ----------------------------------------------
+  // Temperature problem variables -- nondim:
+  // ----------------------------------------------
+  void set_nondim_temp_conc_variables(double theta_infty_, double theta_interface_,
+                                      double theta0_, double deltaT_){
+    theta_infty = theta_infty_;
+    theta_interface = theta_interface_;
+    theta0 = theta0_;
+    deltaT = deltaT_;
+  };
+
+  // -------------------------------------------------------
+  // Auxiliary initializations:
+  // -------------------------------------------------------
+  void set_initial_refinement_CF(CF_DIM* initial_refinement_CF_){
+    initial_refinement_CF = initial_refinement_CF_;
+  }
+
+  void set_initial_temp_n(CF_DIM* init_temp_n_[2]){
+    for(unsigned char i=0; i<2; i++){
+      initial_temp_n[i] = init_temp_n_[i];
+    }
+  }
+  void set_initial_temp_nm1(CF_DIM* init_temp_nm1_[2]){
+    for(unsigned char i=0; i<2; i++){
+      initial_temp_nm1[i] = init_temp_nm1_[i];
+    }
+  }
+
+  void set_initial_NS_velocity_n_(CF_DIM* init_vel_n_[P4EST_DIM]){
+    foreach_dimension(d){
+      initial_NS_velocity_n[d] = init_vel_n_[d];
+    }
+  }
+
+  void set_initial_NS_velocity_nm1_(CF_DIM* init_vel_nm1_[P4EST_DIM]){
+    foreach_dimension(d){
+      initial_NS_velocity_nm1[d] = init_vel_nm1_[d];
+    }
+  }
 
 };
 

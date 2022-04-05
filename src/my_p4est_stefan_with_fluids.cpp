@@ -314,7 +314,7 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
 void my_p4est_stefan_with_fluids_t::initialize_grids(){
 
   // Create the p4est at time n:
-  p4est_n = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
+  p4est_n = my_p4est_new(mpi->comm(), conn, 0, NULL, NULL);
   p4est_n->user_pointer = &sp;
 
   for(int l=0; l<sp->max_lvl; l++){
@@ -362,7 +362,7 @@ void my_p4est_stefan_with_fluids_t::initialize_fields(){
   // Level-set function(s):
   // ---------------------------------
 
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the level set function (s) ... \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Initializing the level set function (s) ... \n");
   phi.create(p4est_np1, nodes_np1);
   sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi.vec);
   ls->perturb_level_set_function(phi.vec, EPS);
@@ -390,7 +390,7 @@ void my_p4est_stefan_with_fluids_t::initialize_fields(){
 //  INITIAL_TEMP *T_init_cf[2];
 //  temperature_field* analytical_temp[2];
   if(solve_stefan){
-    if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the temperature fields (s) ... \n");
+    if(print_checkpoints) PetscPrintf(mpi->comm(),"Initializing the temperature fields (s) ... \n");
 
     // TO-DO: commented out below, make sure it's handled in main
 //    if(analytical_IC_BC_forcing_term){
@@ -454,7 +454,7 @@ void my_p4est_stefan_with_fluids_t::initialize_fields(){
 //  velocity_component* analytical_soln[P4EST_DIM];
 
   if(solve_navier_stokes){
-    if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the Navier-Stokes fields (s) ... \n");
+    if(print_checkpoints) PetscPrintf(mpi->comm(),"Initializing the Navier-Stokes fields (s) ... \n");
 
     // TO-DO: commented out below, make sure it is handled in main
 //    if(analytical_IC_BC_forcing_term)
@@ -528,12 +528,12 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
   if(!load_path){
     throw std::invalid_argument("You need to set the  directory for the desired load state");
   }
-  PetscPrintf(mpi.comm(),"Load dir is:  %s \n",load_path);
+  PetscPrintf(mpi->comm(),"Load dir is:  %s \n",load_path);
 
   load_state(load_path);
 
 
-  PetscPrintf(mpi.comm(),"State was loaded successfully from %s \n",load_path);
+  PetscPrintf(mpi->comm(),"State was loaded successfully from %s \n",load_path);
 
   // Update the neigborhood and hierarchy:
   if(hierarchy_n!=NULL) {
@@ -614,32 +614,32 @@ void my_p4est_stefan_with_fluids_t::perform_initializations(){
     num_fields_interp+=2; // vNS_x, vNS_y
   }
 
-  // User will need to set temp_and_conc defns first:
+  // User will need to set temp_and_conc defns first: // TO-DO make sure handled properly in main
   set_nondimensional_groups();
 
 
   // -----------------------------------------------
   // Report relevant information:
   // -----------------------------------------------
-  PetscPrintf(mpi.comm(),"------------------------------------"
+  PetscPrintf(mpi->comm(),"------------------------------------"
                           "\n \n"
                           "INITIAL PROBLEM INFORMATION\n"
                           "------------------------------------\n\n");
 
-  PetscPrintf(mpi.comm(), "The nondimensionalizaton formulation being used is %s \n \n",
+  PetscPrintf(mpi->comm(), "The nondimensionalizaton formulation being used is %s \n \n",
               (problem_dimensionalization_type == 0)?
                                                      ("NONDIM BY FLUID VELOCITY"):
                                                      ((problem_dimensionalization_type == 1) ?
                                                                                              ("NONDIM BY DIFFUSIVITY") : ("DIMENSIONAL")));
 
-  PetscPrintf(mpi.comm(), "Nondim = %d \n"
+  PetscPrintf(mpi->comm(), "Nondim = %d \n"
                           "lmin = %d, lmax = %d \n"
                           "Number of mpi tasks: %d \n"
                           "Stefan = %d, NS = %d \n \n ", problem_dimensionalization_type,
               lmin, lmax,
-              mpi.size(),
+              mpi->size(),
               solve_stefan, solve_navier_stokes);
-  PetscPrintf(mpi.comm(),"The nondimensional groups are: \n"
+  PetscPrintf(mpi->comm(),"The nondimensional groups are: \n"
                           "Re = %f \n"
                           "Pr = %f \n"
                           "Sc = %f \n"
@@ -657,7 +657,7 @@ void my_p4est_stefan_with_fluids_t::perform_initializations(){
 
 // TO-DO: commented out below, make sure it's handled in main
 // We will do time handling externally:
-//  PetscPrintf(mpi.comm(),"Simulation time: %0.4f [min] = %0.4f [sec] = %0.4f [nondim]\n\n",
+//  PetscPrintf(mpi->comm(),"Simulation time: %0.4f [min] = %0.4f [sec] = %0.4f [nondim]\n\n",
 //              tfinal*time_nondim_to_dim/60.,
 //              tfinal*time_nondim_to_dim,
 //              tfinal);
@@ -667,17 +667,17 @@ void my_p4est_stefan_with_fluids_t::perform_initializations(){
 //  bool using_startup = (startup_dim_time>0.) || (startup_nondim_time >0.);
 //  bool using_dim_startup = using_startup && (startup_dim_time>0.);
 
-//  PetscPrintf(mpi.comm(),"Are we using startup time? %s \n \n",using_startup? "Yes": "No");
+//  PetscPrintf(mpi->comm(),"Are we using startup time? %s \n \n",using_startup? "Yes": "No");
 //  if(using_startup){
-//    PetscPrintf(mpi.comm(),"Startup time: %s = %0.2f %s \n", using_dim_startup? "Dimensional" : "Nondimensional", using_dim_startup? startup_dim_time:startup_nondim_time,using_dim_startup? "[seconds]": "[nondim]");
+//    PetscPrintf(mpi->comm(),"Startup time: %s = %0.2f %s \n", using_dim_startup? "Dimensional" : "Nondimensional", using_dim_startup? startup_dim_time:startup_nondim_time,using_dim_startup? "[seconds]": "[nondim]");
 //  }
 
 
-  PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n \n ",uniform_band);
+  PetscPrintf(mpi->comm(),"Uniform band is %0.1f \n \n ",uniform_band);
 
-//  PetscPrintf(mpi.comm(),"Are we ramping bcs? %s \n t_ramp = %0.2f [nondim] = %0.2f [seconds] \n \n",ramp_bcs?"Yes":"No",t_ramp,t_ramp*time_nondim_to_dim);
+//  PetscPrintf(mpi->comm(),"Are we ramping bcs? %s \n t_ramp = %0.2f [nondim] = %0.2f [seconds] \n \n",ramp_bcs?"Yes":"No",t_ramp,t_ramp*time_nondim_to_dim);
 
-//  PetscPrintf(mpi.comm(),"Are we loading from previous state? %s \n"
+//  PetscPrintf(mpi->comm(),"Are we loading from previous state? %s \n"
 //                          "Starting timestep = %d \n"
 //                          "Save state every iter = %d \n"
 //                          "Save to vtk? %s \n"
@@ -690,14 +690,14 @@ void my_p4est_stefan_with_fluids_t::perform_initializations(){
 //              save_using_dt? "dt" :"iter",
 //              save_every_dt, save_every_dt*time_nondim_to_dim,
 //              save_every_iter);
-  PetscPrintf(mpi.comm(),"------------------------------------\n\n");
+  PetscPrintf(mpi->comm(),"------------------------------------\n\n");
 
 
 
   // -----------------------------------------------
   // Perform grid and field initializations
   // -----------------------------------------------
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid and field initializations ... \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning grid and field initializations ... \n");
 
   sp = new splitting_criteria_cf_and_uniform_band_t(lmin,
                                                     lmax,
@@ -801,7 +801,7 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
     // NS takes care of destroying v_NS_n and v_NS_nm1
     vorticity.destroy();
     press_nodes.destroy();
-    MPI_Barrier(mpi.comm());
+    MPI_Barrier(mpi->comm());
     // TO-DO: let's have main handle destructions of BCs
 //    for(unsigned char d=0;d<P4EST_DIM;d++){
 //      if(analytical_IC_BC_forcing_term){
@@ -825,7 +825,7 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
     ns->nullify_velocities_at_nodes();
     ns->nullify_vorticity();
     if(ns!=NULL) delete ns;
-    MPI_Barrier(mpi.comm());
+    MPI_Barrier(mpi->comm());
   }
 
 }
@@ -847,7 +847,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
   // Thus, while T_n is sampled on the grid np1, it is indeed still the field at time n, simply transferred to the grid used to solve for the np1 fields.
 
 
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning to do backtrace \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning to do backtrace \n");
 
   // Initialize objects we will use in this function:
   // PETSC Vectors for second derivatives
@@ -1237,7 +1237,7 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_poisson_nodes_problem_for_sc
   //-- curvature is used in some of the interfacial boundary condition(s) on temperature
   // -------------------------------
 
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing normal and curvature ... \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Computing normal and curvature ... \n");
   // Get the new solid LSF:
   VecCopyGhost(phi.vec, phi_solid.vec);
   VecScaleGhost(phi_solid.vec, -1.0);
@@ -1268,10 +1268,10 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_poisson_nodes_problem_for_sc
   // -------------------------------
   // Get most updated derivatives of the LSF's (on current grid)
   // -------------------------------
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning Poisson problem ... \n");
 
   // Get derivatives of liquid and solid LSF's
-  if (print_checkpoints) PetscPrintf(mpi.comm(),"New solid LSF acquired \n");
+  if (print_checkpoints) PetscPrintf(mpi->comm(),"New solid LSF acquired \n");
   ngbd_np1->second_derivatives_central(phi.vec, phi_dd.vec);
   ngbd_np1->second_derivatives_central(phi_solid.vec, phi_solid_dd.vec);
 
@@ -1284,14 +1284,14 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_poisson_nodes_problem_for_sc
   // Compute advection terms (if applicable):
   // -------------------------------
   if (solve_navier_stokes){
-    if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing advection terms ... \n");
+    if(print_checkpoints) PetscPrintf(mpi->comm(),"Computing advection terms ... \n");
     do_backtrace_for_scalar_temp_conc_problem();
   } // end of solve_navier_stokes if statement
 
   // -------------------------------
   // Set up the RHS for Poisson step:
   // -------------------------------
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up RHS for Poisson problem ... \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Setting up RHS for Poisson problem ... \n");
 
   setup_rhs_for_scalar_temp_conc_problem();
 
@@ -1306,11 +1306,11 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_poisson_nodes_problem_for_sc
     ierr = VecCopyGhost(T_l_n.vec, T_l_nm1.vec);CHKERRXX(ierr);
   }
   // Solve Poisson problem:
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Poisson problem solution step... \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning Poisson problem solution step... \n");
 
   poisson_nodes_step_for_scalar_temp_conc_problem();
 
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Poisson step completed ... \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Poisson step completed ... \n");
 
   // -------------------------------
   // Clear interfacial BC if needed (curvature, normals, or both depending on example)
@@ -1454,7 +1454,7 @@ void my_p4est_stefan_with_fluids_t::extend_relevant_fields(){
   // -------------------------------
   // Extend Temperature Fields across the interface:
   // -------------------------------
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling extension over phi \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Calling extension over phi \n");
 
 
 
@@ -1776,7 +1776,7 @@ void my_p4est_stefan_with_fluids_t::compute_timestep(){
 //  }
 
   // Print the interface velocity info:
-  PetscPrintf(mpi.comm(),"\n"
+  PetscPrintf(mpi->comm(),"\n"
                        "Computed interfacial velocity: \n"
                        " - %0.3e [nondim] "
                        " - %0.3e [m/s] "
@@ -1786,7 +1786,7 @@ void my_p4est_stefan_with_fluids_t::compute_timestep(){
               v_interface_max_norm*vel_nondim_to_dim*1000.);
 
   // Print the timestep info:
-  PetscPrintf(mpi.comm(),"\n"
+  PetscPrintf(mpi->comm(),"\n"
                        "Computed timestep: \n"
                        " - dt used: %0.3e "
                        " - dt_Stefan: %0.3e "
@@ -1842,7 +1842,7 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
 
   ns->set_velocities(v_nm1.vec, v_n.vec);
 
-  PetscPrintf(mpi.comm(),"NS solver initialization: CFL_NS: %0.2f, rho : %0.2f, mu : %0.3e \n",cfl_NS,rho_l,mu_l);
+  PetscPrintf(mpi->comm(),"NS solver initialization: CFL_NS: %0.2f, rho : %0.2f, mu : %0.3e \n",cfl_NS,rho_l,mu_l);
 
   // Use a function to set ns parameters to avoid code duplication
   set_ns_parameters();
@@ -1860,7 +1860,7 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   }
 
   hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
-  PetscPrintf(mpi.comm(),"Hodge tolerance is %e \n",hodge_tolerance);
+  PetscPrintf(mpi->comm(),"Hodge tolerance is %e \n",hodge_tolerance);
 
   int hodge_iteration = 0;
   double convergence_check_on_dxyz_hodge = DBL_MAX;
@@ -1881,10 +1881,10 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
         ns->solve_projection(cell_solver,(cell_solver!=NULL),cell_solver_type,pc_cell,
                              false,NULL,dxyz_hodge_old,uvw_components);
 
-    ierr= PetscPrintf(mpi.comm(),"Hodge iteration : %d, (hodge error)/(NS_max): %0.3e \n",hodge_iteration,convergence_check_on_dxyz_hodge/NS_norm);CHKERRXX(ierr);
+    ierr= PetscPrintf(mpi->comm(),"Hodge iteration : %d, (hodge error)/(NS_max): %0.3e \n",hodge_iteration,convergence_check_on_dxyz_hodge/NS_norm);CHKERRXX(ierr);
     hodge_iteration++;
   }
-  ierr = PetscPrintf(mpi.comm(), "Hodge loop exited \n");
+  ierr = PetscPrintf(mpi->comm(), "Hodge loop exited \n");
 
   for (unsigned char d=0;d<P4EST_DIM;d++){
     ierr = VecDestroy(dxyz_hodge_old[d]); CHKERRXX(ierr);
@@ -1927,7 +1927,7 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   // Check the L2 norm of u to make sure nothing is blowing up
   NS_norm = ns->get_max_L2_norm_u();
 
-  PetscPrintf(mpi.comm(),"\n Max NS velocity norm: \n"
+  PetscPrintf(mpi->comm(),"\n Max NS velocity norm: \n"
                         " - Computational value: %0.4f  "
                         " - Physical value: %0.3e [m/s]  "
                         " - Physical value: %0.3f [mm/s] \n",NS_norm,NS_norm*vel_nondim_to_dim,NS_norm*vel_nondim_to_dim*1000.);
@@ -1935,8 +1935,8 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   // Stop simulation if things are blowing up
   bool did_crash;
   if(NS_norm>NS_max_allowed){
-    MPI_Barrier(mpi.comm());
-    PetscPrintf(mpi.comm(),"The simulation blew up ! ");
+    MPI_Barrier(mpi->comm());
+    PetscPrintf(mpi->comm(),"The simulation blew up ! ");
     did_crash = true;
   }
   else{
@@ -2036,7 +2036,7 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(){
   // -------------------------------
   // Solve the Navier-Stokes problem:
   // -------------------------------
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Navier-Stokes solution step... \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning Navier-Stokes solution step... \n");
 
 
   // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
@@ -2053,7 +2053,7 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(){
     }
   }
 
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Completed Navier-Stokes step \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Completed Navier-Stokes step \n");
 
   if(did_crash){
     char crash_tag[10];
@@ -2152,7 +2152,7 @@ void my_p4est_stefan_with_fluids_t::perform_reinitialization(){
 
     if((tstep % reinit_every_iter) == 0){
       ls->reinitialize_2nd_order(phi.vec);
-      PetscPrintf(mpi.comm(), "reinit every iter =%d, LSF was reinitialized \n", reinit_every_iter);
+      PetscPrintf(mpi->comm(), "reinit every iter =%d, LSF was reinitialized \n", reinit_every_iter);
     }
   }
   else{
@@ -2294,7 +2294,7 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
                     criteria, compare_opn, diag_opn, custom_lmax,
                     expand_ghost_layer);
 
-    if(print_checkpoints) PetscPrintf(mpi.comm(),"Grid update completed \n");
+    if(print_checkpoints) PetscPrintf(mpi->comm(),"Grid update completed \n");
 
     // Destroy 2nd derivatives of LSF now that not needed
     phi_dd.destroy();
@@ -2337,10 +2337,10 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
 
       if(is_grid_changing || last_grid_balance){
         no_grid_changes++;
-        PetscPrintf(mpi.comm(),"NS grid changed %d times \n",no_grid_changes);
+        PetscPrintf(mpi->comm(),"NS grid changed %d times \n",no_grid_changes);
         if(last_grid_balance){
           p4est_balance(p4est_np1,P4EST_CONNECT_FULL,NULL);
-          PetscPrintf(mpi.comm(),"Does last grid balance \n");
+          PetscPrintf(mpi->comm(),"Does last grid balance \n");
         }
 
         my_p4est_partition(p4est_np1,P4EST_FALSE,NULL);
@@ -2379,7 +2379,7 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
       } // End of if grid is changing
 
       // Do last balancing of the grid, and final interp of phi:
-      if(no_grid_changes>10) {PetscPrintf(mpi.comm(),"NS grid did not converge!\n"); break;}
+      if(no_grid_changes>10) {PetscPrintf(mpi->comm(),"NS grid did not converge!\n"); break;}
     } // end of while grid is changing
 
     // Update the LSF accordingly:
@@ -2469,7 +2469,7 @@ void my_p4est_stefan_with_fluids_t::update_the_grid(){
     // copy over phi eff if we are using a substrate
     // Note: this is done because the update_p4est destroys the old LSF, but we need to keep it
     // for NS update procedure
-    if(print_checkpoints) ierr= PetscPrintf(mpi.comm(),"Phi nm1 copy is created ... \n");
+    if(print_checkpoints) ierr= PetscPrintf(mpi->comm(),"Phi nm1 copy is created ... \n");
   }
 
 
@@ -2584,26 +2584,26 @@ void my_p4est_stefan_with_fluids_t::perform_lsf_advection_grid_update_and_interp
   //-------------------------------------------------------------
   // (4/5b) Update the grids so long as this is not the last timestep:
   //-------------------------------------------------------------
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid update process ... \n"
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning grid update process ... \n"
                             "Refine by d2T = %s \n",refine_by_d2T? "true": "false");
   update_the_grid();
 
   // -------------------------------
   // (4/5c) Reinitialize the LSF on the new grid (if it has been advected):
   // -------------------------------
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Reinitializing LSF... \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Reinitializing LSF... \n");
   ls->update(ngbd_np1);
   perform_reinitialization();
 
   // Regularize the front (if we are doing that)
   if(use_regularize_front){
-    PetscPrintf(mpi.comm(), "Calling regularlize front: \n");
+    PetscPrintf(mpi->comm(), "Calling regularlize front: \n");
     regularize_front();
   }
 
   // Check collapse on the substrate (if we are doing that)
   if(there_is_a_substrate && use_collapse_onto_substrate){
-    PetscPrintf(mpi.comm(), "Checking collapse \n ");
+    PetscPrintf(mpi->comm(), "Checking collapse \n ");
     //          if(start_w_merged_grains){regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi_substrate.vec);}
     check_collapse_on_substrate();
   }
@@ -2621,7 +2621,7 @@ void my_p4est_stefan_with_fluids_t::perform_lsf_advection_grid_update_and_interp
   // (4/5e) Interpolate Values onto New Grid:
   // ---------------------------------------------------
 
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Interpolating fields to new grid ... \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Interpolating fields to new grid ... \n");
 
   interpolate_fields_onto_new_grid();
   if(solve_navier_stokes){
@@ -2632,7 +2632,7 @@ void my_p4est_stefan_with_fluids_t::perform_lsf_advection_grid_update_and_interp
                                              faces_np1,ngbd_c_np1,
                                              hierarchy_np1);
   }
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Done. \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Done. \n");
 //  } // end of "if tstep !=last tstep"
 
 
@@ -3201,8 +3201,8 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
 //  // Print iteration information:
 //  // ---------------------------------------
 //  int num_nodes = nodes_np1->num_owned_indeps;
-//  MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
-//  ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
+//  MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi->comm());
+//  ierr = PetscPrintf(mpi->comm(),"\n -------------------------------------------\n"
 //                                 "Iteration %d , Time: %0.3f [nondim] "
 //                                 "= Time: %0.3f [nondim] "
 //                                 "= %0.3f [sec] "
@@ -3252,7 +3252,7 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
     // NS boundary condition
     // -------------------------------------------------------------------------
 
-    if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing interfacial velocity ... \n");
+    if(print_checkpoints) PetscPrintf(mpi->comm(),"Computing interfacial velocity ... \n");
     v_interface.destroy();
     v_interface.create(p4est_np1,nodes_np1);
 
@@ -3292,10 +3292,10 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(bool is_crash, char crash
   sprintf(output, "%s/grid_lmin%d_lint%d_lmax%d", out_dir, lmin, lint, lmax);
   // Create outdir if it does not exist:
   if(!file_exists(output)){
-    create_directory(output, mpi.rank(), mpi.comm());
+    create_directory(output, mpi->rank(), mpi->comm());
   }
   if(!is_folder(output)){
-    if(!create_directory(output, mpi.rank(), mpi.comm()))
+    if(!create_directory(output, mpi->rank(), mpi->comm()))
     {
       char error_msg[1024];
       sprintf(error_msg, "saving geometry information: the path %s is invalid and the directory could not be created", output);
@@ -3305,7 +3305,7 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(bool is_crash, char crash
   // Now save to vtk:
 
 
-  PetscPrintf(mpi.comm(),"Saving to vtk, outidx = %d ...\n",out_idx);
+  PetscPrintf(mpi->comm(),"Saving to vtk, outidx = %d ...\n",out_idx);
 
   //    if(example_uses_inner_LSF){
   //      if(start_w_merged_grains){regularize_front(p4est, nodes, ngbd, phi_substrate.vec);}
@@ -3375,7 +3375,7 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(bool is_crash, char crash
   kappa.destroy();
   normal.destroy();
 
-  if(print_checkpoints) PetscPrintf(mpi.comm(),"Finishes saving to VTK \n");
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Finishes saving to VTK \n");
 
 } // end of "save_fields_to_vtk()"
 
@@ -3452,7 +3452,7 @@ void my_p4est_stefan_with_fluids_t::save_or_load_parameters(const char* filename
 
   switch(flag){
   case SAVE:{
-    if(mpi.rank() ==0){
+    if(mpi->rank() ==0){
 
       // Save the integer parameters to a file
       sprintf(diskfilename,"%s_integers",filename);
@@ -3478,26 +3478,26 @@ void my_p4est_stefan_with_fluids_t::save_or_load_parameters(const char* filename
     sprintf(diskfilename, "%s_integers", filename);
     if(!file_exists(diskfilename))
       throw std::invalid_argument("The file storing the solver's integer parameters could not be found");
-    if(mpi.rank()==0){
+    if(mpi->rank()==0){
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
       ierr = PetscBinaryRead(fd, integer_parameters, num_integers, NULL, PETSC_INT); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
     }
-    int mpiret = MPI_Bcast(integer_parameters, num_integers, MPI_INT, 0, mpi.comm()); SC_CHECK_MPI(mpiret);
+    int mpiret = MPI_Bcast(integer_parameters, num_integers, MPI_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
     fill_or_load_integer_parameters(flag,num_integers, integer_parameters);
 
     // Now, load the double parameters:
     sprintf(diskfilename, "%s_doubles", filename);
     if(!file_exists(diskfilename))
       throw std::invalid_argument("The file storing the solver's double parameters could not be found");
-    if(mpi.rank() == 0)
+    if(mpi->rank() == 0)
     {
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
       ierr = PetscBinaryRead(fd, double_parameters, num_doubles, NULL, PETSC_DOUBLE); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
 
     }
-    mpiret = MPI_Bcast(double_parameters, num_doubles, MPI_DOUBLE, 0, mpi.comm()); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Bcast(double_parameters, num_doubles, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
     fill_or_load_double_parameters(flag,num_doubles, double_parameters);
     break;
   }
@@ -3583,7 +3583,7 @@ void my_p4est_stefan_with_fluids_t::save_state(const char* path_to_directory,uns
 
   unsigned int backup_idx = 0;
 
-  if(mpi.rank() ==0){
+  if(mpi->rank() ==0){
     unsigned int n_backup_subfolders = 0;
 
     // Get the current number of backups already present:
@@ -3689,12 +3689,12 @@ void my_p4est_stefan_with_fluids_t::load_state(const char* path_to_folder){
                                   fields_to_load_n);
 
   // Load the time n grid:
-  my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
+  my_p4est_load_forest_and_data(mpi->comm(), path_to_folder,
                                 p4est_n, conn, P4EST_TRUE, ghost_n, nodes_n,
                                 "p4est_n", fields_to_load_n);
 
   // Load the np1 grid:
-  my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
+  my_p4est_load_forest_and_data(mpi->comm(), path_to_folder,
                                 p4est_np1, conn, P4EST_TRUE, ghost_np1, nodes_np1,
                                 "p4est_np1", fields_to_load_np1);
 
@@ -3707,7 +3707,7 @@ void my_p4est_stefan_with_fluids_t::load_state(const char* path_to_folder){
   p4est_n->user_pointer = (void*) sp_new;
   p4est_np1->user_pointer = (void*) sp_new;
 
-  PetscPrintf(mpi.comm(),"Loads forest and data \n");
+  PetscPrintf(mpi->comm(),"Loads forest and data \n");
 } // end of "load_state()"
 
 // -------------------------------------------------------
