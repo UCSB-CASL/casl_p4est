@@ -59,7 +59,7 @@ private:
 
   // Misc useful things:
   // ---------------------
-  mpi_environment_t mpi;
+  mpi_environment_t* mpi;
   PetscErrorCode ierr;
 
 
@@ -383,14 +383,19 @@ private:
   double dt_NS;
   double dt_max_allowed;
 
-  double tstart; // for tracking percentage done
-  double tfinal;
+  void set_tn(double tn_){tn = tn_;}
+  void set_dt(double dt_){dt = dt_;}
+  void set_dt_nm1(double dt_nm1_){dt_nm1 = dt_nm1_;}
+  void set_dt_max_allowed(double dt_max_allowed_){dt_max_allowed = dt_max_allowed_;}
+
+
+  double tstart; // for tracking percentage done // TO-DO: revisit if this is needed
 
   double v_interface_max_norm; // for keeping track of max norm of vinterface
   double v_interface_max_allowed; // max allowable value before we trigger a crash state
 
+  void set_v_interface_max_allowed(double vint_max_all_){v_interface_max_allowed = vint_max_all_;}
 
-  void set_dt_max_allowed(double dt_max_allowed_){dt_max_allowed = dt_max_allowed_;}
 
   int advection_sl_order; // advec order for scalar temp/conc problem
   int NS_advection_sl_order; // advec order for Navier Stokes problem
@@ -399,10 +404,11 @@ private:
 
   int tstep;
   int load_tstep;
-  int last_tstep;
+//  int last_tstep; // this is not needed
 
   int out_idx; // for vtk
-  int data_save_out_idx; // for saving to files
+  void set_out_idx(int out_idx_vtk){out_idx = out_idx_vtk;}
+//  int data_save_out_idx; // for saving to files // TO-DO: handle properly in main
 
   double cfl_Stefan;
   double cfl_NS;
@@ -519,6 +525,15 @@ private:
     } // end of switch case
   } // end of function
 
+  // TO-DO: make set_X fxns for all nondim groups? Altho idk if that will allow for consistent usage??? Check this
+  void set_Re(double Re_){Re = Re_;}
+  void set_Pr(double Pr_){Pr = Pr_;}
+  void set_Sc(double Sc_){Sc = Sc_;}
+  void set_Pe(double Pe_){Pe = Pe_;}
+  void set_St(double St_){St = St_;}
+  void set_Da(double Da_){Da = Da_;}
+  void set_RaT(double RaT_){RaT = RaT_;}
+  void set_RaC(double RaC_){RaC = RaC_;}
 
 
   // ----------------------------------------------
@@ -529,11 +544,13 @@ private:
   double u_inf; // Characteristic velocity scale (assumed in m/s)
 
   void set_l_char(double l_char_){l_char = l_char_;}
+  void set_u_inf(double u_inf_){u_inf = u_inf_;}
 
   double T0; // characteristic solid temperature of the problem
   double Tinterface; // Interface temperature or concentration
   double Tinfty; // Freestream fluid temperature or concentration
   double Tflush; // Flush temperature (K) or concentration that inlet BC is changed to if flush_dim_time is activated
+
   void set_dim_temp_conc_variables(double Tinfty_, double Tinterface_, double T0_){
     Tinfty = Tinfty_;
     Tinterface = Tinterface_;
@@ -632,20 +649,20 @@ private:
   // ----------------------------------------------
   bool print_checkpoints; // can set this to true to debug where code might be crashing
 
-  double scale_vgamma_by = 1.; // Used in coupled convergence test to switch the sign of the interface velocity
+  double scale_vgamma_by; // Used in coupled convergence test to switch the sign of the interface velocity
   void set_scale_vgamma_by(double scale_vgamma_by_){scale_vgamma_by = scale_vgamma_by_;}
   // ----------------------------------------------
   // Specific to diff cases --> may change these now that they are within a class structure
   // ----------------------------------------------
-  bool analytical_IC_BC_forcing_term;
-  bool example_is_a_test_case;
+//  bool analytical_IC_BC_forcing_term;
+//  bool example_is_a_test_case;
 
   bool interfacial_temp_bc_requires_curvature;
   bool interfacial_temp_bc_requires_normal;
 
   bool interfacial_vel_bc_requires_vint;
 
-  bool example_has_known_max_vint;
+//  bool example_has_known_max_vint;
 
   bool track_evolving_geometries;
   void set_track_evolving_geometries(bool track_evo_geom_){track_evolving_geometries = track_evo_geom_;}
@@ -659,10 +676,18 @@ private:
   double proximity_smoothing;
   double proximity_collapse;
 
+  void set_use_regularize_front(bool use_reg_front_ ){ use_regularize_front = use_reg_front_;}
+  void set_use_collapse_onto_substrate(bool use_collapse_onto_sub_){ use_collapse_onto_substrate = use_collapse_onto_sub_;}
+  void set_proximity_smoothing(double prox_smoothing_){
+    proximity_smoothing = prox_smoothing_;
+  }
+  void set_proximity_collapse(double prox_collapse_){
+    proximity_collapse = prox_collapse_;
+  }
   // ----------------------------------------------
   // Related to LSF reinitialization
   // ----------------------------------------------
-  int reinit_every_iter = 1;
+  int reinit_every_iter;
 
   // ----------------------------------------------
   // Level set functions
@@ -934,7 +959,7 @@ private:
 
   public:
 
-    my_p4est_stefan_with_fluids_t();
+    my_p4est_stefan_with_fluids_t(/*mpi_environment_t& mpi_*/);
     ~my_p4est_stefan_with_fluids_t();
 
 };

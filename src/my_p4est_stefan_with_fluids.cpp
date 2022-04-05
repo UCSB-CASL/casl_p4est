@@ -42,9 +42,9 @@
 // Constructor and other auxiliary initializations:
 // -------------------------------------------------------
 
-my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t()
+my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* mpi_)
 {
-
+  mpi = mpi_;
   // -----------------------------------------------
   // Grid variables
   // -----------------------------------------------
@@ -124,14 +124,20 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t()
   }
   there_is_user_provided_external_force_NS = false;
 
-  // Default values for hodge iteration
+  // Other parameters
+  NS_norm = 0.;
+  NS_max_allowed = DBL_MAX;
+
   hodge_max_it = 100;
+  hodge_tolerance = 0.; // this gets overwritten in ns step
   hodge_percentage_of_max_u = 0.1;
+
+  compute_pressure_ = false;// this will need to be provided by user at every timestep relevant
+  // TO-DO: make sure compute_pressure_ handled correctly in main
 
   // ----------------------------------------------
   // Related to domain:
   // ----------------------------------------------
-
   // Set initial values (purposely unreasonable) for the domain info:
   foreach_dimension(d){
     xyz_min[d] = DBL_MAX;
@@ -140,31 +146,170 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t()
     ntrees[d] = INT_MAX;
   }
 
-  // Choose an initial dim type, but user should overwrite this
-  problem_dimensionalization_type = DIMENSIONAL;
+  lmin = INT_MAX; lmax = INT_MAX; lint = 0;
 
   // Uniform band:
   uniform_band = 4.;
   use_uniform_band = true; // just default true for now
 
+  refine_by_vorticity = false; // this gets set to true in ns step if ns being solved
+  refine_by_d2T = false; // this needs to be set by user
+
   vorticity_threshold = 0.25;
   d2T_threshold = 1.e-2;
 
-  loading_from_previous_state=false;
+  loading_from_previous_state = false;
 
-  lmin = INT_MAX; lmax = INT_MAX; lint = 0;
 
+  // ----------------------------------------------
+  // Related to interpolation bw grids:
+  // ----------------------------------------------
+  num_fields_interp = 0;
   // Interpolation bw grids:
   interp_bw_grids = quadratic_non_oscillatory_continuous_v2;
 
-  // Related to grid size:
+  // ----------------------------------------------
+  // Related to current grid size:
+  // ----------------------------------------------
+  foreach_dimension(d){
+    dxyz_smallest[d] = DBL_MAX; // this gets overwritten in soln process
+  }
+  dxyz_close_to_interface = DBL_MAX; // this gets overwritten in soln process
   dxyz_close_to_interface_mult=1.2;
 
-  // LEFT OFF HERE --
+  // ----------------------------------------------
+  // Variables used for extension of fields:
+  // ----------------------------------------------
+  // These all get overwritten in soln process
+  min_volume_ = DBL_MAX;
+  extension_band_use_ = DBL_MAX;
+  extension_band_extend_= DBL_MAX;
 
 
+  // ----------------------------------------------
+  // Related to time/timestepping:
+  // ----------------------------------------------
+  // Init time variables to 0
+  tn = 0.; dt = 0.; dt_nm1 = 0.;
+  dt_Stefan = 0.; dt_NS = 0.; dt_max_allowed = 0.;
 
-}
+  tstart = 0.; // TO-DO: revisit need for tstart
+  // perhaps if user loads from prev state, they can set_tn accordingly?
+
+  v_interface_max_allowed = DBL_MAX;
+
+  advection_sl_order = 2;
+  NS_advection_sl_order = 2;
+
+  advection_alpha_coeff = advection_beta_coeff = 0.; // these get computed in soln process
+
+  tstep = load_tstep = 0;
+  out_idx = 0;
+
+  cfl_Stefan = 0.5;
+  cfl_NS = 2.;
+
+  // ----------------------------------------------
+  // Related to dimensionalization type:
+  // ----------------------------------------------
+
+  // Choose an initial dim type, but user should overwrite this
+  problem_dimensionalization_type = DIMENSIONAL;
+
+  time_nondim_to_dim = 1.;
+  vel_nondim_to_dim = 1.;
+
+  // ----------------------------------------------
+  // Nondimensional groups
+  // ----------------------------------------------
+  Re = Pr = Sc = Pe = St = Da = RaT = RaC = 0.;
+
+  // -------------------------------
+  // Physical parameters:
+  // -------------------------------
+  l_char = 1.; u_inf = 1.;
+
+  T0 = Tinterface = Tinfty = Tflush = 0.;
+
+  alpha_l = alpha_s = k_l = k_s = rho_l = rho_s =
+      cp_s = L = mu_l = sigma = 1;
+
+  grav = beta_T = beta_C = 1;
+
+  gamma_diss = stoich_coeff_diss = molar_volume_diss = k_diss = 1;
+  Dl = Ds = 1;
+
+  // ----------------------------------------------
+  // Booleans related to what kind of physics we are solving
+  // ---------------------------------------------
+  solve_stefan = false;
+  solve_navier_stokes = false;
+  there_is_a_substrate = false;
+  start_w_merged_grains = false;
+  do_we_solve_for_Ts = false;
+  use_boussinesq = false;
+  is_dissolution_case = false;
+  force_interfacial_velocity_to_zero = false;
+
+  // ----------------------------------------------
+  // Other misc parameters
+  // ---------------------------------------------
+  print_checkpoints = false;
+  scale_vgamma_by = 1.;
+
+  // ----------------------------------------------
+  // Specific to diff cases
+  // ----------------------------------------------
+  interfacial_temp_bc_requires_curvature = false;
+  interfacial_temp_bc_requires_normal = false;
+  interfacial_vel_bc_requires_vint = false;
+
+  track_evolving_geometries = false;
+
+  // ----------------------------------------------
+  // Related to any front regularization:
+  // ----------------------------------------------
+  use_regularize_front = false;
+  use_collapse_onto_substrate = false;
+
+  proximity_smoothing = 0.;
+  proximity_collapse = 0.;
+
+  // ----------------------------------------------
+  // Related to LSF reinitialization
+  // ----------------------------------------------
+  reinit_every_iter = 1;
+
+  // ----------------------------------------------
+  // Level set functions
+  // ----------------------------------------------
+  level_set = NULL;
+  substrate_level_set = NULL;
+
+  // ----------------------------------------------
+  // Temperature problem variables -- nondim:
+  // ----------------------------------------------
+  deltaT = theta_infty = theta_infty = theta0 = 0.;
+
+  // -------------------------------------------------------
+  // Auxiliary initializations:
+  // -------------------------------------------------------
+  grids_are_initialized = fields_are_initialized = false;
+  initial_refinement_CF = NULL;
+
+  for (unsigned char i=0; i<2; i++){
+    initial_temp_n[i] = NULL;
+    initial_temp_nm1[i] = NULL;
+  }
+
+  foreach_dimension(d){
+    initial_NS_velocity_n[d] = NULL;
+    initial_NS_velocity_nm1[d] = NULL;
+  }
+
+  // That's all she wrote!
+
+} // end of constructor
 
 void my_p4est_stefan_with_fluids_t::initialize_grids(){
 
@@ -444,6 +589,7 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
 
 void my_p4est_stefan_with_fluids_t::perform_initializations(){
 
+
   // Check and make sure the user has provided all the necessary information:
 
 
@@ -509,12 +655,12 @@ void my_p4est_stefan_with_fluids_t::perform_initializations(){
               u_inf,deltaT,sigma,l_char,sigma/l_char);
 
 
-
-
-  PetscPrintf(mpi.comm(),"Simulation time: %0.4f [min] = %0.4f [sec] = %0.4f [nondim]\n\n",
-              tfinal*time_nondim_to_dim/60.,
-              tfinal*time_nondim_to_dim,
-              tfinal);
+// TO-DO: commented out below, make sure it's handled in main
+// We will do time handling externally:
+//  PetscPrintf(mpi.comm(),"Simulation time: %0.4f [min] = %0.4f [sec] = %0.4f [nondim]\n\n",
+//              tfinal*time_nondim_to_dim/60.,
+//              tfinal*time_nondim_to_dim,
+//              tfinal);
 
 
   // TO-DO: not printing any of this time info here, it should be handled in the main
@@ -606,8 +752,8 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
     phi_eff.destroy();
   }
 
-  delete ls;
-  delete sp;
+  if(ls!=NULL) delete ls;
+  if(sp!=NULL) delete sp;
 
   if(solve_stefan){
     T_l_n.destroy();
@@ -630,20 +776,20 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
 
     if(!solve_navier_stokes){
       // destroy the structures leftover (in non NS case)
-      p4est_nodes_destroy(nodes_n);
-      p4est_ghost_destroy(ghost_n);
-      p4est_destroy      (p4est_n);
+      if(nodes_n !=NULL) p4est_nodes_destroy(nodes_n);
+      if(ghost_n !=NULL) p4est_ghost_destroy(ghost_n);
+      if(p4est_n !=NULL) p4est_destroy      (p4est_n);
 
-      p4est_nodes_destroy(nodes_np1);
-      p4est_ghost_destroy(ghost_np1);
-      p4est_destroy(p4est_np1);
+      if(nodes_np1 !=NULL) p4est_nodes_destroy(nodes_np1);
+      if(ghost_np1 !=NULL) p4est_ghost_destroy(ghost_np1);
+      if(p4est_np1 !=NULL) p4est_destroy(p4est_np1);
 
-      my_p4est_brick_destroy(conn, &brick);
-      delete hierarchy_n;
-      delete ngbd_n;
+      if(conn !=NULL) my_p4est_brick_destroy(conn, &brick);
+      if(hierarchy_n !=NULL) delete hierarchy_n;
+      if(ngbd_n !=NULL) delete ngbd_n;
 
-      delete hierarchy_np1;
-      delete ngbd_np1;
+      if(hierarchy_np1 !=NULL) delete hierarchy_np1;
+      if(ngbd_np1 !=NULL) delete ngbd_np1;
     }
   }
 
@@ -678,7 +824,7 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
     ns->nullify_phi();
     ns->nullify_velocities_at_nodes();
     ns->nullify_vorticity();
-    delete ns;
+    if(ns!=NULL) delete ns;
     MPI_Barrier(mpi.comm());
   }
 
@@ -856,7 +1002,7 @@ void my_p4est_stefan_with_fluids_t::setup_rhs_for_scalar_temp_conc_problem(){
     T_l_n.get_array();
   }
 
-  if(analytical_IC_BC_forcing_term){
+  if(there_is_user_provided_heat_source){
     forcing_term_liquid.get_array();
     if(do_we_solve_for_Ts) forcing_term_solid.get_array();
   }
@@ -882,7 +1028,7 @@ void my_p4est_stefan_with_fluids_t::setup_rhs_for_scalar_temp_conc_problem(){
       // Backward Euler
       rhs_Tl.ptr[n] = T_l_n.ptr[n]/dt;
     }
-    if(analytical_IC_BC_forcing_term){
+    if(there_is_user_provided_heat_source){
       // Add forcing terms:
       rhs_Tl.ptr[n]+=forcing_term_liquid.ptr[n];
       if(do_we_solve_for_Ts) rhs_Ts.ptr[n]+=forcing_term_solid.ptr[n];
@@ -907,7 +1053,7 @@ void my_p4est_stefan_with_fluids_t::setup_rhs_for_scalar_temp_conc_problem(){
     T_l_n.restore_array();
   }
 
-  if(analytical_IC_BC_forcing_term){
+  if(there_is_user_provided_heat_source){
     forcing_term_liquid.restore_array();
 
     if(do_we_solve_for_Ts) {
@@ -3050,23 +3196,24 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
     throw std::runtime_error("Fields and grids are not marked as initialized. You must initialize these before solving a timestep. You can do this using the function perform_initializations() and by providing the required initial fields and parameters \n");
   }
 
-  // ---------------------------------------
-  // Print iteration information:
-  // ---------------------------------------
-  int num_nodes = nodes_np1->num_owned_indeps;
-  MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
-  ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
-                                 "Iteration %d , Time: %0.3f [nondim] "
-                                 "= Time: %0.3f [nondim] "
-                                 "= %0.3f [sec] "
-                                 "= %0.3f [min],"
-                                 " Timestep: %0.3e [nondim] = %0.3e [sec],"
-                                 " Percent Done : %0.2f %"
-                                 " \n ------------------------------------------- \n"
-                                 "Number of nodes : %d \n \n",
-                     tstep,tn,tn,tn*time_nondim_to_dim,tn*(time_nondim_to_dim)/60.,
-                     dt, dt*(time_nondim_to_dim),
-                     ((tn-tstart)/(tfinal-tstart))*100.0,num_nodes);
+  // TO-DO: make sure below is handled in main, not going to have it here
+//  // ---------------------------------------
+//  // Print iteration information:
+//  // ---------------------------------------
+//  int num_nodes = nodes_np1->num_owned_indeps;
+//  MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
+//  ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
+//                                 "Iteration %d , Time: %0.3f [nondim] "
+//                                 "= Time: %0.3f [nondim] "
+//                                 "= %0.3f [sec] "
+//                                 "= %0.3f [min],"
+//                                 " Timestep: %0.3e [nondim] = %0.3e [sec],"
+//                                 " Percent Done : %0.2f %"
+//                                 " \n ------------------------------------------- \n"
+//                                 "Number of nodes : %d \n \n",
+//                     tstep,tn,tn,tn*time_nondim_to_dim,tn*(time_nondim_to_dim)/60.,
+//                     dt, dt*(time_nondim_to_dim),
+//                     ((tn-tstart)/(tfinal-tstart))*100.0,num_nodes);
   // TO-DO: (^) usedto be t_original_Start, now it's just tstart, idk how that will affect things (minor but there it is)
 
   // ------------------------------------------------------------
