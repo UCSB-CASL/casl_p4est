@@ -242,6 +242,7 @@ bool example_uses_inner_LSF;
 bool example_has_known_max_vint;
 
 double max_vint_known_for_ex = 1.0;
+unsigned int num_fields_interp = 0;
 
 void select_solvers(){
   switch(example_){
@@ -301,6 +302,17 @@ void select_solvers(){
       throw std::invalid_argument("You have selected to save using dt and using iteration, you need to select only one \n");
     }
 
+    // Set number of interpolation fields:
+    // Number of fields interpolated from one grid to the next depends on which equations
+    // we are solving, therefore we select appropriately
+    num_fields_interp = 0;
+    if(solve_stefan){
+      num_fields_interp+=1; // Tl, // DONT ACTUALLY NEED TO INTERP: vint_x, vint_y
+      if(do_we_solve_for_Ts) num_fields_interp+=1; // Ts
+    }
+    if(solve_navier_stokes){
+      num_fields_interp+=2; // vNS_x, vNS_y
+    }
 
     // Define other settings to be used depending on the example:
     analytical_IC_BC_forcing_term = (example_ == COUPLED_PROBLEM_EXAMPLE) ||
@@ -394,56 +406,15 @@ DEFINE_PARAMETER(pl, int, num_splits, 0, "Number of splits -- used for convergen
 DEFINE_PARAMETER(pl, bool, refine_by_ucomponent, false, "Flag for whether or not to refine by a backflow condition for the fluid velocity");
 DEFINE_PARAMETER(pl, bool, refine_by_d2T, true, "Flag for whether or not to refine by the nondimensionalized temperature gradient");
 
+
 // For level set:
-double r0;
+double r0=0.;
 
 // For frank sphere:
-double s0;
+double s0=0.;
 
-// Elyce commented out 12/14/21: redefining these more generally next to the nondim groups
-// For ice growth on cylinder and melting ice sphere problems: // TO-DO: double check that this is correct
-/*
-DEFINE_PARAMETER(pl, double, d_cyl, 35.e-3, "Cylinder diamter in meters for ice cylinder problem, (default: 35.e-3) ");
-// TO-DO: change d_cyl to "d_length_scale" so that it is more general
-
-
-DEFINE_PARAMETER(pl, double, T_cyl, 263., "For ice growth over cooled cylinder example, this refers to Temperature of cooled cylinder in K (default : 263, aka -10 C). For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 263). ");
-
-DEFINE_PARAMETER(pl, double, Twall, 275.5, "The freestream fluid temperature T_infty. (default: 275.5 K, or 2.5 C)");
-*/
-
-//to-do: decide whether to keep this pressure drop option. will need to add logic to either select pressure drop OR overwrite Reynolds, but not both
-DEFINE_PARAMETER(pl, double, pressure_drop, 1.0, "The dimensional pressure drop value you are using, in Pa. This value will be used in conjunction with the nondim length scale to compute wall Reynolds number for relevant examples using a channel flow-type setup(i.e. melting porous media). Default: 1.0.");
-
+// For ice cylinder case:
 double r_cyl; // non dim variable used to set up LSF: set in set_geometry()
-
-// For solution of temperature fields:
-DEFINE_PARAMETER(pl, double, back_wall_temp_flux, 0.0, "Temperature flux at back wall. Default: 0.0 \n");
-double deltaT;
-
-// Nondimensional temperature values (computed in set_physical_properties)
-double theta_infty;
-double theta_interface;
-double theta0;
-
-// For surface tension: (used to apply some interfacial BC's in temperature) // TO-DO revisit this?
-//double sigma; // set in set_physical_properties()
-DEFINE_PARAMETER(pl,double,sigma,4.20e-10,"Interfacial tension [m] between ice and water, default: 2*2.10e-10");
-
-// For the coupled test case where we have to swtich sign:
-double coupled_test_sign; // in header -- to define only for that example
-bool vel_has_switched;
-void coupled_test_switch_sign(){coupled_test_sign*=-1.;}
-
-// for defining LSF for coupled test case
-double x0_lsf;
-double y0_lsf;
-
-unsigned int num_fields_interp = 0;
-
-
-// Define a few parameters for the porous media case to create random grains:
-DEFINE_PARAMETER(pl, int, num_grains, 10., "Number of grains in porous media (default: 10)");
 
 std::vector<double> xshifts;
 std::vector<double> yshifts;
@@ -608,8 +579,6 @@ void set_geometry(){
       xmin = -PI; xmax = PI;
       ymin = -PI; ymax = PI;
 
-      x0_lsf = 0.; y0_lsf = 0.; // TO-DO: can remove the x0_lsf and y0_lsf since they are not being used
-
       // Number of trees:
       nx = 2; ny = 2;
       px = 0; py = 0;
@@ -655,8 +624,6 @@ void set_geometry(){
       xmin = -PI; xmax = PI;
       ymin = -PI; ymax = PI;
 
-      x0_lsf = 0.; y0_lsf = 0.; // TO-DO: can remove the x0_lsf and y0_lsf since they are not being used
-
       // Number of trees:
       nx = 2; ny = 2;
       px = 0; py = 0;
@@ -667,26 +634,10 @@ void set_geometry(){
       break;
      }
   }
-
-  // Set number of interpolation fields:
-  // Number of fields interpolated from one grid to the next depends on which equations
-  // we are solving, therefore we select appropriately
-  num_fields_interp = 0;
-  if(solve_stefan){
-    num_fields_interp+=1; // Tl, // DONT ACTUALLY NEED TO INTERP: vint_x, vint_y
-    if(do_we_solve_for_Ts) num_fields_interp+=1; // Ts
-  }
-  if(solve_navier_stokes){
-    num_fields_interp+=2; // vNS_x, vNS_y
-  }
-
-  // If you're only solving NS, switch off refinement around temp fields:
-  if(!solve_stefan && solve_navier_stokes){
-    refine_by_d2T = false;
-  }
 }
 
-
+// Define a few parameters for the porous media case to create random grains:
+DEFINE_PARAMETER(pl, int, num_grains, 10., "Number of grains in porous media (default: 10)");
 void make_LSF_for_porous_media(mpi_environment_t &mpi){
     // initialize random number generator:
     srand(1);
@@ -819,6 +770,9 @@ DEFINE_PARAMETER(pl, double, L, 1.0, "Latent heat of fusion [J/kg]. Default: 1. 
                                        "This property is set inside specific examples. ");
 DEFINE_PARAMETER(pl, double, mu_l, 1.0, "Dynamic viscosity of fluid [Pa s]. Default: 1."
                                        "This property is set inside specific examples.");
+
+DEFINE_PARAMETER(pl,double,sigma,4.20e-10,"Interfacial tension [m] between ice and water, default: 2*2.10e-10");
+
 
 DEFINE_PARAMETER(pl, double, grav, 9.81, "Gravity (m/s^2). Default: 9.81.");
 DEFINE_PARAMETER(pl, double, beta_T, 1.0, "Thermal expansion coefficient for the boussinesq approx. default: 1 . This gets set inside specific examples. \n ");
@@ -1058,6 +1012,12 @@ void select_problem_nondim_or_dim_formulation(){
 double time_nondim_to_dim = 1.;
 double vel_nondim_to_dim = 1.;
 
+// Nondimensional temperature values (computed in set_physical_properties)
+double theta_infty=0.;
+double theta_interface=0.;
+double theta0=0.;
+double deltaT=0.;
+
 void set_temp_conc_nondim_defns(){
   switch(example_){
   case FRANK_SPHERE:{
@@ -1156,7 +1116,12 @@ void set_temp_conc_nondim_defns(){
   }
   }
 }
-DEFINE_PARAMETER(pl, double, u_inf, 0., "Freestream velocity value (in m/s). Default is 0. This is usually overwritten bc it is computed by a provided Reynolds number. However, in dissolving disk benchmark example with diffusivity nondimensionalization, this can be used to pass in the freestream fluid boundary condition at the wall. \n"); // physical value of freestream velocity
+
+// For solution of temperature fields:
+DEFINE_PARAMETER(pl, double, back_wall_temp_flux, 0.0, "Temperature flux at back wall. Default: 0.0 \n");
+
+// Maximum allowed v_interface value:
+DEFINE_PARAMETER(pl, double, v_int_max_allowed, 50.0, "Max allowed v_interface value. Default: 50 \n");
 
 //-----------------------------------------
 // Properties to set if you are solving NS
@@ -1167,6 +1132,12 @@ double u0=0.;
 double v0=0.;
 double outflow_u=0.;
 double outflow_v=0.;
+
+DEFINE_PARAMETER(pl, double, u_inf, 0., "Freestream velocity value (in m/s). Default is 0. This is usually overwritten bc it is computed by a provided Reynolds number. However, in dissolving disk benchmark example with diffusivity nondimensionalization, this can be used to pass in the freestream fluid boundary condition at the wall. \n"); // physical value of freestream velocity
+
+
+//to-do: (not sure if this comment is still relevant--> )decide whether to keep this pressure drop option. will need to add logic to either select pressure drop OR overwrite Reynolds, but not both
+DEFINE_PARAMETER(pl, double, pressure_drop, 1.0, "The dimensional pressure drop value you are using, in Pa. This value will be used in conjunction with the nondim length scale to compute wall Reynolds number for relevant examples using a channel flow-type setup(i.e. melting porous media). Default: 1.0.");
 
 // For setting hodge criteria:
 DEFINE_PARAMETER(pl, double, hodge_percentage_of_max_u, 1.e-2, "Percentage of the max NS norm that hodge variable has to converge within. Default: 1.e-2.");
@@ -1180,8 +1151,6 @@ DEFINE_PARAMETER(pl, double, NS_max_allowed, 100., "Max allowed NS norm before t
 double perturb_flow_noise =0.25;
 
 
-
-//double G_press; // corresponds to porous media example, it is the prescribed pressure gradient across the channel, applied as a pressure drop, aka (P1 - P2)/L = G --> specified
 // TO-DO: clean this out so we have only what is actually used
 void set_NS_info(){
 
@@ -1283,16 +1252,12 @@ void set_NS_info(){
 // ---------------------------------------
 double tfinal;
 double dt_max_allowed;
-bool keep_going = true;
 
 double tn;
 double tstart;
 double dt = 1.e-5;
-double dt_nm1 = 1.e-5;
 int tstep;
-double dt_min_allowed = 1.e-5;
-
-double dt_Stefan =0.;
+double dt_min_allowed = 1.e-5; // TO-DO: make this compatible w stefan_w_fluids solver?
 
 DEFINE_PARAMETER(pl,double,t_ramp,0.1,"Time at which boundary conditions are ramped up to their desired value [input should be dimensional time, in seconds] (default: 3 seconds) \n");
 DEFINE_PARAMETER(pl,bool,ramp_bcs,false,"Boolean option to ramp the BCs over a specified ramp time (default: false) \n");
@@ -1403,12 +1368,18 @@ void simulation_time_info(){
 // ---------------------------------------
 // Other parameters:
 // ---------------------------------------
-DEFINE_PARAMETER(pl, double, v_int_max_allowed, 50.0, "Max allowed v_interface value. Default: 50 \n");
-
 
 bool is_ice_melted = false; // Boolean for checking if the ice is melted for melting ice sphere example
 
+// ----------------
+// For the coupled test case where we have to swtich sign:
+// ----------------
+double coupled_test_sign=1; // in header -- to define only for that example
+bool vel_has_switched=false;
+void coupled_test_switch_sign(){coupled_test_sign*=-1.;}
 
+
+// --------------------------------------------------------------------------------------------------------------
 // Begin defining classes for necessary functions and boundary conditions...
 // --------------------------------------------------------------------------------------------------------------
 /* Frank sphere functions --
@@ -2053,10 +2024,10 @@ public:
         return r0 - sin(x)*sin(y);
       }
       case COUPLED_PROBLEM_EXAMPLE:{
-        return r0 - sqrt(SQR(x - x0_lsf) + SQR(y - y0_lsf));
+        return r0 - sqrt(SQR(x) + SQR(y));
       }
       case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
-        return r0 - sqrt(SQR(x - x0_lsf) + SQR(y - y0_lsf));
+        return r0 - sqrt(SQR(x) + SQR(y));
       }
       case COUPLED_TEST_2:{
         double x0 = 0.;//1./6.;
@@ -4166,6 +4137,9 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
 
   stefan_w_fluids_solver->set_proximity_smoothing(proximity_smoothing);
   stefan_w_fluids_solver->set_proximity_collapse(proximity_collapse);
+
+  stefan_w_fluids_solver->set_NS_max_allowed(NS_max_allowed);
+  stefan_w_fluids_solver->set_v_interface_max_allowed(v_int_max_allowed);
   // ------------------------------
   // Make sure your flags are set to solve at least one of the problems:
   // ------------------------------
