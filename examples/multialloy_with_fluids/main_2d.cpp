@@ -4135,6 +4135,8 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   stefan_w_fluids_solver->set_use_boussinesq(use_boussinesq);
   stefan_w_fluids_solver->set_force_interfacial_velocity_to_zero(force_interfacial_velocity_to_zero);
 
+  stefan_w_fluids_solver->set_loading_from_previous_state(loading_from_previous_state);
+
 
   stefan_w_fluids_solver->set_proximity_smoothing(proximity_smoothing);
   stefan_w_fluids_solver->set_proximity_collapse(proximity_collapse);
@@ -4257,6 +4259,7 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   // Refinement:
   stefan_w_fluids_solver->set_refine_by_d2T(refine_by_d2T);
   stefan_w_fluids_solver->set_d2T_ref_threshold(gradT_threshold);
+  stefan_w_fluids_solver->set_vorticity_ref_threshold(vorticity_threshold);
 
 
 
