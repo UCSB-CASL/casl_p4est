@@ -4077,11 +4077,12 @@ void perform_saving_tasks_of_interest(mpi_environment_t &mpi, my_p4est_stefan_wi
   // ---------------------------
   bool are_we_saving = false;
 
-  are_we_saving = are_we_saving_vtk( tstep, tn, tstep==load_tstep, out_idx, true) /*&& (tstep>0)*/;
+  are_we_saving = are_we_saving_vtk(tstep, tn, tstep==load_tstep, out_idx, true) /*&& (tstep>0)*/;
   // ---------------------------
   // (Saving-b) Save to VTK if applicable:
   // ---------------------------
   if(are_we_saving){
+//    PetscPrintf(mpi.comm(), "outidx = %d \n", out_idx);
     stefan_w_fluids_solver->save_fields_to_vtk(out_idx);
   } // end of if "are we saving"
 
@@ -4930,7 +4931,6 @@ int main(int argc, char** argv) {
   INITIAL_VELOCITY* v_init_cf[P4EST_DIM];
   velocity_component* analytical_soln_v_init[P4EST_DIM];
 
-
   // Files for outputting relevant information : ---------
   FILE *fich_errors = NULL;
   char name_errors[1000];
@@ -5022,12 +5022,10 @@ int main(int argc, char** argv) {
     // -----------------------------------------------
     if(print_checkpoints)PetscPrintf(mpi.comm(),"Initializing output files ... \n");
 
-
     initialize_error_files_for_test_cases(mpi, stefan_w_fluids_solver,
                                           fich_errors, name_errors,
                                           fich_data, name_data,
                                           fich_mem, name_mem);
-
 
     // ------------------------------------------------------------
 
@@ -5050,7 +5048,6 @@ int main(int argc, char** argv) {
       // ---------------------------------------
       // Print iteration information:
       // ---------------------------------------
-      // TO-DO: uncomment below when ready
       int num_nodes = stefan_w_fluids_solver->get_nodes_np1()->num_owned_indeps;
       MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
       dt = stefan_w_fluids_solver->get_dt();
@@ -5163,8 +5160,6 @@ int main(int argc, char** argv) {
       stefan_w_fluids_solver->set_tstep(tstep); // Required for reinit_every_iter to be processed properly
       stefan_w_fluids_solver->set_tn(tn); // Update tn in case of save state (so save state has accurate time)
 
-//      stefan_w_fluids_solver->set_tstep(tstep); // TO-DO: should solver handle this itself? either that or eliminate usage of tstep from the solver?
-
       // --------------------------------------------------------------------------------------------------------------
       // Save simulation state every specified number of iterations
       // We save the state here to be consistent with how states are loaded -- a state that is loaded will be loaded as if its an initial condition, and then the temperature problem will be solved, and so on and so forth.
@@ -5184,7 +5179,6 @@ int main(int argc, char** argv) {
                 advection_sl_order,example_);
 
         stefan_w_fluids_solver->save_state(output, num_save_states);
-
 
         PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
       }
@@ -5211,4 +5205,3 @@ int main(int argc, char** argv) {
   w.stop(); w.read_duration();
   return 0;
 }
-

@@ -3233,7 +3233,7 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
 // -------------------------------------------------------
 // Functions related to VTK saving:
 // -------------------------------------------------------
-void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(double out_idx, bool is_crash, char crash_type[]){
+void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_crash, char crash_type[]){
 
   char output[1000];
 

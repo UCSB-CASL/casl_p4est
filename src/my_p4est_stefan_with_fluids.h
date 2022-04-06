@@ -583,7 +583,7 @@ public:
   // -------------------------------------------------------
   // Functions related to VTK saving:
   // -------------------------------------------------------
-  void save_fields_to_vtk(double out_idx, bool is_crash=false, char crash_type[]=NULL);
+  void save_fields_to_vtk(int out_idx, bool is_crash=false, char crash_type[]=NULL);
 
   // -------------------------------------------------------
   // Functions and variables related to save state/load state:
