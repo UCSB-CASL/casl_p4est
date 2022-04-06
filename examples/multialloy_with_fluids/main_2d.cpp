@@ -781,43 +781,11 @@ double return_LSF_porous_media(DIM(double x, double y, double z), bool is_inner_
 
 
 
-double v_interface_max_norm; // For keeping track of the interfacial velocity maximum norm
+double v_interface_max_norm=0.; // For keeping track of the interfacial velocity maximum norm
 
 
 // ---------------------------------------
-// Non dimensional groups:
-// ---------------------------------------
-DEFINE_PARAMETER(pl, double, Re, -1., "Reynolds number (rho Uinf d)/mu, where d is the characteristic length scale - default is 0. \n");
-DEFINE_PARAMETER(pl, double, Pr, -1., "Prandtl number - computed from mu_l, alpha_l, rho_l \n");
-DEFINE_PARAMETER(pl, double, Sc, -1., "Schmidt number - computed from mu_l, D, rho_l \n");
-
-DEFINE_PARAMETER(pl, double, Pe, -1., "Peclet number - computed from Re and Pr \n");
-DEFINE_PARAMETER(pl, double, St, -1., "Stefan number (cp_s deltaT/L)- computed from cp_s, deltaT, L \n");
-
-DEFINE_PARAMETER(pl, double, Da, -1., "Damkohler number (k_diss*l_char/D_diss) \n");
-
-DEFINE_PARAMETER(pl, double, RaT, -1., "Rayleigh number by temperature (default:0) \n");
-DEFINE_PARAMETER(pl, double, RaC, -1., "Rayleigh number by concentration (default:0) \n");
-
-
-DEFINE_PARAMETER(pl,double,Gibbs_eps4,0.005,"Gibbs Thomson anisotropy coefficient (default: 0.005), applicable in dendrite test cases \n");
-
-// ---------------------------------------
-// Problem parameters:
-// ---------------------------------------
-DEFINE_PARAMETER(pl, double, l_char, 0., "Characteristic length scale for the problem (in meters). i.e. For okada flow past cylinder, this should be set to the cylinder diameter \n. ");
-
-
-DEFINE_PARAMETER(pl, double, T0, 0., "Characteristic solid temperature of the problem. Usually corresponds to the solid phase. i.e.) For ice growth over cooled cylinder example, this refers to temperature of cooled cylinder in K. For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 0). This must be specified by the user. ");
-
-DEFINE_PARAMETER(pl, double, Tinterface, 0.5, "The interface temperature (or concentration) in K (or INSERT HERE), i.e. the melt temperature. (default: 0.5 This needs to be set by the user to run a meaningful example).");
-
-DEFINE_PARAMETER(pl, double, Tinfty, 1., "The freestream fluid temperature T_infty in K. (default: 1. This needs to be set by the user to run a meaningful example).");
-
-DEFINE_PARAMETER(pl, double, Tflush, -1.0, "The flush temperature (K) or concentration that the inlet BC is changed to if flush_dim_time is activated. Default: -1.0. \n");
-
-// ---------------------------------------
-// Physical properties:
+// Physical properties/General problem parameters:
 // ---------------------------------------
 // For solidification problem:
 //double alpha_s; // Thermal diffusivity of solid [m^2/s]
@@ -829,6 +797,8 @@ DEFINE_PARAMETER(pl, double, Tflush, -1.0, "The flush temperature (K) or concent
 //double rho_s;   // Density of solid [kg/m^3]
 //double cp_s;    // Specific heat of solid [J/(kg K)]
 //double mu_l;    // Dynamic viscosity of fluid [Pa s]
+
+DEFINE_PARAMETER(pl, double, l_char, 0., "Characteristic length scale for the problem (in meters). i.e. For okada flow past cylinder, this should be set to the cylinder diameter \n. ");
 
 DEFINE_PARAMETER(pl, double, alpha_l, 1.0, "Thermal diffusivity of liquid [m^2/s]. Default: 1."
                                            "This property is set inside specific examples.");
@@ -868,10 +838,17 @@ DEFINE_PARAMETER(pl, double , Ds, 0., "Solid phase diffusion coefficient m^2/s, 
 
 DEFINE_PARAMETER(pl, double, k_diss, 1.0, "Dissolution rate constant per unit area of reactive surface (m/s). Default 4.5e-3 mm/s aka 4.5e-6 m/s \n");
 
+// Scalar temp/conc problem parameters:
+DEFINE_PARAMETER(pl, double, T0, 0., "Characteristic solid temperature of the problem. Usually corresponds to the solid phase. i.e.) For ice growth over cooled cylinder example, this refers to temperature of cooled cylinder in K. For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 0). This must be specified by the user. ");
 
-double n_times_d0; // multiplier on d0 we use to get dseed //(WIP) // TO-DO:clean up dendrite stuff!
+DEFINE_PARAMETER(pl, double, Tinterface, 0.5, "The interface temperature (or concentration) in K (or INSERT HERE), i.e. the melt temperature. (default: 0.5 This needs to be set by the user to run a meaningful example).");
+
+DEFINE_PARAMETER(pl, double, Tinfty, 1., "The freestream fluid temperature T_infty in K. (default: 1. This needs to be set by the user to run a meaningful example).");
+
+DEFINE_PARAMETER(pl, double, Tflush, -1.0, "The flush temperature (K) or concentration that the inlet BC is changed to if flush_dim_time is activated. Default: -1.0. \n");
+
+// Function to setup the physical properties (for diff examples):
 void set_physical_properties(){
-  double nu;
   switch(example_){
     case FRANK_SPHERE:{
       alpha_s = 1.0;
@@ -986,7 +963,25 @@ void set_physical_properties(){
 }
 
 
-//enum:int{NONDIM_BY_FLUID_VELOCITY, NONDIM_BY_SCALAR_DIFFUSIVITY, DIMENSIONAL};
+// ---------------------------------------
+// Related to the nondimensional problem / nondimensionalization:
+// ---------------------------------------
+DEFINE_PARAMETER(pl, double, Re, -1., "Reynolds number (rho Uinf d)/mu, where d is the characteristic length scale - default is 0. \n");
+DEFINE_PARAMETER(pl, double, Pr, -1., "Prandtl number - computed from mu_l, alpha_l, rho_l \n");
+DEFINE_PARAMETER(pl, double, Sc, -1., "Schmidt number - computed from mu_l, D, rho_l \n");
+
+DEFINE_PARAMETER(pl, double, Pe, -1., "Peclet number - computed from Re and Pr \n");
+DEFINE_PARAMETER(pl, double, St, -1., "Stefan number (cp_s deltaT/L)- computed from cp_s, deltaT, L \n");
+
+DEFINE_PARAMETER(pl, double, Da, -1., "Damkohler number (k_diss*l_char/D_diss) \n");
+
+DEFINE_PARAMETER(pl, double, RaT, -1., "Rayleigh number by temperature (default:0) \n");
+DEFINE_PARAMETER(pl, double, RaC, -1., "Rayleigh number by concentration (default:0) \n");
+
+
+DEFINE_PARAMETER(pl,double,Gibbs_eps4,0.005,"Gibbs Thomson anisotropy coefficient (default: 0.005), applicable in dendrite test cases \n");
+
+problem_dimensionalization_type_t problem_dimensionalization_type;
 // NONDIM_BY_FLUID_VELOCITY -- corresponds to nondimensionalization where the velocities in the problem are nondimensionalized by
 //                             a characteristic fluid velocity, and Reynolds number is used to setup the Navier-Stokes equations
 
@@ -995,8 +990,6 @@ void set_physical_properties(){
 //                          and Prandtl/Schmidt number is used to setup the Navier-Stokes equations
 
 // DIMENSIONAL -- corresponds to solving the dimensional problem
-
-problem_dimensionalization_type_t problem_dimensionalization_type;
 
 void select_problem_nondim_or_dim_formulation(){
   switch(example_){
@@ -1168,24 +1161,22 @@ DEFINE_PARAMETER(pl, double, u_inf, 0., "Freestream velocity value (in m/s). Def
 //-----------------------------------------
 // Properties to set if you are solving NS
 // ----------------------------------------
-double pressure_prescribed_flux;
-double pressure_prescribed_value;
-double u0;
-double v0;
 
-double outflow_u;
-double outflow_v;
-double hodge_percentage_of_max_u;
+// For velocity BCs/ICs
+double u0=0.;
+double v0=0.;
+double outflow_u=0.;
+double outflow_v=0.;
 
-int hodge_max_it = 100;
-double T_l_IC_band = 2.0;
-bool ramp_T_l_IC_space = false;
-double dt_NS =0.;
+// For setting hodge criteria:
+DEFINE_PARAMETER(pl, double, hodge_percentage_of_max_u, 1.e-2, "Percentage of the max NS norm that hodge variable has to converge within. Default: 1.e-2.");
 
+// For keeping track of hodge error:
 double hodge_global_error;
 
-double NS_norm = 0.0; // To keep track of the NS norm
 DEFINE_PARAMETER(pl, double, NS_max_allowed, 100., "Max allowed NS norm before throwing a blow up error. Default: 100. \n");
+
+// For okada example, amount to perturb initial flow (to induce vortex shedding)
 double perturb_flow_noise =0.25;
 
 
@@ -1193,10 +1184,6 @@ double perturb_flow_noise =0.25;
 //double G_press; // corresponds to porous media example, it is the prescribed pressure gradient across the channel, applied as a pressure drop, aka (P1 - P2)/L = G --> specified
 // TO-DO: clean this out so we have only what is actually used
 void set_NS_info(){
-  pressure_prescribed_flux = 0.0; // For the Neumann condition on the two x walls and lower y wall
-  pressure_prescribed_value = 0.0; // For the Dirichlet condition on the back y wall
-
-  dt_NS = 1.e-3; // initial dt for NS
 
   // Note: fluid velocity is set via Re and u0,v0 --> v0 = 0 is equivalent to single direction flow, u0=1, v0=1 means both directions will flow at Re (TO-DO:make this more clear)
   switch(example_){
@@ -1290,29 +1277,6 @@ void set_NS_info(){
   outflow_u = 0.0;
   outflow_v = 0.0;
 }
-
-// Elyce commented out 12/14/21 -- transitioning to new way
-// For selecting the appropriate nondimensionalized formulation of the problem:
-//enum:int{NONDIM_NO_FLUID,NONDIM_YES_FLUID,DIMENSIONAL, NONDIM_DISSOLUTION};
-// TO-DO: change this to nondim_no_fluid_freezemelt, nondim_yes_fluid_freezemelt, nondim_no_fluid_dissodepo, nondim_yes_fluid_dissodepo, etc. erosion tbd
-// Elyce commented out 12/14/21 -- transitioning to new way
-//int problem_dimensionalization_type;
-//int select_problem_nondim_or_dim_formulation(){
-//  if(solve_navier_stokes){
-//    if(example_ == DISSOLVING_DISK_BENCHMARK){
-//      return NONDIM_DISSOLUTION;
-//    }
-//    else{
-//      return NONDIM_YES_FLUID;
-//    }
-
-//  }
-//  else{
-//    return NONDIM_NO_FLUID;
-//  }
-//};
-
-
 
 // ---------------------------------------
 // For setting up simulation timing information:
@@ -1439,18 +1403,18 @@ void simulation_time_info(){
 // ---------------------------------------
 // Other parameters:
 // ---------------------------------------
-//double v_int_max_allowed = 50.0;
 DEFINE_PARAMETER(pl, double, v_int_max_allowed, 50.0, "Max allowed v_interface value. Default: 50 \n");
-// Variables used for advection:
-double advection_alpha_coeff= 0.0;
-double advection_beta_coeff= 0.0;
+
 
 bool is_ice_melted = false; // Boolean for checking if the ice is melted for melting ice sphere example
 
 
 // Begin defining classes for necessary functions and boundary conditions...
 // --------------------------------------------------------------------------------------------------------------
-// Frank sphere functions -- Functions necessary for evaluating the analytical solution of the Frank sphere problem, to validate results for example 1
+/* Frank sphere functions --
+ * Functions necessary for evaluating the analytical
+ * solution of the Frank sphere problem
+*/
 // --------------------------------------------------------------------------------------------------------------
 double s(double r, double t){
   //std::cout<<"Time being used to compute s is: " << t << "\n"<< std::endl;
@@ -1536,243 +1500,8 @@ double frank_sphere_solution_t(double s){
 
 }
 
-// --------------------------------------------------------------------------------------------------------------
-// Functions/Structures for validating the Navier-Stokes problem:
-// --------------------------------------------------------------------------------------------------------------
-// Re-doing the NS validation case:
-struct velocity_component: CF_DIM
-{
-  const unsigned char dir;
-  const double k_NS=1.0; //1.0;
-  velocity_component(const unsigned char& dir_) : dir(dir_){
-    P4EST_ASSERT(dir<P4EST_DIM);
-  }
-
-  double v(DIM(double x, double y, double z)) const{ // gives vel components without the time component
-    switch(example_){
-      case NS_GIBOU_EXAMPLE:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:{
-        switch(dir){
-        case dir::x:
-          return sin(x)*cos(y);
-        case dir::y:
-          return -1.0*cos(x)*sin(y);
-        default:
-          throw std::runtime_error("analytical solution velocity: unknown cartesian direction \n");
-        }
-      }
-      case COUPLED_TEST_2:{
-        switch(dir){
-        case dir::x:
-          return (pow(x,3.)*(y - 1))/16. - (x*sin(2.*PI*(t - y)))/2.;//-cos(PI*(t - x))*(- 3.*SQR(y) + 2.*y);
-        case dir::y:
-          return (3.*SQR(x)*(- SQR(y)/2. + y))/16. + cos(2.*PI*(t - y))/(4.*PI); //PI*sin(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
-        default:
-          throw std::runtime_error("analytical solution velocity: unknown cartesian direction \n");
-        }
-      }
-      default:{
-        throw std::runtime_error("analytical solution velocity: unknown example \n");
-      }
-    }
-  }
-  double dv_d(const unsigned char& dirr,DIM(double x, double y, double z)) const{
-    switch(example_){
-      case NS_GIBOU_EXAMPLE:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:{
-        switch(dir){
-        case dir::x:
-          switch(dirr){
-          case dir::x: //du_dx (without time component)
-            return cos(x)*cos(y);
-          case dir::y: // du_dy (without time component)
-            return -sin(x)*sin(y);
-          }
-        case dir::y:
-          switch(dirr){
-          case dir::x: // dv_dx ("")
-            return sin(x)*sin(y);
-          case dir::y: // dv_dy ("")
-            return -cos(x)*cos(y);
-          }
-        }
-      }
-      case COUPLED_TEST_2:{
-        switch(dir){
-        case dir::x:
-          switch(dirr){
-          case dir::x: //du_dx (with time component)
-            return (3.*SQR(x)*(y - 1.))/16. - sin(2.*PI*(t - y))/2.; // -1.*PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
-          case dir::y: // du_dy (with time component)
-            return pow(x,3.)/16. + PI*cos(2.*PI*(t - y))*x; // cos(PI*(t - x))*(6.*y - 2.);
-          }
-        case dir::y:
-          switch(dirr){
-          case dir::x: // dv_dx ("")
-            return (3.*x*(-1.*SQR(y)/2. + y))/8.; //-SQR(PI)*cos(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
-          case dir::y: // dv_dy ("")
-            return sin(2.*PI*(t - y))/2. - (3.*SQR(x)*(y - 1.))/16.; //PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
-          }
-        }
-    }
-    }
-  }
-
-  double operator()(DIM(double x, double y, double z)) const{ // Returns the velocity field
-    switch (example_) {
-      case NS_GIBOU_EXAMPLE:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:{
-        return cos(t*k_NS)*v(DIM(x,y,z));
-      }
-      case COUPLED_TEST_2:{
-        return v(DIM(x,y,z)); // time component included in vel expression for this example
-      }
-      default:{
-        throw std::runtime_error("analytical velocity : unknown example \n");
-      }
-    }
-
-  }
-  double _d(const unsigned char& dirr, DIM(double x, double y, double z)){ // Returns spatial derivatives of velocity field in given cartesian direction
-    switch (example_) {
-      case NS_GIBOU_EXAMPLE:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:{
-        return cos(t*k_NS)*dv_d(dirr,DIM(x,y,z));
-      }
-      case COUPLED_TEST_2:{
-        return dv_d(dirr,DIM(x,y,z)); // put whole derivative in the expression for this particular example
-      }
-      default:{
-        throw std::runtime_error("analytical velocity : unknown example \n");
-      }
-    }
-  }
-  double laplace(DIM(double x, double y, double z)){
-    switch (example_) {
-      case NS_GIBOU_EXAMPLE:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:{
-        return -P4EST_DIM*cos(t*k_NS)*v(DIM(x,y,z));
-      }
-      case COUPLED_TEST_2:{
-        switch(dir){
-          case dir::x:{
-            return (3.*x*(y - 1.))/8. + 2.*x*SQR(PI)*sin(2.*PI*(t - y));//cos(PI*(t - x))*(-3.*SQR(PI)*SQR(y) + 2.*SQR(PI)*y + 6.);
-          }
-          case dir::y:{
-            return (3.*y)/8. - PI*cos(2.*PI*(t - y)) - (3.*SQR(x))/16. - (3.*SQR(y))/16.; //-1.*PI*sin(PI*(t - x))*(-1.*SQR(PI)*pow(y,3.) + SQR(PI)*SQR(y) + 6.*y - 2.);
-          }
-        default:{
-          throw std::runtime_error("analytical velocity: laplace: unknown cartesian direction \n");
-          }
-        }
-      }
-      default:{
-        throw std::runtime_error("analytical velocity : laplace: unknown example \n");
-      }
-    }
-  }
-  double dv_dt(DIM(double x, double y, double z)){
-    switch (example_) {
-      case NS_GIBOU_EXAMPLE:
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-      case COUPLED_PROBLEM_EXAMPLE:{
-        return -sin(k_NS*t)*v(DIM(x,y,z));
-      }
-      case COUPLED_TEST_2:{
-        switch(dir){
-          case dir::x:{
-            return -1.*x*PI*cos(2.*PI*(t - y)); // PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
-          }
-          case dir::y:{
-            return -1.*sin(2.*PI*(t - y))/2.; //SQR(PI)*cos(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
-          }
-        default:{
-          throw std::runtime_error("analytical velocity: dv_dt: unknown cartesian direction \n");
-          }
-        }
-      }
-      default:{
-        throw std::runtime_error("analytical velocity:dv_dt : unknown example \n");
-      }
-    }
-  }
-};
-
-struct pressure_field: CF_DIM{
-public:
-  double operator()(DIM(double x,double y, double z)) const {
-    switch(example_){
-      case COUPLED_PROBLEM_EXAMPLE:{
-        return 0.0;
-      }
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
-        return 0.0;
-      }
-      case COUPLED_TEST_2:{
-        return 0.0;//return sin(2.*PI*x)*(3.*y + PI*cos(PI*t));
-      }
-      case NS_GIBOU_EXAMPLE:{
-        return 0.0;
-      }
-      default:{
-        throw std::invalid_argument("pressure_field: Unrecognized example \n");
-      }
-    }
-  }
-
-  double gradP(const unsigned char& dir,DIM(double x, double y, double z)){
-    switch(example_){
-      case COUPLED_PROBLEM_EXAMPLE:{
-        return 0.0;
-      }
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
-        return 0.0;
-      }
-      case COUPLED_TEST_2:{
-        switch(dir){
-          case dir::x:{
-            return 0.0; //return 2.*PI*cos(2.*PI*x)*(3.*y + PI*cos(PI*t));
-          }
-          case dir::y:{
-            return 0.0;//return 3.*sin(2.*PI*x);
-          }
-          default:{
-          throw std::invalid_argument("gradP: unrecognized direction \n");
-          }
-        }
-      }
-      case NS_GIBOU_EXAMPLE:{
-        return 0.0;
-      }
-      default:{
-        throw std::invalid_argument("pressure_field: Unrecognized example \n");
-      }
-    } // end of switch example
-  }
-}pressure_field_analytical;
-
-struct external_force_per_unit_volume_component : CF_DIM{
-  const unsigned char dir;
-  velocity_component** velocity_field;
-  external_force_per_unit_volume_component(const unsigned char& dir_, velocity_component** analytical_soln):dir(dir_),velocity_field(analytical_soln){
-    P4EST_ASSERT(dir<P4EST_DIM);
-  }
-  double operator()(DIM(double x, double y, double z)) const{ // returns the forcing term in a given direction
-    pressure_field_analytical.t = t;
-    return velocity_field[dir]->dv_dt(DIM(x,y,z)) +
-        SUMD((*velocity_field[0])(DIM(x,y,z))*velocity_field[dir]->_d(dir::x,DIM(x,y,z)),
-        (*velocity_field[1])(DIM(x,y,z))*velocity_field[dir]->_d(dir::y,DIM(x,y,z)),
-        (*velocity_field[2])(DIM(x,y,z))*velocity_field[dir]->_d(dir::z,DIM(x,y,z))) -
-        velocity_field[dir]->laplace(DIM(x,y,z)) + pressure_field_analytical.gradP(dir,DIM(x,y,z));
-  }
-};
 //------------------------------------------------------------------------
-// Functions/Structures for validating the Stefan problem:
+// Functions/Structures for validating the analytical test cases:
 // -----------------------------------------------------------------------
 struct temperature_field: CF_DIM
 {
@@ -1996,6 +1725,169 @@ public:
   }
 };
 
+struct velocity_component: CF_DIM
+{
+  const unsigned char dir;
+  const double k_NS=1.0; //1.0;
+  velocity_component(const unsigned char& dir_) : dir(dir_){
+    P4EST_ASSERT(dir<P4EST_DIM);
+  }
+
+  double v(DIM(double x, double y, double z)) const{ // gives vel components without the time component
+    switch(example_){
+    case NS_GIBOU_EXAMPLE:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:{
+      switch(dir){
+      case dir::x:
+        return sin(x)*cos(y);
+      case dir::y:
+        return -1.0*cos(x)*sin(y);
+      default:
+        throw std::runtime_error("analytical solution velocity: unknown cartesian direction \n");
+      }
+    }
+    case COUPLED_TEST_2:{
+      switch(dir){
+      case dir::x:
+        return (pow(x,3.)*(y - 1))/16. - (x*sin(2.*PI*(t - y)))/2.;//-cos(PI*(t - x))*(- 3.*SQR(y) + 2.*y);
+      case dir::y:
+        return (3.*SQR(x)*(- SQR(y)/2. + y))/16. + cos(2.*PI*(t - y))/(4.*PI); //PI*sin(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
+      default:
+        throw std::runtime_error("analytical solution velocity: unknown cartesian direction \n");
+      }
+    }
+    default:{
+      throw std::runtime_error("analytical solution velocity: unknown example \n");
+    }
+    }
+  }
+  double dv_d(const unsigned char& dirr,DIM(double x, double y, double z)) const{
+    switch(example_){
+    case NS_GIBOU_EXAMPLE:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:{
+      switch(dir){
+      case dir::x:
+        switch(dirr){
+        case dir::x: //du_dx (without time component)
+          return cos(x)*cos(y);
+        case dir::y: // du_dy (without time component)
+          return -sin(x)*sin(y);
+        }
+      case dir::y:
+        switch(dirr){
+        case dir::x: // dv_dx ("")
+          return sin(x)*sin(y);
+        case dir::y: // dv_dy ("")
+          return -cos(x)*cos(y);
+        }
+      }
+    }
+    case COUPLED_TEST_2:{
+      switch(dir){
+      case dir::x:
+        switch(dirr){
+        case dir::x: //du_dx (with time component)
+          return (3.*SQR(x)*(y - 1.))/16. - sin(2.*PI*(t - y))/2.; // -1.*PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
+        case dir::y: // du_dy (with time component)
+          return pow(x,3.)/16. + PI*cos(2.*PI*(t - y))*x; // cos(PI*(t - x))*(6.*y - 2.);
+        }
+      case dir::y:
+        switch(dirr){
+        case dir::x: // dv_dx ("")
+          return (3.*x*(-1.*SQR(y)/2. + y))/8.; //-SQR(PI)*cos(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
+        case dir::y: // dv_dy ("")
+          return sin(2.*PI*(t - y))/2. - (3.*SQR(x)*(y - 1.))/16.; //PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
+        }
+      }
+    }
+    }
+  }
+
+  double operator()(DIM(double x, double y, double z)) const{ // Returns the velocity field
+    switch (example_) {
+    case NS_GIBOU_EXAMPLE:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:{
+      return cos(t*k_NS)*v(DIM(x,y,z));
+    }
+    case COUPLED_TEST_2:{
+      return v(DIM(x,y,z)); // time component included in vel expression for this example
+    }
+    default:{
+      throw std::runtime_error("analytical velocity : unknown example \n");
+    }
+    }
+
+  }
+  double _d(const unsigned char& dirr, DIM(double x, double y, double z)){ // Returns spatial derivatives of velocity field in given cartesian direction
+    switch (example_) {
+    case NS_GIBOU_EXAMPLE:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:{
+      return cos(t*k_NS)*dv_d(dirr,DIM(x,y,z));
+    }
+    case COUPLED_TEST_2:{
+      return dv_d(dirr,DIM(x,y,z)); // put whole derivative in the expression for this particular example
+    }
+    default:{
+      throw std::runtime_error("analytical velocity : unknown example \n");
+    }
+    }
+  }
+  double laplace(DIM(double x, double y, double z)){
+    switch (example_) {
+    case NS_GIBOU_EXAMPLE:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:{
+      return -P4EST_DIM*cos(t*k_NS)*v(DIM(x,y,z));
+    }
+    case COUPLED_TEST_2:{
+      switch(dir){
+      case dir::x:{
+        return (3.*x*(y - 1.))/8. + 2.*x*SQR(PI)*sin(2.*PI*(t - y));//cos(PI*(t - x))*(-3.*SQR(PI)*SQR(y) + 2.*SQR(PI)*y + 6.);
+      }
+      case dir::y:{
+        return (3.*y)/8. - PI*cos(2.*PI*(t - y)) - (3.*SQR(x))/16. - (3.*SQR(y))/16.; //-1.*PI*sin(PI*(t - x))*(-1.*SQR(PI)*pow(y,3.) + SQR(PI)*SQR(y) + 6.*y - 2.);
+      }
+      default:{
+        throw std::runtime_error("analytical velocity: laplace: unknown cartesian direction \n");
+      }
+      }
+    }
+    default:{
+      throw std::runtime_error("analytical velocity : laplace: unknown example \n");
+    }
+    }
+  }
+  double dv_dt(DIM(double x, double y, double z)){
+    switch (example_) {
+    case NS_GIBOU_EXAMPLE:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+    case COUPLED_PROBLEM_EXAMPLE:{
+      return -sin(k_NS*t)*v(DIM(x,y,z));
+    }
+    case COUPLED_TEST_2:{
+      switch(dir){
+      case dir::x:{
+        return -1.*x*PI*cos(2.*PI*(t - y)); // PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
+      }
+      case dir::y:{
+        return -1.*sin(2.*PI*(t - y))/2.; //SQR(PI)*cos(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
+      }
+      default:{
+        throw std::runtime_error("analytical velocity: dv_dt: unknown cartesian direction \n");
+      }
+      }
+    }
+    default:{
+      throw std::runtime_error("analytical velocity:dv_dt : unknown example \n");
+    }
+    }
+  }
+};
+
 struct external_heat_source: CF_DIM{
   const unsigned char dom;
   temperature_field** temperature_;
@@ -2021,9 +1913,76 @@ struct external_heat_source: CF_DIM{
   }
 };
 
-//-----------------------------------------------------------------------------------------------------------------------------------------------------
-// Functions/Structures for validating the Stefan problem coupled with Navier-Stokes Equation with Boussinesq Approximation:(TO-DO:: combine this function with existing external_force_per_unit_volume())
-// ----------------------------------------------------------------------------------------------------------------------------------------------------
+struct pressure_field: CF_DIM{
+  public:
+  double operator()(DIM(double x,double y, double z)) const {
+    switch(example_){
+    case COUPLED_PROBLEM_EXAMPLE:{
+      return 0.0;
+    }
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
+      return 0.0;
+    }
+    case COUPLED_TEST_2:{
+      return 0.0;//return sin(2.*PI*x)*(3.*y + PI*cos(PI*t));
+    }
+    case NS_GIBOU_EXAMPLE:{
+      return 0.0;
+    }
+    default:{
+      throw std::invalid_argument("pressure_field: Unrecognized example \n");
+    }
+    }
+  }
+
+  double gradP(const unsigned char& dir,DIM(double x, double y, double z)){
+    switch(example_){
+    case COUPLED_PROBLEM_EXAMPLE:{
+      return 0.0;
+    }
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
+      return 0.0;
+    }
+    case COUPLED_TEST_2:{
+      switch(dir){
+      case dir::x:{
+        return 0.0; //return 2.*PI*cos(2.*PI*x)*(3.*y + PI*cos(PI*t));
+      }
+      case dir::y:{
+        return 0.0;//return 3.*sin(2.*PI*x);
+      }
+      default:{
+        throw std::invalid_argument("gradP: unrecognized direction \n");
+      }
+      }
+    }
+    case NS_GIBOU_EXAMPLE:{
+      return 0.0;
+    }
+    default:{
+      throw std::invalid_argument("pressure_field: Unrecognized example \n");
+    }
+    } // end of switch example
+  }
+}pressure_field_analytical;
+
+struct external_force_per_unit_volume_component : CF_DIM{
+  const unsigned char dir;
+  velocity_component** velocity_field;
+  external_force_per_unit_volume_component(const unsigned char& dir_, velocity_component** analytical_soln):dir(dir_),velocity_field(analytical_soln){
+    P4EST_ASSERT(dir<P4EST_DIM);
+  }
+  double operator()(DIM(double x, double y, double z)) const{ // returns the forcing term in a given direction
+    pressure_field_analytical.t = t;
+    return velocity_field[dir]->dv_dt(DIM(x,y,z)) +
+           SUMD((*velocity_field[0])(DIM(x,y,z))*velocity_field[dir]->_d(dir::x,DIM(x,y,z)),
+                (*velocity_field[1])(DIM(x,y,z))*velocity_field[dir]->_d(dir::y,DIM(x,y,z)),
+                (*velocity_field[2])(DIM(x,y,z))*velocity_field[dir]->_d(dir::z,DIM(x,y,z))) -
+           velocity_field[dir]->laplace(DIM(x,y,z)) + pressure_field_analytical.gradP(dir,DIM(x,y,z));
+  }
+};
+
+// with Boussinesq Approximation:(TO-DO:: combine this function with existing external_force_per_unit_volume())
 struct external_force_per_unit_volume_component_with_boussinesq_approx : CF_DIM{
   const unsigned char dom;
   const unsigned char dir;
@@ -2435,7 +2394,7 @@ double sign_neumann_wall(DIM(double x,double y,double z)){
 };
 
 // --------------------------
-// BC Type settings for temperature:
+// Auxiliary fxn for BC Type settings for temperature at walls :
 // --------------------------
 bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
   switch(example_){
@@ -2468,7 +2427,7 @@ bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
 };
 
 // --------------------------
-// BC type settings for velocity:
+// Auxiliary fxn forBC type settings for velocity at walls :
 // --------------------------
 bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
   switch(example_){
@@ -3304,7 +3263,7 @@ void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, my_p4est_stefa
   stefan_w_fluids_solver->set_hodge_percentage_of_max_u(hodge_percentage_of_max_u);
   stefan_w_fluids_solver->set_force_interfacial_velocity_to_zero(force_interfacial_velocity_to_zero);
 
-}
+} // handle_any_startup_t_dt_and_bc_cases()
 
 
 // want to handle this in main (V)
@@ -5261,7 +5220,6 @@ int main(int argc, char** argv) {
   PetscPrintf(mpi.comm(),"Time loop exited \n");
 
   // Do the final destructions!
-  // INSERT HERE: destroy all bcs/ICs/forcing terms I created
   destroy_all_relevant_bcs_ics_forcing_terms(mpi,
                                              analytical_T, external_heat_source_T,
                                              bc_interface_val_temp, bc_wall_value_temp,
@@ -5275,9 +5233,6 @@ int main(int argc, char** argv) {
   delete stefan_w_fluids_solver;
 
   }// end of loop through number of splits
-
-  //MPI_Barrier(mpi.comm());
-//  MPI_Finalize();
 
   w.stop(); w.read_duration();
   return 0;
