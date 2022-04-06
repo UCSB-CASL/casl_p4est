@@ -573,6 +573,9 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
 
 void my_p4est_stefan_with_fluids_t::perform_initializations(){
 
+  MPI_Barrier(mpi->comm()); PetscPrintf(mpi->comm(), "trying the thing, phi = %p and %p \n", phi.vec, phi);
+  phi.destroy();
+  MPI_Barrier(mpi->comm()); PetscPrintf(mpi->comm(), "end trying thing \n");
 
   // Check and make sure the user has provided all the necessary information:
 
@@ -1803,7 +1806,6 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
 } // end of "initialize_ns_solver()"
 
 bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
-
   // Destroy old pressure at nodes (if it exists) and create vector to hold new solns:
   press_nodes.destroy(); press_nodes.create(p4est_np1, nodes_np1);
 
@@ -1865,7 +1867,6 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
 
   // ------------------------
   // Compute the pressure
-  // TO-DO: need to make sure the user defines compute_pressure_ at every required step bc nothing internal handles this
   if(compute_pressure_){
     ns->compute_pressure(); // note: only compute pressure at nodes when we are saving to VTK (or evaluating some errors)
     ns->compute_pressure_at_nodes(&press_nodes.vec);
@@ -1873,9 +1874,6 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
 
   // Get the computed values of vorticity
   vorticity.vec = ns->get_vorticity();
-
-
-
 
   // Check the L2 norm of u to make sure nothing is blowing up
   NS_norm = ns->get_max_L2_norm_u();
@@ -2261,8 +2259,8 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
     Vec fields_new_[num_fields];
     if(num_fields!=0)
     {
-      for(unsigned int k = 0;k<num_fields; k++){
-        ierr = VecCreateGhostNodes(p4est_np1,nodes_np1,&fields_new_[k]);
+      for(int k = 0; k<num_fields; k++){
+        ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &fields_new_[k]);
         ierr = VecCopyGhost(fields_[k],fields_new_[k]);
       }
     }
@@ -2341,7 +2339,7 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
     ierr = VecCopyGhost(phi_new.vec,phi.vec);
 
     // Destroy the vectors we created for refine and coarsen:
-    for(unsigned int k = 0;k<num_fields; k++){
+    for(int k = 0;k<num_fields; k++){
       ierr = VecDestroy(fields_new_[k]);
     }
     phi_new.destroy();
@@ -3115,39 +3113,10 @@ void my_p4est_stefan_with_fluids_t::check_collapse_on_substrate(){
 // -------------------------------------------------------
 void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
 
-  // TO-DO: commented out the below section for the class implementation, but make sure this is handled in the main
-  /*
-  // ---------------------------------------
-  // Handle any modifications to cfl, dt, vint, or bcs related with "startup" conditions
-  // ---------------------------------------
-  handle_any_startup_t_dt_and_bc_cases(mpi, cfl_NS_steady, hodge_percentage_steady);
-  */
-
   // Make sure things are initialized:
   if(!(fields_are_initialized && grids_are_initialized)){
     throw std::runtime_error("Fields and grids are not marked as initialized. You must initialize these before solving a timestep. You can do this using the function perform_initializations() and by providing the required initial fields and parameters \n");
   }
-
-  // TO-DO: make sure below is handled in main, not going to have it here
-//  // ---------------------------------------
-//  // Print iteration information:
-//  // ---------------------------------------
-//  int num_nodes = nodes_np1->num_owned_indeps;
-//  MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi->comm());
-//  ierr = PetscPrintf(mpi->comm(),"\n -------------------------------------------\n"
-//                                 "Iteration %d , Time: %0.3f [nondim] "
-//                                 "= Time: %0.3f [nondim] "
-//                                 "= %0.3f [sec] "
-//                                 "= %0.3f [min],"
-//                                 " Timestep: %0.3e [nondim] = %0.3e [sec],"
-//                                 " Percent Done : %0.2f %"
-//                                 " \n ------------------------------------------- \n"
-//                                 "Number of nodes : %d \n \n",
-//                     tstep,tn,tn,tn*time_nondim_to_dim,tn*(time_nondim_to_dim)/60.,
-//                     dt, dt*(time_nondim_to_dim),
-//                     ((tn-tstart)/(tfinal-tstart))*100.0,num_nodes);
-  // TO-DO: (^) usedto be t_original_Start, now it's just tstart, idk how that will affect things (minor but there it is)
-
   // ------------------------------------------------------------
   // (1) Poisson Problem at Nodes (for temp and/or conc scalar fields):
   // Setup and solve a Poisson problem on both the liquid and solidified subdomains
@@ -3155,7 +3124,6 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
   if(solve_stefan){
     setup_and_solve_poisson_nodes_problem_for_scalar_temp_conc();
   } // end of "if solve stefan"
-
   // ------------------------------------------------------------
   // (2) Computation of the interfacial velocity
   // ------------------------------------------------------------
@@ -3198,7 +3166,6 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
     }
   } // end of "if solve stefan"
 
-
   // ---------------------------------------------------------------------------
   // (3) Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
   // ---------------------------------------------------------------------------
@@ -3206,8 +3173,6 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
     // Note: saving of crash file for NS gets handled internally
     setup_and_solve_navier_stokes_problem();
   } // End of "if solve navier stokes"
-
-
 
   // --------------------------------
   // (4/5a) Compute the timestep
@@ -3307,9 +3272,8 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
   if(solve_navier_stokes){
     point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "u"));
     point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "v"));
-    // TEMPORARY: commenting out below so I can visualize initial state
-//    point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
-//    point_fields.push_back(Vec_for_vtk_export_t(press_nodes.vec, "pressure"));
+    point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
+    point_fields.push_back(Vec_for_vtk_export_t(press_nodes.vec, "pressure"));
   }
   if(track_evolving_geometries && !is_crash){
     island_numbers.create(p4est_np1, nodes_np1);

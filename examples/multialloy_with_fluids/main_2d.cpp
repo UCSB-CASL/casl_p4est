@@ -948,11 +948,11 @@ problem_dimensionalization_type_t problem_dimensionalization_type;
 void select_problem_nondim_or_dim_formulation(){
   switch(example_){
   case FRANK_SPHERE:{
-    problem_dimensionalization_type = NONDIM_BY_SCALAR_DIFFUSIVITY;
+    problem_dimensionalization_type = DIMENSIONAL;
     break;
   }
   case NS_GIBOU_EXAMPLE:{
-    problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+    problem_dimensionalization_type = DIMENSIONAL;
     break;
   }
   case COUPLED_TEST_2:{
@@ -1310,8 +1310,8 @@ void simulation_time_info(){
     }
 
     case NS_GIBOU_EXAMPLE:{
-      tfinal = 0.025;
-    //tfinal = PI/3.;
+      //tfinal = 0.025;
+      tfinal = PI/3.;
 
       tstart = 0.0;
       break;
@@ -3259,17 +3259,16 @@ void setup_analytical_ics_and_bcs_for_this_tstep(BC_INTERFACE_VALUE_TEMP* bc_int
   for(unsigned char d=0;d<P4EST_DIM;d++){
     analytical_soln_v[d]->t = tn+dt;
   }
-
-
   // -------------------------------
   // Update BC objects for stefan problem:
   // -------------------------------
-
-  for(unsigned char d=0;d<2;d++){
-    analytical_T[d]->t = tn+dt;
-    bc_interface_val_temp[d]->t = tn+dt;
-    bc_wall_value_temp[d]->t = tn+dt;
-    external_heat_source_T[d]->t = tn+dt;
+  if(solve_stefan){
+    for(unsigned char d=0;d<2;d++){
+      analytical_T[d]->t = tn+dt;
+      bc_interface_val_temp[d]->t = tn+dt;
+      bc_wall_value_temp[d]->t = tn+dt;
+      external_heat_source_T[d]->t = tn+dt;
+    }
   }
 
   // If not, we use the curvature and neighbors, but we have to wait till curvature is computed in Poisson step to apply this, so it is applied later
@@ -3277,20 +3276,23 @@ void setup_analytical_ics_and_bcs_for_this_tstep(BC_INTERFACE_VALUE_TEMP* bc_int
   // -------------------------------
   // Update analytical objects for the NS problem:
   // -------------------------------
-  foreach_dimension(d){
-    bc_interface_value_velocity[d]->t = tn+dt;
-    bc_wall_value_velocity[d]->t = tn+dt;
+  if(solve_navier_stokes){
+    foreach_dimension(d){
+      bc_interface_value_velocity[d]->t = tn+dt;
+      bc_wall_value_velocity[d]->t = tn+dt;
 
-    if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-      external_force_components_with_BA[d]->t = tn+dt;
-      external_forces_NS[d] = external_force_components_with_BA[d];
+      if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+        external_force_components_with_BA[d]->t = tn+dt;
+        external_forces_NS[d] = external_force_components_with_BA[d];
+      }
+      else{
+        external_force_components[d]->t = tn+dt;
+        external_forces_NS[d] = external_force_components[d];
+      }
+
     }
-    else{
-      external_force_components[d]->t = tn+dt;
-      external_forces_NS[d] = external_force_components[d];
-    }
+    bc_wall_value_pressure.t=tn+dt;
   }
-  bc_wall_value_pressure.t=tn+dt;
 
 } // end of "setup_analytical_ics_and_bcs_for_this_tstep()"
 
@@ -3406,7 +3408,9 @@ void save_stefan_test_case(const p4est_t *p4est, const p4est_nodes_t *nodes, con
   PetscPrintf(p4est->mpicomm,"\n----------------\n Errors on frank sphere: \n --------------- \n");
   PetscPrintf(p4est->mpicomm,"dxyz close to interface: %0.2e \n", dxyz_close_to_interface);
 
-  int num_nodes = nodes->indep_nodes.elem_count;
+  int num_nodes = nodes->num_owned_indeps;
+  MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est->mpicomm);
+
   PetscPrintf(p4est->mpicomm,"Number of grid points used: %d \n \n", num_nodes);
 
 
@@ -3897,7 +3901,6 @@ void save_test_case_errors_and_vtk(mpi_environment_t& mpi,
                                    my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver,
                                    const p4est_t* p4est_np1, const p4est_nodes_t* nodes_np1,
                                    const p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1,
-                                   my_p4est_navier_stokes_t* ns,
                                    vec_and_ptr_t phi,
                                    vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
                                    vec_and_ptr_dim_t v_interface,
@@ -3915,8 +3918,6 @@ void save_test_case_errors_and_vtk(mpi_environment_t& mpi,
   switch(example_){
   case NS_GIBOU_EXAMPLE:{
     // In typical saving, only compute pressure nodes when we save to vtk. For this example, save pressure nodes every time so we can check the error
-    press_nodes.destroy();press_nodes.create(p4est_np1,nodes_np1);
-    ns->compute_pressure_at_nodes(&press_nodes.vec);
 
     // Save the test case info:
     save_navier_stokes_test_case(p4est_np1, nodes_np1, ghost_np1,
@@ -4096,7 +4097,6 @@ void perform_saving_tasks_of_interest(mpi_environment_t &mpi, my_p4est_stefan_wi
     PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n", stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax());
     save_test_case_errors_and_vtk(mpi, stefan_w_fluids_solver,
                                   ngbd_np1->get_p4est(), ngbd_np1->get_nodes(), ngbd_np1->get_ghost(), ngbd_np1,
-                                  stefan_w_fluids_solver->get_ns_solver(),
                                   stefan_w_fluids_solver->get_phi(),
                                   stefan_w_fluids_solver->get_T_l_n(), stefan_w_fluids_solver->get_T_s_n(),
                                   stefan_w_fluids_solver->get_v_interface(),
@@ -5089,7 +5089,9 @@ int main(int argc, char** argv) {
       compute_pressure_ = are_we_saving_vtk(tstep, tn, tstep == load_tstep, out_idx, false ) || example_is_a_test_case;
       stefan_w_fluids_solver->set_compute_pressure(compute_pressure_);
 
+      MPI_Barrier(mpi.comm());
       stefan_w_fluids_solver->solve_all_fields_for_one_timestep();
+      MPI_Barrier(mpi.comm());
       dt = stefan_w_fluids_solver->get_dt();
 
       // -------------------------------
