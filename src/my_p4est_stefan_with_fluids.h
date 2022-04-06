@@ -319,11 +319,12 @@ private:
   double dt_Stefan;
   double dt_NS;
   double dt_max_allowed;
+  double dt_min_allowed;
 
 
 
   double tstart; // for tracking percentage done // TO-DO: revisit if this is needed
-
+  double tfinal; // used only to clip timestep when we are nearing the end
   double v_interface_max_norm; // for keeping track of max norm of vinterface
   double v_interface_max_allowed; // max allowable value before we trigger a crash state
 
@@ -336,10 +337,7 @@ private:
 
   int tstep;
   int load_tstep;
-//  int last_tstep; // this is not needed
-
-  int out_idx; // for vtk
-//  int data_save_out_idx; // for saving to files // TO-DO: handle properly in main
+  int last_tstep;
 
   double cfl_Stefan;
   double cfl_NS;
@@ -374,81 +372,6 @@ private:
   // quantities of interest relevant to the nondim problem (i.e. uinf to convert time_nondim to time_dim)
 
   // Otherwise, these groups will be computed by the solver using the provided physical parameters
-
-  void set_nondimensional_groups(){
-    // Setup the temperature stuff properly first:
-//    set_temp_conc_nondim_defns(); -- IN CLASS SETTING WE ASSUME THE USER SETS THESE
-
-    // Compute the stuff that doesn't depend on velocity nondim:
-    if(Pr<0.) Pr = mu_l/(alpha_l * rho_l);
-
-    if(Sc<0.) Sc = mu_l/(Dl*rho_l);
-
-    if(St<0.) St = cp_s * deltaT/L;
-
-
-    if(is_dissolution_case){
-      // if deltaT is set to zero, we are using the C/Cinf nondim and set gamma_diss = Vm * Cinf/stoic_coeff. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set gamma_diss = Vm * deltaC/stoic_coeff
-      // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
-      if(fabs(deltaT/Tinfty) < EPS){
-        gamma_diss = molar_volume_diss*Tinfty/stoich_coeff_diss;
-      }
-      else{
-        gamma_diss = molar_volume_diss*deltaT/stoich_coeff_diss;
-      }
-      if(Da<0.) Da = k_diss*l_char/Dl;
-    }
-
-    // Elyce To-do 12/14/21: add Rayleigh number computations if you are solving boussinesq
-    switch(problem_dimensionalization_type){
-    case NONDIM_BY_FLUID_VELOCITY:{
-      // In this case, we assume a prescribed:
-      // (1) free-stream Reynolds number, (2) characteristic length scale, (3) characteristic temperature/concentrations
-      // From these, we compute a characteristic velocity, Peclet number, Stefan number, etc.
-      // This is also then used to specify the time_nondim_to_dim and vel_nondim_to_dim conversions
-      u_inf = (Re*mu_l)/(rho_l * l_char);
-      // Rochi temp change
-
-      if(!is_dissolution_case){
-        Pe = l_char * u_inf/alpha_l;
-      }
-      else{
-        Pe = l_char * u_inf/Dl;
-      }
-
-      vel_nondim_to_dim = u_inf;
-      time_nondim_to_dim = l_char/u_inf;
-
-      break;
-    }
-    case NONDIM_BY_SCALAR_DIFFUSIVITY:{
-      double u_char = (is_dissolution_case? (Dl/l_char):(alpha_l/l_char));
-      vel_nondim_to_dim = u_char;
-      time_nondim_to_dim = l_char/u_char;
-
-      if(!is_dissolution_case){
-        // Elyce to-do: this is a work in progress
-        if(RaC<0.) RaC = beta_C * grav * deltaT * pow(l_char, 3.)/(Dl * (mu_l/rho_l)) ; // note that here deltaT actually corresponds to a change in concentration
-        // T variable in this code refers to either temp or conc
-      }
-      else{
-        if(RaT<0.) RaT = beta_T * grav * deltaT * pow(l_char, 3.)/(alpha_l * (mu_l/rho_l)) ;
-      }
-      break;
-    }
-    case DIMENSIONAL:{
-      vel_nondim_to_dim = 1.0;
-      time_nondim_to_dim = 1.0;
-    }
-    break;
-    default:{
-      throw std::runtime_error("set_nondimensional_groups: unrecognized nondim formulation in switch case \n");
-      break;
-    }
-    } // end of switch case
-  } // end of function
-
-  // TO-DO: make set_X fxns for all nondim groups? Altho idk if that will allow for consistent usage??? Check this
 
 
 
@@ -660,7 +583,7 @@ public:
   // -------------------------------------------------------
   // Functions related to VTK saving:
   // -------------------------------------------------------
-  void save_fields_to_vtk(bool is_crash=false, char crash_type[]=NULL);
+  void save_fields_to_vtk(double out_idx, bool is_crash=false, char crash_type[]=NULL);
 
   // -------------------------------------------------------
   // Functions and variables related to save state/load state:
@@ -690,60 +613,60 @@ public:
 
   class interfacial_bc_temp_t: public CF_DIM{
     private:
-    my_p4est_stefan_with_fluids_t* owner;
+      my_p4est_stefan_with_fluids_t* owner;
 
-    my_p4est_node_neighbors_t* ngbd_bc_temp;
+      my_p4est_node_neighbors_t* ngbd_bc_temp;
 
-    // Curvature interp:
-    my_p4est_interpolation_nodes_t* kappa_interp;
+      bool do_we_use_curvature;
+      bool do_we_use_normals;
+    protected:
+      // Curvature interp:
+      my_p4est_interpolation_nodes_t* kappa_interp;
 
-    // Normals interp:
-    my_p4est_interpolation_nodes_t* nx_interp;
-    my_p4est_interpolation_nodes_t* ny_interp;
-    // TO-DO: add 3d case
+      // Normals interp:
+      my_p4est_interpolation_nodes_t* nx_interp;
+      my_p4est_interpolation_nodes_t* ny_interp;
+      // TO-DO: add 3d case
 
-    bool do_we_use_curvature;
-    bool do_we_use_normals;
+    public:
+      interfacial_bc_temp_t(my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_curvature_, bool do_we_use_normals_) :
+          owner(parent_solver), do_we_use_curvature(do_we_use_curvature_), do_we_use_normals(do_we_use_normals_){
 
-public:
-    interfacial_bc_temp_t (my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_curvature_, bool do_we_use_normals_) :
-        owner(parent_solver), do_we_use_curvature(do_we_use_curvature_), do_we_use_normals(do_we_use_normals_){
+          // Set the appropriate flags in the owning class to apply the BC's we want:
+          owner->interfacial_temp_bc_requires_curvature = do_we_use_curvature;
+          owner->interfacial_temp_bc_requires_normal = do_we_use_normals;
 
+      }
 
-      // Set the appropriate flags in the owning class to apply the BC's we want:
-      owner->interfacial_temp_bc_requires_curvature = do_we_use_curvature;
-      owner->interfacial_temp_bc_requires_normal = do_we_use_normals;
+      void set_kappa_interp(my_p4est_node_neighbors_t* ngbd_, Vec &kappa){
+        ngbd_bc_temp = ngbd_;
+        kappa_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
+        kappa_interp->set_input(kappa, linear);
+      }
+      void clear_kappa_interp(){
+        kappa_interp->clear();
+        delete kappa_interp;
+      }
+      void set_normals_interp(my_p4est_node_neighbors_t* ngbd_, Vec &nx, Vec &ny){
+        ngbd_bc_temp = ngbd_;
+        nx_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
+        nx_interp->set_input(nx, linear);
 
-    }
-    void set_kappa_interp(my_p4est_node_neighbors_t* ngbd_, Vec &kappa){
-      ngbd_bc_temp = ngbd_;
-      kappa_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
-      kappa_interp->set_input(kappa, linear);
-    }
-    void clear_kappa_interp(){
-      kappa_interp->clear();
-      delete kappa_interp;
-    }
-    void set_normals_interp(my_p4est_node_neighbors_t* ngbd_, Vec &nx, Vec &ny){
-      ngbd_bc_temp = ngbd_;
-      nx_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
-      nx_interp->set_input(nx, linear);
+        ny_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
+        ny_interp->set_input(ny, linear);
+      }
+      void clear_normals_interp(){
+        nx_interp->clear();
+        delete nx_interp;
 
-      ny_interp = new my_p4est_interpolation_nodes_t(ngbd_bc_temp);
-      ny_interp->set_input(ny, linear);
-    }
-    void clear_normals_interp(){
-      nx_interp->clear();
-      delete nx_interp;
+        ny_interp->clear();
+        delete ny_interp;
+      }
+      double Gibbs_Thomson(DIM(double x, double y, double z)) const;
+      virtual double operator()(DIM(double x, double y, double z)) const {
+        throw std::runtime_error("my_p4est_stefan_with_fluids_t::interfacial_bc_temp_t::operator() -- to properly use this BC, the user needs to define an overloaded definition of the operator. \n You may either return Gibbs_Thomsom(DIM(x,y,z)) in which the solver will use the standard Gibbs Thomson condition, or you need to define a different user defined function which may or may not make use of curvature and normals. \n");
 
-      ny_interp->clear();
-      delete ny_interp;
-    }
-    double Gibbs_Thomson(DIM(double x, double y, double z)) const;
-    virtual double operator()(DIM(double x, double y, double z)) const {
-      throw std::runtime_error("my_p4est_stefan_with_fluids_t::interfacial_bc_temp_t::operator() -- to properly use this BC, the user needs to define an overloaded definition of the operator. \n You may either return Gibbs_Thomsom(DIM(x,y,z)) in which the solver will use the standard Gibbs Thomson condition, or you need to define a different user defined function which may or may not make use of curvature and normals. \n");
-
-    }
+      }
   }; // end of nested class interfacial_bc_temp_t
 
   // Declaration of the bc associated with this:
@@ -759,13 +682,12 @@ private:
 
     my_p4est_node_neighbors_t* ngbd_bc_vNS;
     my_p4est_interpolation_nodes_t* v_interface_interp;
-    const unsigned char dir; // the dimension we are talking about (i.e. x, y, or z)
     bool do_we_use_v_interface; // Note that here v_interface refers to the velocity of the moving interface
 
 public:
     // Constructor:
-    interfacial_bc_fluid_velocity_t(my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_vgamma_for_bc, const unsigned char dir_):
-        owner(parent_solver), dir(dir_), do_we_use_v_interface(do_we_use_vgamma_for_bc) {
+    interfacial_bc_fluid_velocity_t(my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_vgamma_for_bc):
+        owner(parent_solver), do_we_use_v_interface(do_we_use_vgamma_for_bc) {
       // Set the appropriate flags in the owning stefan_w_fluids class to apply the BCs we want:
       owner->interfacial_vel_bc_requires_vint = do_we_use_v_interface;
     }
@@ -803,7 +725,9 @@ public:
   // -----------------------------------------------
   // Grid variables
   // -----------------------------------------------
+
   p4est_nodes* get_nodes_np1(){return nodes_np1;}
+  my_p4est_node_neighbors_t* get_ngbd_np1(){return ngbd_np1;}
   // (WIP)
 
   // -----------------------------------------------
@@ -811,6 +735,7 @@ public:
   // -----------------------------------------------
 
   // (WIP)
+  vec_and_ptr_t get_phi(){return phi;}
 
   // -----------------------------------------------
   // Interface geometry:
@@ -821,6 +746,10 @@ public:
   // -----------------------------------------------
   // Temperature/concentration problem:
   // -----------------------------------------------
+  vec_and_ptr_t get_T_l_n(){return T_l_n;}
+  vec_and_ptr_t get_T_s_n(){return T_s_n;}
+
+  // ------
   // Interface:
   // ------
   void set_bc_interface_value_temp(interfacial_bc_temp_t* bc_interface_value_temp_[2]){
@@ -856,7 +785,7 @@ public:
   // ------
   // Substrate interface:
   // ------
-  void set_bc_interface_value_temp_substrate(interfacial_bc_temp_t* bc_interface_value_temp_substrate_[2]){
+  void set_bc_interface_value_temp_substrate(CF_DIM* bc_interface_value_temp_substrate_[2]){
     for(unsigned char i=0; i<2; i++){
       bc_interface_val_temp_substrate[i] = bc_interface_value_temp_substrate_[i];
     }
@@ -883,10 +812,21 @@ public:
     there_is_user_provided_heat_source = true;
   }
 
+  // ----------------------------------------------
+  // Stefan problem:
+  // ----------------------------------------------
+  vec_and_ptr_dim_t get_v_interface(){return v_interface;}
+
 
   // ----------------------------------------------
   // Navier-Stokes problem:
   // ----------------------------------------------
+  my_p4est_navier_stokes_t* get_ns_solver(){return ns;}
+  vec_and_ptr_dim_t get_v_n(){return v_n;}
+  vec_and_ptr_t get_vorticity(){return vorticity;}
+  vec_and_ptr_t get_press_nodes(){return press_nodes;}
+
+  // ------
   // Interface velocity:
   // ------
   void set_bc_interface_value_velocity(interfacial_bc_fluid_velocity_t* bc_interface_value_velocity_[P4EST_DIM]){
@@ -954,6 +894,7 @@ public:
   }
   void set_hodge_max_iteration(int max_it){hodge_max_it = max_it;}
 
+  void set_compute_pressure(bool compute_press){compute_pressure_ = compute_press;}
   // ----------------------------------------------
   // Related to domain:
   // ----------------------------------------------
@@ -983,6 +924,10 @@ public:
   void set_lmin_lint_lmax(int lmin_, int lint_, int lmax_){
     lmin = lmin_; lint = lint_; lmax= lmax_;
   }
+  int get_lmin(){return lmin;}
+  int get_lint(){return lint;}
+  int get_lmax(){return lmax;}
+
   // If you set a uniform band, we assume you use it
   void set_uniform_band(double uniform_band_){
     use_uniform_band = true;
@@ -1006,17 +951,29 @@ public:
     dxyz_close_to_interface_mult = dxyz_close_to_interface_mult_;
   }
 
+  double get_dxyz_close_to_interface(){return dxyz_close_to_interface;}
+
   // ----------------------------------------------
   // Related to time/timestepping:
   // ----------------------------------------------
   void set_tn(double tn_){tn = tn_;}
+  double get_tn(){return tn;}
+
   void set_dt(double dt_){dt = dt_;}
+  double get_dt(){return dt;}
+
   void set_dt_nm1(double dt_nm1_){dt_nm1 = dt_nm1_;}
   void set_dt_max_allowed(double dt_max_allowed_){dt_max_allowed = dt_max_allowed_;}
-  void set_v_interface_max_allowed(double vint_max_all_){v_interface_max_allowed = vint_max_all_;}
+  void set_dt_min_allowed(double dt_min_allowed_){dt_min_allowed = dt_min_allowed_;}
 
-  //  For vtk saving:
-  void set_out_idx(int out_idx_vtk){out_idx = out_idx_vtk;}
+  void set_tfinal(double tf_){tfinal = tf_;}
+
+  void set_tstep(int tstep_){tstep = tstep_;}
+  int get_tstep(){return tstep;}
+
+  int get_last_tstep(){return last_tstep;}
+
+  void set_v_interface_max_allowed(double vint_max_all_){v_interface_max_allowed = vint_max_all_;}
 
   void set_cfl_Stefan(double cfl_stefan_){cfl_Stefan = cfl_stefan_;}
   void set_cfl_NS(double cfl_ns_){cfl_NS = cfl_ns_;}
@@ -1042,6 +999,79 @@ public:
   void set_Da(double Da_){Da = Da_;}
   void set_RaT(double RaT_){RaT = RaT_;}
   void set_RaC(double RaC_){RaC = RaC_;}
+
+  void set_nondimensional_groups(){
+    // Setup the temperature stuff properly first:
+    //    set_temp_conc_nondim_defns(); -- IN CLASS SETTING WE ASSUME THE USER SETS THESE
+
+    // Compute the stuff that doesn't depend on velocity nondim:
+    if(Pr<0.) Pr = mu_l/(alpha_l * rho_l);
+
+    if(Sc<0.) Sc = mu_l/(Dl*rho_l);
+
+    if(St<0.) St = cp_s * deltaT/L;
+
+
+    if(is_dissolution_case){
+      // if deltaT is set to zero, we are using the C/Cinf nondim and set gamma_diss = Vm * Cinf/stoic_coeff. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set gamma_diss = Vm * deltaC/stoic_coeff
+      // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
+      if(fabs(deltaT/Tinfty) < EPS){
+        gamma_diss = molar_volume_diss*Tinfty/stoich_coeff_diss;
+      }
+      else{
+        gamma_diss = molar_volume_diss*deltaT/stoich_coeff_diss;
+      }
+      if(Da<0.) Da = k_diss*l_char/Dl;
+    }
+
+    // Elyce To-do 12/14/21: add Rayleigh number computations if you are solving boussinesq
+    switch(problem_dimensionalization_type){
+    case NONDIM_BY_FLUID_VELOCITY:{
+      // In this case, we assume a prescribed:
+      // (1) free-stream Reynolds number, (2) characteristic length scale, (3) characteristic temperature/concentrations
+      // From these, we compute a characteristic velocity, Peclet number, Stefan number, etc.
+      // This is also then used to specify the time_nondim_to_dim and vel_nondim_to_dim conversions
+      u_inf = (Re*mu_l)/(rho_l * l_char);
+      // Rochi temp change
+
+      if(!is_dissolution_case){
+        Pe = l_char * u_inf/alpha_l;
+      }
+      else{
+        Pe = l_char * u_inf/Dl;
+      }
+
+      vel_nondim_to_dim = u_inf;
+      time_nondim_to_dim = l_char/u_inf;
+
+      break;
+    }
+    case NONDIM_BY_SCALAR_DIFFUSIVITY:{
+      double u_char = (is_dissolution_case? (Dl/l_char):(alpha_l/l_char));
+      vel_nondim_to_dim = u_char;
+      time_nondim_to_dim = l_char/u_char;
+
+      if(!is_dissolution_case){
+        // Elyce to-do: this is a work in progress
+        if(RaC<0.) RaC = beta_C * grav * deltaT * pow(l_char, 3.)/(Dl * (mu_l/rho_l)) ; // note that here deltaT actually corresponds to a change in concentration
+        // T variable in this code refers to either temp or conc
+      }
+      else{
+        if(RaT<0.) RaT = beta_T * grav * deltaT * pow(l_char, 3.)/(alpha_l * (mu_l/rho_l)) ;
+      }
+      break;
+    }
+    case DIMENSIONAL:{
+      vel_nondim_to_dim = 1.0;
+      time_nondim_to_dim = 1.0;
+    }
+    break;
+    default:{
+      throw std::runtime_error("set_nondimensional_groups: unrecognized nondim formulation in switch case \n");
+      break;
+    }
+    } // end of switch case
+  } // end of function
 
   // ----------------------------------------------
   // Physical parameters:

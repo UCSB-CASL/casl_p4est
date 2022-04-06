@@ -87,7 +87,7 @@ enum:int {
 };
 // Elyce to-do: add dissolving porous media example
 
-enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
+//enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
 
 // ---------------------------------------
 // Example/application options:

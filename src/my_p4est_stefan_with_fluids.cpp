@@ -125,7 +125,7 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   there_is_user_provided_external_force_NS = false;
 
   // Other parameters
-  NS_norm = 0.;
+  NS_norm = 1.;
   NS_max_allowed = DBL_MAX;
 
   hodge_max_it = 100;
@@ -142,11 +142,11 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   foreach_dimension(d){
     xyz_min[d] = DBL_MAX;
     xyz_max[d] = DBL_MAX;
-    periodicity[d] = INT_MAX;
-    ntrees[d] = INT_MAX;
+    periodicity[d] = 0;
+    ntrees[d] = 0;
   }
 
-  lmin = INT_MAX; lmax = INT_MAX; lint = 0;
+  lmin = 0; lmax = 0; lint = 0;
 
   // Uniform band:
   uniform_band = 4.;
@@ -191,7 +191,7 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   // ----------------------------------------------
   // Init time variables to 0
   tn = 0.; dt = 0.; dt_nm1 = 0.;
-  dt_Stefan = 0.; dt_NS = 0.; dt_max_allowed = 0.;
+  dt_Stefan = 0.; dt_NS = 0.; dt_max_allowed = DBL_MAX; dt_min_allowed = 0.;
 
   tstart = 0.; // TO-DO: revisit need for tstart
   // perhaps if user loads from prev state, they can set_tn accordingly?
@@ -203,8 +203,9 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
 
   advection_alpha_coeff = advection_beta_coeff = 0.; // these get computed in soln process
 
-  tstep = load_tstep = 0;
-  out_idx = 0;
+  // Initialize tstep and loadtstep as diff numbers to ensure there is no equality unless they truly are the same
+  tstep = -1;
+  load_tstep = -2;
 
   cfl_Stefan = 0.5;
   cfl_NS = 2.;
@@ -315,7 +316,8 @@ void my_p4est_stefan_with_fluids_t::initialize_grids(){
 
   // Create the p4est at time n:
   p4est_n = my_p4est_new(mpi->comm(), conn, 0, NULL, NULL);
-  p4est_n->user_pointer = &sp;
+  p4est_n->user_pointer = sp;
+
 
   for(int l=0; l<sp->max_lvl; l++){
     my_p4est_refine(p4est_n,P4EST_FALSE,refine_levelset_cf,NULL);
@@ -333,8 +335,8 @@ void my_p4est_stefan_with_fluids_t::initialize_grids(){
   ngbd_n->init_neighbors();
 
   // Create the p4est at time np1:(this will be modified but is useful for initializing solvers):
-  p4est_np1 = p4est_copy(p4est_n,P4EST_FALSE); // copy the grid but not the data
-  p4est_np1->user_pointer = &sp;
+  p4est_np1 = p4est_copy(p4est_n, P4EST_FALSE); // copy the grid but not the data
+  p4est_np1->user_pointer = sp;
   my_p4est_partition(p4est_np1,P4EST_FALSE,NULL);
 
   ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
@@ -560,6 +562,7 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
 
   load_tstep =tstep;
   tstart=tn;
+  dt_NS = dt_nm1;
 
   // Flag the initializations as completed:
   grids_are_initialized=true;
@@ -715,6 +718,8 @@ void my_p4est_stefan_with_fluids_t::perform_initializations(){
   dxyz_min(p4est_np1, dxyz_smallest);
   dxyz_close_to_interface = dxyz_close_to_interface_mult*MAX(dxyz_smallest[0],dxyz_smallest[1]);
   compute_timestep();
+
+  if(!loading_from_previous_state) dt_nm1 = dt; // since we are just starting up
 } // end of "perform_initializations()"
 
 
@@ -743,17 +748,6 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
 
     if(advection_sl_order==2) T_l_nm1.destroy();
 
-    // TO-DO: let's have main handle destructions of BCs
-
-//    // Destroy relevant BC and RHS info:
-//    for(unsigned char d=0;d<2;++d){
-//      if(analytical_IC_BC_forcing_term){
-//        delete analytical_T[d];
-//        delete external_heat_source_T[d];
-//      }
-//      delete bc_interface_val_temp[d];
-//      delete bc_wall_value_temp[d];
-//    }
 
     if(!solve_navier_stokes){
       // destroy the structures leftover (in non NS case)
@@ -782,23 +776,6 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
     // NS takes care of destroying v_NS_n and v_NS_nm1
     vorticity.destroy();
     press_nodes.destroy();
-    MPI_Barrier(mpi->comm());
-    // TO-DO: let's have main handle destructions of BCs
-//    for(unsigned char d=0;d<P4EST_DIM;d++){
-//      if(analytical_IC_BC_forcing_term){
-//        delete analytical_soln_v[d];
-//        if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-//          delete external_force_components_with_BA[d];
-//        }
-//        else{
-//          delete external_force_components[d];
-//        }
-//      }
-
-//      delete bc_interface_value_velocity[d];
-//      delete bc_wall_value_velocity[d];
-//      delete bc_wall_type_velocity[d];
-//    }
 
     // NUllify some NS stuff that we have already deleted so she doesn't get angry:
 
@@ -809,7 +786,7 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
     MPI_Barrier(mpi->comm());
   }
 
-}
+} // end of destructor
 
 // -------------------------------------------------------
 // Functions related to scalar temp/conc problem: ( in order of their usage in the main step)
@@ -1706,16 +1683,12 @@ void my_p4est_stefan_with_fluids_t::compute_timestep(){
   if(solve_navier_stokes){
     ns->compute_dt();
     dt_NS = ns->get_dt();
-    // Address the case where we are loading a simulation state
-    if(tstep==load_tstep){
-      dt_NS=dt_nm1;
-    }
   }
 
   // Compute the timestep that will be used depending on what physics we have:
   if(solve_stefan && solve_navier_stokes){
     // Take the minimum timestep of the NS and Stefan (dt_Stefan computed previously):
-    dt = MIN(dt_Stefan,dt_NS);
+    dt = MIN(dt_Stefan, dt_NS);
     dt = MIN(dt, dt_max_allowed);
   }
   else if(solve_stefan && !solve_navier_stokes){
@@ -1734,9 +1707,10 @@ void my_p4est_stefan_with_fluids_t::compute_timestep(){
   // don't forget to make that consistent in the main
 
 //  // Clip the timestep if we are near the end of our simulation, to get the proper end time:
+//  PetscPrintf(mpi->comm(), "tn = %f, tfinal = %f \n", tn, tfinal);
 //  if((tn + dt > tfinal) && (last_tstep<0)){
 
-//    dt = max(tfinal - tn,dt_min_allowed);
+//    dt = MAX(tfinal - tn,dt_min_allowed);
 
 //    // if time remaining is too small for one more step, end here. otherwise, do one more step and clip timestep to end on exact ending time
 //    if(fabs(tfinal-tn)>dt_min_allowed){
@@ -1746,8 +1720,13 @@ void my_p4est_stefan_with_fluids_t::compute_timestep(){
 //      last_tstep = tstep;
 //    }
 
-//    PetscPrintf(mpicomm,"Final tstep will be %d \n",last_tstep);
+//    PetscPrintf(mpi->comm(),"Final tstep will be %d \n",last_tstep);
 //  }
+
+  // TO-DO: remove temp failsafe below w something cleverer?
+  if(dt<dt_min_allowed){
+    dt = dt_min_allowed;
+  }
 
   // Print the interface velocity info:
   PetscPrintf(mpi->comm(),"\n"
@@ -2535,26 +2514,6 @@ void my_p4est_stefan_with_fluids_t::perform_lsf_advection_grid_update_and_interp
        * In NS case:      update the grid according to phi (no advection)
       */
 
-  // --------------------------------
-  // (4/5a) Compute the timestep
-  // (needed for the grid advection, and will be used as timestep for np1 step)
-  // --------------------------------
-  dt_nm1 = dt; // Slide the timestep
-
-  // Compute stefan timestep:
-  char stefan_timestep[1000];
-  sprintf(stefan_timestep,"Computed interfacial velocity: \n"
-                           " - Computational : %0.3e  "
-                           "- Physical : %0.3e [m/s]  "
-                           "- Physical : %0.3f  [mm/s] \n",
-          v_interface_max_norm,
-          v_interface_max_norm*vel_nondim_to_dim,
-          v_interface_max_norm*vel_nondim_to_dim*1000.);
-
-  compute_timestep(); // this function modifies the variable dt
-
-
-//  if(tstep!=last_tstep){ // TO-DO: removed this if tstep not last tstep, so make sure to handle this in main
   //-------------------------------------------------------------
   // (4/5b) Update the grids so long as this is not the last timestep:
   //-------------------------------------------------------------
@@ -2607,7 +2566,6 @@ void my_p4est_stefan_with_fluids_t::perform_lsf_advection_grid_update_and_interp
                                              hierarchy_np1);
   }
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Done. \n");
-//  } // end of "if tstep !=last tstep"
 
 
 } // end of "perform_lsf_advection_grid_update_and_interp_of_fields()"
@@ -2678,7 +2636,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
   double proximity_smoothing_ = proximity_smoothing;
 
   double dxyz_[P4EST_DIM];
-  dxyz_min(p4est_np1,dxyz_);
+  dxyz_min(p4est_np1, dxyz_);
 
   double dxyz_min_ = MIN(DIM(dxyz_[0],dxyz_[1],dxyz_[2]));
   double new_phi_val = .5*dxyz_min_;
@@ -3249,13 +3207,33 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
     setup_and_solve_navier_stokes_problem();
   } // End of "if solve navier stokes"
 
+
+
+  // --------------------------------
+  // (4/5a) Compute the timestep
+  // (needed for the grid advection, and will be used as timestep for np1 step)
+  // --------------------------------
+  dt_nm1 = dt; // Slide the timestep
+
+  // Compute stefan timestep:
+  char stefan_timestep[1000];
+  sprintf(stefan_timestep,"Computed interfacial velocity: \n"
+                           " - Computational : %0.3e  "
+                           "- Physical : %0.3e [m/s]  "
+                           "- Physical : %0.3f  [mm/s] \n",
+          v_interface_max_norm,
+          v_interface_max_norm*vel_nondim_to_dim,
+          v_interface_max_norm*vel_nondim_to_dim*1000.);
+
+  compute_timestep(); // this function modifies the variable dt
+
 } // end of "solve_all_fields_for_one_timestep()"
 
 
 // -------------------------------------------------------
 // Functions related to VTK saving:
 // -------------------------------------------------------
-void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(bool is_crash, char crash_type[]){
+void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(double out_idx, bool is_crash, char crash_type[]){
 
   char output[1000];
 
@@ -3329,10 +3307,13 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(bool is_crash, char crash
   if(solve_navier_stokes){
     point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "u"));
     point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "v"));
-    point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
-    point_fields.push_back(Vec_for_vtk_export_t(press_nodes.vec, "pressure"));
+    // TEMPORARY: commenting out below so I can visualize initial state
+//    point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
+//    point_fields.push_back(Vec_for_vtk_export_t(press_nodes.vec, "pressure"));
   }
   if(track_evolving_geometries && !is_crash){
+    island_numbers.create(p4est_np1, nodes_np1);
+    track_evolving_geometry();
     point_fields.push_back(Vec_for_vtk_export_t(island_numbers.vec, "island_no"));
   }
 
@@ -3348,6 +3329,10 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(bool is_crash, char crash
 
   kappa.destroy();
   normal.destroy();
+
+  if(track_evolving_geometries && !is_crash){
+    island_numbers.destroy();
+  }
 
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Finishes saving to VTK \n");
 

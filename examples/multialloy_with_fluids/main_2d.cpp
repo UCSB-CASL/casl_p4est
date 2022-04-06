@@ -2516,95 +2516,63 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
 // Interface:
 //----------------
 // Value:
-class BC_INTERFACE_VALUE_TEMP: public CF_DIM{ // TO CHECK -- changed how interp is initialized
+class BC_INTERFACE_VALUE_TEMP: public my_p4est_stefan_with_fluids_t::interfacial_bc_temp_t{ // TO CHECK -- changed how interp is initialized
   private:
-  // Have interpolation objects for case with surface tension included in boundary condition: can interpolate the curvature in a timestep to the interface points while applying the boundary condition
-  my_p4est_node_neighbors_t* ngbd;
 
-  my_p4est_interpolation_nodes_t* kappa_interp;
-  temperature_field** temperature_;
-  unsigned const char dom;
-
-  // For normals (in dendritic case)
-  my_p4est_interpolation_nodes_t* nx_interp;
-  my_p4est_interpolation_nodes_t* ny_interp;
-
-  // Relevant vectors:
-  vec_and_ptr_t kappa;
-  vec_and_ptr_dim_t normal;
+    temperature_field** temperature_;
+    unsigned char dom;
 
   public:
+      BC_INTERFACE_VALUE_TEMP(my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_curvature_, bool do_we_use_normals_) : interfacial_bc_temp_t(parent_solver, do_we_use_curvature_, do_we_use_normals_){}
 
-  BC_INTERFACE_VALUE_TEMP(my_p4est_node_neighbors_t *ngbd_=NULL, Vec kappa = NULL, temperature_field** analytical_T=NULL, unsigned const char& dom_= NULL): ngbd(ngbd_),temperature_(analytical_T),dom(dom_)
-  {
-    if((ngbd!=NULL) && (kappa!=NULL) ){
-      kappa_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      kappa_interp->set_input(kappa,linear);
+    void setup_ana_case(temperature_field** analytical_T, unsigned char dom_){
+      temperature_= analytical_T;
+      dom = dom_;
     }
-  }
-  double Gibbs_Thomson(double sigma_, DIM(double x, double y, double z)) const {
-    switch(problem_dimensionalization_type){
-    // Note slight difference in condition bw diff nondim types -- T0 vs Tinf
-    case NONDIM_BY_FLUID_VELOCITY:{
-      return (theta_interface - (sigma_/l_char)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT));
-    }
-    case NONDIM_BY_SCALAR_DIFFUSIVITY:{
-      return (theta_interface - (sigma_/l_char)*((*kappa_interp)(x,y))*(theta_interface + Tinfty/deltaT));
-    }
-    case DIMENSIONAL:{
-      return (Tinterface*(1 - sigma_*((*kappa_interp)(x,y))));
-    }
-    default:{
-      throw std::runtime_error("Gibbs_thomson: unrecognized problem dimensionalization type \n");
-    }
-    }
-  }
-  double operator()(DIM(double x, double y, double z)) const
-  {
-    switch(example_){
-    case FRANK_SPHERE:{ // Frank sphere case, no surface tension
-      return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
-    }
-    case DENDRITE_TEST:{
-      double eps = 0.05;
-      // double theta_ = atan2((*ny_interp)(x,y),(*nx_interp)(x,y));
+    double operator()(DIM(double x, double y, double z)) const
+    {
+      switch(example_){
+      case FRANK_SPHERE:{ // Frank sphere case, no surface tension
+        return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
+      }
+      case DENDRITE_TEST:{
+        double eps = 0.05;
 
-      double cos_theta_ = (*nx_interp)(x,y);
-      double cos_4_theta = 8.0*pow(cos_theta_,4.)-8.0*pow(cos_theta_,2.)+1;
-      double int_val =1. + (-l_char)*(1. - 15.*eps*cos_4_theta)*((*kappa_interp)(x,y))/St;
+        double cos_theta_ = (*nx_interp)(x,y);
+        double cos_4_theta = 8.0*pow(cos_theta_,4.)-8.0*pow(cos_theta_,2.)+1;
+        double int_val =1. + (-l_char)*(1. - 15.*eps*cos_4_theta)*((*kappa_interp)(x,y))/St;
 
-
-      //        double int_val =1. + (-l_char)*(1. - 15.*eps*1.)*((*kappa_interp)(x,y))/St;
-      //        printf("the term: %f \n"
-      //               "15epscos = %f \n"
-      //               "kappa = %f \n", (-l_char)*(1. - 15.*eps*cos(4.*theta_))*((*kappa_interp)(x,y))/St,
-      //               15.*eps*cos(4.*theta_),
-      //               (*kappa_interp)(x,y));
-      //        if(fabs(int_val - 1.0)>0.5){
-      //          printf("Interface value = %f \n"
-      //                 "Theta = %f \n"
-      //                 "Kappa = %f \n"
-      //                 "(x,y) = (%f, %f) \n \n", int_val, theta_*180./PI, (*kappa_interp)(x,y), x, y );
-      //        }
-
-
-      return int_val;
-    }
-    case EVOLVING_POROUS_MEDIA:{
-      if(is_dissolution_case){
-        // Dissolution case,
-        // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
-        // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
-        if(fabs(deltaT/Tinfty) < EPS){
-          return 0.0;
+        return int_val;
+      }
+      case EVOLVING_POROUS_MEDIA:{
+        if(is_dissolution_case){
+          // Dissolution case,
+          // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
+          // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
+          if(fabs(deltaT/Tinfty) < EPS){
+            return 0.0;
+          }
+          else{
+            return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
+          }
         }
         else{
-          return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
+          // temperature case, go with usual Gibbs-Thomson
+          double interface_val = Gibbs_Thomson(DIM(x,y,z));
+
+          // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
+          if(ramp_bcs){
+            return ramp_BC(theta_infty,interface_val);
+          }
+          else {
+            return interface_val;
+          }
         }
       }
-      else{
-        // temperature case, go with usual Gibbs-Thomson
-        double interface_val = Gibbs_Thomson(sigma, DIM(x,y,z));
+      case MELTING_ICE_SPHERE_NAT_CONV:
+      case MELTING_ICE_SPHERE:
+      case ICE_AROUND_CYLINDER: {
+        double interface_val = Gibbs_Thomson(DIM(x,y,z));
 
         // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
         if(ramp_bcs){
@@ -2614,70 +2582,25 @@ class BC_INTERFACE_VALUE_TEMP: public CF_DIM{ // TO CHECK -- changed how interp 
           return interface_val;
         }
       }
-    }
-    case MELTING_ICE_SPHERE_NAT_CONV:
-    case MELTING_ICE_SPHERE:
-    case ICE_AROUND_CYLINDER: {
-      double interface_val = Gibbs_Thomson(sigma, DIM(x,y,z));
-
-      // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
-      if(ramp_bcs){
-        return ramp_BC(theta_infty,interface_val);
+      case COUPLED_TEST_2:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+      case COUPLED_PROBLEM_EXAMPLE:{
+        return temperature_[dom]->T(DIM(x,y,z));
       }
-      else {
-        return interface_val;
+      case DISSOLVING_DISK_BENCHMARK:{
+        // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
+        // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
+        if(fabs(deltaT/Tinfty) < EPS){
+          return 0.0;
+        }
+        else{
+          return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
+        }
       }
-    }
-    case COUPLED_TEST_2:
-    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-    case COUPLED_PROBLEM_EXAMPLE:{
-      return temperature_[dom]->T(DIM(x,y,z));
-    }
-    case DISSOLVING_DISK_BENCHMARK:{
-      // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
-      // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
-      if(fabs(deltaT/Tinfty) < EPS){
-        return 0.0;
-      }
-      else{
-        return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
+      default:
+        throw std::runtime_error("BC INTERFACE VALUE TEMP: unrecognized example \n");
       }
     }
-    default:
-      throw std::runtime_error("BC INTERFACE VALUE TEMP: unrecognized example \n");
-    }
-  }
-  void clear(){
-    kappa_interp->clear();
-    delete kappa_interp;
-  }
-  void set(my_p4est_node_neighbors_t* &ngbd_, Vec kappa){
-    if(ngbd_!=NULL){
-      ngbd = ngbd_;
-
-      kappa_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      kappa_interp->set_input(kappa, linear);
-    }
-
-  }
-  void set_normals(my_p4est_node_neighbors_t *ngbd_, Vec nx, Vec ny){
-    if((ngbd_!=NULL) && (nx !=NULL) && (ny!=NULL)){
-      ngbd = ngbd_;
-
-      nx_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      nx_interp->set_input(nx, linear);
-
-      ny_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      ny_interp->set_input(ny, linear);
-    }
-  }
-  void clear_normals(){
-    nx_interp->clear();
-    ny_interp->clear();
-
-    delete nx_interp;
-    delete ny_interp;
-  }
 };
 
 // Type:
@@ -2882,73 +2805,53 @@ public:
 //----------------
 // Value:
 // Interfacial condition:
-class BC_interface_value_velocity: public CF_DIM{
-  private:
-  my_p4est_node_neighbors_t* ngbd;
-  my_p4est_interpolation_nodes_t* v_interface_interp;
+class BC_interface_value_velocity: public my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t{
 
   public:
-  const unsigned char dir;
-  velocity_component** velocity_field;
-  BC_interface_value_velocity(const unsigned char& dir_, my_p4est_node_neighbors_t* ngbd_=NULL, Vec v_interface=NULL,velocity_component** analyical_soln=NULL): ngbd(ngbd_),dir(dir_),velocity_field(analyical_soln){
-    P4EST_ASSERT(dir<P4EST_DIM);
-    if((ngbd_!=NULL) && (v_interface!=NULL)){
-      v_interface_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      v_interface_interp->set_input(v_interface,linear);
-    }
-  }
-  double operator()(double x, double y) const
-  {
-    switch(example_){
-    case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
-    case PLANE_POIS_FLOW:
-      return 0.; // homogeneous dirichlet no slip
-    case FLOW_PAST_CYLINDER:
-    case EVOLVING_POROUS_MEDIA:
-    case MELTING_ICE_SPHERE_NAT_CONV:
-    case MELTING_ICE_SPHERE:
-    case DISSOLVING_DISK_BENCHMARK:
-      if(!solve_stefan) return 0.;
-      else{
-        // 9/23/21 -- currently evalulating effect of diff BC's on result
-        // return (*v_interface_interp)(x,y); // no slip condition
+    unsigned char dir;
+    velocity_component** velocity_field;
+    BC_interface_value_velocity(my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_vgamma_for_bc) : interfacial_bc_fluid_velocity_t(parent_solver, do_we_use_vgamma_for_bc){}
 
-        return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // cons of mass condition
-        // 12/15/21 -- changed back to cons of mass condition -- Rochi and Elyce -- if your results don't work check this
+    void setup_ana_case(velocity_component** analyical_soln, unsigned char dir_){
+      velocity_field = analyical_soln;
+      dir = dir_;
+    }
+    double operator()(double x, double y) const
+    {
+      switch(example_){
+      case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+      case PLANE_POIS_FLOW:
+        return 0.; // homogeneous dirichlet no slip
+      case FLOW_PAST_CYLINDER:
+      case EVOLVING_POROUS_MEDIA:
+      case MELTING_ICE_SPHERE_NAT_CONV:
+      case MELTING_ICE_SPHERE:
+      case DISSOLVING_DISK_BENCHMARK:
+        if(!solve_stefan) return 0.;
+        else{
+          return Conservation_of_Mass(DIM(x,y,z));
+        }
+      case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
+        if(!solve_stefan) return 0.;
+        else{
+          return Conservation_of_Mass(DIM(x,y,z)); // Condition derived from mass balance across interface
+        }
       }
-    case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
-      if(!solve_stefan) return 0.;
-      else{
-        return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // Condition derived from mass balance across interface
 
+      case NS_GIBOU_EXAMPLE:
+      case COUPLED_TEST_2:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+      case COUPLED_PROBLEM_EXAMPLE:
+        return (*velocity_field[dir])(x,y);
+      case DENDRITE_TEST:{
+        return 0.0;
+      }
+      default:
+        throw std::runtime_error("BC INTERFACE VALUE VELOCITY: unrecognized example ");
       }
     }
-      //      case DISSOLVING_DISK_BENCHMARK:{
-      //        return 0.0;
-      //      }
-    case NS_GIBOU_EXAMPLE:
-    case COUPLED_TEST_2:
-    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
-    case COUPLED_PROBLEM_EXAMPLE:
-      return (*velocity_field[dir])(x,y);
-    case DENDRITE_TEST:{
-      return 0.0;
-    }
-    default:
-      throw std::runtime_error("BC INTERFACE VALUE VELOCITY: unrecognized example ");
-    }
-  }
-  void clear(){
-    v_interface_interp->clear();
-    delete v_interface_interp;
-  }
-  void set(my_p4est_node_neighbors_t* ngbd_, Vec v_interface){
-    if((ngbd_!=NULL) && (v_interface!=NULL)){
-      ngbd = ngbd_;
-      v_interface_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      v_interface_interp->set_input(v_interface,linear);
-    }
-  }
+
+
 };
 
 // Type:
@@ -3312,22 +3215,24 @@ public:
 // --------------------------------------------------------------------------------------------------------------
 
 // (V) want to handle this in main
-void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, double cfl_NS_steady, double hodge_percentage_steady){
+void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver,
+                                          double cfl_NS_steady, double hodge_percentage_steady){
 
   // -----------------------------
   // Handle any startup time/startup iterations/ flush time/ etc. // TO-DO: will move this stuff to its own fxn
   // ------------------------------
-  // Enforce startup iterations for verification tests if needed:
-  if((startup_iterations>0)){
-    if(tstep<startup_iterations){
-      force_interfacial_velocity_to_zero=true;
-      tn=tstart;
-    }
-    else if(tstep==startup_iterations){
-      force_interfacial_velocity_to_zero=false;
-      tn = tstart;
-    }
-  }
+  // TO-DO: remove below, I believe it is obselete
+  //  // Enforce startup iterations for verification tests if needed:
+//  if((startup_iterations>0)){
+//    if(tstep<startup_iterations){
+//      force_interfacial_velocity_to_zero=true;
+//      tn=tstart;
+//    }
+//    else if(tstep==startup_iterations){
+//      force_interfacial_velocity_to_zero=false;
+//      tn = tstart;
+//    }
+//  }
 
   if(solve_navier_stokes){
     // Adjust the cfl_NS depending on the timestep:
@@ -3389,7 +3294,16 @@ void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, double cfl_NS_
       theta0 = theta_interface;
     }
     flush_time_initiated = true;
+
+    stefan_w_fluids_solver->set_nondim_temp_conc_variables(theta_infty, theta_interface, theta0, deltaT);
+    // TO-DO: check if flush case still works, havent sorted this out super rigorously
   }
+
+  // Set the relevant settings in the solver:
+  stefan_w_fluids_solver->set_cfl_NS(cfl_NS);
+  stefan_w_fluids_solver->set_hodge_percentage_of_max_u(hodge_percentage_of_max_u);
+  stefan_w_fluids_solver->set_force_interfacial_velocity_to_zero(force_interfacial_velocity_to_zero);
+
 }
 
 
@@ -3448,7 +3362,7 @@ void setup_analytical_ics_and_bcs_for_this_tstep(BC_INTERFACE_VALUE_TEMP* bc_int
   }
   bc_wall_value_pressure.t=tn+dt;
 
-}
+} // end of "setup_analytical_ics_and_bcs_for_this_tstep()"
 
 
 
@@ -3486,7 +3400,7 @@ bool are_we_saving_data(double& tn_,bool is_load_step, int& out_idx, bool get_ne
 // --------------------------------------------------------------------------------------------------------------
 // Functions for checking the error in test cases (and then saving to vtk): // NOTE: eventually, we will move these to be owned by the examples class
 // --------------------------------------------------------------------------------------------------------------
-void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, vec_and_ptr_t& T_l, vec_and_ptr_t& T_s, vec_and_ptr_t& phi, vec_and_ptr_dim_t& v_interface,  double dxyz_close_to_interface, bool are_we_saving_vtk, char* filename_vtk,char *name, FILE *fich){
+void save_stefan_test_case(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost, vec_and_ptr_t& T_l, vec_and_ptr_t& T_s, vec_and_ptr_t& phi, vec_and_ptr_dim_t& v_interface,  double dxyz_close_to_interface, bool are_we_saving_vtk, char* filename_vtk,char *name, FILE *fich){
   PetscErrorCode ierr;
 
   vec_and_ptr_t T_ana,phi_ana, v_interface_ana;
@@ -3610,8 +3524,6 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
 
     }
 
-
-
   T_l.restore_array();
   T_s.restore_array();
   phi.restore_array();
@@ -3621,9 +3533,9 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
   T_l_err.restore_array();T_s_err.restore_array();v_interface_err.restore_array();phi_err.restore_array();
   T_ana.destroy();v_interface_ana.destroy();phi_ana.destroy();
   T_l_err.destroy();T_s_err.destroy();v_interface_err.destroy();phi_err.destroy();
-}
+} // end of "save_stefan_test_case()"
 
-void save_navier_stokes_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, vec_and_ptr_t& phi, vec_and_ptr_dim_t& v_NS, vec_and_ptr_t& press, vec_and_ptr_t& vorticity, double dxyz_close_to_interface,bool are_we_saving_vtk,char* filename_vtk, char* filename_err_output, FILE* fich){
+void save_navier_stokes_test_case(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost, vec_and_ptr_t& phi, vec_and_ptr_dim_t& v_NS, vec_and_ptr_t& press, vec_and_ptr_t& vorticity, double dxyz_close_to_interface,bool are_we_saving_vtk,char* filename_vtk, char* filename_err_output, FILE* fich){
 
   // Save NS analytical to compare:
   vec_and_ptr_dim_t vn_analytical;
@@ -3758,9 +3670,9 @@ void save_navier_stokes_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_gh
 
   vn_error.destroy();
   press_error.destroy();
-}
+} // end of "save_navier_stokes_test_case()"
 
-void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_node_neighbors_t* ngbd,
+void save_coupled_test_case(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost, my_p4est_node_neighbors_t* ngbd,
                             vec_and_ptr_t& phi, vec_and_ptr_t& Tl, vec_and_ptr_t& Ts, vec_and_ptr_dim_t& v_interface,
                             vec_and_ptr_dim_t& v_NS, vec_and_ptr_t& press, vec_and_ptr_t& vorticity,
                             double dxyz_close_to_interface, bool are_we_saving_vtk,
@@ -4048,29 +3960,27 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
     delete analytical_soln_velNS[d];
     delete analytical_soln_velINT[d];
   }
-}
+} // end of "save_coupled_test_case()"
 
 
-void save_test_case_errors_and_vtk(mpi_environment_t& mpi, splitting_criteria_cf_and_uniform_band_t& sp,
-                                   p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
-                                   p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1,
+void save_test_case_errors_and_vtk(mpi_environment_t& mpi,
+                                   my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver,
+                                   const p4est_t* p4est_np1, const p4est_nodes_t* nodes_np1,
+                                   const p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1,
                                    my_p4est_navier_stokes_t* ns,
-                                   vec_and_ptr_t& phi,
-                                   vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
-                                   vec_and_ptr_dim_t& v_interface,
-                                   vec_and_ptr_dim_t& v_n,
-                                   vec_and_ptr_t& press_nodes, vec_and_ptr_t& vorticity,
+                                   vec_and_ptr_t phi,
+                                   vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
+                                   vec_and_ptr_dim_t v_interface,
+                                   vec_and_ptr_dim_t v_n,
+                                   vec_and_ptr_t press_nodes, vec_and_ptr_t vorticity,
                                    FILE* fich_errors, char name_errors[],
-                                   double& dxyz_close_to_interface,
+                                   double dxyz_close_to_interface,
                                    bool are_we_saving, int out_idx){
-
-  PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n", sp.min_lvl, sp.max_lvl);
-  PetscPrintf(mpi.comm(), "vtk outidx = %d \n", out_idx);
 
   // Get the vtk output directory:
   const char* out_dir_test_vtk = getenv("OUT_DIR_VTK");
   char output[1000];
-  sprintf(output, "%s/snapshot_test_%d_lmin_%d_lmax_%d_outidx_%d", out_dir_test_vtk, example_, sp.min_lvl, sp.max_lvl, out_idx);
+  sprintf(output, "%s/snapshot_test_%d_lmin_%d_lmax_%d_outidx_%d", out_dir_test_vtk, example_, stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax(), out_idx);
 
   switch(example_){
   case NS_GIBOU_EXAMPLE:{
@@ -4105,17 +4015,14 @@ void save_test_case_errors_and_vtk(mpi_environment_t& mpi, splitting_criteria_cf
     break;
   }
   }
-
-
-
-}
+} // end of "save_test_case_errors_and_vtk()"
 
 
 
 void save_fluid_forces_and_or_area_data(mpi_environment_t& mpi,
-                                        p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+                                        const p4est_t* p4est_np1, const p4est_nodes_t* nodes_np1,
                                         my_p4est_navier_stokes_t* ns,
-                                        vec_and_ptr_t& phi, vec_and_ptr_t& press_nodes,
+                                        vec_and_ptr_t phi,
                                         bool compute_pressure,
                                         FILE* fich_data, char name_data[], int& last_tstep){
 
@@ -4175,9 +4082,9 @@ void save_fluid_forces_and_or_area_data(mpi_environment_t& mpi,
     ierr = PetscFClose(mpi.comm(), fich_data); CHKERRXX(ierr);
     PetscPrintf(mpi.comm(), "The data has been saved ... \n");
   }
-}
+} // end of "save_fluid_forces_and_or_area_data()"
 
-void do_mem_safety_check(mpi_environment_t& mpi, splitting_criteria_t& sp,
+void do_mem_safety_check(mpi_environment_t& mpi,
                          p4est_nodes_t* nodes_np1, bool are_we_saving,
                          FILE* fich_mem, char name_mem[]){
 
@@ -4206,22 +4113,12 @@ void do_mem_safety_check(mpi_environment_t& mpi, splitting_criteria_t& sp,
     ierr = PetscFOpen(mpi.comm(),name_mem,"a",&fich_mem); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(),fich_mem,"%d %g %d %d \n",tstep, mem_safety_check, no, are_we_saving);CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
-}
+} // end of "do_mem_safety_check()"
 
 
 
 
-void perform_saving_tasks_of_interest(mpi_environment_t &mpi, splitting_criteria_cf_and_uniform_band_t* &sp, int grid_res_iter,
-                                      p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
-                                      my_p4est_node_neighbors_t* &ngbd_np1,
-                                      my_p4est_navier_stokes_t* &ns,
-                                      vec_and_ptr_t& phi,
-                                      vec_and_ptr_t& phi_substrate, vec_and_ptr_t& phi_eff,
-                                      vec_and_ptr_t& island_numbers,
-                                      vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_dim_t& v_interface,
-                                      vec_and_ptr_dim_t& v_n,
-                                      vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes,
-                                      double& dxyz_close_to_interface, int& out_idx, int& data_save_out_idx, bool& compute_pressure_,
+void perform_saving_tasks_of_interest(mpi_environment_t &mpi, my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver, int& out_idx, int& data_save_out_idx, bool& compute_pressure_,
                                       int load_tstep, int last_tstep,
                                       FILE* fich_errors, char name_errors[],
                                       FILE* fich_data, char name_data[],
@@ -4229,12 +4126,15 @@ void perform_saving_tasks_of_interest(mpi_environment_t &mpi, splitting_criteria
   // --------------------------------------------------------------------------------------------------------------
   // Save the fluid forces and/or area
   // --------------------------------------------------------------------------------------------------------------
-  // TO-DO: note: I dont think data save out idx gets used anywhere, we could probably do without it but I'll keep it for now just in case it has some later use
+  // TO-DO: Update this using the solver:
+
   if(are_we_saving_data(tn, tstep==load_tstep, data_save_out_idx, false) || wrap_up_simulation_if_solid_has_vanished){
+    my_p4est_node_neighbors_t* ngbd_np1 = stefan_w_fluids_solver->get_ngbd_np1();
+
     save_fluid_forces_and_or_area_data(mpi,
-                                       p4est_np1, nodes_np1,
-                                       ns,
-                                       phi, press_nodes, compute_pressure_,
+                                       ngbd_np1->get_p4est(), ngbd_np1->get_nodes(),
+                                       stefan_w_fluids_solver->get_ns_solver(),
+                                       stefan_w_fluids_solver->get_phi(), compute_pressure_,
                                        fich_data, name_data, last_tstep);
   }
 
@@ -4252,25 +4152,7 @@ void perform_saving_tasks_of_interest(mpi_environment_t &mpi, splitting_criteria
   // (Saving-b) Save to VTK if applicable:
   // ---------------------------
   if(are_we_saving){
-
-    // INSERT HERE: save to vtk:
-    // --> compute relevant out_idx, set it in the solver, and handle tracking evolving geom case if relevant
-//    // Get the island numbers to save if we want that
-//    if(track_evolving_geometries){
-//      island_numbers.create(p4est_np1, nodes_np1);
-//      track_evolving_geometry(p4est_np1, nodes_np1, ngbd_np1,
-//                              phi, island_numbers, out_idx);
-//    }
-
-//    save_fields_to_vtk(p4est_np1,nodes_np1,ghost_np1,ngbd_np1, out_idx,grid_res_iter,
-//                       phi, phi_eff, phi_substrate,T_l_n,T_s_n,
-//                       v_interface,
-//                       v_n, press_nodes, vorticity,
-//                       island_numbers);
-
-//    if(track_evolving_geometries){
-//      island_numbers.destroy();
-//    }
+    stefan_w_fluids_solver->save_fields_to_vtk(out_idx);
   } // end of if "are we saving"
 
   // ---------------------------
@@ -4279,16 +4161,18 @@ void perform_saving_tasks_of_interest(mpi_environment_t &mpi, splitting_criteria
   // ---------------------------
 
   if(example_is_a_test_case){
-    save_test_case_errors_and_vtk(mpi, *sp,
-                                  p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
-                                  ns,
-                                  phi,
-                                  T_l_n, T_s_n,
-                                  v_interface,
-                                  v_n,
-                                  press_nodes, vorticity,
+    my_p4est_node_neighbors_t* ngbd_np1 = stefan_w_fluids_solver->get_ngbd_np1();
+    PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n", stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax());
+    save_test_case_errors_and_vtk(mpi, stefan_w_fluids_solver,
+                                  ngbd_np1->get_p4est(), ngbd_np1->get_nodes(), ngbd_np1->get_ghost(), ngbd_np1,
+                                  stefan_w_fluids_solver->get_ns_solver(),
+                                  stefan_w_fluids_solver->get_phi(),
+                                  stefan_w_fluids_solver->get_T_l_n(), stefan_w_fluids_solver->get_T_s_n(),
+                                  stefan_w_fluids_solver->get_v_interface(),
+                                  stefan_w_fluids_solver->get_v_n(),
+                                  stefan_w_fluids_solver->get_press_nodes(), stefan_w_fluids_solver->get_vorticity(),
                                   fich_errors, name_errors,
-                                  dxyz_close_to_interface,
+                                  stefan_w_fluids_solver->get_dxyz_close_to_interface(),
                                   are_we_saving, out_idx);
   }
 
@@ -4296,12 +4180,10 @@ void perform_saving_tasks_of_interest(mpi_environment_t &mpi, splitting_criteria
   // (Saving-d) Do a memory safety check as user specified
   // -------------------------------
   if((check_mem_every_iter>0) && ((tstep%check_mem_every_iter)==0)){
-    do_mem_safety_check(mpi, *sp, nodes_np1, are_we_saving, fich_mem, name_mem);
+    do_mem_safety_check(mpi, stefan_w_fluids_solver->get_nodes_np1(), are_we_saving, fich_mem, name_mem);
   }
+} // end of "perform_saving_tasks_of_interest()"
 
-
-
-}
 // --------------------------------------------------------------------------------------------------------------
 // Initializations and destructions:
 // --------------------------------------------------------------------------------------------------------------
@@ -4315,8 +4197,16 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   stefan_w_fluids_solver->set_there_is_substrate(example_uses_inner_LSF);
   stefan_w_fluids_solver->set_do_we_solve_for_Ts(do_we_solve_for_Ts);
   stefan_w_fluids_solver->set_is_dissolution_case(is_dissolution_case);
+  stefan_w_fluids_solver->set_start_w_merged_grains(start_w_merged_grains);
+  stefan_w_fluids_solver->set_use_regularize_front(use_regularize_front);
+  stefan_w_fluids_solver->set_use_collapse_onto_substrate(use_collapse_onto_substrate);
+  stefan_w_fluids_solver->set_track_evolving_geometries(track_evolving_geometries);
+  stefan_w_fluids_solver->set_use_boussinesq(use_boussinesq);
+  stefan_w_fluids_solver->set_force_interfacial_velocity_to_zero(force_interfacial_velocity_to_zero);
 
 
+  stefan_w_fluids_solver->set_proximity_smoothing(proximity_smoothing);
+  stefan_w_fluids_solver->set_proximity_collapse(proximity_collapse);
   // ------------------------------
   // Make sure your flags are set to solve at least one of the problems:
   // ------------------------------
@@ -4346,6 +4236,7 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
 
   // TO-DO: update this to include grid res iter
   stefan_w_fluids_solver->set_lmin_lint_lmax(lmin+grid_res_iter, (lint>0) ? lint+grid_res_iter: lint, lmax+grid_res_iter);
+  stefan_w_fluids_solver->set_uniform_band(uniform_band);
   // Note: we only pass lint if it was already specified as nonzero, otherwise just pass whatever the user passed
 
   //
@@ -4374,6 +4265,8 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
 
   // Set the physical properties and pass to solver:
   set_physical_properties();
+  stefan_w_fluids_solver->set_l_char(l_char);
+
   stefan_w_fluids_solver->set_alpha_l(alpha_l);
   stefan_w_fluids_solver->set_alpha_s(alpha_s);
 
@@ -4415,15 +4308,21 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   if(RaT>=0.) stefan_w_fluids_solver->set_RaT(RaT);
   if(RaC>=0.) stefan_w_fluids_solver->set_RaC(RaC);
 
-  // The solver will automatically set nondim groups during the initializations
+  // The solver will automatically set nondim groups during the initializations, but
+  // we do it here so we can get the time_nondim_to_dim info we need to set a proper duration for sim time
+  stefan_w_fluids_solver->set_nondimensional_groups();
 
   if(solve_navier_stokes){
     set_NS_info();
   }
   stefan_w_fluids_solver->set_hodge_percentage_of_max_u(hodge_percentage_of_max_u);
-  stefan_w_fluids_solver->set_hodge_max_iteration(100);
+  stefan_w_fluids_solver->set_hodge_max_iteration(50);
   // INSERT HERE: Set values in solver?
   // INSERT HERE: set_nondimensional_groups() (from solver);
+
+  // Refinement:
+  stefan_w_fluids_solver->set_refine_by_d2T(refine_by_d2T);
+  stefan_w_fluids_solver->set_d2T_ref_threshold(gradT_threshold);
 
 
 
@@ -4431,9 +4330,16 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
   // -----------------------------------------------
 
+  time_nondim_to_dim = stefan_w_fluids_solver->get_time_nondim_to_dim();
+
   simulation_time_info(); // INSERT HERE: update in solver as necessary
   stefan_w_fluids_solver->set_tn(tstart);
+  stefan_w_fluids_solver->set_tfinal(tfinal);
+  PetscPrintf(mpi.comm(), "Set tfinal as %f \n", tfinal);
   stefan_w_fluids_solver->set_dt_max_allowed(dt_max_allowed);
+
+  stefan_w_fluids_solver->set_cfl_Stefan(cfl);
+  stefan_w_fluids_solver->set_cfl_NS(cfl_NS);
 
   // Other:
   stefan_w_fluids_solver->set_print_checkpoints(print_checkpoints);
@@ -4447,11 +4353,11 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
                             "\n \n"
                             "--> We are running EXAMPLE %d \n"
                             "------------------------------------\n\n",example_);
-}
+} // end of "setup_initial_parameters_and_report()"
 
 
 void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
-                                           splitting_criteria_cf_and_uniform_band_t* sp,
+                                           my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver,
                                            FILE* fich_errors, char name_errors[],
                                            FILE* fich_data, char name_data[],
                                            FILE* fich_mem, char name_mem[]){
@@ -4468,7 +4374,7 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
   case FRANK_SPHERE:{
 
     sprintf(name_errors,"%s/frank_sphere_error_lmin_%d_lmax_%d.dat",
-            out_dir_files, sp->min_lvl, sp->max_lvl);
+            out_dir_files, stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax());
 
     ierr = PetscFOpen(mpi.comm(),name_errors,"w",&fich_errors); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(),fich_errors,"time " "timestep " "iteration "
@@ -4481,7 +4387,7 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
     // Output file for NS test case errors:
 
     sprintf(name_errors,"%s/navier_stokes_error_lmin_%d_lmax_%d.dat",
-            out_dir_files, sp->min_lvl, sp->max_lvl);
+            out_dir_files, stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax());
 
     ierr = PetscFOpen(mpi.comm(),name_errors, "w", &fich_errors); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(),fich_errors,"time " "timestep " "iteration " "u_error "
@@ -4495,7 +4401,7 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
   case COUPLED_PROBLEM_EXAMPLE:{
     // Output file for coupled problem test case:
     sprintf(name_errors,"%s/coupled_error_lmin_%d_lmax_%d.dat",
-            out_dir_files,  sp->min_lvl, sp->max_lvl);
+            out_dir_files,  stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax());
 
     ierr = PetscFOpen(mpi.comm(),name_errors,"w",&fich_errors); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(),fich_errors,"time " "timestep " "iteration "
@@ -4512,19 +4418,17 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
   case MELTING_ICE_SPHERE:
   case ICE_AROUND_CYLINDER:{
     if(save_fluid_forces || save_area_data){
-
-
       switch(problem_dimensionalization_type){
         case NONDIM_BY_FLUID_VELOCITY:{
           if(is_dissolution_case){
             // Output file for fluid forces or area data
             sprintf(name_data,"%s/area_and_or_force_data_Re_%0.2f_gamma_%0.2f_lmin_%d_lmax_%d.dat",
-                    out_dir_files, Re, gamma_diss, sp->min_lvl, sp->max_lvl);
+                    out_dir_files, Re, gamma_diss, stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax());
           }
           else{
             // Output file for fluid forces or area data
             sprintf(name_data,"%s/area_and_or_force_data_Re_%0.2f_St_%0.2f_lmin_%d_lmax_%d.dat",
-                    out_dir_files, Re, St, sp->min_lvl, sp->max_lvl);
+                    out_dir_files, Re, St, stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax());
           }
 
 
@@ -4534,12 +4438,12 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
           if(is_dissolution_case){
             // Output file for fluid forces or area data
             sprintf(name_data,"%s/area_and_or_force_data_Sc_%0.2f_gamma_%0.2f_lmin_%d_lmax_%d.dat",
-                    out_dir_files, Sc, gamma_diss, sp->min_lvl, sp->max_lvl);
+                    out_dir_files, Sc, gamma_diss, stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax());
           }
           else{
             // Output file for fluid forces or area data
             sprintf(name_data,"%s/area_and_or_force_data_Pr_%0.2f_St_%0.2f_lmin_%d_lmax_%d.dat",
-                    out_dir_files, Pr, St, sp->min_lvl, sp->max_lvl);
+                    out_dir_files, Pr, St, stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax());
           }
           break;
         }
@@ -4547,12 +4451,12 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
           if(is_dissolution_case){
             // Output file for fluid forces or area data
             sprintf(name_data,"%s/area_and_or_force_data_dimensional_Re_%0.2f_gamma_%0.2f_lmin_%d_lmax_%d.dat",
-                    out_dir_files, Re, gamma_diss, sp->min_lvl, sp->max_lvl);
+                    out_dir_files, Re, gamma_diss, stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax());
           }
           else{
             // Output file for fluid forces or area data
             sprintf(name_data,"%s/area_and_or_force_data_dimensional_Re_%0.2f_St_%0.2f_lmin_%d_lmax_%d.dat",
-                    out_dir_files, Re, St, sp->min_lvl, sp->max_lvl);
+                    out_dir_files, Re, St, stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax());
           }
           break;
         }
@@ -4587,14 +4491,13 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
   // Initialize memory file if we are doing a memory safety check:
   if(check_mem_every_iter>0){
     sprintf(name_mem,"%s/memory_check_lmin_%d_lmax_%d.dat",
-            out_dir_files, sp->min_lvl, sp->max_lvl);
+            out_dir_files, stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax());
 
     ierr = PetscFOpen(mpi.comm(), name_mem, "w", &fich_mem); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(),fich_mem, "tstep mem num_nodes vtk_bool \n");CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(), fich_mem); CHKERRXX(ierr);
   }
-
-}
+} // end of "initialize_error_files_for_test_cases()"
 
 
 
@@ -4644,14 +4547,18 @@ void initialize_all_relevant_bcs_ics_forcing_terms(my_p4est_stefan_with_fluids_t
 
     // Create necessary RHS forcing terms and BC's
     for(unsigned char d=0;d<2;++d){
+      bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(stefan_w_fluids_solver,
+                                                             interfacial_temp_bc_requires_curvature,
+                                                             interfacial_temp_bc_requires_normal);
+
       if(analytical_IC_BC_forcing_term){
         external_heat_source_T[d] = new external_heat_source(d,analytical_T,analytical_soln_v);
         external_heat_source_T[d]->t = tn+dt;
-        bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(NULL,NULL,analytical_T,d);
+//        bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(NULL,NULL,analytical_T,d);
+        bc_interface_val_temp[d]->setup_ana_case(analytical_T, d);
         bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d,analytical_T);
       }
       else{
-        bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(); // will set proper objects later, can be null on initialization
         bc_wall_value_temp[d] = new BC_WALL_VALUE_TEMP(d);
       }
     }
@@ -4660,6 +4567,8 @@ void initialize_all_relevant_bcs_ics_forcing_terms(my_p4est_stefan_with_fluids_t
 
   if(solve_navier_stokes){
     for(unsigned char d=0;d<P4EST_DIM;d++){
+      bc_interface_value_velocity[d] = new BC_interface_value_velocity(stefan_w_fluids_solver, interfacial_vel_bc_requires_vint);
+
       // Set the BC types:
       BC_INTERFACE_TYPE_VELOCITY(d);
       bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
@@ -4667,7 +4576,8 @@ void initialize_all_relevant_bcs_ics_forcing_terms(my_p4est_stefan_with_fluids_t
       // Set the BC values (and potential forcing terms) depending on what we are running:
       if(analytical_IC_BC_forcing_term){
         // Interface conditions values:
-        bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL,analytical_soln_v);
+        bc_interface_value_velocity[d]->setup_ana_case(analytical_soln_v, d);
+//        bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL,analytical_soln_v);
         bc_interface_value_velocity[d]->t = tn+dt;
 
         // Wall conditions values:
@@ -4687,8 +4597,8 @@ void initialize_all_relevant_bcs_ics_forcing_terms(my_p4est_stefan_with_fluids_t
         }
       }
       else{
-        // Interface condition values:
-        bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL); // initialize null for now, will add relevant neighbors and vector as required later on
+//        // Interface condition values:
+//        bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL); // initialize null for now, will add relevant neighbors and vector as required later on
 
         // Wall condition values:
         bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d);
@@ -4764,16 +4674,26 @@ void initialize_all_relevant_bcs_ics_forcing_terms(my_p4est_stefan_with_fluids_t
 
   stefan_w_fluids_solver->set_initial_refinement_CF(&initial_refinement_cf);
 
+
+  // TO-DO: do these BC's need to be set at every timestep, or only for the first one??
   // ------------------------------
   // Set temp/conc BC's and forcing terms
   // ------------------------------
   // Interface:
   // ------------
   // Value:
+  my_p4est_stefan_with_fluids_t::interfacial_bc_temp_t* bc_interface_val_temp_[2] =
+      {bc_interface_val_temp[LIQUID_DOMAIN],
+       bc_interface_val_temp[SOLID_DOMAIN]};
+  stefan_w_fluids_solver->set_bc_interface_value_temp(bc_interface_val_temp_);
 
   // Type:
+  BoundaryConditionType* bc_interface_type_temp_[2] = {&interface_bc_type_temp, &interface_bc_type_temp};
+  stefan_w_fluids_solver->set_bc_interface_type_temp(bc_interface_type_temp_);
 
   // Robin coeff:
+  CF_DIM* bc_interface_coeff_[2] = {&bc_interface_coeff, &bc_interface_coeff};
+  stefan_w_fluids_solver->set_bc_interface_robin_coeff_temp(bc_interface_coeff_);
 
   // ------------
   // Wall:
@@ -4791,10 +4711,16 @@ void initialize_all_relevant_bcs_ics_forcing_terms(my_p4est_stefan_with_fluids_t
   // Substrate interface:
   // ------------
   // Value:
+  CF_DIM* bc_interface_val_substrate_[2] = {&bc_interface_val_inner, &bc_interface_val_inner};
+  stefan_w_fluids_solver->set_bc_interface_value_temp_substrate(bc_interface_val_substrate_);
 
   // Type:
+  BoundaryConditionType* bc_interface_type_substrate_[2] = {&inner_interface_bc_type_temp, &inner_interface_bc_type_temp};
+  stefan_w_fluids_solver->set_bc_interface_type_temp_substrate(bc_interface_type_substrate_);
 
   // Robin coeff:
+  CF_DIM* bc_interface_coeff_sub_[2] = {&bc_interface_coeff_inner, &bc_interface_coeff_inner};
+  stefan_w_fluids_solver->set_bc_interface_robin_coeff_temp_substrate(bc_interface_coeff_sub_);
 
   // ------------
   // External heat source:
@@ -4808,30 +4734,58 @@ void initialize_all_relevant_bcs_ics_forcing_terms(my_p4est_stefan_with_fluids_t
   // ------------------------------
   // Velocity interface:
   // ------------
+  // Velocity interface
+  my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t* bc_interface_value_velocity_[P4EST_DIM];
+  BoundaryConditionType* bc_interface_type_velocity_[P4EST_DIM];
 
+  // Velocity wall
+  CF_DIM* bc_wall_value_velocity_[P4EST_DIM];
+  WallBCDIM* bc_wall_type_velocity_[P4EST_DIM];
 
-  // ------------
+  // External forces:
+  CF_DIM* external_forces_NS[P4EST_DIM];
+
+  foreach_dimension(d){
+    // Vel interface
+    bc_interface_value_velocity_[d] = bc_interface_value_velocity[d];
+    bc_interface_type_velocity_[d] = &interface_bc_type_velocity[d];
+
+    // Vel wall
+    bc_wall_value_velocity_[d] = bc_wall_value_velocity[d];
+    bc_wall_type_velocity_[d] = bc_wall_type_velocity[d];
+
+    // Forcing terms:
+    if(analytical_IC_BC_forcing_term){
+      if(example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+        external_forces_NS[d] = external_force_components_with_BA[d];
+      }
+      else{
+        external_forces_NS[d] = external_force_components[d];
+      }
+    }
+
+  }
+  // Velocity interface:
+  stefan_w_fluids_solver->set_bc_interface_value_velocity(bc_interface_value_velocity_);
+  stefan_w_fluids_solver->set_bc_interface_type_velocity(bc_interface_type_velocity_);
+
   // Velocity wall:
-  // ------------
+  stefan_w_fluids_solver->set_bc_wall_value_velocity(bc_wall_value_velocity_);
+  stefan_w_fluids_solver->set_bc_wall_type_velocity(bc_wall_type_velocity_);
 
+  // Pressure interface:
+  stefan_w_fluids_solver->set_bc_interface_value_pressure(&bc_interface_value_pressure);
+  stefan_w_fluids_solver->set_bc_interface_type_pressure(interface_bc_type_pressure);
 
+  // Pressure wall:
+  stefan_w_fluids_solver->set_bc_wall_value_pressure(&bc_wall_value_pressure);
+  stefan_w_fluids_solver->set_bc_wall_type_pressure(&bc_wall_type_pressure);
 
-  // ------------
-  // Pressure interface
-  // ------------
-
-
-  // ------------
-  // Pressure wall
-  // ------------
-
-
-
-  // ------------
-  // External force terms
-  // ------------
-
-}
+  // External forces:
+  if(analytical_IC_BC_forcing_term){
+    stefan_w_fluids_solver->set_user_provided_external_force_NS(external_forces_NS);
+  }
+} // end of "initialize_all_relevant_bcs_ics_forcing_terms()"
 
 
 
@@ -4861,8 +4815,6 @@ void destroy_all_relevant_bcs_ics_forcing_terms(mpi_environment_t &mpi,
   }
 
   if(solve_navier_stokes){
-
-
     for(unsigned char d=0;d<P4EST_DIM;d++){
       if(analytical_IC_BC_forcing_term){
         delete analytical_soln_v[d];
@@ -4878,7 +4830,6 @@ void destroy_all_relevant_bcs_ics_forcing_terms(mpi_environment_t &mpi,
       delete bc_wall_value_velocity[d];
       delete bc_wall_type_velocity[d];
     }
-
   }
 
   // Destroy IC objects:
@@ -4901,8 +4852,7 @@ void destroy_all_relevant_bcs_ics_forcing_terms(mpi_environment_t &mpi,
       delete v_init_cf[d];
     }
   }
-}
-
+} // end of "destroy_all_relevant_bcs_ics_forcing_terms()"
 
 
 // ---------------------------------
@@ -4918,18 +4868,14 @@ int main(int argc, char** argv) {
   mpi_environment_t* mpi_p = &mpi;
   mpi.init(argc, argv);
   PetscErrorCode ierr;
-  PetscViewer viewer;
-  int mpi_ret; // Check mpi issues
 
   // -----------------------------------------------
   // Parse the user inputs:
   // -----------------------------------------------
-
   cmdParser cmd;
   pl.initialize_parser(cmd);
   cmd.parse(argc,argv);
   pl.get_all(cmd);
-
 
   // -----------------------------------------------
   // Declare all needed variables:
@@ -5017,7 +4963,6 @@ int main(int argc, char** argv) {
   BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2];
   BC_WALL_VALUE_TEMP* bc_wall_value_temp[2];
 
-
   // Initial conditions:
   INITIAL_TEMP* T_init_cf[2];
   temperature_field* analytical_temp_init[2];
@@ -5076,9 +5021,6 @@ int main(int argc, char** argv) {
     // Set all the things needed:
     setup_initial_parameters_and_report(mpi, stefan_w_fluids_solver, grid_res_iter);
 
-
-
-
     // ------------------------------------------------------------
     // Initialize relevant boundary condition objects:
     // ------------------------------------------------------------
@@ -5113,21 +5055,34 @@ int main(int argc, char** argv) {
 
     // Initialize the load step (in event we use load)
     int load_tstep=-1;
-
     int last_tstep=-1;
 
     double t_original_start = tstart;
 
+    // Store desired CFL and hodge criteria -- we will relax these for several startup iterations, then use them
+    double cfl_NS_steady = cfl_NS;
+    double hodge_percentage_steady = hodge_percentage_of_max_u;
+
+    handle_any_startup_t_dt_and_bc_cases(mpi, stefan_w_fluids_solver,
+                                         cfl_NS_steady, hodge_percentage_steady);
     stefan_w_fluids_solver->perform_initializations();
 
-    // TO-DO: see if there is a better place to put this every dt saving stuff:
-    time_nondim_to_dim = stefan_w_fluids_solver->get_time_nondim_to_dim();
+    // Initialize tn and tstep
+    if(loading_from_previous_state){
+      tn = stefan_w_fluids_solver->get_tn();
+      tstep = stefan_w_fluids_solver->get_tstep();
+    }
+    else{
+      tn = tstart;
+      tstep = 0;
+    }
 
+    // Restrict the timestep if we are saving every dt
+    // TO-DO: saving every dt could probably be done more cleanly
     if(save_using_dt){
       save_every_dt/=time_nondim_to_dim;
       stefan_w_fluids_solver->set_dt_max_allowed(save_every_dt - EPS);
     }
-
 
     // -----------------------------------------------
     // Initialize files to output various data of interest:
@@ -5135,7 +5090,7 @@ int main(int argc, char** argv) {
     if(print_checkpoints)PetscPrintf(mpi.comm(),"Initializing output files ... \n");
 
 
-    initialize_error_files_for_test_cases(mpi, sp,
+    initialize_error_files_for_test_cases(mpi, stefan_w_fluids_solver,
                                           fich_errors, name_errors,
                                           fich_data, name_data,
                                           fich_mem, name_mem);
@@ -5146,24 +5101,26 @@ int main(int argc, char** argv) {
     // ---------------------------------------
     // Begin time loop
     // ---------------------------------------
-    // Store desired CFL and hodge criteria -- we will relax these for several startup iterations, then use them
-    double cfl_NS_steady = cfl_NS;
-    double hodge_percentage_steady = hodge_percentage_of_max_u;
-
-    // TO-DO: change while loop back to normal once ready
-    while(tstep<5/*tn<=tfinal*/){
+    while((tfinal - tn)>-EPS){
       if((timing_every_n>0) && (tstep%timing_every_n == 0)) {
         PetscPrintf(mpi.comm(),"Current time info : \n");
         w.read_duration_current();
       }
 
       // ---------------------------------------
+      // Handle any modifications to cfl, dt, vint, or bcs related with "startup" conditions
+      // ---------------------------------------
+      handle_any_startup_t_dt_and_bc_cases(mpi, stefan_w_fluids_solver,
+                                           cfl_NS_steady, hodge_percentage_steady);
+
+
+      // ---------------------------------------
       // Print iteration information:
       // ---------------------------------------
       // TO-DO: uncomment below when ready
-//      int num_nodes = stefan_w_fluids_solver->get_nodes_np1()->num_owned_indeps;
-//      MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
-      int num_nodes = 1;
+      int num_nodes = stefan_w_fluids_solver->get_nodes_np1()->num_owned_indeps;
+      MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
+      dt = stefan_w_fluids_solver->get_dt();
       ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
                                      "Iteration %d , Time: %0.3f [nondim] "
                                      "= Time: %0.3f [nondim] "
@@ -5177,25 +5134,7 @@ int main(int argc, char** argv) {
                          dt, dt*(time_nondim_to_dim),
                          ((tn-t_original_start)/(tfinal-t_original_start))*100.0,num_nodes);
 
-      // -------------------------------
-      // Clip time and switch vel direction
-      // for coupled problem examples:
-      // --------------------------------
-      bool examples_w_switch_sign = (example_ == COUPLED_PROBLEM_EXAMPLE)||
-                                    (example_ == COUPLED_TEST_2) ||
-                                    (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP);
-      if(examples_w_switch_sign){
-        if(((tn+dt) >= tfinal/2.0) && !vel_has_switched){
-          if((tfinal/2. - tn)>dt_min_allowed){ // if we have some uneven situation
-            PetscPrintf(mpi.comm(),"uneven situation \n");
-            dt = (tfinal/2.) - tn;
-          }
-          PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n", coupled_test_sign);
-          coupled_test_switch_sign();
-          vel_has_switched=true;
-          PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n dt : %e \n", coupled_test_sign,dt);
-        }
-      }
+
 
       // -------------------------------
       // Set up analytical ICs/BCs/forcing terms if needed
@@ -5214,35 +5153,84 @@ int main(int argc, char** argv) {
       // Solve all the fields for one timestep
       // -------------------------------
 
-      // INSERT HERE: provide solver with correct compute_pressure_ value depending on whether we save here
-      // INSERT HERE: solve_all_fields_for_one_timestep
+      compute_pressure_ = are_we_saving_vtk(tstep, tn, tstep == load_tstep, out_idx, false ) || example_is_a_test_case;
+      stefan_w_fluids_solver->set_compute_pressure(compute_pressure_);
+
+      stefan_w_fluids_solver->solve_all_fields_for_one_timestep();
+      dt = stefan_w_fluids_solver->get_dt();
 
       // -------------------------------
       // Save as relevant
       // -------------------------------
-      /* INSERT HERE(UNCOMMENT) : perform_saving_tasks_of_interest(mpi, sp, grid_res_iter,
-                                       p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
-                                       ns,
-                                       phi, phi_substrate, phi_eff,
-                                       island_numbers, T_l_n, T_s_n, v_interface,
-                                       v_n, vorticity, press_nodes,
-                                       dxyz_close_to_interface, out_idx, data_save_out_idx, compute_pressure_,
+
+      perform_saving_tasks_of_interest(mpi, stefan_w_fluids_solver,
+                                       out_idx, data_save_out_idx, compute_pressure_,
                                        load_tstep, last_tstep,
                                        fich_errors, name_errors,
                                        fich_data, name_data,
                                        fich_mem, name_mem);
-      */
+
+
+      // -------------------------------
+      // FOR COUPLED CONVERGENCE TEST: Clip time and switch vel direction
+      // for coupled problem examples:
+      // --------------------------------
+      bool examples_w_switch_sign = (example_ == COUPLED_PROBLEM_EXAMPLE)||
+                                    (example_ == COUPLED_TEST_2) ||
+                                    (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP);
+      if(examples_w_switch_sign){
+        dt = stefan_w_fluids_solver->get_dt();
+        if(((tn+dt) >= tfinal/2.0) && !vel_has_switched){
+          if((tfinal/2. - tn)>dt_min_allowed){ // if we have some uneven situation
+            PetscPrintf(mpi.comm(),"uneven situation \n");
+            dt = (tfinal/2.) - tn;
+
+            stefan_w_fluids_solver->set_dt(dt);
+          }
+          PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n", coupled_test_sign);
+          coupled_test_switch_sign();
+          stefan_w_fluids_solver->set_scale_vgamma_by(coupled_test_sign);
+          vel_has_switched=true;
+          PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n dt : %e \n", coupled_test_sign,dt);
+        }
+      }
+
+      // -------------------------------
+      // Clip the timestep if we are near the end of our simulation to get the proper end time
+      // If the resulting timestep will be too small, we just allow to end naturally
+      // --------------------------------
+      dt = stefan_w_fluids_solver->get_dt();
+      if((tn + dt > tfinal) && (last_tstep<0)){
+        dt = max(tfinal - tn,dt_min_allowed);
+
+        // if time remaining is too small for one more step, end here. otherwise, do one more step and clip timestep to end on exact ending time
+        if(fabs(tfinal-tn)>dt_min_allowed){
+          last_tstep = tstep+1;
+        }
+        else{
+          last_tstep = tstep;
+        }
+        PetscPrintf(mpi.comm(),"Final tstep will be %d \n",last_tstep);
+      }
 
       // -------------------------------
       // Update the grid if this is not the last timestep
       // -------------------------------
       // INSERT HERE: perform_lsf_advection_grid_update_and_interp_of_fields
+      if(tstep!=last_tstep){
+        // If we are on the last timestep and tn==tfinal (more or less), we will skip this last step
+        stefan_w_fluids_solver->perform_lsf_advection_grid_update_and_interp_of_fields();
+      }
 
       // -------------------------------
       // Update time:
       // -------------------------------
       tn+=dt;
       tstep++;
+      stefan_w_fluids_solver->set_tstep(tstep); // Required for reinit_every_iter to be processed properly
+      stefan_w_fluids_solver->set_tn(tn); // Update tn in case of save state (so save state has accurate time)
+
+//      stefan_w_fluids_solver->set_tstep(tstep); // TO-DO: should solver handle this itself? either that or eliminate usage of tstep from the solver?
 
       // --------------------------------------------------------------------------------------------------------------
       // Save simulation state every specified number of iterations
@@ -5251,23 +5239,22 @@ int main(int argc, char** argv) {
       // --------------------------------------------------------------------------------------------------------------
       if(tstep>0 && ((tstep%save_state_every_iter)==0) && tstep!=load_tstep){
         char output[1000];
-        const char* out_dir_coupled = getenv("OUT_DIR_SAVE_STATE");
-        if(!out_dir_coupled){
+        const char* out_dir_save_state = getenv("OUT_DIR_SAVE_STATE");
+        if(!out_dir_save_state){
           throw std::invalid_argument("You need to set the output directory for save states: OUT_DIR_SAVE_STATE");
         }
         PetscPrintf(mpi.comm(),"Beginning save state process... \n");
         sprintf(output,
                 "%s/save_states_output_lmin_%d_lmax_%d_advection_order_%d_example_%d",
-                out_dir_coupled,
-                lmin+grid_res_iter,lmax+grid_res_iter,
+                out_dir_save_state,
+                stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax(),
                 advection_sl_order,example_);
 
-        // INSERT HERE: save_state
+        stefan_w_fluids_solver->save_state(output, num_save_states);
 
 
         PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
       }
-
 
     } // <-- End of for loop through time
 
@@ -5284,22 +5271,7 @@ int main(int argc, char** argv) {
                                              bc_wall_type_velocity,
                                              T_init_cf, analytical_temp_init,
                                              v_init_cf, analytical_soln_v_init);
-  // INSERT HERE: call destructor
 
-//  perform_final_destructions(mpi, sp, p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
-//                             p4est_n, nodes_n, ghost_n, ngbd_n, hierarchy_n,
-//                             brick, conn,
-//                             ls,
-//                             phi, phi_nm1,
-//                             phi_substrate, phi_eff,
-//                             T_l_n, T_s_n, T_l_nm1,
-//                             v_interface,
-//                             v_n, v_nm1, vorticity, press_nodes, ns,
-//                             analytical_T, external_heat_source_T, bc_interface_val_temp, bc_wall_value_temp,
-//                             analytical_soln_v, external_force_components, external_force_components_with_BA,
-//                             bc_interface_value_velocity, bc_wall_value_velocity, bc_wall_type_velocity);
-
-  PetscPrintf(mpi.comm(), "About to delete solver \n");
   delete stefan_w_fluids_solver;
 
   }// end of loop through number of splits
