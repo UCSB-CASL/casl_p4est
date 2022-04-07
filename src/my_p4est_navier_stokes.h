@@ -856,7 +856,7 @@ public:
    * @note communication: MPI_reduce to proc 0, who is the only holding the correct results after completion.
    * @param [in] direction Direction of interest, 0 <= direction < P4EST_DIM.
    * @param [in,out] allRatios Resulting ratios from all processes (but only rank 0 owns these values).
-   * @param [in] scaling Whether to scale ratio or not.
+   * @param [in] scaling Whether to scale ratio or not (e.g., normalizing by u_tau).
    * @return Number of values collected across processes (i.e., 2 * num of ratios).
    */
   int get_dxyz_uvw_ratios( const u_char& direction, std::vector<double>& allRatios, const double& scaling=1.0 ) const;

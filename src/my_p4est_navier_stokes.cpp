@@ -4040,7 +4040,7 @@ int my_p4est_navier_stokes_t::get_dxyz_uvw_ratios( const u_char& direction, std:
 		{
 			double dxyz = dxyz_min[direction] * (double)(1 << (data->max_lvl - level));
 			ratios.push_back( dxyz );
-			ratios.push_back( scaling * dxyz / velCompReadPtr[faceIdx] );
+			ratios.push_back( dxyz / (velCompReadPtr[faceIdx] / scaling) );
 		}
 	}
 
