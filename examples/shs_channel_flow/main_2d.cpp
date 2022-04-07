@@ -4,7 +4,7 @@
  * run the program with the -help flag to see the available options
  *
  * Author: Raphael Egan, with updates by Luis Ángel.
- * Updated: April 6, 2022.
+ * Updated: April 7, 2022.
  */
 
 // System
@@ -1383,7 +1383,7 @@ void gather_and_dump_ratio_files( const std::string& path, const int& idx, const
 	{
 		// File names are dx_u_#.dat, dy_v_#.dat[, dz_w_#.dat], where # is the file index according to tn/ratios_dt.
 		std::string dxyzName = (dim == 0? "dx" : (dim == 1? "dy" : "dz"));
-		std::string velDirName = (dim == 0? "u" : (dim == 1? "u" : "w"));
+		std::string velDirName = (dim == 0? "u" : (dim == 1? "v" : "w"));
 		std::string fileName = dxyzName + "_";
 		fileName += velDirName + "_";
 		fileName += std::to_string( idx ) + ".dat";
