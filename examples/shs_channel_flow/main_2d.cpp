@@ -4,7 +4,7 @@
  * run the program with the -help flag to see the available options
  *
  * Author: Raphael Egan, with updates by Luis Ángel.
- * Updated: March 30, 2022.
+ * Updated: April 6, 2022.
  */
 
 // System
@@ -193,8 +193,10 @@ struct simulation_setup
   // exportation
   const std::string export_dir;
   const bool save_vtk;
+  const bool save_ratios;
   const bool save_timing;
   double vtk_dt;
+  double ratios_dt;
   const bool save_drag;
   const bool do_accuracy_check;
   const bool save_state;
@@ -203,7 +205,8 @@ struct simulation_setup
   const bool save_profiles;
   const unsigned int nexport_avg;
   int export_vtk, save_data_idx;
-  std::string file_monitoring, vtk_path, file_drag, file_timings;
+  int export_ratios;
+  std::string file_monitoring, vtk_path, ratios_path, file_drag, file_timings;
   bool accuracy_check_done;
   std::map<ns_task, double> global_computational_times;
 
@@ -224,6 +227,7 @@ struct simulation_setup
     Reynolds((cmd.contains("Re_tau") ? cmd.get<double>("Re_tau") : (cmd.contains("Re_b") ? cmd.get<double>("Re_b") : NAN))),
     export_dir(cmd.get<std::string>("export_folder", default_export_dir)),
     save_vtk(cmd.contains("save_vtk")),
+	save_ratios(cmd.contains("save_ratios")),
     save_timing(cmd.contains("timing")),
     save_drag(cmd.contains("save_drag")),
     do_accuracy_check(cmd.contains("accuracy_check") && cmd.contains("restart")),
@@ -244,6 +248,17 @@ struct simulation_setup
       if (vtk_dt <= 0.0 && !do_accuracy_check)
         throw std::invalid_argument("simulation_setup::simulation_setup(): the value of vtk_dt must be strictly positive.");
     }
+
+	ratios_dt = -1;
+	if( save_ratios )
+	{
+	  if( !cmd.contains( "ratios_dt" ) )
+		throw std::runtime_error( "simulation_setup::simulation_setup(): the value of ratios_dt MUST be provided if ratios exportation is desired." );
+	  ratios_dt = cmd.get<double>( "ratios_dt", -1 );
+	  if( ratios_dt <= 0 )
+		throw std::invalid_argument( "simulation_setup::simulation_setup(): the value of ratios_dt must be strictly positive." );
+	}
+
     dt_save_data = -1.0;
     if (save_state)
     {
@@ -288,6 +303,7 @@ struct simulation_setup
 
 
     export_vtk = -1;
+	export_ratios = -1;
     iter = 0;
     accuracy_check_done = false;
     // initialize those
@@ -310,6 +326,10 @@ struct simulation_setup
   int running_export_vtk() const  { return (int) floor(tn/vtk_dt); }
   void update_export_vtk()        { export_vtk = running_export_vtk(); }
   bool time_to_save_vtk() const   { return (save_vtk && running_export_vtk() != export_vtk); }
+
+  int running_export_ratios() const { return (int) floor(tn/ratios_dt); }
+  void update_export_ratios()		{ export_ratios = running_export_ratios(); }
+  bool time_to_save_ratios() const	{ return (save_ratios && running_export_ratios() != export_ratios); }
 
   double max_tolerated_velocity(const mass_flow_controller_t* controller, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], const my_p4est_shs_channel_t& channel) const
   {
@@ -336,7 +356,13 @@ struct simulation_setup
       ns->set_dt(dt);
     }
 
-    return ns->update_from_tn_to_tnp1(NULL, (iter%steps_grid_update != 0), false);
+	if( save_ratios && dt > ratios_dt )
+	{
+	  dt = ratios_dt;	// So that we don't miss requested ratios data.
+	  ns->set_dt(dt);
+	}
+
+    return ns->update_from_tn_to_tnp1(nullptr, (iter%steps_grid_update != 0), false);
   }
 
   void export_and_accumulate_timings(const my_p4est_navier_stokes_t* ns)
@@ -354,7 +380,7 @@ struct simulation_setup
     if(!ns->get_mpirank())
     {
       FILE* fp_timing = fopen(file_timings.c_str(), "a");
-      if(fp_timing == NULL)
+      if(fp_timing == nullptr)
         throw std::invalid_argument("export_and_accumulate_timings: could not open file for timings output.");
       fprintf(fp_timing, "%g %g %g %g %g %u %g %g\n",
               tn,
@@ -1059,6 +1085,9 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   if(setup.save_vtk)
     setup.update_export_vtk(); // so that we don't overwrite visualization files that were possibly already exported...
 
+  if( setup.save_ratios )
+	setup.update_export_ratios(); 	// Similarly, we don't want to overwrite ratios files already exported.
+
   PetscErrorCode ierr = PetscPrintf(ns->get_mpicomm(), "Simulation restarted from state saved in %s\n", (cmd.get<std::string>("restart")).c_str()); CHKERRXX(ierr);
 }
 
@@ -1326,6 +1355,11 @@ void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, 
   if (setup.save_vtk && create_directory(setup.vtk_path, ns->get_mpirank(), ns->get_mpicomm()))
     throw std::runtime_error("initialize_exportations_and_monitoring: could not create exportation directory for vtk files " + setup.vtk_path);
 
+  // ratios dxyz/uvw exportation.
+  setup.ratios_path = setup.export_dir + "/ratios";
+  if( setup.save_ratios && create_directory( setup.ratios_path, ns->get_mpirank(), ns->get_mpicomm() ) )
+	throw std::runtime_error( "initialize_exportations_and_monitoring: couldn't create exportation directory for ratios files " + setup.ratios_path );
+
   // drag exportation and simulation monitoring
   if (setup.save_drag)
     initialize_drag_force_output(setup, ns);
@@ -1339,6 +1373,41 @@ void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, 
 
   if (setup.save_profiles)
     profiler = new velocity_profiler_t(cmd, ns, setup, channel);
+}
+
+void gather_and_dump_ratio_files( const std::string& path, const int& idx, const my_p4est_navier_stokes_t& ns )
+{
+	// We must compute dx/u, dy/v[, dz/w].
+	std::vector<double> dxyz_uvw[P4EST_DIM];
+	for( u_char dim = 0; dim < P4EST_DIM; dim++ )
+	{
+		// File names are dx_u_#.dat, dy_v_#.dat[, dz_w_#.dat], where # is the file index according to tn/ratios_dt.
+		std::string dxyzName = (dim == 0? "dx" : (dim == 1? "dy" : "dz"));
+		std::string velDirName = (dim == 0? "u" : (dim == 1? "u" : "w"));
+		std::string fileName = dxyzName + "_";
+		fileName += velDirName + "_";
+		fileName += std::to_string( idx ) + ".dat";
+
+		// Collect all ratios into rank 0's dxyz_uvw vector.
+		int numValues = ns.get_dxyz_uvw_ratios( dim, dxyz_uvw[dim] );
+		if( ns.get_mpirank() == 0 )
+		{
+			std::ofstream file;
+			std::string fullFileName = path + fileName;
+			file.open( fullFileName, std::ofstream::trunc );
+			if( !file.is_open() )
+				throw std::runtime_error( "main_shs::gather_and_dup_ratio_files: Output file " + fullFileName + " couldn't be opened!" );
+
+			file << "%% " << dxyzName << " | " << dxyzName << "_" << velDirName << std::endl;	// Header.
+			file.precision( 12 );
+			int numRatios = numValues / 2;
+			for( int i = 0; i < numRatios; i++ )
+				file << dxyz_uvw[dim][i * 2] << " " << dxyz_uvw[dim][i * 2 + 1] << std::endl;	// Values as pairs "dxyz dxyz/uvw".
+			file.close();
+
+			CHKERRXX( PetscPrintf( ns.get_mpicomm(), "Saved %d ratios %s/%s to ... %s\n", numRatios, dxyzName.c_str(), velDirName.c_str(), fullFileName.c_str() ) );
+		}
+	}
 }
 
 bool monitor_simulation(const simulation_setup &setup, const mass_flow_controller_t* controller, my_p4est_navier_stokes_t* ns,
@@ -1375,6 +1444,9 @@ bool monitor_simulation(const simulation_setup &setup, const mass_flow_controlle
       const std::string vtk_name = setup.vtk_path + "/snapshot_" + std::to_string(setup.export_vtk + 1);
       ns->save_vtk(vtk_name.c_str());
     }
+
+	if( setup.save_ratios  )
+	  gather_and_dump_ratio_files( setup.ratios_path + "/", setup.export_ratios + 1, *ns );
     std::cerr << "The simulation blew up..." << std::endl;
     return true;
   }
@@ -1467,6 +1539,8 @@ int main (int argc, char* argv[])
   cmd.add_option("export_folder",       "exportation folder (monitoring and drag files in there, velocity profiles, vtk and backup files in subfolder), will be created if inexistent;\n\t default is " + default_export_dir);
   cmd.add_option("save_vtk",            "activates exportation of results in vtk format");
   cmd.add_option("vtk_dt",              "export vtk files every vtk_dt time lapse (REQUIRED if save_vtk is activated)");
+  cmd.add_option("save_ratios",			"activates exportation of ratios dx/u, dy/v[, dz/w]");
+  cmd.add_option("ratios_dt",			"export ratios files every ratios_dt time lapse (REQUIRED if save_ratios is activated)");
   cmd.add_option("save_drag",           "activates exportation of the total drag, non-dimensionalized by 2.0*rho*U_b^2*length (*width) (--> estimate of (Re_tau/Re_b)^2 at steady state)");
   cmd.add_option("save_state_dt",       "if present, this activates the 'save-state' feature. \n\tThe solver state is saved every save_state_dt time steps in backup_ subfolders.");
   cmd.add_option("save_nstates",        "determines how many solver states must be memorized in backup_ folders, default is " + std::to_string(default_save_nstates));
@@ -1598,6 +1672,12 @@ int main (int argc, char* argv[])
       const std::string vtk_name = setup.vtk_path + "/snapshot_" + std::to_string(setup.export_vtk);
       ns->save_vtk(vtk_name.c_str(), true, channel.mean_u(flow_controller->read_latest_mass_flow(), ns->get_rho()), channel.height()*0.5);
     }
+
+	if( setup.time_to_save_ratios() )
+	{
+	  setup.update_export_ratios();
+	  gather_and_dump_ratio_files( setup.ratios_path + "/", setup.export_ratios, *ns );
+	}
 
     if (setup.do_accuracy_check)
       check_accuracy_of_solution(ns, channel, setup, external_acceleration, flow_controller);
