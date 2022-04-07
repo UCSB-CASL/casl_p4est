@@ -25,7 +25,7 @@
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_level_set.h>
 #include <random>
-#include "gaussian_3d.h"
+#include "data_sets/gaussian/gaussian_3d.h"
 #include <src/parameter_list.h>
 
 

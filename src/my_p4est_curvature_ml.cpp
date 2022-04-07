@@ -245,6 +245,7 @@ void kml::NeuralNetwork::predict( double inputs[][K_INPUT_SIZE], double outputs[
 		inputsPt2[i] = static_cast<FDEEP_FLOAT_TYPE>( inputs[i][K_INPUT_SIZE - (P4EST_DIM - 1)] );
 
 	// First, preprocess inputs in part 1 (still doubles).
+	// TODO: In 3d, the inputs will be in single precision but the scalers in double: must cast floats to doubles, transform, and cast back.
 	_stdScaler.transform( inputs, nSamples );
 	_pcaScaler.transform( inputs, nSamples );
 

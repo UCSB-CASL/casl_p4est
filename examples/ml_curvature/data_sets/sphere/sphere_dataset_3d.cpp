@@ -12,7 +12,7 @@
  *
  * Developer: Luis Ángel.
  * Created: March 19, 2022.
- * Updated: March 31, 2022.
+ * Updated: April 7, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -179,8 +179,7 @@ int main ( int argc, char* argv[] )
 				p4est_ghost_t *ghost;
 				p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
-				// Definining the non-signed distance level-set function to be reinitialized.
-				geom::SphereNSD sphereNsd( DIM( C[0], C[1], C[2] ), R );
+				// Definining the (exact sign-distance) level-set function to be reinitialized.
 				geom::Sphere sphere( DIM( C[0], C[1], C[2] ), R );
 				splitting_criteria_cf_and_uniform_band_t levelSetSC( 1, maxRL(), &sphere, 3.0 );
 
@@ -216,7 +215,7 @@ int main ( int argc, char* argv[] )
 				CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phi ) );
 
 				// Calculate the level-set function values for all independent nodes.
-				sample_cf_on_nodes( p4est, nodes, sphereNsd, phi );
+				sample_cf_on_nodes( p4est, nodes, sphere, phi );
 
 				// Reinitialize level-set function.
 				my_p4est_level_set_t ls( ngbd );
@@ -364,7 +363,7 @@ std::pair<double,double> collectSamples( const int& keepEveryXSamples, const dou
 					continue;
 			}
 			else
-				continue;									// Skip saddles (which appear for large radii).
+				throw std::runtime_error( "collectSamples: Negative, invalid Gaussian curvature detected!" );	// Skip saddles (which appear for large radii).
 
 			// Up to this point, we got a good sample.  Populate its features.
 			std::vector<double> *sample;					// Points to new sample in the appropriate array.

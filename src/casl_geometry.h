@@ -1173,19 +1173,104 @@ namespace geom
 	};
 
 	/**
-	 * An abstract class for a level-set function whose zero isocontour is discretized into an affine-transformed Monge
-	 * patch.
+	 * A class representing an affine-transformed Cartesian frame or coordinate system.  The rigid transformation includes a rotation and/or
+	 * a translation.
 	 */
-	class DiscretizedLevelSet : public geom::DiscretizedMongePatch
+	class AffineTransformedSpace
 	{
 	protected:
-		__attribute__((unused)) const double _beta;	// Transformation parameters to vary canonical system w.r.t. world
-		const Point3 _axis;							// coordinate system.  These include a rotation (unit) axis and
-		const Point3 _trns;							// angle, and a translation vector that sets the origin of the
-													// canonical system to any point in space.
+		__attribute__((unused)) const double _beta;	// Transformation parameters to vary canonical system w.r.t. world coordinate system.
+		const Point3 _axis;							// These include a rotation (unit) axis and angle, and a translation vector that sets
+		const Point3 _trns;							// the origin of the canonical system to any point in space.
 		const double _c, _s;						// Since we use cosine and sine of beta a lot, let's precompute them.
 		const double _one_m_c;						// (1-cos(beta)).
 
+	public:
+		/**
+		 * Constructor.
+		 * @param [in] trans Translation vector.
+		 * @param [in] rotAxis Rotation axis (must be nonzero) --which will be normalized.
+		 * @param [in] rotAngle Rotation angle about rotAxis.
+		 * @throws invalid_argument exception if rotation axis is (near) singular.
+		 */
+		explicit AffineTransformedSpace( const Point3& trans, const Point3& rotAxis, const double& rotAngle=0 )
+									   : _trns( trans ), _axis( rotAxis.normalize() ), _beta( rotAngle), _c( cos( rotAngle ) ),
+									   _s( sin( rotAngle ) ), _one_m_c( 1 - cos( rotAngle ) )
+		{
+			if( rotAxis.norm_L2() < EPS )		// Singular rotation axis?
+				throw std::invalid_argument( "AffineTransformedSpace::constructor: Rotation axis shouldn't be 0!" );
+		}
+
+		/**
+		 * Default constructor.
+		 */
+		AffineTransformedSpace() : AffineTransformedSpace( Point3( 0, 0, 0 ), Point3( 1, 0, 0 ) ) {}
+
+		/**
+		 * Transform a point/vector in world coordinates to canonical coordinates using the tranformation info.
+		 * @param [in] x x-coordinate.
+		 * @param [in] y y-coordinate.
+		 * @param [in] z z-coordinate.
+		 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
+		 * @return The coordinates of (x,y,z) in the representation of the canonical coordinate system.
+		 */
+		Point3 toCanonicalCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
+		{
+			Point3 r;
+			const double xmt = isVector? x : x - _trns.x;		// Displacements affect points only.
+			const double ymt = isVector? y : y - _trns.y;
+			const double zmt = isVector? z : z - _trns.z;
+			r.x = (_c + _one_m_c*SQR(_axis.x))*xmt + (_one_m_c*_axis.x*_axis.y + _s*_axis.z)*ymt + (_one_m_c*_axis.x*_axis.z - _s*_axis.y)*zmt;
+			r.y = (_one_m_c*_axis.y*_axis.x - _s*_axis.z)*xmt + (_c + _one_m_c*SQR(_axis.y))*ymt + (_one_m_c*_axis.y*_axis.z + _s*_axis.x)*zmt;
+			r.z = (_one_m_c*_axis.z*_axis.x + _s*_axis.y)*xmt + (_one_m_c*_axis.z*_axis.y - _s*_axis.x)*ymt + (_c + _one_m_c*SQR(_axis.z))*zmt;
+
+			return r;
+		}
+
+		/**
+		 * Transform a point/vector in world coordinates to canonical coordinates using the transformation info.
+		 * @param [in] xyz Coordinates in the world frame.
+		 * @param [in] isVector Whether input coords correspond to a vector (true) or a point (false).
+		 * @return The coordinates of xyz in the representation of the canonical coordinate system.
+		 */
+		Point3 toCanonicalCoordinates( const double xyz[P4EST_DIM], const bool& isVector=false ) const
+		{
+			return toCanonicalCoordinates( xyz[0], xyz[1], xyz[2], isVector );
+		}
+
+		/**
+		 * Transform a point/vector from canonical coordinates to world coordinates using the transformation info.
+		 * @param [in] x x-coordinate.
+		 * @param [in] y y-coordinate.
+		 * @param [in] z z-coordinate.
+		 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
+		 * @return The coordinates (x,y,z) in the representation of the world coordinate system.
+		 */
+		Point3 toWorldCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
+		{
+			Point3 r;
+			r.x = x*(_c + _one_m_c*SQR(_axis.x)) + y*(_one_m_c*_axis.y*_axis.x - _s*_axis.z) + z*(_one_m_c*_axis.z*_axis.x + _s*_axis.y);
+			r.y = x*(_one_m_c*_axis.x*_axis.y + _s*_axis.z) + y*(_c + _one_m_c*SQR(_axis.y)) + z*(_one_m_c*_axis.z*_axis.y - _s*_axis.x);
+			r.z = x*(_one_m_c*_axis.x*_axis.z - _s*_axis.y) + y*(_one_m_c*_axis.y*_axis.z + _s*_axis.x) + z*(_c + _one_m_c*SQR(_axis.z));
+
+			if( !isVector )
+			{
+				r.x += _trns.x;
+				r.y += _trns.y;
+				r.z += _trns.z;
+			}
+
+			return r;
+		}
+	};
+
+	/**
+	 * An abstract class for a level-set function whose zero isocontour is discretized into an affine-transformed Monge
+	 * patch.
+	 */
+	class DiscretizedLevelSet : public geom::AffineTransformedSpace, public geom::DiscretizedMongePatch
+	{
+	protected:
 		bool _useCache = false;	// Computing distance to triangulated surface is expensive --let's cache distances and
 		mutable std::unordered_map<std::string, std::pair<double, Point3>> _cache;	// nearest points.  Also, cache can-
 		mutable std::unordered_map<std::string, Point3> _canonicalCoordsCache;		// onical coords for grid points.
@@ -1226,21 +1311,18 @@ namespace geom
 		 * @param [in] sau2 Squared half-axis length on the u direction for the limiting ellipse on the uv plane.
 		 * @param [in] sav2 Squared half-axis length on the v direction for the limiting ellipse on the uv plane.
 		 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
+		 * @throws invalid_argument exception if no Monge function object is provided or if the rotation axis is singular.
 		 */
 		DiscretizedLevelSet( const Point3& trans, const Point3& rotAxis, const double& rotAngle, const size_t& ku,
 							 const size_t& kv, const size_t& L, const MongeFunction *mongeFunction,
 							 const double& sau2=DBL_MAX, const double& sav2=DBL_MAX, const size_t& btKLeaf=40 )
-							 : _trns( trans ), _axis( rotAxis.normalize() ), _beta( rotAngle),
-							 _c( cos( rotAngle ) ), _s( sin( rotAngle ) ), _one_m_c( 1 - cos( rotAngle ) ),
+							 : AffineTransformedSpace( trans, rotAxis, rotAngle ),
 							 DiscretizedMongePatch( ku, kv, L, mongeFunction, btKLeaf, sau2, sav2 )
 		{
 			const std::string errorPrefix = "[CASL_ERROR] DiscretizedLevelSet::constructor: ";
 
 			if( !mongeFunction )
 				throw std::invalid_argument( errorPrefix + "Sinusoid surface object can't be null!" );
-
-			if( rotAxis.norm_L2() < EPS )		// Singular rotation axis?
-				throw std::invalid_argument( errorPrefix + "Rotation axis shouldn't be 0!" );
 		}
 
 		/**
@@ -1262,52 +1344,6 @@ namespace geom
 		double computeExactSignedDistance( const double xyz[P4EST_DIM], unsigned char& updated ) const
 		{
 			return computeExactSignedDistance( xyz[0], xyz[1], xyz[2], updated );
-		}
-
-		/**
-		 * Transform a point/vector in world coordinates to canonical coordinates using the tranformation info.
-		 * @param [in] x x-coordinate.
-		 * @param [in] y y-coordinate.
-		 * @param [in] z z-coordinate.
-		 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
-		 * @return The coordinates of (x,y,z) in the representation of the canonical coordinate system.
-		 */
-		Point3 toCanonicalCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
-		{
-			Point3 r;
-			const double xmt = isVector? x : x - _trns.x;		// Displacements affect points only.
-			const double ymt = isVector? y : y - _trns.y;
-			const double zmt = isVector? z : z - _trns.z;
-			r.x = (_c + _one_m_c*SQR(_axis.x))*xmt + (_one_m_c*_axis.x*_axis.y + _s*_axis.z)*ymt + (_one_m_c*_axis.x*_axis.z - _s*_axis.y)*zmt;
-			r.y = (_one_m_c*_axis.y*_axis.x - _s*_axis.z)*xmt + (_c + _one_m_c*SQR(_axis.y))*ymt + (_one_m_c*_axis.y*_axis.z + _s*_axis.x)*zmt;
-			r.z = (_one_m_c*_axis.z*_axis.x + _s*_axis.y)*xmt + (_one_m_c*_axis.z*_axis.y - _s*_axis.x)*ymt + (_c + _one_m_c*SQR(_axis.z))*zmt;
-
-			return r;
-		}
-
-		/**
-		 * Transform a point/vector from canonical coordinates to world coordinates using the transformation info.
-		 * @param [in] x x-coordinate.
-		 * @param [in] y y-coordinate.
-		 * @param [in] z z-coordinate.
-		 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
-		 * @return The coordinates (x,y,z) in the representation of the world coordinate system.
-		 */
-		Point3 toWorldCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
-		{
-			Point3 r;
-			r.x = x*(_c + _one_m_c*SQR(_axis.x)) + y*(_one_m_c*_axis.y*_axis.x - _s*_axis.z) + z*(_one_m_c*_axis.z*_axis.x + _s*_axis.y);
-			r.y = x*(_one_m_c*_axis.x*_axis.y + _s*_axis.z) + y*(_c + _one_m_c*SQR(_axis.y)) + z*(_one_m_c*_axis.z*_axis.y - _s*_axis.x);
-			r.z = x*(_one_m_c*_axis.x*_axis.z - _s*_axis.y) + y*(_one_m_c*_axis.y*_axis.z + _s*_axis.x) + z*(_c + _one_m_c*SQR(_axis.z));
-
-			if( !isVector )
-			{
-				r.x += _trns.x;
-				r.y += _trns.y;
-				r.z += _trns.z;
-			}
-
-			return r;
 		}
 
 		/**

@@ -13,7 +13,7 @@
 #include <string>
 #include <src/my_p4est_utils.h>
 #include <unordered_map>
-#include "data_sets/star_theta_root_finding.h"
+#include "data_sets/star/star_theta_root_finding.h"
 
 namespace kutils
 {
