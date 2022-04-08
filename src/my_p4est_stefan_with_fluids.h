@@ -189,7 +189,7 @@ private:
   // ----------------------------------------------
   // Stefan problem:
   // ----------------------------------------------
-  vec_and_ptr_dim_t v_interface;;
+  vec_and_ptr_dim_t v_interface;
   vec_and_ptr_dim_t jump;
 
   // ----------------------------------------------
@@ -222,7 +222,7 @@ private:
   BoundaryConditionsDIM bc_velocity[P4EST_DIM];
   BoundaryConditionsDIM bc_pressure;
 
-//interfacial_bc_fluid_velocity_t* bc_interface_value_velocity[P4EST_DIM];// <-- this gets declared later bc the type is a nested class within stefan w fluids, but I have included it here for readability
+  //interfacial_bc_fluid_velocity_t* bc_interface_value_velocity[P4EST_DIM];// <-- this gets declared later bc the type is a nested class within stefan w fluids, but I have included it here for readability
   BoundaryConditionType* bc_interface_type_velocity[P4EST_DIM];
 
   CF_DIM* bc_wall_value_velocity[P4EST_DIM];
@@ -1136,6 +1136,7 @@ public:
                 Dl, Ds);
   }
 
+  //TO-DO: look into if some of these fxns should be declared as inline
   // ----------------------------------------------
   // Booleans related to what kind of physics we are solving
   // ----------------------------------------------

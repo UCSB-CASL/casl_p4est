@@ -573,10 +573,6 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
 
 void my_p4est_stefan_with_fluids_t::perform_initializations(){
 
-  MPI_Barrier(mpi->comm()); PetscPrintf(mpi->comm(), "trying the thing, phi = %p and %p \n", phi.vec, phi);
-  phi.destroy();
-  MPI_Barrier(mpi->comm()); PetscPrintf(mpi->comm(), "end trying thing \n");
-
   // Check and make sure the user has provided all the necessary information:
 
 
