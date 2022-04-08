@@ -5107,6 +5107,17 @@ int main(int argc, char** argv) {
 
 
       // -------------------------------
+      // FOR examples with a known max vinterface analytical
+      // --------------------------------
+      if(example_has_known_max_vint){
+          dt = stefan_w_fluids_solver->get_dt();
+          double dxyz_smallest = stefan_w_fluids_solver->get_dxyz_smallest();
+          double dt_ana = cfl*dxyz_smallest/max_vint_known_for_ex;
+          stefan_w_fluids_solver->set_dt(MIN(dt, dt_ana));
+      }
+
+
+      // -------------------------------
       // FOR COUPLED CONVERGENCE TEST: Clip time and switch vel direction
       // for coupled problem examples:
       // --------------------------------

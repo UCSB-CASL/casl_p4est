@@ -952,6 +952,9 @@ public:
   }
 
   double get_dxyz_close_to_interface(){return dxyz_close_to_interface;}
+  double get_dxyz_smallest(){
+      return MIN(DIM(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]));
+  }
 
   // ----------------------------------------------
   // Related to time/timestepping:
