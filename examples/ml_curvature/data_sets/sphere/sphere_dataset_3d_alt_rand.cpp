@@ -208,7 +208,6 @@ int main ( int argc, char* argv[] )
 			}
 			CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
 			delete sphereNsd;
-			sample_cf_on_nodes( p4est, nodes, sphere, phi );
 
 			// Reinitialize level-set function.
 			my_p4est_level_set_t ls( ngbd );
