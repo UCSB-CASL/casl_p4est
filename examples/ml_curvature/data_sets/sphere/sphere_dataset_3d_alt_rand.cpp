@@ -16,7 +16,7 @@
  *
  * Developer: Luis Ángel.
  * Created: March 31, 2022.
- * Updated: April 7, 2022.
+ * Updated: April 9, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -54,13 +54,15 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<double>              minHK( pl, 0.004, "minHK"				, "Minimum mean dimensionless curvature for non-saddle points (default: 0.004)" );
-	param_t<double>              maxHK( pl,  2./3, "maxHK"				, "Maximum mean dimensionless curvature (default: 2/3)" );
-	param_t<u_char>              maxRL( pl,     6, "maxRL"				, "Maximum level of refinement per unit-square quadtree (default: 6)" );
-	param_t<u_short>       reinitIters( pl,    10, "reinitIters"		, "Number of iterations for reinitialization (default: 10)" );
-	param_t<u_int>          numSpheres( pl,   2e5, "numSpheres"			, "Number of spheres (with distinct radii) to evaluate (default: 200K)" );
-	param_t<u_int> numSamplesPerSphere( pl,     5, "numSamplesPerSphere", "Number of samples to collect randomly for each sphere (default: 5)" );
-	param_t<std::string>        outDir( pl,   ".", "outDir"				, "Path where files will be written to (default: build folder)" );
+	param_t<double>              minHK( pl, 0.004, "minHK"					, "Minimum mean dimensionless curvature for non-saddle points (default: 0.004)" );
+	param_t<double>              maxHK( pl,  2./3, "maxHK"					, "Maximum mean dimensionless curvature (default: 2/3)" );
+	param_t<u_char>              maxRL( pl,     6, "maxRL"					, "Maximum level of refinement per unit-square quadtree (default: 6)" );
+	param_t<u_short>       reinitIters( pl,    10, "reinitIters"			, "Number of iterations for reinitialization (default: 10)" );
+	param_t<u_int>          numSpheres( pl,   2e5, "numSpheres"				, "Number of spheres (with distinct radii) to evaluate (default: 200K)" );
+	param_t<u_int> numSamplesPerSphere( pl,     5, "numSamplesPerSphere"	, "Number of samples to collect randomly for each sphere (default: 5)" );
+	param_t<std::string>        outDir( pl,   ".", "outDir"					, "Path where files will be written to (default: build folder)" );
+	param_t<bool> useSignedDistanceFun( pl,  true, "useSignedDistanceFun"	, "If true, use phi(x)=|x-x0| - r; otherwise, use phi(x)=|x-x0|^2 - r^2 (default: true)" );
+	param_t<double>        randomNoise( pl,  1e-4, "randomNoise"			, "Amount of uniform random noise to add to phi(x) as [+/-]h*randomNoise (default: 1e-4)" );
 
 	std::mt19937 gen{};			// NOLINT This engine is used for the random shift of the sphere and to choose a mean curvature uniformly (only on rank 0).
 
@@ -86,6 +88,8 @@ int main ( int argc, char* argv[] )
 		const double MAX_K = maxHK() / h;
 
 		std::uniform_real_distribution<double> uniformDistTrans( -h/2, +h/2 );	// Random translation.
+		std::uniform_real_distribution<double> randomNoiseDist( -h * randomNoise(), +h * randomNoise() );
+		std::mt19937 genNoise( mpi.rank() );				// A separate see for each rank: to be used only for noise, if requested.
 
 		/////////////////////////////////////////// Preparing data set files ///////////////////////////////////////////
 
@@ -155,7 +159,7 @@ int main ( int argc, char* argv[] )
 			p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
 			// Definining the (exact signed distance) level-set function to be reinitialized.
-			geom::Sphere sphere( DIM( C[0], C[1], C[2] ), R );
+			geom::Sphere sphere( C[0], C[1], C[2], R );
 			splitting_criteria_cf_and_uniform_band_t levelSetSC( 0, octreeMaxRL, &sphere, 3.0 );
 
 			// Create the forest using a level set as refinement criterion.
@@ -190,6 +194,20 @@ int main ( int argc, char* argv[] )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phi ) );
 
 			// Calculate the level-set function values for all independent nodes.
+			double *phiPtr;
+			CHKERRXX( VecGetArray( phi, &phiPtr ) );
+			geom::SphereNSD *sphereNsd = (useSignedDistanceFun()? nullptr : new geom::SphereNSD( C[0], C[1], C[2], R ));
+			foreach_node( n, nodes )
+			{
+				double xyz[P4EST_DIM];
+				node_xyz_fr_n( n, p4est, nodes, xyz );
+				phiPtr[n] = (useSignedDistanceFun()? sphere( xyz[0], xyz[1], xyz[2] ) : (*sphereNsd)( xyz[0], xyz[1], xyz[2] ));
+				if( randomNoise() > 0 )
+					phiPtr[n] += randomNoiseDist( genNoise );
+
+			}
+			CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
+			delete sphereNsd;
 			sample_cf_on_nodes( p4est, nodes, sphere, phi );
 
 			// Reinitialize level-set function.

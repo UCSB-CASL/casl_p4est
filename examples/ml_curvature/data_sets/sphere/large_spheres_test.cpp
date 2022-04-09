@@ -5,6 +5,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 8, 2022.
+ * updated: April 9, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -43,12 +44,12 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<double>        		radius( pl, 3.90625, "radius"				, "Sphere radius (default: 100K)." );
-	param_t<u_char>              maxRL( pl,   6, "maxRL"				, "Maximum level of refinement per unit-square quadtree (default: 6)" );
-	param_t<u_short>       reinitIters( pl,  10, "reinitIters"			, "Number of iterations for reinitialization (default: 10)" );
-	param_t<std::string>        outDir( pl, ".", "outDir"				, "Path where files will be written to (default: build folder)" );
-
-	std::mt19937 gen{};	// NOLINT This engine is used for sphere's random shift (only on rank 0).
+	param_t<double>        		radius( pl, 10000, "radius"					, "Sphere radius (default: 10K)" );
+	param_t<u_char>              maxRL( pl,     6, "maxRL"					, "Maximum level of refinement per unit-square quadtree (default: 6)" );
+	param_t<u_short>       reinitIters( pl,    10, "reinitIters"			, "Number of iterations for reinitialization (default: 10)" );
+	param_t<std::string>        outDir( pl,   ".", "outDir"					, "Path where files will be written to (default: build folder)" );
+	param_t<bool> useSignedDistanceFun( pl,  true, "useSignedDistanceFun"	, "If true, use phi(x)=|x-x0| - r; otherwise, use phi(x)=|x-x0|^2 - r^2 (default: true)" );
+	param_t<double>         whiteNoise( pl,  1e-4, "whiteNoise"				, "Amount of white noise to add to phi(x) (default: 1e-4)" );
 
 	try
 	{
@@ -68,7 +69,10 @@ int main ( int argc, char* argv[] )
 		/////////////////////////////////////////////// Parameter setup ////////////////////////////////////////////////
 
 		const double h = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
-		std::uniform_real_distribution<double> uniformDistTrans( -h/2, +h/2 );	// Random translation.
+		std::uniform_real_distribution<double> uniformDistTrans( -h/2, +h/2 );							// Random translation.
+		std::mt19937 gen{};									// NOLINT This engine is used for sphere's random shift (only on rank 0).
+		std::uniform_real_distribution<double> whiteNoiseDist( -h * whiteNoise(), +h * whiteNoise() );
+		std::mt19937 genNoise( mpi.rank() );
 
 		/////////////////////////////////////////// Preparing data set files ///////////////////////////////////////////
 
@@ -152,7 +156,20 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phi ) );
 
 		// Calculate the level-set function values for all independent nodes.
-		sample_cf_on_nodes( p4est, nodes, geom::SphereNSD( C[0], C[1], C[2], radius() ), phi );
+		double *phiPtr;
+		CHKERRXX( VecGetArray( phi, &phiPtr ) );
+		geom::SphereNSD *sphereNsd = (useSignedDistanceFun()? nullptr : new geom::SphereNSD( C[0], C[1], C[2], radius() ));
+		foreach_node( n, nodes )
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( n, p4est, nodes, xyz );
+			phiPtr[n] = (useSignedDistanceFun()? sphere( xyz[0], xyz[1], xyz[2] ) : (*sphereNsd)( xyz[0], xyz[1], xyz[2] ));
+			if( whiteNoise() > 0 )
+				phiPtr[n] += whiteNoiseDist( genNoise );
+
+		}
+		CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
+		delete sphereNsd;
 
 		// Reinitialize level-set function.
 		my_p4est_level_set_t ls( ngbd );
@@ -181,22 +198,45 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecGetArrayRead( hkError, &hkErrorReadPtr ) );
 		CHKERRXX( VecGetArrayRead( ihk, &ihkReadPtr ) );
 
+		// And compute the error for phi within a shell around Gamma.
+		Vec phiError;
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phiError ) );
+
+		double *phiErrorPtr;
+		double maxPhiError = 0;
+		CHKERRXX( VecGetArray( phiError, &phiErrorPtr ) );
+		for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( n, p4est, nodes, xyz );
+			double exactPhi = sphere( xyz[0], xyz[1], xyz[2] );
+			if( ABS( exactPhi ) < diag_min )
+			{
+				phiErrorPtr[n] = ABS( exactPhi - phiReadPtr[n] );
+				maxPhiError = MAX( maxPhiError, phiErrorPtr[n] );
+			}
+		}
+		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &maxPhiError, 1, MPI_DOUBLE, MPI_MAX, mpi.comm() ) );
+
 		std::ostringstream oss;
 		oss << "large_sphere_test";
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
-								4, 0, oss.str().c_str(),
+								5, 0, oss.str().c_str(),
 								VTK_POINT_DATA, "phi", phiReadPtr,
 								VTK_POINT_DATA, "sampledFlag", sampledFlagReadPtr,
 								VTK_POINT_DATA, "hkError", hkErrorReadPtr,
-								VTK_POINT_DATA, "ihk", ihkReadPtr );
+								VTK_POINT_DATA, "ihk", ihkReadPtr,
+								VTK_POINT_DATA, "phiError", phiErrorPtr );
 
+		CHKERRXX( VecRestoreArray( phiError, &phiErrorPtr ) );
 		CHKERRXX( VecRestoreArrayRead( ihk, &ihkReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( hkError, &hkErrorReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( sampledFlag, &sampledFlagReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 
 		// Clean up.
+		CHKERRXX( VecDestroy( phiError ) );
 		CHKERRXX( VecDestroy( hkError ) );
 		CHKERRXX( VecDestroy( ihk ) );
 		CHKERRXX( VecDestroy( sampledFlag ) );
@@ -213,7 +253,8 @@ int main ( int argc, char* argv[] )
 		// Synchronize.
 		SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
 
-		CHKERRXX( PetscPrintf( mpi.comm(), "  Done! Maximum hk error = %.8g.  Num of samples = %d;\n", maxErrors[0], nSamples ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "  Expected hk = %.8g\n", h / radius() ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "  Done! Max hk error = %.8g.  Max phi error = %.8g.  Num of samples = %d;\n", maxErrors[0], maxPhiError, nSamples ) );
 		file.close();
 
 		CHKERRXX( PetscPrintf( mpi.comm(), "<< Finished after %.2f secs.\n", watch.get_duration_current() ) );
@@ -374,20 +415,28 @@ void collectSamples( const double& radius, const double& h, const mpi_environmen
 			kappaMGInterp( xyz, kappaMGValues );			// Get linearly interpolated mean and Gaussian curvature in one shot.
 			double ihkVal = h * kappaMGValues[0];
 			double ih2kgVal = SQR( h ) * kappaMGValues[1];
-			if( ih2kgVal < 0 )								// Skip *numerical* saddles (which often appear for large radii).
-			{
-				sampledFlagPtr[n] = 2;						// Invalid candidate.
-				continue;
-			}
 
-			if( ihkVal * hk < 0 )							// Well, this shouldn't happen!  Skip node.
+			// Type of node:
+			// saddle   flipped hk   flag val.
+			//                          0       Not a candidate node (i.e., not near Gamma, or it's near the wall.
+			//   0         0            1		Valid candidate node.
+			//   0         1            2		Invalid candidate node: hk*ihk < 0.
+			//   1         0            3       Invalid candidate node: ih2kg < 0.
+			//   1         1            4       Invalid candidate node: hk*ihk < 0 and ih2kg < 0.
+			if( ih2kgVal >= 0 )
 			{
-				sampledFlagPtr[n] = 2;						// Invalid candidate.
-				continue;
+				if( ihkVal * hk >= 0 )
+					sampledFlagPtr[n] = 1;		// Valid candidate node: not a numerical saddle and hk and ihk have same sign.
+				else
+					sampledFlagPtr[n] = 2;		// hk and ihk flipped sign in a non-saddle point.
 			}
-
-			// Up to this point, we got a good sample.  Populate its features.
-			sampledFlagPtr[n] = 1;
+			else
+			{
+				if( ihkVal * hk >= 0 )
+					sampledFlagPtr[n] = 3;		// Just a saddle point.
+				else
+					sampledFlagPtr[n] = 4;		// Both a saddle and flipped hk and ihk case.
+			}
 
 			std::vector<double> *sample;					// Points to new sample in the appropriate array.
 			samples.emplace_back();
