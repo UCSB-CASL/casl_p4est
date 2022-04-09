@@ -30,7 +30,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 26, 2022.
- * Updated: March 29, 2022.
+ * Updated: April 9, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -90,6 +90,7 @@ int main ( int argc, char* argv[] )
 	param_t<u_short>          numThetas( pl,    10, "numThetas"				, "Number of angular steps from -pi/2 to +pi/2 (inclusive) (default: 10)" );
 	param_t<u_short>      numAmplitudes( pl,    13, "numAmplitudes"			, "Number of amplitude steps (default: 13)" );
 	param_t<double>        numFullWaves( pl,   2.0, "numFullWaves"          , "How many full cycles we'd like to have inside the domain for sampling (default: 2.0)" );
+	param_t<double>         randomNoise( pl,  1e-4, "randomNoise"			, "Amount of uniform random noise to add to phi(x) as [+/-]h*randomNoise (default: 1e-4)" );
 
 	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes (it's OK that it's not in sync among processes).
 	std::mt19937 gen{};			// NOLINT This engine is used shifts and spacing out amplitudes, hk_max values, and angles.
@@ -158,11 +159,17 @@ int main ( int argc, char* argv[] )
 		if( numFullWaves() < 1 )
 			throw std::invalid_argument( "[CASL_ERROR] Choose at least one full cycle for sampling!" );
 
+		if( randomNoise() < 0 || randomNoise() >= 1 )
+			throw std::invalid_argument( "[CASL_ERROR] Uniform random noise factor can only be in the range [0, 1)." );
+
 		PetscPrintf( mpi.comm(), ">> Began to generate dataset for %i distinct amplitudes, starting at A index %i, "
 								 "with MaxRL = %i and h = %g\n", numAmplitudes(), startAIdx(), maxRL(), h );
 
 		std::vector<double> linspaceA;						// Random amplitude values from MIN_A to MAX_A.
 		uniformRandomSpace( mpi, MIN_A, MAX_A, numAmplitudes(), linspaceA, gen );
+
+		std::uniform_real_distribution<double> randomNoiseDist( -h * randomNoise(), +h * randomNoise() );
+		std::mt19937 genNoise( mpi.rank() );				// A separate see for each rank: to be used only for noise, if requested.
 
 		///////////////////////////////////////////// Data-production loop /////////////////////////////////////////////
 
@@ -304,6 +311,16 @@ int main ( int argc, char* argv[] )
 							// around Gamma.  Reinitialization perturbs the otherwise calculated exact distances. exact-
 							// Flag vector holds nodes' status: only those with 1's can be used for sampling.
 							sLS.evaluate( p4est, nodes, phi, exactFlag );
+
+							// Add noise if requested.
+							if( randomNoise() > 0 )
+							{
+								double *phiPtr;
+								CHKERRXX( VecGetArray( phi, &phiPtr ) );
+								foreach_node( n, nodes )
+									phiPtr[n] += randomNoiseDist( genNoise );
+								CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
+							}
 
 							// Reinitialize level-set function.
 							my_p4est_level_set_t ls( ngbd );

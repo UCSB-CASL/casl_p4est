@@ -515,7 +515,7 @@ public:
 		nodesForExactDist.reserve( nodes->num_owned_indeps );
 
 		auto sdist = [this]( const double xyz[P4EST_DIM], unsigned char& updated ){
-			return (*this).geom::DiscretizedLevelSet::computeExactSignedDistance( xyz,updated );
+			return (*this).geom::DiscretizedLevelSet::computeExactSignedDistance( xyz, updated );
 		};
 
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
