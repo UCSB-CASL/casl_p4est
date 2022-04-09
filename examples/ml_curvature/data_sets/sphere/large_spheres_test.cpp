@@ -1,5 +1,6 @@
 /**
- * Testing the non-signed distance function phi(x) = ||x - x0||^2 - r^2, as the L_inty norm doesn't decrease as the radius surpases 0.5.
+ * Testing the non-signed distance function phi(x) = |x-x0|^2 - r^2 [or, another one is phi(x,y,z) = ((x-x0)/r)^2 + ... + ((x-x0)/r)^2 - 1]
+ * as the L_inty norm doesn't decrease as the radius surpases 0.5.
  *
  * We save a file "large_sphere_test.csv" and export VTK files to output folder.
  *
@@ -38,6 +39,19 @@ int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>&
 
 void setupDomain( const mpi_environment_t& mpi, const double C[P4EST_DIM], const double& R, const double& h, const u_char& MAX_RL,
 				  std::mt19937& gen, u_char& octreeMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] );
+
+class AnotherNsdSphere : public CF_DIM
+{
+	double _x0, _y0, _z0;
+	double _r;
+
+public:
+	AnotherNsdSphere( const double& x0, const double& y0, const double& z0, const double& r ) : _x0( x0 ), _y0( y0 ), _z0( z0 ), _r( r ) {}
+	double operator()( double x, double y, double z ) const override
+	{
+		return SQR( (x - _x0) / _r ) + SQR( (y - _y0) / _r ) + SQR( (z - _z0) / _r ) - 1.0;
+	}
+};
 
 
 int main ( int argc, char* argv[] )
@@ -158,18 +172,21 @@ int main ( int argc, char* argv[] )
 		// Calculate the level-set function values for all independent nodes.
 		double *phiPtr;
 		CHKERRXX( VecGetArray( phi, &phiPtr ) );
-		geom::SphereNSD *sphereNsd = (useSignedDistanceFun()? nullptr : new geom::SphereNSD( C[0], C[1], C[2], radius() ));
+//		geom::SphereNSD *sphereNsd = (useSignedDistanceFun()? nullptr : new geom::SphereNSD( C[0], C[1], C[2], radius() ));
+		AnotherNsdSphere *anotherNsdSphere = (useSignedDistanceFun()? nullptr : new AnotherNsdSphere( C[0], C[1], C[2], radius() ));
 		foreach_node( n, nodes )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( n, p4est, nodes, xyz );
-			phiPtr[n] = (useSignedDistanceFun()? sphere( xyz[0], xyz[1], xyz[2] ) : (*sphereNsd)( xyz[0], xyz[1], xyz[2] ));
+//			phiPtr[n] = (useSignedDistanceFun()? sphere( xyz[0], xyz[1], xyz[2] ) : (*sphereNsd)( xyz[0], xyz[1], xyz[2] ));
+			phiPtr[n] = (useSignedDistanceFun()? sphere( xyz[0], xyz[1], xyz[2] ) : (*anotherNsdSphere)( xyz[0], xyz[1], xyz[2] ));
 			if( whiteNoise() > 0 )
 				phiPtr[n] += whiteNoiseDist( genNoise );
 
 		}
 		CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
-		delete sphereNsd;
+//		delete sphereNsd;
+		delete anotherNsdSphere;
 
 		// Reinitialize level-set function.
 		my_p4est_level_set_t ls( ngbd );
