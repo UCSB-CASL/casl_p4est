@@ -846,6 +846,21 @@ public:
    */
   void get_slice_averaged_vnp1_profile(const unsigned char& vel_component, const unsigned char& axis, std::vector<double>& avg_velocity_profile, const double u_scaling = 1.0);
 
+  /**
+   * Calculate the ratio dx/u, dy/v [or dz/w] and place the results in a single array with pairs of values.  For example, [dx0, dx0/u0, dx1,
+   * dx1/u1, ...], where (dxi, dxi/ui) is a pair.  For each face considered in the requested direction, we collect a ratio for each distinct
+   * quad levels that share the face.  Thus, the result array has, at least, twice as many as velocity face locations there are in the whole
+   * domain for the chosen direction.
+   * @note 1: only proc 0 has the correct result after completion.
+   * @note local complexity: every processor loops through their local faces only once.
+   * @note communication: MPI_reduce to proc 0, who is the only holding the correct results after completion.
+   * @param [in] direction Direction of interest, 0 <= direction < P4EST_DIM.
+   * @param [in,out] allRatios Resulting ratios from all processes (but only rank 0 owns these values).
+   * @param [in] scaling Whether to scale ratio or not (e.g., normalizing by u_tau).
+   * @return Number of values collected across processes (i.e., 2 * num of ratios).
+   */
+  int get_dxyz_uvw_ratios( const u_char& direction, std::vector<double>& allRatios, const double& scaling=1.0 ) const;
+
   /*!
    * \brief get_line_averaged_vnp1_profiles: calculates line-averaged profiles for a velocity component in the domain. The direction along which
    * the profile is calculated (i.e. axis) cannot be equal to the velocity component (i.e. vel_component). The computational domain must be periodic

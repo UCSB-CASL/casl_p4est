@@ -3986,3 +3986,105 @@ void my_p4est_navier_stokes_t::coupled_problem_partial_destructor()
   delete ngbd_c;
 
 }
+
+
+int my_p4est_navier_stokes_t::get_dxyz_uvw_ratios( const u_char& direction, std::vector<double>& allRatios, const double& scaling ) const
+{
+	P4EST_ASSERT( direction < P4EST_DIM );
+
+	std::vector<double> ratios;
+	auto* data = (splitting_criteria_t*) p4est_n->user_pointer;
+	ratios.reserve( faces_n->num_local[direction] * 2 * 2 );		// Account for the pair (dx, dx/u) for each face and at most one neighbor at a distinct level.
+
+	////////////////////////////////////////////// First, compute the ratios in local process //////////////////////////////////////////////
+
+	const double *velCompReadPtr;
+	CHKERRXX( VecGetArrayRead( vnp1[direction], &velCompReadPtr ) );
+
+	p4est_locidx_t quadIdx;		// Ids of current cell under evaluation and its owning tree.
+	p4est_topidx_t treeIdx;
+	set_of_neighboring_quadrants ngbd;
+	p4est_quadrant_t quad, nbQuad;
+
+	// Check all local faces in the direction of the velocity component of interest.
+	for( p4est_locidx_t faceIdx = 0; faceIdx < faces_n->num_local[direction]; faceIdx++ )
+	{
+		faces_n->f2q( faceIdx, direction, quadIdx, treeIdx );	// Get index of local cell and the index of the tree that owns it.
+
+		P4EST_ASSERT( quadIdx < p4est_n->local_num_quadrants );	// Retrieve the tree and cell objects.
+		p4est_tree_t *tree = p4est_tree_array_index( p4est_n->trees, treeIdx );
+		const p4est_quadrant_t *quadPtr = p4est_quadrant_array_index( &tree->quadrants, quadIdx - tree->quadrants_offset );
+
+		// Locate the face on the cell: there are two choices (front and back, left or right, top or bottom, according to direction).
+		u_char faceIdxInCell;
+		if( faces_n->q2f( quadIdx, 2 * direction ) == faceIdx )
+			faceIdxInCell = 2 * direction;
+		else
+		{
+			P4EST_ASSERT( faces_n->q2f( quadIdx, 2 * direction + 1 ) == faceIdx );
+			faceIdxInCell = 2 * direction + 1;
+		}
+
+		quad = *quadPtr;										// The actual cell.
+		quad.p.piggy3.local_num = quadIdx;						// Remember the local cell id.
+		ngbd.clear();
+		ngbd_c->find_neighbor_cells_of_cell( ngbd, quadIdx, treeIdx, faceIdxInCell );
+		std::unordered_set<int8_t> levels;						// Place here the different levels, including quad's own.
+		levels.reserve( 2 );
+		levels.insert( quad.level );
+		for( const auto& n : ngbd )
+			levels.insert( n.level );
+
+		// Now, compute the ratio for all distinct quad levels with common face and append the pair (dx, dx/u), with some scaling if requested.
+		for( const auto& level : levels )
+		{
+			double dxyz = dxyz_min[direction] * (double)(1 << (data->max_lvl - level));
+			ratios.push_back( dxyz );
+			ratios.push_back( dxyz / (velCompReadPtr[faceIdx] / scaling) );
+		}
+	}
+
+	// Clean up.
+	CHKERRXX( VecRestoreArrayRead( vnp1[direction], &velCompReadPtr ) );
+
+	//////////////////////////////////////////// Collect ratios from all processes into rank 0 /////////////////////////////////////////////
+
+	int *totalValuesPerRank = nullptr;
+	int *displacements = nullptr;			// Indicates where to place rank i data relative to beginning of recvbuf.
+	allRatios.clear();
+	if( p4est_n->mpirank == 0 )
+	{
+		totalValuesPerRank = new int[p4est_n->mpisize];
+		displacements = new int[p4est_n->mpisize];
+	}
+	const int RANK_TOTAL_VALUES = (int)ratios.size();
+	SC_CHECK_MPI( MPI_Gather( &RANK_TOTAL_VALUES, 1, MPI_INT, totalValuesPerRank, 1, MPI_INT, 0, p4est_n->mpicomm ) );
+
+	// Then, find where to place incoming rank data.
+	int allRankTotalSamples = 0;
+	if( p4est_n->mpirank == 0 )
+	{
+		int beginning = 0;
+		for( int i = 0; i < p4est_n->mpisize; i++ )
+		{
+			displacements[i] = beginning;
+			beginning += totalValuesPerRank[i];
+		}
+
+		allRatios.resize( beginning );
+		allRankTotalSamples = beginning;
+	}
+
+	// Gather ratios.
+	SC_CHECK_MPI( MPI_Gatherv( ratios.data(), RANK_TOTAL_VALUES, MPI_DOUBLE, 						// Send buffer data.
+							   allRatios.data(), totalValuesPerRank, displacements, MPI_DOUBLE, 	// Receive buffer data.
+							   0, p4est_n->mpicomm ) );
+
+	// Cleaning up.
+	delete [] displacements;
+	delete [] totalValuesPerRank;
+
+	// Comunicate to everyone the total number of samples across processes.
+	SC_CHECK_MPI( MPI_Bcast( &allRankTotalSamples, 1, MPI_INT, 0, p4est_n->mpicomm ) );				// Acts as an MPI_Barrier, too.
+	return allRankTotalSamples;
+}
