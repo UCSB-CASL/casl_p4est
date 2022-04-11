@@ -10,7 +10,7 @@ set( CMAKE_CXX_STANDARD 14 )
 if( DIMENSION MATCHES 2d )
 	list( APPEND SRC main_2d.cpp )
 elseif( DIMENSION MATCHES 3d )
-	list( APPEND SRC data_sets/sphere/large_spheres_test.cpp )
+	list( APPEND SRC data_sets/ellipsoid/ellipsoid_dataset_3d.cpp )
 else()
 	message( FATAL_ERROR "Invalid or missing DIMENSION macro --it should be '2d' or '3d'." )
 endif()
@@ -18,6 +18,7 @@ endif()
 add_compile_definitions( PRIVATE CASL_THROWS )
 add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=float )		# Frugally deep floating-point precision.
 add_compile_definitions( PRIVATE EIGEN_DONT_PARALLELIZE )		# Prevents parallelization in Eigen library.
+add_compile_definitions( PRIVATE DLIB_USE_BLAS )				# Enables BLAS library for dlib.
 
 ############################# Load paths to libraries and set compiler for current system ##############################
 

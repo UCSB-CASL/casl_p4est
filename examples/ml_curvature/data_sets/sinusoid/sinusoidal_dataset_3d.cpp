@@ -343,7 +343,7 @@ int main ( int argc, char* argv[] )
 								trackedMaxHK[i] = MAX( maxHKInBatch[i], trackedMaxHK[i] );	// These are shared across processes.
 
 								// Accumulate samples in the buffers; apply negative-mean-curvature normalization only to non-saddle samples.
-								int batchSize = kml::utils::processSamplesAndAccumulate( mpi, samples[i], buffer[i], h, i == 0 );
+								int batchSize = kml::utils::processSamplesAndAccumulate( mpi, samples[i], buffer[i], h, (i == 0? 1 : 0) );
 
 								loggedSamples[i] += batchSize;
 								bufferSize[i] += batchSize;

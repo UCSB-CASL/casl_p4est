@@ -294,7 +294,7 @@ int main ( int argc, char* argv[] )
 							trackedMaxHK = MAX( maxHKInBatch, trackedMaxHK );	// These are shared across processes.
 
 							// Save samples to dataset file.
-							int batchSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, H );
+							int batchSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, H, 1 );
 							loggedSamples += batchSize;
 							bufferSize += batchSize;
 

@@ -218,7 +218,7 @@ int main ( int argc, char* argv[] )
 			collectSamples( R, h, mpi, p4est, nodes, ngbd, phi, octreeMaxRL, xyz_min, xyz_max, samples );
 
 			double maxErrors[2];
-			int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, true );
+			int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, 1 );
 			int savedSamples = saveSamples( mpi, buffer, bufferSize, file, numSamplesPerSphere(), gen, maxErrors[0], maxErrors[1] );
 			nSamples += savedSamples;
 

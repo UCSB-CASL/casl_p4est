@@ -45,7 +45,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: March 29, 2022.
+ * Updated: April 10, 2022.
  */
 namespace kml
 {
@@ -369,17 +369,22 @@ namespace kml
 		/**
 		 * Transform samples with (optional) negative-mean-curvature and phi-by-h normalization, followed by
 		 * reorientation and reflection.  Then, place these samples in a cumulative array.
-		 * @note Only rank 0 accumulates processed samples, but all processes receive the total number of them.
+		 * @note 1: Only rank 0 accumulates processed samples, but all processes receive the total number of them.
+		 * @note 2: Use this function only to construct learning or offline-evaluation data sets since we include
+		 * 			true dimensionless curvature(s) too.
 		 * @param [in] mpi MPI environment.
 		 * @param [in,out] samples List of feature vectors.
 		 * @param [in,out] buffer Cumulative array of feature vectors.
 		 * @param [in] h Mesh size for h-normalizing phi values.
-		 * @param [in] negMeanKNormalize True if we need negative-mean-curvature normalization, false otherwise.
+		 * @param [in] negMeanKNormalize 0 if we don't want negative-mean-curvature normalization for all samples
+		 * 			   or 1 if we do, independently of ih2kg; use 2 for deciding normalization based on ih2kg values
+		 * 			   individually.
 		 * @return Number of samples collected from all processes.
+		 * @throws invalid_argument if user chooses an invalid option for negative-curvature normalization.
 		 */
 		int processSamplesAndAccumulate( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
 										 std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer, const double& h,
-										 const bool& negMeanKNormalize );
+										 const u_char& negMeanKNormalize );
 
 		/**
 		 * Transform samples with (optional) negative-mean-curvature and phi-by-h normalization, followed by reorienta-
@@ -389,12 +394,14 @@ namespace kml
 		 * @param [in,out] samples List of feature vectors.
 		 * @param [in,out] file File stream where to write data (should be opened already).
 		 * @param [in] h Mesh size for h-normalizing phi values.
-		 * @param [in] negMeanKNormalize True if we need negative-mean-curvature normalization, false otherwise.
+		 * @param [in] negMeanKNormalize 0 if we don't want negative-mean-curvature normalization for all samples
+		 * 			   or 1 if we do, independently of ih2kg; use 2 for deciding normalization based on ih2kg values
+		 * 			   individually.
 		 * @param [in] preAllocateSize Estimate number of samples to preallocate intermediate buffer (only rank 0).
 		 * @return Number of samples saved to the input file.
 		 */
 		int processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
-										 std::ofstream& file, const double& h, const bool& negMeanKNormalize,
+										 std::ofstream& file, const double& h, const u_char& negMeanKNormalize,
 										 const int& preAllocateSize=1000 );
 
 		/**

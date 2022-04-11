@@ -226,7 +226,7 @@ int main ( int argc, char* argv[] )
 				maxErrors = collectSamples( keepEveryXSamples(), R, h, mpi, p4est, nodes, ngbd, phi, maxRL(), genProb, samples );
 				maxRE = MAX( maxRE, maxErrors.first );
 
-				int batchSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, true );
+				int batchSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, 1 );
 				bufferSize += batchSize;
 				int savedSamples = saveSamples( mpi, buffer, bufferSize, file, fileName, bufferMinSize(), nSamplesLeftForSameRadius );
 				nSamples += savedSamples;

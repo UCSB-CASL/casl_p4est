@@ -1,12 +1,12 @@
 /**
  * Testing the non-signed distance function phi(x) = |x-x0|^2 - r^2 [or, another one is phi(x,y,z) = ((x-x0)/r)^2 + ... + ((x-x0)/r)^2 - 1]
- * as the L_inty norm doesn't decrease as the radius surpases 0.5.
+ * as the L_infty norm doesn't decrease as the radius surpases 0.5.
  *
  * We save a file "large_sphere_test.csv" and export VTK files to output folder.
  *
  * Developer: Luis Ángel.
  * Created: April 8, 2022.
- * updated: April 9, 2022.
+ * updated: April 10, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -74,21 +74,17 @@ int main ( int argc, char* argv[] )
 		// Loading parameters from command line.
 		cmdParser cmd;
 		pl.initialize_parser( cmd );
-		if( cmd.parse( argc, argv, "Testing large spheres with phi(x) = ||x - x0||^2 - r^2" ) )
+		if( cmd.parse( argc, argv, "Testing large spheres with non-signed distance functions" ) )
 			return 0;
 		pl.set_from_cmd_all( cmd );
 
-		CHKERRXX( PetscPrintf( mpi.comm(), "\n******************* Testing large spheres *******************\n" ) );
-
-		/////////////////////////////////////////////// Parameter setup ////////////////////////////////////////////////
+		////////////////////////////////////////////////////////// Parameter setup /////////////////////////////////////////////////////////
 
 		const double h = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
 		std::uniform_real_distribution<double> uniformDistTrans( -h/2, +h/2 );							// Random translation.
 		std::mt19937 gen{};									// NOLINT This engine is used for sphere's random shift (only on rank 0).
 		std::uniform_real_distribution<double> whiteNoiseDist( -h * whiteNoise(), +h * whiteNoise() );
 		std::mt19937 genNoise( mpi.rank() );
-
-		/////////////////////////////////////////// Preparing data set files ///////////////////////////////////////////
 
 		parStopWatch watch;
 		PetscPrintf( mpi.comm(), ">> Began testing a large sphere with radius = %g, max level of refinement = %i, and h = %g\n", radius(), maxRL(), h );
@@ -100,10 +96,6 @@ int main ( int argc, char* argv[] )
 		std::ofstream file;
 		std::string fileName = "large_sphere_test.csv";
 		kml::utils::prepareSamplesFile( mpi, DATA_PATH, fileName, file );
-
-		/////////////////////////////////////////// Data production loop ////////////////////////////////////////////
-
-		int nSamples = 0;
 
 		std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer;	// Cumulative buffer of (normalized and augmented) samples.
 		if( mpi.rank() == 0 )								// Only rank 0 controls the buffer.
@@ -117,6 +109,8 @@ int main ( int argc, char* argv[] )
 				 uniformDistTrans( gen ) )
 		};
 		SC_CHECK_MPI( MPI_Bcast( C, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random shift.
+
+		///////////////////////////////////////////////////////// Data production //////////////////////////////////////////////////////////
 
 		// Domain information.  To avoid discretizing the whole sphere (too expensive!), find a random region on the sphere and set a 3d
 		// window around it.
@@ -203,9 +197,8 @@ int main ( int argc, char* argv[] )
 		collectSamples( radius(), h, mpi, p4est, nodes, ngbd, phi, octreeMaxRL, xyz_min, xyz_max, samples, sampledFlag, ihk, hkError );
 
 		double maxErrors[2];
-		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, true );
-		int savedSamples = saveSamples( mpi, buffer, bufferSize, file, maxErrors[0], maxErrors[1] );
-		nSamples += savedSamples;
+		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, 1 );
+		int nSamples = saveSamples( mpi, buffer, bufferSize, file, maxErrors[0], maxErrors[1] );
 
 		// Export to VTK.
 		const double *phiReadPtr, *sampledFlagReadPtr;
@@ -267,12 +260,10 @@ int main ( int argc, char* argv[] )
 		p4est_destroy( p4est );
 		my_p4est_brick_destroy( connectivity, &brick );
 
-		// Synchronize.
-		SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
-
 		CHKERRXX( PetscPrintf( mpi.comm(), "  Expected hk = %.8g\n", h / radius() ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "  Done! Max hk error = %.8g.  Max phi error = %.8g.  Num of samples = %d;\n", maxErrors[0], maxPhiError, nSamples ) );
-		file.close();
+		if( mpi.rank() == 0 )
+			file.close();
 
 		CHKERRXX( PetscPrintf( mpi.comm(), "<< Finished after %.2f secs.\n", watch.get_duration_current() ) );
 		watch.stop();
@@ -289,7 +280,7 @@ int main ( int argc, char* argv[] )
  * @param [in] C Sphere's center.
  * @param [in] R Sphere's radius.
  * @param [in] h Mesh size.
- * @param [in] MAX_RL Maximum level of refinement per unit octant (i.e., h = 2^{-MAX_RL}).
+ * @param [in] MAX_RL Maximum level of refinement per unit octree (i.e., h = 2^{-MAX_RL}).
  * @param [in,out] gen Random engine.
  * @param [out] octreeMaxRL Effective individual octree maximum level of refinement to achieve the desired h.
  * @param [out] n_xyz Number of octrees in each direction with maximum level of refinement octreeMaxRL.
@@ -523,16 +514,15 @@ void collectSamples( const double& radius, const double& h, const mpi_environmen
 }
 
 /**
- * Save buffered samples to a file by choosing numSamplesToSave of them randomly.
- * Upon exiting, the buffer will be emptied.
+ * Save buffered samples to a file.  Upon exiting, the buffer will be emptied.
  * @param [in] mpi MPI environment.
  * @param [in,out] buffer Sample buffer.
  * @param [in,out] bufferSize Current buffer's size.
  * @param [in,out] file File where to write samples.
- * @param [in] numSamplesToSave How many samples do we want to store in file.
- * @param [in,out] gen Random engine for shuffling samples.
+ * @param [out] trackedMaxHKError Max absolute mean curvature error across samples and processes.
+ * @param [out] trackedMaxH2KGError Max absolute Gaussian curvature error across samples and processes.
  * @return number of saved samples (already shared among processes).
- * @throws invalid_argument exception if buffer is empty or there are less samples than the number we intend to save.
+ * @throws invalid_argument exception if buffer is empty.
  */
 int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>& buffer, int& bufferSize, std::ofstream& file,
 				 double& trackedMaxHKError, double& trackedMaxH2KGError )
