@@ -1076,6 +1076,16 @@ public:
     } // end of switch case
   } // end of function
 
+  double get_Re(){return Re;}
+  double get_Pr(){return Pr;}
+  double get_Sc(){return Sc;}
+  double get_Pe(){return Pe;}
+  double get_St(){return St;}
+  double get_Da(){return Da;}
+  double get_RaT(){return RaT;}
+  double get_RaC(){return RaC;}
+
+
   // ----------------------------------------------
   // Physical parameters:
   // Note: these must be provided for the solver to run !

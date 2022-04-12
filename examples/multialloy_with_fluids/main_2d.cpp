@@ -4248,6 +4248,17 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   // we do it here so we can get the time_nondim_to_dim info we need to set a proper duration for sim time
   stefan_w_fluids_solver->set_nondimensional_groups();
 
+  // Get nondim groups as theyve been computed
+  Re = stefan_w_fluids_solver->get_Re();
+  Pr = stefan_w_fluids_solver->get_Pr();
+  Sc = stefan_w_fluids_solver->get_Sc();
+  Pe = stefan_w_fluids_solver->get_Pe();
+  St = stefan_w_fluids_solver->get_St();
+  Da = stefan_w_fluids_solver->get_Da();
+  RaT = stefan_w_fluids_solver->get_RaT();
+  RaC = stefan_w_fluids_solver->get_RaC();
+
+
   if(solve_navier_stokes){
     set_NS_info();
   }

@@ -389,7 +389,6 @@ void my_p4est_stefan_with_fluids_t::initialize_fields(){
   // Temperature/conc fields:
   // ---------------------------------
 
-
   if(solve_stefan){
     if(print_checkpoints) PetscPrintf(mpi->comm(),"Initializing the temperature fields (s) ... \n");
 
@@ -414,7 +413,6 @@ void my_p4est_stefan_with_fluids_t::initialize_fields(){
     extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
     extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
     dxyz_close_to_interface = dxyz_close_to_interface_mult*MAX(dxyz_smallest[0],dxyz_smallest[1]);
-
     extend_relevant_fields();
 
     // Compute vinterface:
@@ -695,7 +693,6 @@ void my_p4est_stefan_with_fluids_t::perform_initializations(){
   }
   else{
     initialize_grids();
-
     initialize_fields();
 
     tstep = 0;
@@ -1420,13 +1417,14 @@ void my_p4est_stefan_with_fluids_t::extend_relevant_fields(){
                                     liquid_normals.vec, NULL,
                                     /*&Tl_bc*/NULL, false, NULL,NULL);
 
-
   // Extend solid temperature:
-  ls->extend_Over_Interface_TVD_Full((there_is_a_substrate? phi_solid_eff.vec : phi_solid.vec), T_s_n.vec,
-                                    50, 2,
-                                    extension_band_use_, extension_band_extend_,
-                                    solid_normals.vec, NULL,
-                                    /*&Ts_bc*/NULL, false, NULL, NULL);
+  if(do_we_solve_for_Ts){
+      ls->extend_Over_Interface_TVD_Full((there_is_a_substrate? phi_solid_eff.vec : phi_solid.vec), T_s_n.vec,
+                                         50, 2,
+                                         extension_band_use_, extension_band_extend_,
+                                         solid_normals.vec, NULL,
+                                         /*&Ts_bc*/NULL, false, NULL, NULL);
+  }
 
   // -------------------------------
   // Destroy all fields that were created for the procedure:
@@ -2005,7 +2003,8 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(){
   if(did_crash){
     char crash_tag[10];
     sprintf(crash_tag, "NS");
-    save_fields_to_vtk(did_crash, crash_tag);
+    save_fields_to_vtk(0, did_crash, crash_tag);
+    throw std::runtime_error("The Navier Stokes step crashed \n");
   }
 
 
