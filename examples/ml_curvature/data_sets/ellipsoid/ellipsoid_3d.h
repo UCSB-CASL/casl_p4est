@@ -2,7 +2,7 @@
  * A collection of classes and functions related to an ellipsoid in 3D.
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: April 10, 2022.
+ * Updated: April 11, 2022.
  */
 
 #ifndef ML_CURVATURE_ELLIPSOID_3D_H
@@ -55,8 +55,8 @@ public:
 	{
 		const std::string errorPrefix = _errorPrefix() + "constructor: ";
 
-		if( a < 0 || b < 0 || c < 0 )
-			throw std::invalid_argument( errorPrefix + "a, b, and c must be positive!" );
+		if( a < FLT_EPSILON || b < FLT_EPSILON || c < FLT_EPSILON )
+			throw std::invalid_argument( errorPrefix + "a, b, and c must be positive and at least the float32 eps!" );
 	}
 
 	/**
@@ -118,12 +118,12 @@ public:
 		double x2a4_y2b4_z2c4 = x2 / SQR( _a2 ) + y2 / SQR( _b2 ) + z2 / SQR( _c2 );
 
 		// Mean curvature.
-		double num = -(x2/CUBE( _a2 ) + y2/CUBE( _b2 ) + z2/CUBE( _c2 )) + x2a4_y2b4_z2c4 * (1/SQR( _a2 ) + 1/SQR( _b2 ) + 1/SQR( _c2 ));
+		double num = -(x2/CUBE( _a2 ) + y2/CUBE( _b2 ) + z2/CUBE( _c2 )) + x2a4_y2b4_z2c4 * (1./_a2 + 1./_b2 + 1./_c2);
 		double denom = 2 * pow( x2a4_y2b4_z2c4, 1.5 );
 		H = num / denom;
 
 		// Gaussian curvature.
-		K = 1 / (_a2 * _b2 * _c2 * x2a4_y2b4_z2c4);
+		K = 1 / (_a2 * _b2 * _c2 * SQR( x2a4_y2b4_z2c4 ));
 	}
 
 	/**
@@ -152,9 +152,11 @@ public:
 
 		// Let's use Newton-Raphson's method to solve a system of non-linear equations (see http://www.ma.ic.ac.uk/~rn/distance2ellipse.pdf).
 		column_vector_t xnp1 = {											// Initial guess:
-			atan2( _a * p.y, _b * p.x ),									// theta(0)
-			atan2( p.z, _c * sqrt( SQR( p.x ) / _a2 + SQR( p.y ) / _b2 ) )	// psi(0)
+			atan2( _a * p.y, _b * p.x ),									// theta
+			atan2( p.z, _c * sqrt( SQR( p.x ) / _a2 + SQR( p.y ) / _b2 ) )	// psi
 		};
+
+		theta = psi = NAN;									// Nothing is settled now.
 
 		// We want to solve for delta = xnp1 - xn in the system DF(xn) * delta = -g(xn) where g(xn) is a column 2-vector and DF(xn) is a
 		// 2x2 matrix.
@@ -203,77 +205,24 @@ public:
 		if( d > d0 )
 			throw std::runtime_error( errorPrefix + "Distance at nearest point is larger than distance at the initial guess." );
 
+		theta = xnp1(0);
+		psi = xnp1(1);
 		return SIGN( operator()( p ) ) * d;
 	}
 
 	/**
-	 * Compute the pairs (a, b) of semi-axes on the x and y directions that produce desired mean curvatures k_a and k_b while keeping c (the
-	 * z-intercept) constant.  All computations consider the query values are in the representation of the ellipsoid's canonica frame.
-	 * To find (a, b), we solve for these simultaneously in the equations:
-	 * 		k_a = a*(b^2 + c^2)/(2*b^2*c^2)
-	 * 		k_b = b*(a^2 + c^2)/(2*a^2*c^2).
-	 * To this end, first we solve for y[=b] as the roots of the quartic polynomial:
-	 * 							(4*k_a^2*c^2+1)*y^4 - (8*k_b*k_a^2*c^2)*y^3 + (2*c^2)y^2 + c^4 = 0
-	 * by finding the real eigenvalues of the equivalent monic polynomial's companion matrix.  Then, we compute the corresponding x[=a] with
-	 * 											x = (2*k_a*y^2*c^2)/(y^2+c^2).
-	 * @param [in] k_a Desired (positive) mean curvature at the point (a, 0, 0).
-	 * @param [in] k_b Desired (positive) mean curvature at the point (0, b, 0).
-	 * @param [in] c Ellipsoid's (positive) z-direction semiaxis.
-	 * @param [out] abTuples Vector of tuples (a, b) that meet the curvature and c-value conditions (to be clear to allocate results).
-	 * @throws invalid_argument exception if ka or kb or c are no sufficiently positive.
-	 * 		   runtime_error if it fails to find any tuples.
+	 * Compute the expected maximum mean curvatures, found at the ellipsoid's x-, y-, and z-intercepts.
+	 * @param [out] k Maximum mean curvatures.
 	 */
-	static void findA_BParamsForDesiredKappaOnX_Y( const double& k_a, const double& k_b, const double& c,
-												   std::vector<std::pair<double, double>>& abTuples )
+	void getMaxMeanCurvatures( double k[P4EST_DIM] ) const
 	{
-		typedef dlib::matrix<double, 4, 4> matrix_t;
-		typedef dlib::matrix<double, 4, 4> column_vector_t;
-
-		std::string errorPrefix = _errorPrefix() + "findA_BParamsForDesiredKappaOnX_Y: ";
-		if( k_a <= FLT_EPSILON || k_b <= FLT_EPSILON )
-			throw std::invalid_argument( errorPrefix + "Desired mean curvatures at (a,0,0) and (0,b,0) must be strictly positive!" );
-
-		if( c <= FLT_EPSILON )
-			throw std::invalid_argument( errorPrefix + "z-intercept (i.e., c) must be strictly positive!" );
-
-		// First, define the companion matrix for the quartic monic polynomial:
-		// p(y) = [c^4/(4*k_a^2*c^2+1)] + [  0 ]*y + [2*c^2/(4*k_a^2*c^2+1)]*y^2 + [-8*k_b*k_a^2*c^2/(4*k_a^2*c^2+1)]*y^3 + y^4
-		//        <-------- m0 ------->   < m1 >     <--------- m2 -------->       <--------------- m3 ------------->
-		const double denom = SQR( 2.0 * k_a * c ) + 1;
-		const double m0 = SQR(SQR( c )) / denom;
-		const double m1 = 0;
-		const double m2 = 2.0 * SQR( c ) / denom;
-		const double m3 = -8.0 * k_b * SQR( k_a * c );
-
-		matrix_t C = {		// Polynomial's companion matrix whose roots of its characterictic polynomial are the roots of p(y) above.
-			0, 0, 0, -m0,
-			1, 0, 0, -m1,
-			0, 1, 0, -m2,
-			0, 0, 1, -m3
-		};
-
-		// Dlib's eigendecomposition: http://dlib.net/dlib/matrix/matrix_la_abstract.h.html#eigenvalue_decomposition.  We're interested only
-		// on real eigenvalues.
-		dlib::eigenvalue_decomposition<matrix_t> eigenDecomposition( C );
-		const column_vector_t& evalsRealPart = eigenDecomposition.get_real_eigenvalues();
-		const column_vector_t& evalsImagPart = eigenDecomposition.get_imag_eigenvalues();
-
-		abTuples.clear();
-		abTuples.reserve( eigenDecomposition.dim() );
-		for( int i = 0; i < eigenDecomposition.dim(); i++ )
+		double axs[P4EST_DIM] = {_a, _b, _c};
+		for( int i = 0; i < P4EST_DIM; i++ )
 		{
-			if( evalsImagPart(i) > EPS )		// Skip complex eigenvalues.
-				continue;
-
-			double y = evalsRealPart(i);
-			double x = 2.0 * k_a * SQR( y * c ) / (SQR( y ) + SQR( c ));
-			abTuples.emplace_back( x, y );
+			int j1 = (i + 1) % P4EST_DIM;	// The formulas are circular.  For x, for example, it's k_x = a (b^2 + c^2)/(2 b^2 c^2).
+			int j2 = (i + 2) % P4EST_DIM;
+			k[i] = axs[i] * (SQR(axs[j1]) + SQR(axs[j2])) / (2 * SQR(axs[j1] * axs[j2]));
 		}
-
-		// Check everything went OK.
-		// TODO: Check for negative a or b params?
-		if( abTuples.empty() )
-			throw std::runtime_error( errorPrefix + "Failed to find any tuple (a,b) for desired curvatures!" );
 	}
 };
 
@@ -459,13 +408,12 @@ public:
 		my_p4est_interpolation_nodes_t kappaMGInterp( ngbd );
 		kappaMGInterp.set_input( kappaMG, interpolation_method::linear, 2 );
 
-		std::uniform_real_distribution<double> pDistribution;
 		trackedMinHK = DBL_MAX, trackedMaxHK = 0;	// Track the min and max mean |hk*|
 		double trackedMaxHKError = 0;				// and Gaussian curvature errors.
 		double trackedMaxH2KGError = 0;
 
 #ifdef DEBUG
-		std::cout << "Rank " << _mpi->rank() << " reports " << indices.size() << " candidate nodes for sampling." << std::endl;
+		std::cout << "    Rank " << _mpi->rank() << " reports " << indices.size() << " candidate nodes for sampling." << std::endl;
 #endif
 
 		int invalidNodes = 0;						// Let's count how many points we skipped.
@@ -534,7 +482,7 @@ public:
 					if( ih2kgVal >= 0 )
 					{
 						if( ihkVal * hk >= 0 )
-							sampledFlagPtr[n] = 1;		// Valid candidate node: not a numerical saddle and hk and ihk have same sign.
+							sampledFlagPtr[n] = 1;		// OK candidate node: not a numerical saddle and hk and ihk have same sign.
 						else
 							sampledFlagPtr[n] = 2;		// hk and ihk flipped sign in a non-saddle point.
 					}
@@ -576,7 +524,7 @@ public:
 		}
 
 #ifdef DEBUG
-		std::cout << "Rank " << _mpi->rank() << " collected " << samples.size() << " *unique* samples and discarded "
+		std::cout << "    Rank " << _mpi->rank() << " collected " << samples.size() << " *unique* samples and discarded "
 				  << invalidNodes << " invalid nodes" << std::endl;
 #endif
 		kappaMGInterp.clear();

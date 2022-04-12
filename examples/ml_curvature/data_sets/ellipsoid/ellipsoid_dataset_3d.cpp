@@ -27,7 +27,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: April 10, 2022.
+ * Updated: April 11, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -61,13 +61,14 @@ int main ( int argc, char* argv[] )
 	param_t<u_char> experimentId( pl,     0, "experimentId"	, "Experiment Id (default: 0)" );
 	param_t<u_char>        maxRL( pl,     6, "maxRL"		, "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<u_short> reinitIters( pl,    10, "reinitIters"	, "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>      maxHK_a( pl,   0.6, "maxHK_a"		, "Maximum dimensionless mean curvature on the x-intersection (i.e., at +/-a) (default: 0.6)" );
-	param_t<double>      maxHK_b( pl,   0.3, "maxHK_b"		, "Maximum dimensionless mean curvature on the y-intersection (i.e., at +/-b) (default: 0.3)" );
-	param_t<double>            c( pl,   1.0, "c"			, "Ellipsoid's z-semiaxis (default: 1.0)" );
-	param_t<bool>  perturbCenter( pl, false, "perturbCenter", "Whether to perturb the ellipsoid's center randomly in [-h/2,+h/2]^3 (default: false)" );
-	param_t<std::string>  outDir( pl,   ".", "outDir"		, "Path where files will be written to (default: build folder)" );
+	param_t<double>        maxHK( pl,  2./3, "maxHK"		, "Expected maximum dimensionless mean curvature (default: 2/3)" );
+	param_t<double>            a( pl,  1.65, "a"			, "Ellipsoid's x-semiaxis (default: 4)" );
+	param_t<double>            b( pl,  0.75, "b"			, "Ellipsoid's y-semiaxis (defulat: 2.5)" );
+	param_t<double>            c( pl,   0.2, "c"			, "Ellipsoid's z-semiaxis (default: 0.25)" );
+	param_t<bool>  perturbCenter( pl,  true, "perturbCenter", "Whether to perturb the ellipsoid's center randomly in [-h/2,+h/2]^3 (default: true)" );
+	param_t<std::string>  outDir( pl,   ".", "outDir"		, "Path where data and param files will be written to (default: build folder)" );
 
-	std::mt19937 gen{};			// NOLINT This engine is used for shifting/perturbing the ellipsoid center.
+	std::mt19937 gen{};			// NOLINT This engine is used for perturbing the ellipsoid center.
 
 	try
 	{
@@ -88,26 +89,26 @@ int main ( int argc, char* argv[] )
 		if( reinitIters() <= 0 )
 			throw std::invalid_argument( "[CASL_ERROR] Number of reinitializating iterations must be strictly positive." );
 
-		if( maxHK_a() < FLT_EPSILON || maxHK_a() > 1 || maxHK_b() < FLT_EPSILON || maxHK_b() > 1 )
-			throw std::invalid_argument( "[CASL_ERROR] Desired mean hk at x and y intercepts must be in the range of (0, 1]." );
-
-		if( c() < FLT_EPSILON )
-			throw std::invalid_argument( "[CASL_ERROR] The z-semiaxis must be larger than the numerical eps." );
-
-		parStopWatch watch;
-		watch.start();
-
 		const double h = 1. / (1 << maxRL());					// Highest spatial resolution in x/y directions.
-		const double maxK_a = maxHK_a() / h;					// Desired mean curvatures at the x- and y-intercepts.
-		const double maxK_b = maxHK_b() / h;
+
+		if( a() < 1.5 * h || b() < 1.5 * h || c() < 1.5 * h )
+			throw std::invalid_argument( "[CASL_ERROR] Any semiaxis must be larger than 1.5h" );
+
+		Ellipsoid ellipsoid( a(), b(), c() );					// An ellipsoid implicit function in canonical coords (i.e., untransformed).
+		double maxK[P4EST_DIM];
+		ellipsoid.getMaxMeanCurvatures( maxK );
+		for( const auto& k : maxK )
+		{
+			if( h * k > maxHK() )
+				throw std::invalid_argument( "[CASL_ERROR] One of the ellipsoid's max hk exceeds the expected max hk." );
+		}
 
 		std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer;		// Buffer of accumulated (normalized and augmented) samples.
-		double a = 0, b = 0;									// Ellipsoidal x- and y-semiaxis.
 		double center[P4EST_DIM] = {0, 0, 0};					// Ellipsoidal center (possible perturbed).
 		double trackedMinHK = DBL_MAX;							// We want to track min and max mean |hk*| for debugging.
 		double trackedMaxHK = 0;
-		if( mpi.rank() == 0 )			// Only rank 0 finds a and b, controls the buffer, and perturbs the ellipsoid's center.
-		{
+		if( mpi.rank() == 0 )			// Only rank 0 controls the buffer and perturbs the ellipsoid's center to create an affine-trans-
+		{								// formed level-set function.
 			buffer.reserve( 1e5 );
 
 			if( perturbCenter() )		// Should we apply a random shift to ellipsoid's canonical frame?
@@ -116,22 +117,16 @@ int main ( int argc, char* argv[] )
 				for( auto& dim : center )
 					dim = uniformDistributionH_2( gen );
 			}
-
-			std::vector<std::pair<double, double>> abTuples;	// Find a and b params that yield desired curvatures.
-			Ellipsoid::findA_BParamsForDesiredKappaOnX_Y( maxK_a, maxK_b, c(), abTuples );
-			a = abTuples[0].first;								// Pick the first tuple arbitratily, but any pair would do it (if > 1 tuple).
-			b = abTuples[1].second;
 		}
-		SC_CHECK_MPI( MPI_Bcast( center, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random shift and a and b
-		SC_CHECK_MPI( MPI_Bcast( &a, 1, MPI_DOUBLE, 0, mpi.comm() ) );				// params to discretize the domain.
-		SC_CHECK_MPI( MPI_Bcast( &b, 1, MPI_DOUBLE, 0, mpi.comm() ) );
-		SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
+		SC_CHECK_MPI( MPI_Bcast( center, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random shift.
 
-		const double maxHK_c = c() * (SQR( a ) + SQR( b )) / (2.0 * SQR( a * b ));	// Now that we know a and b, we can find the max hk at +/-c.
+		const double maxHK_a = maxK[0] * h;
+		const double maxHK_b = maxK[1] * h;
+		const double maxHK_c = maxK[2] * h;
 
 		// Prepping the params.
 		const std::string DATA_PATH = outDir() + "/" + std::to_string( maxRL() ) + "/ellipsoid";
-		writeParamsFile( mpi, DATA_PATH, "params_" + std::to_string( experimentId() ) + ".csv", a, b, c(), maxHK_a(), maxHK_b(), maxHK_c );
+		writeParamsFile( mpi, DATA_PATH, "params_" + std::to_string( experimentId() ) + ".csv", a(), b(), c(), maxHK_a, maxHK_b, maxHK_c );
 
 		// Prepping the samples file.  Only rank 0 writes the samples to a file.
 		std::ofstream file;
@@ -140,8 +135,11 @@ int main ( int argc, char* argv[] )
 
 		///////////////////////////////////////////////////////// Data production //////////////////////////////////////////////////////////
 
-		PetscPrintf( mpi.comm(), ">> Began generating offline ellipsoid data set with hk_a = %g (a = %g), hk_b = %g (b = %g), hk_c = %g (c = %g), and h = %g (level %i)\n",
-					 maxHK_a(), a, maxHK_b(), b, maxHK_c, c(), h, maxRL() );
+		PetscPrintf( mpi.comm(), ">> Began generating ellipsoid data set for offline evaluation with hk_a = %g (a = %g), hk_b = %g (b = %g),"
+								 " hk_c = %g (c = %g), and h = %g (level %i)\n", maxHK_a, a(), maxHK_b, b(), maxHK_c, c(), h, maxRL() );
+
+		parStopWatch watch;
+		watch.start();
 
 		// Domain information.
 		u_char octMaxRL;
@@ -149,7 +147,7 @@ int main ( int argc, char* argv[] )
 		double xyz_min[P4EST_DIM];
 		double xyz_max[P4EST_DIM];
 		int periodic[P4EST_DIM] = {0, 0, 0};
-		setupDomain( mpi, center, a, b, c(), h, maxRL(), octMaxRL, n_xyz, xyz_min, xyz_max );
+		setupDomain( mpi, center, a(), b(), c(), h, maxRL(), octMaxRL, n_xyz, xyz_min, xyz_max );
 
 		// p4est variables and data structures.
 		p4est_t *p4est;
@@ -159,7 +157,6 @@ int main ( int argc, char* argv[] )
 		p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
 		// Define a level-set function with ellipsoidal interface.
-		Ellipsoid ellipsoid( a, b, c() );
 		EllipsoidalLevelSet levelSet( &mpi, Point3( center ), Point3( 0, 0, 1 ), 0, &ellipsoid, h );
 		splitting_criteria_cf_and_uniform_band_t splittingCriterion( 0, octMaxRL, &levelSet, 3.0 );
 
@@ -213,7 +210,7 @@ int main ( int argc, char* argv[] )
 		std::pair<double, double> maxErrors;
 		int nNumericalSaddles;
 		maxErrors = levelSet.collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMinHK, trackedMaxHK, samples,
-											 nNumericalSaddles, sampledFlag, hkError, ihk, h2kgError, ih2kg );
+											 nNumericalSaddles, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError );
 
 		// Accumulate samples in the buffer; normalize phi by h, apply negative-mean-curvature normalization to non-saddle samples, and
 		// reorient data packets.  Then, augment samples by reflecting about y - x = 0.
@@ -315,7 +312,7 @@ void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, con
 			throw std::runtime_error( errorPrefix + "Output file " + fullFileName + " couldn't be opened!" );
 
 		file << R"("a","b","c","hka","hkb","hkc")" << std::endl;	// The header.
-		file.precision( 16 );
+		file.precision( 15 );
 		file << a << "," << b << "," << c << "," << hka << "," << hkb << "," << hkc << std::endl;
 		file.close();
 	}
@@ -390,7 +387,7 @@ void setupDomain( const mpi_environment_t& mpi, const double center[P4EST_DIM], 
 
 		double samRadius = 6 * h + MAX( a, b, c );					// At least we want this distance around COmega.
 		const double CUBE_SIDE_LEN = 2 * samRadius;					// We want a cubic domain with an effective, yet small size.
-		const u_char OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 3 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
+		const u_char OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 5 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
 		const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
 		octMaxRL = MAX_RL - OCTREE_RL_FOR_LEN;						// Effective max refinement level to achieve desired h.
 		const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );		// Number of trees in each dimension.

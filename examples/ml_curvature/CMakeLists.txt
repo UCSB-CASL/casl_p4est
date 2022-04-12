@@ -18,7 +18,6 @@ endif()
 add_compile_definitions( PRIVATE CASL_THROWS )
 add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=float )		# Frugally deep floating-point precision.
 add_compile_definitions( PRIVATE EIGEN_DONT_PARALLELIZE )		# Prevents parallelization in Eigen library.
-add_compile_definitions( PRIVATE DLIB_USE_BLAS )				# Enables BLAS library for dlib.
 
 ############################# Load paths to libraries and set compiler for current system ##############################
 
