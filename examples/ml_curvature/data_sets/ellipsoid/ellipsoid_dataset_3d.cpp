@@ -27,7 +27,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: April 11, 2022.
+ * Updated: April 13, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -207,10 +207,10 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phiError ) );
 
 		std::vector<std::vector<double>> samples;
-		std::pair<double, double> maxErrors;
+		double trackedMaxErrors[P4EST_DIM];
 		int nNumericalSaddles;
-		maxErrors = levelSet.collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMinHK, trackedMaxHK, samples,
-											 nNumericalSaddles, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError );
+		levelSet.collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMaxErrors, trackedMinHK, trackedMaxHK, samples,
+								 nNumericalSaddles, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError );
 
 		// Accumulate samples in the buffer; normalize phi by h, apply negative-mean-curvature normalization to non-saddle samples, and
 		// reorient data packets.  Then, augment samples by reflecting about y - x = 0.
@@ -268,9 +268,10 @@ int main ( int argc, char* argv[] )
 
 		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples with the following stats:\n", nSamples ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of numerical saddles = %i\n", nNumericalSaddles ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked mean |hk*| in the range of [%g, %g]\n", trackedMinHK, trackedMaxHK ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max hk error    = %f\n", maxErrors.first ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max h^2kg error = %f\n", maxErrors.second ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked mean |hk*| in the range of [%.6g, %.6g]\n", trackedMinHK, trackedMaxHK ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max hk error      = %.6g\n", trackedMaxErrors[0] ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max h^2kg error   = %.6g\n", trackedMaxErrors[1] ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max |phi error|/h = %.6g\n", trackedMaxErrors[2] / h ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "<< Finished after %.2f secs.\n", watch.get_duration_current() ) );
 		watch.stop();
 		if( mpi.rank() == 0 )

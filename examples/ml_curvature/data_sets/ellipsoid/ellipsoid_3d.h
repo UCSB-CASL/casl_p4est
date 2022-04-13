@@ -1,8 +1,8 @@
 /**
- * A collection of classes and functions related to an ellipsoid in 3D.
+ * A collection of classes and functions related to an ellipsoid.
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: April 11, 2022.
+ * Updated: April 13, 2022.
  */
 
 #ifndef ML_CURVATURE_ELLIPSOID_3D_H
@@ -289,6 +289,18 @@ public:
 	}
 
 	/**
+	 * Compute exact signed distance to affine-transformed ellipsoid.
+	 * @param [in] xyz Query point in world coordinates.
+	 * @return Exact signed distance.
+	 */
+	double computeExactSignedDistance( const double xyz[P4EST_DIM] ) const
+	{
+		double theta, psi;
+		Point3 p = toCanonicalCoordinates( xyz );
+		return _ellipsoid->findNearestPointAngularParams( p, theta, psi );
+	}
+
+	/**
 	 * Collect samples for valid grid points next to the interface
 	 * @note Samples are not normalized in any way: not negative-mean-curvature nor gradient-reoriented to first octant.
 	 * @param [in] p4est P4est data structure.
@@ -298,6 +310,7 @@ public:
 	 * @param [in] octMaxRL Effective octree maximum level of refinement (octree's side length must be a multiple of h).
 	 * @param [in] xyzMin Domain's minimum coordinates.
 	 * @param [in] xyzMax Domain's maximum coordinates.
+	 * @param [out] trackedMaxErrors Maximum errors in dimensionless mean and Gaussian curvatures and phi for sampled nodes (reduced across processes).
 	 * @param [out] trackedMinHK Minimum |hk*| detected across processes for this batch of samples.
 	 * @param [out] trackedMaxHK Maximum |hk*| detected across processes for this batch of samples.
 	 * @param [out] samples Array of collected samples (one per interface node).
@@ -308,15 +321,13 @@ public:
 	 * @param [out] h2kgError Vector to hold absolute Gaussian h^2*k error for sampled nodes.
 	 * @param [out] ih2kg Vector to hold linearly interpolated Gaussian h^2*k for sampled nodes.
 	 * @param [out] phiError Vector to hold phi error for sampled nodes.
-	 * @return Maximum errors in dimensionless mean and Gaussian curvatures (reduced across processes).
 	 * @throws invalid_argument exception if phi vector.
 	 */
-	std::pair<double,double> collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
-											 const Vec& phi, const u_char& octMaxRL, const double xyzMin[P4EST_DIM],
-											 const double xyzMax[P4EST_DIM], double& trackedMinHK, double& trackedMaxHK,
-											 std::vector<std::vector<double>>& samples, int& nNumericalSaddles, Vec sampledFlag=nullptr,
-											 Vec hkError=nullptr, Vec ihk=nullptr, Vec h2kgError=nullptr, Vec ih2kg=nullptr,
-											 Vec phiError=nullptr ) const
+	void collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
+						 const u_char& octMaxRL, const double xyzMin[P4EST_DIM], const double xyzMax[P4EST_DIM],
+						 double trackedMaxErrors[P4EST_DIM], double& trackedMinHK, double& trackedMaxHK,
+						 std::vector<std::vector<double>>& samples, int& nNumericalSaddles, Vec sampledFlag=nullptr, Vec hkError=nullptr,
+						 Vec ihk=nullptr, Vec h2kgError=nullptr, Vec ih2kg=nullptr, Vec phiError=nullptr ) const
 	{
 		std::string errorPrefix = _errorPrefix + "collectSamples: ";
 		nNumericalSaddles = 0;
@@ -409,8 +420,9 @@ public:
 		kappaMGInterp.set_input( kappaMG, interpolation_method::linear, 2 );
 
 		trackedMinHK = DBL_MAX, trackedMaxHK = 0;	// Track the min and max mean |hk*|
-		double trackedMaxHKError = 0;				// and Gaussian curvature errors.
+		double trackedMaxHKError = 0;				// and Gaussian curvature and phi errors.
 		double trackedMaxH2KGError = 0;
+		double trackedMaxPhiError = 0;
 
 #ifdef DEBUG
 		std::cout << "    Rank " << _mpi->rank() << " reports " << indices.size() << " candidate nodes for sampling." << std::endl;
@@ -511,9 +523,11 @@ public:
 					ihkPtr[n] = (*sample)[K_INPUT_SIZE_LEARN - 3];
 				if( ih2kg )
 					ih2kgPtr[n] = (*sample)[K_INPUT_SIZE_LEARN - 1];
+				double errorPhi = ABS( phiReadPtr[n] - d );
 				if( phiError )									// What about the phi error for sampled nodes?
-					phiErrorPtr[n] = phiReadPtr[n] - d;
+					phiErrorPtr[n] = errorPhi;
 
+				trackedMaxPhiError = MAX( trackedMaxPhiError, errorPhi );
 				trackedMaxHKError = MAX( trackedMaxHKError, errorHK );
 				trackedMaxH2KGError = MAX( trackedMaxH2KGError, errorH2KG );
 			}
@@ -533,6 +547,7 @@ public:
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxHK, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxHKError, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxH2KGError, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
+		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxPhiError, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &nNumericalSaddles, 1, MPI_INT, MPI_SUM, _mpi->comm() ) );
 
 		// Scatter node info across processes.
@@ -602,7 +617,9 @@ public:
 		for( auto& component : normals )
 			CHKERRXX( VecDestroy( component ) );
 
-		return std::make_pair( trackedMaxHKError, trackedMaxH2KGError );
+		trackedMaxErrors[0] = trackedMaxHKError;
+		trackedMaxErrors[1] = trackedMaxH2KGError;
+		trackedMaxErrors[2] = trackedMaxPhiError;
 	}
 };
 
