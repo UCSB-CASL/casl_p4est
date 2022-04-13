@@ -4272,6 +4272,9 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   stefan_w_fluids_solver->set_d2T_ref_threshold(gradT_threshold);
   stefan_w_fluids_solver->set_vorticity_ref_threshold(vorticity_threshold);
 
+  // Reinitialization:
+  stefan_w_fluids_solver->set_reinit_every_iter(reinit_every_iter);
+
 
 
   // -----------------------------------------------
