@@ -34,11 +34,11 @@ endif()
 ############################################# Compiler optimization flags ##############################################
 # Comment these out when using debugger.
 
-if( CMAKE_BUILD_TYPE MATCHES Release )
-	set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
-	set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
-	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
-endif()
+#if( CMAKE_BUILD_TYPE MATCHES Release )
+#	set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
+#	set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+#	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+#endif()
 
 ################################################## Loading libraries ###################################################
 # These commands must be given prior to defining any target.
