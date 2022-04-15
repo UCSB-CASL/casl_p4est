@@ -1870,7 +1870,8 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
   {
     ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est_np1, ghost_np1);
-    if(third_degree_ghost_are_required(convert_to_xyz))
+	int n_ghost_addtnl_expansions = get_cfl() > 1? (int)ceil(get_cfl() - 1) : (int)third_degree_ghost_are_required(convert_to_xyz);
+	for(int i = 0; i < n_ghost_addtnl_expansions; i++)
       my_p4est_ghost_expand(p4est_np1, ghost_np1);
   }
   else
@@ -3300,7 +3301,7 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
   {
     my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
                                   p4est_n, conn,
-                                  P4EST_TRUE, ghost_n, nodes_n,
+                                  P4EST_TRUE, n_times_dt, ghost_n, nodes_n,
                                   P4EST_TRUE, brick, P4EST_TRUE, faces_n, hierarchy_n, ngbd_c,
                                   "p4est_n", 5,
                                   "phi", NODE_DATA, 1, &phi,
@@ -3315,7 +3316,7 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
       refine_with_smoke = false;
     my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
                                   p4est_n, conn,
-                                  P4EST_TRUE, ghost_n, nodes_n,
+                                  P4EST_TRUE, n_times_dt, ghost_n, nodes_n,
                                   P4EST_TRUE, brick, P4EST_TRUE, faces_n, hierarchy_n, ngbd_c,
                                   "p4est_n", 4,
                                   "phi", NODE_DATA, 1, &phi,
@@ -3333,7 +3334,7 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
   p4est_connectivity_t* conn_nm1 = NULL;
   my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
                                 p4est_nm1, conn_nm1,
-                                P4EST_TRUE, ghost_nm1, nodes_nm1,
+                                P4EST_TRUE, n_times_dt, ghost_nm1, nodes_nm1,
                                 "p4est_nm1", 1,
                                 "vnm1_nodes", NODE_DATA, P4EST_DIM, vnm1_nodes);
   p4est_connectivity_destroy(conn_nm1);
@@ -3405,7 +3406,8 @@ void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_DIM *l
   p4est_t* p4est_nm1_saved        = p4est_copy(p4est_nm1, P4EST_FALSE);
   p4est_ghost_t* ghost_nm1_saved  = my_p4est_ghost_new(p4est_nm1_saved, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_nm1_saved, ghost_nm1_saved);
-  if(third_degree_ghost_are_required(convert_to_xyz))
+  int n_ghost_addtnl_expansions = get_cfl() > 1? (int)ceil(get_cfl() - 1) : (int)third_degree_ghost_are_required(convert_to_xyz);
+  for(int i = 0; i < n_ghost_addtnl_expansions; i++)
     my_p4est_ghost_expand(p4est_nm1_saved, ghost_nm1_saved);
   P4EST_ASSERT(ghosts_are_equal(ghost_nm1_saved, ghost_nm1));
   p4est_nodes_t* nodes_nm1_saved  = my_p4est_nodes_new(p4est_nm1_saved, ghost_nm1_saved);

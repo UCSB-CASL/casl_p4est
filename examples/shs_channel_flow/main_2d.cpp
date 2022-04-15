@@ -4,7 +4,7 @@
  * run the program with the -help flag to see the available options
  *
  * Author: Raphael Egan, with updates by Luis Ángel.
- * Updated: April 7, 2022.
+ * Updated: April 14, 2022.
  */
 
 // System
@@ -1129,7 +1129,8 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   p4est_nodes_t* nodes_nm1  = nullptr;
   channel.create_p4est_ghost_and_nodes(p4est_nm1, ghost_nm1, nodes_nm1, data, connectivity, mpi,
                                        cmd.get<int>("lmin", default_lmin), cmd.get<unsigned int>("wall_layer", default_wall_layer),
-                                       cmd.get<double>("lmid_delta_percent", default_lmid_delta_percent), cmd.get<double>("lip", default_lip));
+                                       cmd.get<double>("lmid_delta_percent", default_lmid_delta_percent), cmd.get<double>("lip", default_lip),
+									   cmd.get<double>("cfl", default_cfl));
   auto *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
   auto *ngbd_nm1      = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
   /* create the initial forest at time n (copy of the former one) */
@@ -1139,7 +1140,8 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   p4est_ghost_t *ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_n, ghost_n);
   const double tree_dim[P4EST_DIM] = {DIM(channel.length()/brick->nxyztrees[0], channel.height()/brick->nxyztrees[1], channel.width()/brick->nxyztrees[2])};
-  if(third_degree_ghost_are_required(tree_dim))
+  int n_ghost_addtnl_expansions = cmd.get<double>("cfl", default_cfl) > 1? (int)ceil(cmd.get<double>("cfl", default_cfl) - 1) : (int)third_degree_ghost_are_required(tree_dim);
+  for(int i = 0; i < n_ghost_addtnl_expansions; i++)
     my_p4est_ghost_expand(p4est_n, ghost_n);
 
   p4est_nodes_t *nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
