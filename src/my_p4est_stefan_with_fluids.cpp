@@ -1120,8 +1120,6 @@ void my_p4est_stefan_with_fluids_t::poisson_nodes_step_for_scalar_temp_conc_prob
 
   // Set RHS:
   solver_Tl->set_rhs(rhs_Tl.vec);
-  printf("1/Pe = %f \n", 1./Pe);
-  VecView(rhs_Tl.vec, PETSC_VIEWER_STDOUT_WORLD);
   if(do_we_solve_for_Ts) solver_Ts->set_rhs(rhs_Ts.vec);
 
   // Set some other solver properties:
