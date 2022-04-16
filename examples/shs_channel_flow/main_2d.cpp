@@ -1011,7 +1011,7 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
 
   delete  ns;
 
-  ns                      = new my_p4est_navier_stokes_t(mpi, backup_directory.c_str(), setup.tstart);
+  ns                      = new my_p4est_navier_stokes_t(mpi, backup_directory.c_str(), setup.tstart, cmd.get<double>("cfl", 0));	// If a cfl is provided, use that to restructure saved forest's ghost layers.
   setup.dt                = ns->get_dt();
   p4est_t *p4est_n        = ns->get_p4est();
   p4est_t *p4est_nm1      = ns->get_p4est_nm1();
