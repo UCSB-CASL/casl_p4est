@@ -27,7 +27,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: April 13, 2022.
+ * Updated: April 15, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -160,7 +160,13 @@ int main ( int argc, char* argv[] )
 		EllipsoidalLevelSet levelSet( &mpi, Point3( center ), Point3( 0, 0, 1 ), 0, &ellipsoid, h );
 		splitting_criteria_cf_and_uniform_band_t splittingCriterion( 0, octMaxRL, &levelSet, 3.0 );
 
-		// Create the forest using ellipsoidal level-set function as refinement criterion.
+		// Enable and reserve space for caching.
+		levelSet.toggleCache( true );
+		auto discreteVolumeDiff = (size_t)(3. * 4./3 * M_PI * ((a() + 2*h)*(b() + 2*h)*(c() + 2*h) - (a() - 2*h)*(b() - 2*h)*(c() - 2*h))
+			/ CUBE( h ) / mpi.size());
+		levelSet.reserveCache( discreteVolumeDiff );
+
+		// Create the forest using ellipsoidal level-set function as a refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
 		p4est->user_pointer = (void *)( &splittingCriterion );
 
@@ -211,6 +217,8 @@ int main ( int argc, char* argv[] )
 		int nNumericalSaddles;
 		levelSet.collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMaxErrors, trackedMinHK, trackedMaxHK, samples,
 								 nNumericalSaddles, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError );
+		levelSet.clearCache();
+		levelSet.toggleCache( false );
 
 		// Accumulate samples in the buffer; normalize phi by h, apply negative-mean-curvature normalization to non-saddle samples, and
 		// reorient data packets.  Then, augment samples by reflecting about y - x = 0.
@@ -229,7 +237,7 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecGetArrayRead( phiError, &phiErrorReadPtr ) );
 
 		std::ostringstream oss;
-		oss << "ellipsoid_dataset";
+		oss << "ellipsoid_dataset_id" << (int)experimentId() << "_lvl" << (int)maxRL();
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
 								7, 0, oss.str().c_str(),

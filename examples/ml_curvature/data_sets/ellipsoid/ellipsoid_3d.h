@@ -2,7 +2,7 @@
  * A collection of classes and functions related to an ellipsoid.
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: April 13, 2022.
+ * Updated: April 15, 2022.
  */
 
 #ifndef ML_CURVATURE_ELLIPSOID_3D_H
@@ -25,7 +25,7 @@
 #include <fstream>
 #include <vector>
 #include <random>
-#include <dlib/matrix.h>
+#include <dlib/optimization.h>
 
 /////////////////////////////////////////////////////// Ellipsoid in canonical space ///////////////////////////////////////////////////////
 
@@ -127,90 +127,6 @@ public:
 	}
 
 	/**
-	 * Find the angular parameters (theta, psi) for the nearest point on the surface to a query point p and its shortest distance using New-
-	 * ton's method.
-	 * @param [in] p Query point (must be in canonical coordinates).
-	 * @param [out] theta Longitude.
-	 * @param [out] psi Reduced/parametric latitude or eccentric anomaly.
-	 * @param [in] tol Convergence tolerance for Newton's method.
-	 * @param [in] maxIters Max number of iterations for Newton's root finding.
-	 * @return Shortest distance from p to the ellipsoid.
-	 * @throws invalid_argument exception if max number of iters is less than 1 or if tolerance is not in the range of (0,1).
-	 * 		   runtime_error if Newton's method doesn't converge in the allowed iterations or if new shortest dist is larger than initial guess.
-	 */
-	double findNearestPointAngularParams( const Point3& p, double& theta, double& psi, const double& tol=1e-8, const u_int& maxIters=20 ) const
-	{
-		typedef dlib::matrix<double, 2, 1> column_vector_t;
-		typedef dlib::matrix<double, 2, 2> matrix_t;
-
-		const std::string errorPrefix = _errorPrefix() + "findNearestPointAngularParams: ";
-		if( maxIters < 1 )
-			throw std::invalid_argument( errorPrefix + "Max number of iterations must be at least 1." );
-
-		if( tol <= 0 || tol >=1 )
-			throw std::invalid_argument( errorPrefix + "Tolerance must be in the range of (0, 1)." );
-
-		// Let's use Newton-Raphson's method to solve a system of non-linear equations (see http://www.ma.ic.ac.uk/~rn/distance2ellipse.pdf).
-		column_vector_t xnp1 = {											// Initial guess:
-			atan2( _a * p.y, _b * p.x ),									// theta
-			atan2( p.z, _c * sqrt( SQR( p.x ) / _a2 + SQR( p.y ) / _b2 ) )	// psi
-		};
-
-		theta = psi = NAN;									// Nothing is settled now.
-
-		// We want to solve for delta = xnp1 - xn in the system DF(xn) * delta = -g(xn) where g(xn) is a column 2-vector and DF(xn) is a
-		// 2x2 matrix.
-		auto getGAndDF = [this, &p]( const column_vector_t& t, column_vector_t& g, matrix_t & DF ){
-			double a = this->_a, a2 = this->_a2;			// Shortcuts.
-			double b = this->_b, b2 = this->_b2;
-			double c = this->_c, c2 = this->_c2;
-
-			double cosT = cos( t(0) ), cosP = cos( t(1) );
-			double sinT = sin( t(0) ), sinP = sin( t(1) );
-
-			// The g(xn) vector.
-			g(0) = (a2 - b2) * cosT * sinT * cosP - p.x * a * sinT + p.y * b * cosT;
-			g(1) = (a2 * SQR( cosT ) + b2 * SQR( sinT ) - c2) * sinP * cosP - p.x * a * sinP * cosT - p.y * b * sinP * sinT + p.z * c * cosP;
-
-			// And the Jacobian matrix.
-			DF(0,0) = (a2 - b2) * (SQR( cosT ) - SQR( sinT )) * cosP - p.x * a * cosT - p.y * b * sinT;
-			DF(0,1) = -(a2 - b2) * cosT * sinT * sinP;
-			DF(1,0) = -2 * (a2 - b2) * cosT * sinT * sinP * cosP + p.x * a * sinP * sinT - p.y * b * sinP * cosT;
-			DF(1,1) = (a2 * SQR( cosT ) + b2 * SQR( sinT ) - c2) * (SQR( cosP ) - SQR( sinP )) - p.x * a * cosP * cosT - p.y * b * cosP * sinT - p.z * c * sinP;
-		};
-
-		// Newton's method.
-		double d0 = (getXYZFromAngularParams( xnp1(0), xnp1(1) ) - p).norm_L2();	// Distance to initial guess: we must improve this.
-		double diffNorm = 1;
-		u_int iter = 0;
-		while( iter < maxIters && diffNorm > tol )
-		{
-			column_vector_t xn = xnp1;
-			column_vector_t g;
-			matrix_t DF;
-			getGAndDF( xn, g, DF );						// Evaluate g(xn) and DF(xn).
-
-			dlib::lu_decomposition<matrix_t> lu( DF );	// Use LU decomposition to solve system of equations.
-			column_vector_t delta = lu.solve( -g );
-			xnp1 = xn + delta;
-
-			diffNorm = dlib::length( delta );
-			iter++;
-		}
-
-		if( iter >= maxIters )
-			throw std::runtime_error( errorPrefix + "Newton's method failed -- reached maximum number of iterations." );
-
-		double d = (getXYZFromAngularParams( xnp1(0), xnp1(1) ) - p).norm_L2();		// Distance to nearest point as determined by Newton's method.
-		if( d > d0 )
-			throw std::runtime_error( errorPrefix + "Distance at nearest point is larger than distance at the initial guess." );
-
-		theta = xnp1(0);
-		psi = xnp1(1);
-		return SIGN( operator()( p ) ) * d;
-	}
-
-	/**
 	 * Compute the expected maximum mean curvatures, found at the ellipsoid's x-, y-, and z-intercepts.
 	 * @param [out] k Maximum mean curvatures.
 	 */
@@ -224,8 +140,126 @@ public:
 			k[i] = axs[i] * (SQR(axs[j1]) + SQR(axs[j2])) / (2 * SQR(axs[j1] * axs[j2]));
 		}
 	}
+
+	/**
+	 * Accessors.
+	 */
+	double a()  const { return _a;  }
+	double a2() const { return _a2; }
+	double b()  const { return _b;  }
+	double b2() const { return _b2; }
+	double c()  const { return _c;  }
+	double c2() const { return _c2; }
 };
 
+
+/////////////////////////////////// Distance from P to parametrized ellipsoid as a model class for dlib ////////////////////////////////////
+
+/**
+ * A function model for the distance function to the ellipsoid.  To be used with find_min_trust_region() from dlib.
+ * This class represents the function 0.5*norm(Q(u,v) - P)^2, where Q(u,v) is the parametrized surface in theta (u) and psi (v):
+ *
+ *                    | a * cos(v) * cos(u) |
+ *	        Q(u, v) = | b * cos(v) * sin(u) |, where u in [0, 2*pi) and v in [-pi/2, pi/2],
+ *                    |      c * sin(v)     |
+ *
+ * and P is the query (but fixed) point.  The goal is to find the closest point on canonical Q(u,v) to P.
+ */
+class EllipsoidPointDistanceModel
+{
+public:
+	typedef dlib::matrix<double,0,1> column_vector;
+	typedef dlib::matrix<double> general_matrix;
+
+private:
+	const Point3 P;		// Fixed query point in canonical ellipsoid's coordinates.
+	const Ellipsoid& Q;	// Reference to the ellipsoidal surface in canonical coordinates.
+
+	/**
+	 * Compute the distance from ellipsoid to a fixed point.
+	 * @param [in] m (u,v) parameters to evaluate in distance function.
+	 * @return D(u,v) = 0.5*norm(Q(u,v) - P)^2.
+	 */
+	double _evalDistance( const column_vector& m ) const
+	{
+		const double u = m(0);
+		const double v = m(1);
+
+		return 0.5*(SQR(Q.a()*cos(u)*cos(v) - P.x) + SQR(Q.b()*cos(v)*sin(u) - P.y) + SQR(Q.c()*sin(v) - P.z));
+	}
+
+	/**
+	 * Gradient of the distance function.
+	 * @param [in] m (u,v) parameters to evaluate in gradient of distance function.
+	 * @return grad(D)(u,v).
+	 */
+	column_vector _evalGradient( const column_vector& m ) const
+	{
+		const double u = m(0);
+		const double v = m(1);
+
+		// Make a column vector of length 2 to hold the gradient.
+		column_vector res( 2 );
+
+		// Now, compute the gradient vector.
+		res(0) = Q.a()*cos(v)*sin(u)*(P.x - Q.a()*cos(u)*cos(v)) - Q.b()*cos(u)*cos(v)*(P.y - Q.b()*cos(v)*sin(u)); 									// dD/du.
+		res(1) = Q.a()*cos(u)*sin(v)*(P.x - Q.a()*cos(u)*cos(v)) + Q.b()*sin(u)*sin(v)*(P.y - Q.b()*cos(v)*sin(u)) - Q.c()*cos(v)*(P.z - Q.c()*sin(v)); // dD/dv.
+		return res;
+	}
+
+	/**
+	 * The Hessian matrix for the distance function.
+	 * @param [in] m (u,v) parameters to evaluate in Hessian of distance function.
+	 * @return grad(grad(D))(u,v)
+	 */
+	dlib::matrix<double> _evalHessian ( const column_vector& m ) const
+	{
+		const double u = m(0);
+		const double v = m(1);
+
+		// Make us a 2x2 matrix.
+		dlib::matrix<double> res( 2, 2 );
+
+		// Now, compute the second derivatives.
+		res(0, 0) = cos(v)*(Q.a2()*cos(v) - Q.b2()*cos(v) + Q.a()*P.x*cos(u) + Q.b()*P.y*sin(u) - 2*Q.a2()*SQR(cos(u))*cos(v) + 2*Q.b2()*SQR(cos(u))*cos(v));	// d/du(dD/du).
+		res(1, 0) = res(0, 1) = sin(v)*(2*cos(u)*cos(v)*sin(u)*Q.a2() - P.x*sin(u)*Q.a() - 2*cos(u)*cos(v)*sin(u)*Q.b2() + P.y*cos(u)*Q.b());					// d/du(dD/dv) and d/dv(dD/du).
+		res(1, 1) = Q.c2()*SQR(cos(v)) + Q.c()*sin(v)*(P.z - Q.c()*sin(v)) + Q.a2()*SQR(cos(u)*sin(v)) + Q.b2()*SQR(sin(u)*sin(v)) +
+			Q.a()*cos(u)*cos(v)*(P.x - Q.a()*cos(u)*cos(v)) + Q.b()*cos(v)*sin(u)*(P.y - Q.b()*cos(v)*sin(u));													// d/dv(dD/dv).
+		return res;
+	}
+
+public:
+	/**
+	 * Constructor.
+	 * @param [in] p Query fixed point.
+	 * @param [in] q Ellipsoid object.
+	 */
+	EllipsoidPointDistanceModel( const Point3& p, const Ellipsoid& q ) : P( p ), Q( q ) {}
+
+	/**
+	 * Interface for evaluating the ellipsoid-point distance function.
+	 * @param [in] x The (u,v) parameters to obtain the point on the sinusoid Q(u,v).
+	 * @return D(x) = 0.5*norm(Q(x) - P)^2.
+	 */
+	double operator()( const column_vector& x ) const
+	{
+		return _evalDistance( x );
+	}
+
+	/**
+	 * Compute gradient and Hessian of the ellipsoid-point distance function.
+	 * @note The function name and parameter order shouldn't change as this is the signature that dlib expects.
+	 * @param [in] x The (u,v) parameters to calculate the point on the ellipsoid, Q(u,v).
+	 * @param [out] grad Gradient of distance function.
+	 * @param [out] H Hessian of distance function.
+	 */
+	__attribute__((unused))
+	void get_derivative_and_hessian( const column_vector& x, column_vector& grad, general_matrix& H ) const
+	{
+		grad = _evalGradient( x );
+		H = _evalHessian( x );
+	}
+};
 
 
 ////////////////////////////////////////// Level-set function for an affine-transformed ellipsoid //////////////////////////////////////////
@@ -233,13 +267,73 @@ public:
 class EllipsoidalLevelSet : public geom::AffineTransformedSpace, public CF_DIM
 {
 private:
+	double _deltaStop;						// Convergence for optimization method for finding close-to-analytical distance from a fixed
+											// point to ellipsoid.
 	const Ellipsoid *_ellipsoid;			// Ellipsoid surface in its canonical coordinate system.
 	const mpi_environment_t *_mpi;			// MPI environment.
 	const double _h;						// Mesh size (finest cell width).
+	bool _useCache = false;					// Since we compute exact signed distance functions, let's cache responses for grid nodes.
+	mutable std::unordered_map<std::string, std::pair<double, Point2>> _cache;  // Maps discrete coords to a pair with signed distance and (theta, psi).
 
 	const std::string _errorPrefix = "[CASL_ERROR] EllipsoidalLevelSet::";
 
+	/**
+	 * Retrieve discrete coordinates as a triplet normalized by h.
+	 * @param [in] x x-coordinate.
+	 * @param [in] y y-coordinate.
+	 * @param [in] z z-coordinate.
+	 * @return "i,j,k".
+	 */
+	std::string _getDiscreteCoords( const double& x, const double& y, const double& z ) const
+	{
+		return std::to_string( (int)(x/_h) ) + "," + std::to_string( (int)(y/_h) ) + "," + std::to_string( (int)(z/_h) );
+	}
+
+	/**
+	 * Compute shortest signed distance and find the angular parameters (theta, psi) for the nearest point on the surface to a query point p
+	 * using dlib.
+	 * @param [in] p Query point (must be in canonical coordinates).
+	 * @param [out] theta Longitude.
+	 * @param [out] psi Reduced/parametric latitude or eccentric anomaly.
+	 * @param [in] tol Convergence tolerance for Newton's method.
+	 * @param [in] maxIters Max number of iterations for Newton's root finding.
+	 * @return Shortest distance from p to the ellipsoid.
+	 * @throws runtime_error if optimization method fails or if new shortest distance is larger than initial guess.
+	 */
+	double _computeShortestSignedDistance( const Point3& p, double& theta, double& psi ) const
+	{
+		const std::string errorPrefix = _errorPrefix + "_findNearestPointAngularParams: ";
+
+		theta = psi = NAN;									// Nothing is settled now.
+		double initialTrustRadius = MIN( 1.0, MIN( _ellipsoid->a(), _ellipsoid->b(), _ellipsoid->c() ) );
+		column_vector initialPoint = {
+			atan2( _ellipsoid->a() * p.y, _ellipsoid->b() * p.x ),													// theta
+			atan2( p.z, _ellipsoid->c() * sqrt( SQR( p.x ) / _ellipsoid->a2() + SQR( p.y ) / _ellipsoid->b2() ) )	// psi
+		};
+
+		double d0 = (_ellipsoid->getXYZFromAngularParams( initialPoint(0), initialPoint(1) ) - p).norm_L2();	// Distance to initial guess: we must improve this.
+		double D = dlib::find_min_trust_region( dlib::objective_delta_stop_strategy( _deltaStop ),				// Append .be_verbose() for debugging.
+									 EllipsoidPointDistanceModel( p, *(_ellipsoid) ), initialPoint, initialTrustRadius );
+		double d = sqrt( 2 * D );		// D is the 0.5*||dist||^2.
+		if( d > d0 )
+			throw std::runtime_error( errorPrefix + "Distance at nearest point is larger than distance at the initial guess." );
+
+		// To verify that the numerical method work, we can check that P-Q(theta,psi) is perpendicular to the tangen plane at Q(theta,psi).
+		// @see https://www.ma.ic.ac.uk/~rn/distance2ellipse.pdf:
+		// (P-Q)·dQ/dtheta = 0  and (P-Q)·dQ/dpsi = 0
+		theta = initialPoint(0);
+		psi = initialPoint(1);
+		double cond1 = (_ellipsoid->a2()-_ellipsoid->b2())*cos(theta)*sin(theta)*cos(psi) - p.x*_ellipsoid->a()*sin(theta) + p.y*_ellipsoid->b()*cos(theta);
+		double cond2 = (SQR(_ellipsoid->a()*cos(theta)) + SQR(_ellipsoid->b()*sin(theta)) - _ellipsoid->c2())*sin(psi)*cos(psi) - p.x*_ellipsoid->a()*sin(psi)*cos(theta)
+			- p.y*_ellipsoid->b()*sin(psi)*sin(theta) + p.z*_ellipsoid->c()*cos(psi);
+		if( ABS( cond1 ) > FLT_EPSILON || ABS( cond2 ) > FLT_EPSILON )
+			throw std::runtime_error( errorPrefix + "Vector PQ is not (numerically) perpendicular to tangent plane at Q(theta,psi)." );
+		return SIGN( (*_ellipsoid)( p ) ) * d;
+	}
+
 public:
+	typedef dlib::matrix<double,0,1> column_vector;
+
 	/**
 	 * Constructor.
 	 * @param [in] mpi MPI environment.
@@ -257,47 +351,34 @@ public:
 		const std::string errorPrefix = _errorPrefix + "constructor: ";
 		if( h <= 0 )						// Invalid mesh size?
 			throw std::invalid_argument( errorPrefix + "Invalid mesh size!" );
+
+		_deltaStop = 1e-8 * _h;				// Stopping condition for trust-region minimizatin problem.
 	}
 
 	/**
-	 * Evaluate affine-transformed ellipsoidal level-set function.
+	 * Evaluate affine-transformed ellipsoidal level-set function by computing exact signed distances to the surface.
 	 * @param [in] x x-coordinate in the world frame.
 	 * @param [in] y y-coordinate in the world frame.
 	 * @param [in] z z-coordinate in the world frame.
 	 */
 	double operator()( double x, double y, double z ) const override
 	{
-		Point3 p = toCanonicalCoordinates( x, y, z );	// Transform query point to canonical coords to perform search.
-		return (*_ellipsoid)( p );
-	}
+		std::string coords;
+		if( _useCache )
+		{
+			coords = _getDiscreteCoords( x, y, z );
+			auto record = _cache.find( coords );
+			if( record != _cache.end() )
+				return (record->second).first;
+		}
 
-	/**
-	 * Compute exact signed distance to affine-transformed ellipsoidal surface and retrieve the true mean and Gaussian curvatures evaluated
-	 * at the nearest point.
-	 * @param [in] xyz Query point in world coordinates.
-	 * @param [out] H Mean curvature.
-	 * @param [out] K Gaussian curvature.
-	 * @return Exact signed distance.
-	 */
-	double computeExactSignedDistanceAndCurvatures( const double xyz[P4EST_DIM], double& H, double& K ) const
-	{
-		double theta, psi;		// The output angular parameters.
-		Point3 p = toCanonicalCoordinates( xyz );
-		double d = _ellipsoid->findNearestPointAngularParams( p, theta, psi );
-		_ellipsoid->getCurvatures( theta, psi, H, K );
-		return d;
-	}
-
-	/**
-	 * Compute exact signed distance to affine-transformed ellipsoid.
-	 * @param [in] xyz Query point in world coordinates.
-	 * @return Exact signed distance.
-	 */
-	double computeExactSignedDistance( const double xyz[P4EST_DIM] ) const
-	{
 		double theta, psi;
-		Point3 p = toCanonicalCoordinates( xyz );
-		return _ellipsoid->findNearestPointAngularParams( p, theta, psi );
+		Point3 p = toCanonicalCoordinates( x, y, z );
+		double d = _computeShortestSignedDistance( p, theta, psi );
+
+		if( _useCache )
+			_cache[coords] = std::make_pair( d, Point2( theta, psi) );	// Cache shortest distance and angular params of nearest point.
+		return d;
 	}
 
 	/**
@@ -321,7 +402,8 @@ public:
 	 * @param [out] h2kgError Vector to hold absolute Gaussian h^2*k error for sampled nodes.
 	 * @param [out] ih2kg Vector to hold linearly interpolated Gaussian h^2*k for sampled nodes.
 	 * @param [out] phiError Vector to hold phi error for sampled nodes.
-	 * @throws invalid_argument exception if phi vector.
+	 * @throws invalid_argument exception if phi vector is null.
+	 * 		   runtime_error if the cache is disabled or empty, or if a query point is not found in the cache.
 	 */
 	void collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
 						 const u_char& octMaxRL, const double xyzMin[P4EST_DIM], const double xyzMax[P4EST_DIM],
@@ -334,6 +416,9 @@ public:
 
 		if( !phi )
 			throw std::invalid_argument( errorPrefix + "phi vector can't be null!" );
+
+		if( !_useCache || _cache.empty() )
+			throw std::runtime_error( errorPrefix + "Please enable the cache and make sure is non empty before collecting samples!" );
 
 		// Get indices for locally owned candidate nodes next to Gamma.
 		NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd, (char)octMaxRL );
@@ -444,15 +529,25 @@ public:
 			std::vector<p4est_locidx_t> stencil;
 			try
 			{
+				std::string coords = _getDiscreteCoords( xyz[0], xyz[1], xyz[2] );
+				const auto record = _cache.find( coords );
+				if( record == _cache.end() )
+				{
+					std::stringstream msg;
+					msg << errorPrefix << "Couldn't find [" << Point3( xyz ) << "] (or " << coords << ") in the cache!";
+					throw std::runtime_error( msg.str() );
+				}
+
 				if( !nodesAlongInterface.getFullStencilOfNode( n , stencil ) )	//Does it have a valid stencil?
 				{
 					invalidNodes++;
 					continue;
 				}
 
-				// Valid candidate grid node.  Get its distance to ellipsoid and true curvatures at closest point.
+				// Valid candidate grid node.  Get its exact distance to ellipsoid and true curvatures at closest point.
 				double hk, h2kg;
-				double d = computeExactSignedDistanceAndCurvatures( xyz, hk, h2kg );	// If this fails, invalidate point.
+				double d = record->second.first;
+				_ellipsoid->getCurvatures( record->second.second.x, record->second.second.y, hk, h2kg );
 				hk *= _h; h2kg *= SQR( _h );
 
 				for( int c = 0; c < P4EST_DIM; c++ )			// Find the location where to (linearly) interpolate curvatures.
@@ -533,6 +628,9 @@ public:
 			}
 			catch( std::runtime_error &rt )
 			{
+#ifdef DEBUG
+				std::cerr << rt.what() << std::endl;
+#endif
 				invalidNodes++;
 			}
 		}
@@ -620,6 +718,32 @@ public:
 		trackedMaxErrors[0] = trackedMaxHKError;
 		trackedMaxErrors[1] = trackedMaxH2KGError;
 		trackedMaxErrors[2] = trackedMaxPhiError;
+	}
+
+	/**
+	 * Turn on/off cache for faster distance retrieval.
+	 * @param [in] useCache True to enable cache, false to disable it.
+	 */
+	void toggleCache( const bool& useCache )
+	{
+		_useCache = useCache;
+	}
+
+	/**
+	 * Empty cache.
+	 */
+	void clearCache()
+	{
+		_cache.clear();
+	}
+
+	/**
+	 * Reserve space for cache.  Call this function at the beginning of queries or octree construction.
+	 * @param [in] n Reserve size.
+	 */
+	void reserveCache( const size_t& n )
+	{
+		_cache.reserve( n );
 	}
 };
 
