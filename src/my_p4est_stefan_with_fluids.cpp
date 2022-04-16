@@ -290,7 +290,7 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   // ----------------------------------------------
   // Temperature problem variables -- nondim:
   // ----------------------------------------------
-  deltaT = theta_infty = theta_infty = theta0 = 0.;
+  deltaT = theta_infty = theta_interface = theta0 = 0.;
 
   // -------------------------------------------------------
   // Auxiliary initializations:
@@ -1030,6 +1030,8 @@ void my_p4est_stefan_with_fluids_t::poisson_nodes_step_for_scalar_temp_conc_prob
                           phi_dd.vec[0], phi_dd.vec[1],
                           *bc_interface_type_temp[LIQUID_DOMAIN],
                           *bc_interface_val_temp[LIQUID_DOMAIN], *bc_interface_robin_coeff_temp[LIQUID_DOMAIN]);
+//  PetscPrintf(mpi->comm(), "bc interface type = %d, bc interface val = %f, robin coeff = %f \n",
+//              *bc_interface_type_temp[LIQUID_DOMAIN], (*bc_interface_val_temp[LIQUID_DOMAIN])(1.,1.), *bc_interface_robin_coeff_temp[LIQUID_DOMAIN]);
 
   if(do_we_solve_for_Ts){
     solver_Ts->add_boundary(MLS_INTERSECTION, phi_solid.vec,
@@ -1118,16 +1120,20 @@ void my_p4est_stefan_with_fluids_t::poisson_nodes_step_for_scalar_temp_conc_prob
 
   // Set RHS:
   solver_Tl->set_rhs(rhs_Tl.vec);
+  printf("1/Pe = %f \n", 1./Pe);
+  VecView(rhs_Tl.vec, PETSC_VIEWER_STDOUT_WORLD);
   if(do_we_solve_for_Ts) solver_Ts->set_rhs(rhs_Ts.vec);
 
   // Set some other solver properties:
   solver_Tl->set_integration_order(1);
-  solver_Tl->set_use_sc_scheme(0);
+//  solver_Tl->set_use_sc_scheme(0);
+  solver_Tl->set_fv_scheme(0);
   solver_Tl->set_cube_refinement(cube_refinement);
   solver_Tl->set_store_finite_volumes(0);
   if(do_we_solve_for_Ts){
     solver_Ts->set_integration_order(1);
-    solver_Ts->set_use_sc_scheme(0);
+//    solver_Ts->set_use_sc_scheme(0);
+    solver_Ts->set_fv_scheme(0);
     solver_Ts->set_cube_refinement(cube_refinement);
     solver_Ts->set_store_finite_volumes(0);
   }
@@ -1143,7 +1149,9 @@ void my_p4est_stefan_with_fluids_t::poisson_nodes_step_for_scalar_temp_conc_prob
   if(do_we_solve_for_Ts) solver_Ts->preassemble_linear_system();
 
   // Solve the system:
+  PetscPrintf(mpi->comm(), "AAA\n");
   solver_Tl->solve(T_l_n.vec, false, true, KSPBCGS, PCHYPRE);
+  PetscPrintf(mpi->comm(), "BBB\n");
   if(do_we_solve_for_Ts) solver_Ts->solve(T_s_n.vec, false, true, KSPBCGS, PCHYPRE);
 
   // Delete solvers:
@@ -1792,10 +1800,29 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
 
   ns->set_velocities(v_nm1.vec, v_n.vec);
 
-  PetscPrintf(mpi->comm(),"NS solver initialization: CFL_NS: %0.2f, rho : %0.2f, mu : %0.3e \n",cfl_NS,rho_l,mu_l);
+  // To-do: move this switch case to the set parameters fxn since it makes more sense to have it there
+  switch(problem_dimensionalization_type){
+  case NONDIM_BY_FLUID_VELOCITY:
+    PetscPrintf(mpi->comm(),"NS solver initialization: CFL_NS: %0.2f, rho position : %0.2f, mu position : %0.3e \n",
+                cfl_NS, 1. , 1./Re);
+    break;
+  case NONDIM_BY_SCALAR_DIFFUSIVITY:
+    PetscPrintf(mpi->comm(),"NS solver initialization: CFL_NS: %0.2f, rho position : %0.2f, mu position : %0.3e \n", cfl_NS, 1., is_dissolution_case? Sc:Pr);
+    break;
+  case DIMENSIONAL:
+    PetscPrintf(mpi->comm(),"NS solver initialization: CFL_NS: %0.2f, rho position : %0.2f, mu position : %0.3e \n", cfl_NS, rho_l,mu_l);
+    break;
+  default:
+    break;
+  }
 
   // Use a function to set ns parameters to avoid code duplication
   set_ns_parameters();
+
+  // Set an initial norm for the first hodge iteration
+  NS_norm = NS_max_allowed;
+
+  PetscPrintf(mpi->comm(), "NS norm max allowed = %f, NS norm = %f \n", NS_max_allowed, NS_norm);
 
 } // end of "initialize_ns_solver()"
 
@@ -3116,9 +3143,54 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
   // (1) Poisson Problem at Nodes (for temp and/or conc scalar fields):
   // Setup and solve a Poisson problem on both the liquid and solidified subdomains
   // ------------------------------------------------------------
+  if(0){
+    // -------------------------------
+    // TEMPORARY: save phi_eff fields to see what we are working with
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "T_l"));
+
+
+    const char* out_dir = getenv("OUT_DIR_VTK");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+    //          char output[] = "/home/elyce/workspace/projects/multialloy_with_fluids/output_two_grain_clogging/gradP_0pt01_St_0pt07/grid57_flush_no_collapse_after_extension_bc_added";
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_before_poisson_%d", out_dir, tstep);
+    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+
+  }
+
   if(solve_stefan){
     setup_and_solve_poisson_nodes_problem_for_scalar_temp_conc();
   } // end of "if solve stefan"
+  if(0){
+    // -------------------------------
+    // TEMPORARY: save phi_eff fields to see what we are working with
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "T_l"));
+
+
+    const char* out_dir = getenv("OUT_DIR_VTK");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+    //          char output[] = "/home/elyce/workspace/projects/multialloy_with_fluids/output_two_grain_clogging/gradP_0pt01_St_0pt07/grid57_flush_no_collapse_after_extension_bc_added";
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_after_poisson_%d", out_dir, tstep);
+    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+
+  }
   // ------------------------------------------------------------
   // (2) Computation of the interfacial velocity
   // ------------------------------------------------------------
@@ -3157,7 +3229,7 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
     if(did_crash){
       char crash_tag[10];
       sprintf(crash_tag, "VINT");
-      save_fields_to_vtk(true, crash_tag);
+      save_fields_to_vtk(0, true, crash_tag);
     }
   } // end of "if solve stefan"
 

@@ -5208,6 +5208,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
 
             bc_coeffs[i] = bc_coeff_proj;
             bc_values[i] = bc_value_proj;
+
           }
 
           // wall pieces

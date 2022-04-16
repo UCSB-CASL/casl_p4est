@@ -1035,7 +1035,6 @@ public:
       // From these, we compute a characteristic velocity, Peclet number, Stefan number, etc.
       // This is also then used to specify the time_nondim_to_dim and vel_nondim_to_dim conversions
       u_inf = (Re*mu_l)/(rho_l * l_char);
-      // Rochi temp change
 
       if(!is_dissolution_case){
         Pe = l_char * u_inf/alpha_l;
