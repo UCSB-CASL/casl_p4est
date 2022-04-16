@@ -3321,11 +3321,13 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
   point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
   point_fields.push_back(Vec_for_vtk_export_t(kappa.vec, "kappa"));
 
+
   //phi substrate and phi eff
   if(there_is_a_substrate){
     point_fields.push_back(Vec_for_vtk_export_t(phi_eff.vec, "phi_eff"));
     point_fields.push_back(Vec_for_vtk_export_t(phi_substrate.vec, "phi_sub"));
   }
+
   // stefan related fields
   if(solve_stefan){
     point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl"));
@@ -3338,10 +3340,16 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
 
   if(solve_navier_stokes){
     point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "u"));
+
     point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "v"));
-    point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
-    point_fields.push_back(Vec_for_vtk_export_t(press_nodes.vec, "pressure"));
+
+    if(tstep!=0){
+        point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
+        point_fields.push_back(Vec_for_vtk_export_t(press_nodes.vec, "pressure"));
+
+    }
   }
+;
   if(track_evolving_geometries && !is_crash){
     island_numbers.create(p4est_np1, nodes_np1);
     track_evolving_geometry();
@@ -3349,6 +3357,7 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
   }
 
   std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
 
   my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ghost_np1,
                                P4EST_TRUE,P4EST_TRUE, output,

@@ -5026,6 +5026,12 @@ int main(int argc, char** argv) {
                                          cfl_NS_steady, hodge_percentage_steady);
     stefan_w_fluids_solver->perform_initializations();
 
+    if(save_to_vtk){
+        out_idx=0;
+        stefan_w_fluids_solver->set_tstep(0);
+        stefan_w_fluids_solver->save_fields_to_vtk(out_idx);
+    }
+
     // Initialize tn and tstep
     if(loading_from_previous_state){
       tn = stefan_w_fluids_solver->get_tn();
