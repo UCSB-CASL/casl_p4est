@@ -378,7 +378,9 @@ namespace kml
 		 * @param [in] h Mesh size for h-normalizing phi values.
 		 * @param [in] negMeanKNormalize 0 if we don't want negative-mean-curvature normalization for all samples
 		 * 			   or 1 if we do, independently of ih2kg; use 2 for deciding normalization based on ih2kg values
-		 * 			   individually.
+		 * 			   individually AND to prevent changing the sign of hk and ihk.  This is useful to create data
+		 * 			   sets for offline evaluation that contains all columns of a learning data set but with hk, ihk,
+		 * 			   h2kg, and ih2kg preserve with their original signs.
 		 * @return Number of samples collected from all processes.
 		 * @throws invalid_argument if user chooses an invalid option for negative-curvature normalization.
 		 */

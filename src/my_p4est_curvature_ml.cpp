@@ -582,8 +582,20 @@ int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::
 	for( size_t i = 0; i < samples.size(); i++ )
 	{
 		// Use numerical mean ihk to determine sign: ihk comes after true hk.  Normalize only if requested.
-		if( negMeanKNormalize == 1 ONLY3D(|| (negMeanKNormalize == 2 && samples[i][K_INPUT_SIZE_LEARN - 1] >= 0)) )
+		if( negMeanKNormalize == 1 )
 			normalizeToNegativeCurvature( samples[i], samples[i][K_INPUT_SIZE - (P4EST_DIM - 2)], true );
+#ifdef P4_TO_P8
+		else
+		{
+			if( negMeanKNormalize == 2 && samples[i][K_INPUT_SIZE_LEARN - 1] >= 0 )	// Data set for offline evaluation?
+			{																		// Allows us to send normalized and reoriented data,
+				double hkSign = SIGN( samples[i][K_INPUT_SIZE - (P4EST_DIM - 1)] );	// except for the hk, ihk, h2kg, and ih2kg fields.
+				normalizeToNegativeCurvature( samples[i], samples[i][K_INPUT_SIZE - (P4EST_DIM - 2)], false );	// Leverage the 'learning' flag to avoid touching ihk.
+				samples[i][K_INPUT_SIZE - (P4EST_DIM - 1)] = hkSign * ABS( samples[i][K_INPUT_SIZE - (P4EST_DIM - 1)] );	// Restore sign.
+			}
+		}
+#endif
+
 #ifdef P4_TO_P8
 		rotateStencilToFirstOctant( samples[i] );								// Reorientation.
 #else

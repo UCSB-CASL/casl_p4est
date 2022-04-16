@@ -125,12 +125,12 @@ int main ( int argc, char* argv[] )
 		const double maxHK_c = maxK[2] * h;
 
 		// Prepping the params.
-		const std::string DATA_PATH = outDir() + "/" + std::to_string( maxRL() ) + "/ellipsoid";
-		writeParamsFile( mpi, DATA_PATH, "params_" + std::to_string( experimentId() ) + ".csv", a(), b(), c(), maxHK_a, maxHK_b, maxHK_c );
+		const std::string DATA_PATH = outDir() + "/" + std::to_string( maxRL() ) + "/ellipsoid/" + std::to_string( experimentId() );
+		writeParamsFile( mpi, DATA_PATH, "iter" + std::to_string( reinitIters() ) + "_params.csv", a(), b(), c(), maxHK_a, maxHK_b, maxHK_c );
 
 		// Prepping the samples file.  Only rank 0 writes the samples to a file.
 		std::ofstream file;
-		std::string fileName = "data_" + std::to_string( experimentId() ) + ".csv";
+		std::string fileName = "iter" + std::to_string( reinitIters() ) + "_data.csv";
 		kml::utils::prepareSamplesFile( mpi, DATA_PATH, fileName, file );
 
 		///////////////////////////////////////////////////////// Data production //////////////////////////////////////////////////////////
@@ -221,7 +221,8 @@ int main ( int argc, char* argv[] )
 		levelSet.toggleCache( false );
 
 		// Accumulate samples in the buffer; normalize phi by h, apply negative-mean-curvature normalization to non-saddle samples, and
-		// reorient data packets.  Then, augment samples by reflecting about y - x = 0.
+		// reorient data packets.  The last 2 parameter avoids flipping the signs of hk, ihk, h2kg, and ih2kg.  Then, augment samples by
+		// reflecting about y - x = 0.
 		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, 2 );
 		int nSamples = saveSamples( mpi, buffer, bufferSize, file );
 
