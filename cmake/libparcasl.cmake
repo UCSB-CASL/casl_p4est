@@ -140,6 +140,7 @@ if( DIMENSION MATCHES 2d )
 #			${PARCASL}src/my_p4est_xgfm_cells.h
 			${PARCASL}src/voronoi2D.h
 			${PARCASL}src/my_p4est_fast_sweeping.h
+            ${PARCASL}src/my_p4est_stefan_with_fluids.h
 			${PARCASL}src/my_p4est_nodes_along_interface.h )
 
 	list( APPEND SOURCES
@@ -194,6 +195,7 @@ if( DIMENSION MATCHES 2d )
 #			${PARCASL}src/my_p4est_xgfm_cells.cpp
 			${PARCASL}src/voronoi2D.cpp
 			${PARCASL}src/my_p4est_fast_sweeping.cpp
+            ${PARCASL}src/my_p4est_stefan_with_fluids.cpp
 			${PARCASL}src/my_p4est_nodes_along_interface.cpp )
 
 	# headers-only stuff
