@@ -1270,8 +1270,9 @@ DEFINE_PARAMETER(pl, double, flush_dim_time, -10.0, "Time (in seconds) at which 
 DEFINE_PARAMETER(pl,bool,perturb_initial_flow,false,"Perturb initial flow? For melting refinement case. Default: true. Applies to initial condition for velocity field. ");
 
 void simulation_time_info(){
-  t_ramp /= time_nondim_to_dim; // divide input in seconds by time_nondim_to_dim because we are going from dim--> nondim
-  save_every_dt/=time_nondim_to_dim; // convert save_every_dt input (in seconds) to nondimensional time
+  // TO-DO: handle ramp case now that we are using class
+//  t_ramp /= time_nondim_to_dim; // divide input in seconds by time_nondim_to_dim because we are going from dim--> nondim
+//  save_every_dt/=time_nondim_to_dim; // convert save_every_dt input (in seconds) to nondimensional time
 
 
   // dt_max_allowed will be set according to the grid size. If a different value is desired, the user may overwrite it below by simply defining it as something else in the relevant example block
@@ -1304,6 +1305,7 @@ void simulation_time_info(){
     case DISSOLVING_DISK_BENCHMARK:{
       tstart = 0.0;
       dt_max_allowed = 10.0;
+//      dt_max_allowed = 0.01;
 
       dt = 1.0e-3; // initial timestep
       break;
@@ -2585,6 +2587,7 @@ class BC_interface_coeff: public CF_DIM{
       //        double Da = k_diss*l_char/D;
       //return Da/Pe;//(k_diss*l_diss/D_diss);//(k_diss/u_inf); // Coefficient in front of C
       // ^^^ 12/17/21 why on earth did i have an effing peclet number there ???? aahhhhhhh
+//      return 1.0;
       return Da;
     }
   }
@@ -2757,6 +2760,7 @@ class BC_interface_value_velocity: public my_p4est_stefan_with_fluids_t::interfa
       case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case DISSOLVING_DISK_BENCHMARK:
+//        return 0.;
         if(!solve_stefan) return 0.;
         else{
           return Conservation_of_Mass(DIM(x,y,z));
@@ -3299,7 +3303,7 @@ void setup_analytical_ics_and_bcs_for_this_tstep(BC_INTERFACE_VALUE_TEMP* bc_int
 
 
 // Want to handle this in main (V)
-bool are_we_saving_vtk(double tstep_, double tn_,bool is_load_step, int& out_idx, bool get_new_outidx){
+bool are_we_saving_vtk(double tstep_, double tn_, bool is_load_step, int& out_idx, bool get_new_outidx){
   bool out = false;
   if(save_to_vtk){
     if(save_using_dt){
@@ -4141,7 +4145,9 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   stefan_w_fluids_solver->set_proximity_smoothing(proximity_smoothing);
   stefan_w_fluids_solver->set_proximity_collapse(proximity_collapse);
 
-  stefan_w_fluids_solver->set_NS_max_allowed(NS_max_allowed);
+
+
+
   stefan_w_fluids_solver->set_v_interface_max_allowed(v_int_max_allowed);
   // ------------------------------
   // Make sure your flags are set to solve at least one of the problems:
@@ -4264,6 +4270,9 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   }
   stefan_w_fluids_solver->set_hodge_percentage_of_max_u(hodge_percentage_of_max_u);
   stefan_w_fluids_solver->set_hodge_max_iteration(50);
+
+  stefan_w_fluids_solver->set_NS_max_allowed(max(NS_max_allowed, u0*10.));
+  PetscPrintf(mpi.comm()," we are setting %f \n",max(NS_max_allowed, u0*10.) );
   // INSERT HERE: Set values in solver?
   // INSERT HERE: set_nondimensional_groups() (from solver);
 
@@ -4271,6 +4280,9 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   stefan_w_fluids_solver->set_refine_by_d2T(refine_by_d2T);
   stefan_w_fluids_solver->set_d2T_ref_threshold(gradT_threshold);
   stefan_w_fluids_solver->set_vorticity_ref_threshold(vorticity_threshold);
+
+  // Reinitialization:
+  stefan_w_fluids_solver->set_reinit_every_iter(reinit_every_iter);
 
 
 
@@ -5014,6 +5026,12 @@ int main(int argc, char** argv) {
                                          cfl_NS_steady, hodge_percentage_steady);
     stefan_w_fluids_solver->perform_initializations();
 
+    if(save_to_vtk){
+        out_idx=0;
+        stefan_w_fluids_solver->set_tstep(0);
+        stefan_w_fluids_solver->save_fields_to_vtk(out_idx);
+    }
+
     // Initialize tn and tstep
     if(loading_from_previous_state){
       tn = stefan_w_fluids_solver->get_tn();
@@ -5027,7 +5045,10 @@ int main(int argc, char** argv) {
     // Restrict the timestep if we are saving every dt
     // TO-DO: saving every dt could probably be done more cleanly
     if(save_using_dt){
+      PetscPrintf(mpi.comm(), "save_every_dt = %f  sec, time nondim 2 dim = %e  ", save_every_dt, time_nondim_to_dim);
       save_every_dt/=time_nondim_to_dim;
+      PetscPrintf(mpi.comm(), "save_every_dt = %f  nondim ", save_every_dt);
+
       stefan_w_fluids_solver->set_dt_max_allowed(save_every_dt - EPS);
     }
 
