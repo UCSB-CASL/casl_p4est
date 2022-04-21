@@ -672,7 +672,8 @@ public:
     delete cell_solver;
   }
   double solve_projection(my_p4est_poisson_cells_t* &cell_poisson_solver, const bool& use_initial_guess = false, const KSPType& ksp = KSPBCGS, const PCType& pc = PCSOR,
-                          const bool& shift_to_zero_mean_if_floating = true, Vec hodge_old = NULL, Vec former_dxyz_hodge[P4EST_DIM] = NULL, const hodge_control& dxyz_hodge_chek = hodge_value);
+                          const bool& shift_to_zero_mean_if_floating = true, Vec hodge_old = NULL, Vec former_dxyz_hodge[P4EST_DIM] = NULL, const hodge_control& dxyz_hodge_chek = hodge_value,
+						  const double& ksp_rtol=1e-12, const bool& verbose=false);
 
   /*!
    * \brief get_correction_in_hodge_derivative_for_enforcing_mass_flow

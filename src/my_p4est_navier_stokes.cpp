@@ -1223,8 +1223,10 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
 /* solve the projection step
  * laplace Hodge = -div(vstar)
  */
-double my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_solver, const bool& use_initial_guess, const KSPType& ksp, const PCType& pc,
-                                                  const bool& shift_to_zero_mean_if_floating, Vec hodge_old, Vec former_dxyz_hodge[P4EST_DIM], const hodge_control& hodge_chek)
+double my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_solver, const bool& use_initial_guess, const KSPType& ksp,
+												  const PCType& pc, const bool& shift_to_zero_mean_if_floating, Vec hodge_old,
+												  Vec former_dxyz_hodge[P4EST_DIM], const hodge_control& hodge_chek, const double& ksp_rtol,
+												  const bool& verbose)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_projection, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1261,7 +1263,7 @@ double my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cel
   }
   cell_solver->set_mu(1.0);
   cell_solver->set_rhs(rhs);
-  cell_solver->solve(hodge, use_initial_guess, ksp, pc);
+  cell_solver->solve(hodge, use_initial_guess, ksp, pc, ksp_rtol, verbose);
 
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
 

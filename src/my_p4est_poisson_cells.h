@@ -156,6 +156,7 @@ public:
 
   inline bool get_matrix_has_nullspace() { return matrix_has_nullspace; }
 
-  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
+  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR,
+			 const PetscReal& ksp_rtol=1e-12, const bool& verbose=false);
 };
 #endif // MY_P4EST_POISSON_CELL_BASE_H

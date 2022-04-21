@@ -4,7 +4,7 @@
  * run the program with the -help flag to see the available options
  *
  * Author: Raphael Egan, with updates by Luis Ángel.
- * Updated: April 14, 2022.
+ * Updated: April 20, 2022.
  */
 
 // System
@@ -106,6 +106,7 @@ const hodge_control def_hodge_control         = uvw_components;
 const unsigned int default_grid_update        = 1;
 const std::string default_pc_cell             = "sor";			// NOLINT.
 const std::string default_cell_solver         = "bicgstab";		// NOLINT.
+const double default_cell_solver_rtol		  = 1e-12;
 const std::string default_pc_face             = "sor";			// NOLINT.
 const unsigned int default_save_nstates       = 1;
 const unsigned int default_nexport_avg        = 100;
@@ -185,6 +186,8 @@ struct simulation_setup
   const std::string des_pc_cell;
   const std::string des_solver_cell;
   const std::string des_pc_face;
+  const double cell_solver_rtol;
+  const bool cell_solver_verbose;
   KSPType cell_solver_type;
   PCType pc_cell, pc_face;
   const flow_setting flow_condition;
@@ -222,6 +225,8 @@ struct simulation_setup
     nterms_in_series(cmd.get<int>("nterms", default_nterms)),
     des_pc_cell(cmd.get<std::string>("pc_cell", default_pc_cell)),
     des_solver_cell(cmd.get<std::string>("cell_solver", default_cell_solver)),
+	cell_solver_rtol(cmd.get<double>("cell_solver_rtol", default_cell_solver_rtol)),
+	cell_solver_verbose(cmd.contains("cell_solver_verbose")),
     des_pc_face(cmd.get<std::string>("pc_face", default_pc_face)),
     flow_condition((cmd.contains("Re_tau") ? constant_pressure_gradient : (cmd.contains("Re_b") ? constant_mass_flow : undefined_flow_condition))),
     Reynolds((cmd.contains("Re_tau") ? cmd.get<double>("Re_tau") : (cmd.contains("Re_b") ? cmd.get<double>("Re_b") : NAN))),
@@ -295,6 +300,8 @@ struct simulation_setup
         std::cerr << "The desired preconditioner for the face-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << std::endl;
       pc_face = PCSOR;
     }
+	if(cell_solver_rtol <= 0 || cell_solver_rtol >= 1)
+	  throw std::invalid_argument("simulation_setup::simulation_setup(): Krylov solver relative tolerance must be in the range of (0, 1).");
 
     if (cmd.contains("Re_b") && cmd.contains("Re_tau")) // safeguard...
       throw std::invalid_argument("simulation_setup::simulation_setup(): forcing a constant bulk velocity AND a constant pressure gradient cannot be done: you have to choose only one!");
@@ -1070,7 +1077,7 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   data = new splitting_criteria_cf_and_uniform_band_shs_t(cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl),
       channel.lmax(), &channel, uniform_band, channel.delta(), cmd.get<double>("lmid_delta_percent", default_lmid_delta_percent ), lip);
   auto* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
-  bool fix_restarted_grid = (channel.lmax() != to_delete->max_lvl);
+  bool fix_restarted_grid = (channel.lmax() != to_delete->max_lvl || cmd.get<double>("cfl", ns->get_cfl()) != ns->get_cfl());
   delete to_delete;
   p4est_n->user_pointer   = (void*) data;
   p4est_nm1->user_pointer = (void*) data; // p4est_n and p4est_nm1 always point to the same splitting_criteria_t no need to delete the nm1 one, it's just been done
@@ -1535,6 +1542,8 @@ int main (int argc, char* argv[])
   cmd.add_option("grid_update",         "number of time steps between grid updates, default is " + std::to_string(default_grid_update));
   cmd.add_option("pc_cell",             "preconditioner for cell-solver: jacobi, sor or hypre, default is " + default_pc_cell);
   cmd.add_option("cell_solver",         "Krylov solver used for cell-poisson problem, i.e. hodge variable: cg or bicgstab, default is " + default_cell_solver);
+  cmd.add_option("cell_solver_rtol",	"Krylov solver relative tolerance; default is " + std::to_string( default_cell_solver_rtol ) );
+  cmd.add_option("cell_solver_verbose",	"Print stats about the Krylov solver at every Hodge iteration");
   cmd.add_option("pc_face",             "preconditioner for face-solver: jacobi, sor or hypre, default is " + default_pc_face);
   cmd.add_option("nterms",              "number of terms used in the truncated series of the analytical solution (used for initialization and accuracy check is desired). Default is " + std::to_string(default_nterms));
   // output-control parameters
@@ -1618,7 +1627,9 @@ int main (int argc, char* argv[])
       check_voronoi_tesselation_and_print_warnings_if_wrong(ns, face_solver);
 #endif
 
-      convergence_check_on_dxyz_hodge = ns->solve_projection(cell_solver, (cell_solver != nullptr), setup.cell_solver_type, setup.pc_cell, false, nullptr, dxyz_hodge_old, setup.control_hodge);
+      convergence_check_on_dxyz_hodge = ns->solve_projection(cell_solver, (cell_solver != nullptr), setup.cell_solver_type, setup.pc_cell,
+															 false, nullptr, dxyz_hodge_old, setup.control_hodge, setup.cell_solver_rtol,
+															 setup.cell_solver_verbose);
 
       flow_controller->evaluate_current_mass_flow(ns);
       if (setup.flow_condition == constant_mass_flow)
