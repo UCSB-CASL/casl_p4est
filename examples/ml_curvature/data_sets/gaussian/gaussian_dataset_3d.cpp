@@ -1,12 +1,35 @@
 /**
- * Generating samples using a 2D Gaussian surface embedded in 3D.
+ * Generate samples from a Gaussian surface for *offline inference* (i.e., using Python).  The canonical surface is a Monge patch represen-
+ * ted by
  *
- * Filenames are of the form "#/gaussian_$.csv", where # is the unit-cube maximum level of refinement and $ is the
- * Gaussian height index (i.e., 0, 1,... ).
+ *                                           Q(u,v) = a*exp(-0.5*(u^2/su^2 + v^2/sv^2)),
+ *
+ * with zero means mu=mv=0, variances su^2 and sv^2, and height a.  As for the level-set function whose Gamma = Q(u,v), phi < 0 for points
+ * below Q(u,v), and phi > 0 for points above the Gaussian.  We simplify calculations by expressing query points in terms of the canonical
+ * frame, which can be affected by a rigid transformation (i.e., translation and rotation).
+ *
+ * Theoretically, the Gaussian curvature can be positive and negative.  Thus, this data set can be used to test the neural network trained
+ * for saddle points.  In any case, if a point belongs to a non-saddle region (i.e., ih2kg > 0), it'll be negative-mean-curvature normalized
+ * by taking the sign of ihk.  On the other hand, if the point belongs to a (numerical) saddle region, its sample won't be negative-
+ * curvature-normalized.  Then, we apply sample reorientation by rotating the stencil so that the (possibly updated) gradient has all its
+ * components non-negative.  Finally, we reflect the data packet about the y - x = 0 plane, and thus we produce two samples for each inter-
+ * face point.  At inference time, both outputs are averaged to improve accuracy.
+ *
+ * Negative-curvature normalization depends on the sign of the linearly interpolated mean ihk at the interface.  As for the Gaussian
+ * curvature, we normalize it by scaling it with h^2 ---which leads to the true h2kg and the linearly interpolated ih2kg values in the
+ * collected data packets.
+ *
+ * The sample file is of the form "#/gaussian/$/iter%_data.csv", and the params file is "#/gaussian/$/iter%_params.csv", where # is the
+ * unit-octree max level of refinement, $ is the experiment id, and % is the number of redistancing steps.  The data file contains as many
+ * rows as twice the number of collected samples with all data-packet info.  The params file stores the values for "a", "su^2", and "sv^2"
+ * and the maximum (true) "hk" at the peak.  In addition, we export VTK data for visualization and validation.
+ *
+ * @note Here and across related files to machine-learning computation of mean curvature use the geometrical definition of mean curvature;
+ * that is, H = 0.5(k1 + k2), where k1 and k2 are principal curvatures.
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 21, 2022.
+ * Updated: April 20, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -29,28 +52,36 @@
 #include <cassert>
 
 
-void printLogHeader( const mpi_environment_t& mpi );
+void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, const std::string& fileName,
+					  const double& a, const double& su2, const double& sv2, const double& hk );
+
+int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>& buffer, int& bufferSize, std::ofstream& file );
+
+GaussianLevelSet *setupDomain( const mpi_environment_t& mpi, const Gaussian& gaussian, const double& h, const double origin[P4EST_DIM],
+							   const u_char& maxRL, u_char& octMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
+							   double xyz_max[P4EST_DIM] );
 
 
 int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<double>         minHK( pl, 0.01, "minHK", "Minimum mean dimensionless curvature (default: 0.01 = twice 0.005 from 2D)" );
-	param_t<double>         maxHK( pl, 4./3, "maxHK", "Maximum mean dimensionless curvature (default: 4/3 = twice 2/3 from 2D)" );
-	param_t<u_char>         maxRL( pl,    6, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
-	param_t<int>      reinitIters( pl,   10, "reinitIters", "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>  probMidMaxHK( pl,  1.0, "probMidMaxHK", "Easing-off max probability for mean max HK (default: 1.0)" );
-	param_t<u_short>    startAIdx( pl,    0, "startAIdx", "Start index for Gaussian height (default: 0)" );
-	param_t<float> histMedianFrac( pl,  0.2, "histMedianFrac", "Histogram subsampling median fraction (default: 0.2)" );
-	param_t<std::string>   outDir( pl,  ".", "outDir", "Path where files will be written to (default: build folder)" );
+	param_t<u_char> experimentId( pl,    0, "experimentId"	, "Experiment Id (default: 0)" );
+	param_t<double>        maxHK( pl, 2./3, "maxHK"			, "Desired maximum (absolute) dimensionless mean curvature at the peak.\n"
+														  	  "Must be in the range of (1/3, 2/3) (default: 2/3)" );
+	param_t<u_char>        maxRL( pl,    6, "maxRL"			, "Maximum level of refinement per unit-cube octree (default: 6)" );
+	param_t<int>     reinitIters( pl,   10, "reinitIters"	, "Number of iterations for reinitialization (default: 10)" );
+	param_t<double>            a( pl,  0.5, "a"				, "Gaussian amplitude (i.e., Q(0,0)) in the range of [16h, 64h] (default 0.5)" );
+	param_t<double>    susvRatio( pl,   2., "susvRatio"		, "The ratio su/sv in the range of [1, 2] (default: 2)" );
+	param_t<bool>  perturbOrigin( pl, true, "perturbFrame"	, "Whether to perturb the Gaussian's frame randomly in [-h/2,+h/2]^3 (default: true)" );
+	param_t<std::string>  outDir( pl,  ".", "outDir"		, "Path where files will be written to (default: build folder)" );
 
-	// These random generators are initialized to the same seed across processes.
-	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes.
-	std::mt19937 genTrans{};	// NOLINT This engine is used for the random shift of the Gaussian's canonical frame.
+	std::mt19937 gen{};	// NOLINT This engine is used for the random shift of the Gaussian's canonical frame.
 
 	try
 	{
+		////////////////////////////////////////////////////////// Parameter setup /////////////////////////////////////////////////////////
+
 		// Initializing parallel environment.
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
@@ -58,317 +89,209 @@ int main ( int argc, char* argv[] )
 		// Loading parameters from command line.
 		cmdParser cmd;
 		pl.initialize_parser( cmd );
-		if( cmd.parse( argc, argv, "Generating a Gaussian data set" ) )
+		if( cmd.parse( argc, argv, "Generating Gaussian data set for offline evaluation of a trained error-correcting neural network" ) )
 			return 0;
 		pl.set_from_cmd_all( cmd );
 
-		CHKERRXX( PetscPrintf( mpi.comm(), "\n**************** Generating a Gaussian data set in 3D ****************\n" ) );
+		// Parameter validation.
+		if( reinitIters() <= 0 )
+			throw std::invalid_argument( "[CASL_ERROR] Number of reinitializating iterations must be strictly positive." );
+
+		if( maxHK() <= 1./3 || maxHK() >= 2./3 )
+			throw std::invalid_argument( "[CASL_ERROR] Desired max hk must be in the range of (1/3, 2/3)." );
+
+		if( susvRatio() < 1 || susvRatio() > 2 )
+			throw std::invalid_argument( "[CASL_ERROR] The ratio su/sv must be in the range of [1, 2]." );
+
+		const double h = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
+
+		if( a() < 16 * h || a() > 64 * h )
+			throw std::invalid_argument( "[CASL_ERROR] Gaussian amplitude must be in the range of [16h, 64h]." );
+
+		const double MAX_K = maxHK() / h;					// Now that we know the parameters are valid, find max hk and variances.
+		const double SV2 = a() * (1 + SQR( susvRatio() )) / (2 * SQR( susvRatio() * MAX_K ));
+		const double SU2 = SQR( susvRatio() ) * SV2;
+
+		Gaussian gaussian( a(), SU2, SV2 );
+
+		std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer;	// Buffer of accumulated (normalized and augmented) samples.
+		double origin[P4EST_DIM] = {0, 0, 0};				// Gaussian's frame origin (possible perturbed).
+		double trackedMinHK = DBL_MAX;						// We want to track min and max mean |hk*| for debugging.
+		double trackedMaxHK = 0;
+		if( mpi.rank() == 0 )			// Only rank 0 controls the buffer and perturbs the Gaussian's frame to create an affine-trans-
+		{								// formed level-set function.
+			buffer.reserve( 1e5 );
+
+			if( perturbOrigin() )
+			{
+				std::uniform_real_distribution<double> uniformDistributionH_2( -h/2, +h/2 );
+				for( auto& dim : origin )
+					dim = uniformDistributionH_2( gen );
+			}
+		}
+		SC_CHECK_MPI( MPI_Bcast( origin, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random shift.
+
+		// Prepping the params.
+		const std::string DATA_PATH = outDir() + "/" + std::to_string( maxRL() ) + "/gaussian/" + std::to_string( experimentId() );
+		writeParamsFile( mpi, DATA_PATH, "iter" + std::to_string( reinitIters() ) + "_params.csv", a(), SU2, SV2, maxHK() );
+
+		// Prepping the samples file.  Only rank 0 writes the samples to a file.
+		std::ofstream file;
+		std::string fileName = "iter" + std::to_string( reinitIters() ) + "_data.csv";
+		kml::utils::prepareSamplesFile( mpi, DATA_PATH, fileName, file );
+
+		///////////////////////////////////////////////////////// Data production //////////////////////////////////////////////////////////
+
+		PetscPrintf( mpi.comm(), ">> Began generating Gaussian data set for offline evaluation with a = %g, su^2 = %g, sv^2 = %g, max "
+								 "|hk| = %g, and h = %g (level %i)\n", a(), SU2, SV2, maxHK(), h, maxRL() );
 
 		parStopWatch watch;
 		watch.start();
 
-		/////////////////////////////////////////////// Parameter setup ////////////////////////////////////////////////
+		// Domain information.
+		u_char octMaxRL;
+		int n_xyz[P4EST_DIM];
+		double xyz_min[P4EST_DIM];
+		double xyz_max[P4EST_DIM];
+		int periodic[P4EST_DIM] = {0, 0, 0};
+		GaussianLevelSet *gLS = setupDomain( mpi, gaussian, h, origin, maxRL(), octMaxRL, n_xyz, xyz_min, xyz_max );
 
-		const double H = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
-		const double MIN_K = minHK() / H;					// Curvature bounds.
-		const double MAX_K = maxHK() / H;
-		const double MAX_A = 2 / MIN_K / 2;					// Height bounds: MAX_A, which is half the max sphere radius and
-		const double MIN_A = 10 / MAX_K;					// MIN_A = 5*(min radius).
-		const int NUM_A = (int)((MAX_A - MIN_A) / H / 7);	// Number of distinct heights.
-		const double HK_MAX_LO = maxHK() / 2;				// Maximum HK bounds at the peak.
-		const double HK_MAX_UP = maxHK();
-		const double MID_HK_MAX = (HK_MAX_LO + HK_MAX_UP) / 2;
-		const int NUM_HK_MAX = (int)ceil( (HK_MAX_UP - HK_MAX_LO) / (3 * H) );
+		// p4est variables and data structures.
+		p4est_t *p4est;
+		p4est_nodes_t *nodes;
+		my_p4est_brick_t brick;
+		p4est_ghost_t *ghost;
+		p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
-		// Affine transformation parameters.
-		const int NUM_AXES = P4EST_DIM;
-		const Point3 ROT_AXES[NUM_AXES] = {{1,0,0}, {0,1,0}, {0,0,1}};	// Let's use Euler angles; here, the rotation axes.
-		const double MIN_THETA = -M_PI_2;								// For each axis, we vary the angle from -pi/2
-		const double MAX_THETA = +M_PI_2;								// +pi/2 without the end point.
-		const int NUM_THETAS = 80;
-		std::uniform_real_distribution<double> uniformDistributionH_2( -H/2, +H/2 );	// Random translation.
+		// Create the forest using the Gaussian level-set as a refinement criterion.
+		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( 0, octMaxRL, gLS, 3.0 );
+		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
+		p4est->user_pointer = (void *)( &levelSetSplittingCriterion );
 
-		PetscPrintf( mpi.comm(), ">> Began to generate dataset for %i distinct heights, MaxRL=%i, H=%g\n", NUM_A, maxRL(), H );
-
-		std::vector<double> linspaceA;						// Height spread.
-		linspace( MIN_A, MAX_A, NUM_A, linspaceA );
-
-		std::vector<double> linspaceHK_MAX;					// HK_MAX spread (i.e., the max hk at the peak).
-		linspace( HK_MAX_LO, HK_MAX_UP, NUM_HK_MAX, linspaceHK_MAX );
-
-		std::vector<double> linspaceTheta;					// Angular spread for each standard axis.
-		linspace( MIN_THETA, MAX_THETA, NUM_THETAS, linspaceTheta );
-
-		///////////////////////////////////////////// Data-production loop /////////////////////////////////////////////
-
-		const size_t TOT_ITERS = 3 * NUM_HK_MAX * (NUM_HK_MAX + 1) / 2;	// Num of axes times num of pairs of hk_max.
-		size_t step = 0;
-		const int BUFFER_MIN_SIZE = 150000;
-		std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer;	// Buffer of accumulated (normalized and augmented) samples.
-		if( mpi.rank() == 0 )								// Only rank 0 controls the buffer.
-			buffer.reserve( BUFFER_MIN_SIZE );
-		int bufferSize = 0;									// But everyone knows the buffer size to keep them in sync.
-		double trackedMinHK = DBL_MAX, trackedMaxHK = 0;	// We need to track the min and max |hk*| from processed
-		SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );			// samples until we save the buffered feature vectors.
-
-		// Logging header.
-		CHKERRXX( PetscPrintf( mpi.comm(), "Expecting %u iterations per height and %d hk_max steps\n\n", TOT_ITERS, NUM_HK_MAX ) );
-
-		for( u_short a = startAIdx(); a < NUM_A; a++ )		// For each height, vary the u and v variances to achieve a
-		{													// maximum curvature at the peak.
-			const double A = linspaceA[a];
-
-			// Preping the samples' file.  Notice we are no longer interested on exact-signed distance functions, only re-
-			// initialized data.  File name is gaussian.csv; only rank 0 writes the samples to a file.
-			const std::string DATA_PATH = outDir() + "/" + std::to_string( maxRL() );
-			std::ofstream file;
-			std::string fileName = "gaussian_" + std::to_string( a ) + ".csv";
-			kml::utils::prepareSamplesFile( mpi, DATA_PATH, fileName, file );
-
-			printLogHeader( mpi );
-
-			size_t iters = 0;
-
-			for( int s = 0; s < NUM_HK_MAX; s++ )			// Define a starting HK_MAX to define u-variance: SU2.
-			{
-				const double START_MAX_K = linspaceHK_MAX[s] / H;
-				const double SU2 = 2 * A / START_MAX_K;
-
-				for( int t = s; t < NUM_HK_MAX; t++ )				// Then, define HK_MAX at the peak to find SV2.
-				{													// Intuitively, we start with a circular Gaussian,
-					const double END_MAX_K = linspaceHK_MAX[t] / H;	// and we transition to an elliptical little by little.
-					const double denom = END_MAX_K / A * SU2 - 1;
-					assert( denom > 0 );
-					const double SV2 = SU2 / denom;					// v-variance: SV2.
-
-					Gaussian gaussian( A, SU2, SV2 );				// Gaussian: Q(u,v) = A * exp(-0.5*(u^2/su^2 + v^2/sv^2)).
-
-					// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only within
-					// this region.  Note: this Gaussian surface will remain constant throughout level-set variations.
-					const double U_ZERO = gaussian.findKappaZero( H, dir::x );
-					const double V_ZERO = gaussian.findKappaZero( H, dir::y );
-					const double ULIM = U_ZERO + gaussian.su();		// Limiting ellipse semi-axes for triangulation.
-					const double VLIM = V_ZERO + gaussian.sv();
-					const double QTOP = A + 4 * H;					// Adding some padding so that we can sample points correctly at the tip.
-					double quZero = gaussian( U_ZERO, 0 );			// Let's find the lowest Q.
-					double qvZero = gaussian( 0, V_ZERO );
-					const double QBOT = MAX( 0., MIN( quZero, qvZero ) - 4 * H );
-					const size_t HALF_U_H = ceil(ULIM / H);			// Half u axis in H units.
-					const size_t HALF_V_H = ceil(VLIM / H);			// Half v axis in H units.
-
-					const double QCylCCoords[8][P4EST_DIM] = {		// Cylinder in canonical coords containing the Gaussian surface.
-						{-U_ZERO, 0, QTOP}, {+U_ZERO, 0, QTOP}, 	// Top coords (the four points lying on the same QTOP found above).
-						{0, -V_ZERO, QTOP}, {0, +V_ZERO, QTOP},
-						{-U_ZERO, 0, QBOT}, {+U_ZERO, 0, QBOT},		// Base coords (the four points lying on the same QBOT found above).
-						{0, -V_ZERO, QBOT}, {0, +V_ZERO, QBOT}
-					};
-
-					for( int axisIdx = 0; axisIdx < P4EST_DIM; axisIdx++ )	// Use Euler angles to rotate canonical coord system.
-					{
-						const Point3 ROT_AXIS = ROT_AXES[axisIdx];
-						double maxHKError = 0;							// Tracking the maximum error and number of samples
-						size_t loggedSamples = 0;						// collectively shared across processes for this rot axis.
-
-						for( int nt = 0; nt < NUM_THETAS - 1; nt++ )	// Various rotation angles for same axis (skip last one).
-						{
-
-							/////////////////// Defining the transformed Gaussian level-set function ///////////////////
-
-							const double THETA = linspaceTheta[nt];
-							const Point3 TRANS(
-								uniformDistributionH_2( genTrans ),		// Translate canonical origin coords by a random
-								uniformDistributionH_2( genTrans ),		// perturbation from world's origin.
-								uniformDistributionH_2( genTrans )
-							);
-
-							// Also discretizes the surface using a balltree to speed up queries during grid refinment.
-							GaussianLevelSet gLS( &mpi, TRANS, ROT_AXIS.normalize(), THETA, HALF_U_H, HALF_V_H, maxRL(),
-												  &gaussian, SQR( ULIM ), SQR( VLIM ), 5 );
-
-							//////////// Finding the world coords of (canonical) cylinder containing Q(u,v) ////////////
-
-							double minQCylWCoords[P4EST_DIM] = {+DBL_MAX, +DBL_MAX, +DBL_MAX};	// Min and max cylinder
-							double maxQCylWCoords[P4EST_DIM] = {-DBL_MAX, -DBL_MAX, -DBL_MAX};	// world coordinates.
-							for( const auto& cylCPoint : QCylCCoords )
-							{
-								Point3 cylWPoint = gLS.toWorldCoordinates( cylCPoint[0], cylCPoint[1], cylCPoint[2] );
-								for( int i = 0; i < P4EST_DIM; i++ )
-								{
-									minQCylWCoords[i] = MIN( minQCylWCoords[i], cylWPoint.xyz( i ) );
-									maxQCylWCoords[i] = MAX( maxQCylWCoords[i], cylWPoint.xyz( i ) );
-								}
-							}
-
-							//////////// Use the x,y,z ranges to find the domain's length in each direction ////////////
-
-							double QCylWRange[P4EST_DIM];
-							double WCentroid[P4EST_DIM];
-							for( int i = 0; i < P4EST_DIM; i++ )
-							{
-								QCylWRange[i] = maxQCylWCoords[i] - minQCylWCoords[i];
-								WCentroid[i] = (minQCylWCoords[i] + maxQCylWCoords[i]) / 2;	// Raw centroid.
-								WCentroid[i] = round( WCentroid[i] / H ) * H;				// Centroid as a multiple of H.
-							}
-
-							const double CUBE_SIDE_LEN = MAX( QCylWRange[0], MAX( QCylWRange[1], QCylWRange[2] ) );
-							const unsigned char OCTREE_RL_FOR_LEN = MAX( 0, maxRL() - 5 );	// Defines the log2 of octree's len (i.e., octree's len is a power of two).
-							const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
-							const unsigned char OCTREE_MAX_RL = maxRL() - OCTREE_RL_FOR_LEN;// Effective max refinement level to achieve desired H.
-							const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );			// Number of trees in each dimension.
-							const double D_CUBE_SIDE_LEN = N_TREES * OCTREE_LEN;			// Adjusted domain cube len as a multiple of *both* H and octree len.
-							const double HALF_D_CUBE_SIDE_LEN = D_CUBE_SIDE_LEN / 2;
-
-							// Defining a cubic domain that contains at least the Gaussian and its limiting ellipse.
-							int n_xyz[] = {N_TREES, N_TREES, N_TREES};
-							double xyz_min[] = {
-								WCentroid[0] - HALF_D_CUBE_SIDE_LEN,
-								WCentroid[1] - HALF_D_CUBE_SIDE_LEN,
-								WCentroid[2] - HALF_D_CUBE_SIDE_LEN
-							};
-							double xyz_max[] = {
-								xyz_min[0] + D_CUBE_SIDE_LEN,
-								xyz_min[1] + D_CUBE_SIDE_LEN,
-								xyz_min[2] + D_CUBE_SIDE_LEN
-							};
-							int periodic[] = {0, 0, 0};				// Non-periodic domain.
-
-							p4est_t *p4est;							// p4est variables and data structures.
-							p4est_nodes_t *nodes;
-							my_p4est_brick_t brick;
-							p4est_ghost_t *ghost;
-							p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
-
-							//////////////////// Let's now discretize the domain and collect samples ///////////////////
-
-							// Create the forest using the Gaussian level-set as a refinement criterion.
-							splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( 0, OCTREE_MAX_RL, &gLS, 2.0 );
-							p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
-							p4est->user_pointer = (void *)( &levelSetSplittingCriterion );
-
-							// Refine and partition forest.
-							gLS.toggleCache( true );		// Turn on cache to speed up repeated distance computations.
-							gLS.reserveCache( (size_t)pow( 0.75 * HALF_D_CUBE_SIDE_LEN / H, 3 ) );	// Reserve space in cache to improve hashing.
-							for( int i = 0; i < OCTREE_MAX_RL; i++ )								// queries for grid points.
-							{
-								my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
-								my_p4est_partition( p4est, P4EST_FALSE, nullptr );
-							}
-
-							// Create the ghost (cell) and node structures.
-							ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
-							nodes = my_p4est_nodes_new( p4est, ghost );
-
-							// Initialize the neighbor nodes structure.
-							auto *hierarchy = new my_p4est_hierarchy_t( p4est, ghost, &brick );
-							auto *ngbd = new my_p4est_node_neighbors_t( hierarchy, nodes );
-							ngbd->init_neighbors();
-
-							// Verify mesh size is H, as expected.
-							double dxyz[P4EST_DIM];
-							get_dxyz_min( p4est, dxyz );
-							assert( dxyz[0] == dxyz[1] && dxyz[1] == dxyz[2] && dxyz[2] == H );
-
-							// A ghosted parallel PETSc vector to store level-set function values and a couple of flags.
-							Vec phi = nullptr, exactFlag = nullptr, sampledFlag = nullptr;
-							CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phi ) );
-							CHKERRXX( VecCreateGhostNodes( p4est, nodes, &exactFlag ) );
-							CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
-
-							// Populate phi and compute exact distance for vertices within a (linearly estimated) shell
-							// around Gamma.  Reinitialization perturbs the otherwise calculated exact distances.
-							gLS.evaluate( p4est, nodes, phi, exactFlag );
-
-							// Reinitialize level-set function.
-							my_p4est_level_set_t ls( ngbd );
-							ls.reinitialize_2nd_order( phi, reinitIters() );
-
-							// Collect samples using an overriden limiting ellipse on the canonical uv plane.
-							std::vector<std::vector<double>> samples;
-							double minHKInBatch, maxHKInBatch;
-							double hkError = gLS.collectSamples( p4est, nodes, ngbd, phi, OCTREE_MAX_RL, xyz_min,
-																 xyz_max, samples, minHKInBatch, maxHKInBatch, genProb,
-																 MID_HK_MAX, probMidMaxHK(), minHK(), 0.0035, sampledFlag,
-																 SQR( U_ZERO ), SQR( V_ZERO ) );
-							maxHKError = MAX( maxHKError, hkError );
-							trackedMinHK = MIN( minHKInBatch, trackedMinHK );	// Update the tracked |hk*| bounds.
-							trackedMaxHK = MAX( maxHKInBatch, trackedMaxHK );	// These are shared across processes.
-
-							// Save samples to dataset file.
-							int batchSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, H, 1 );
-							loggedSamples += batchSize;
-							bufferSize += batchSize;
-
-							gLS.toggleCache( false );		// Done with cache.
-							gLS.clearCache();
-
-							CHKERRXX( VecDestroy( sampledFlag ) );
-							CHKERRXX( VecDestroy( exactFlag ) );
-							CHKERRXX( VecDestroy( phi ) );
-
-							// Destroy the p4est and its connectivity structure.
-							delete ngbd;
-							delete hierarchy;
-							p4est_nodes_destroy( nodes );
-							p4est_ghost_destroy( ghost );
-							p4est_destroy( p4est );
-							my_p4est_brick_destroy( connectivity, &brick );
-
-							// Synchronize.
-							SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
-						}
-
-						// Logging stats.
-						iters++;
-						CHKERRXX( PetscPrintf( mpi.comm(), "[%6d] \t%.8f \t(%2d) %.8f \t(%2d) %.8f \t%i \t%.8f \t\t%u \t\t(%7.3f%%) \t%g\n",
-											   step, A, s, H * START_MAX_K, t, H * END_MAX_K, axisIdx, maxHKError,
-											   loggedSamples, (100.0 * iters / TOT_ITERS), watch.get_duration_current() ) );
-
-						// Is it time to save to file?
-						if( bufferSize >= BUFFER_MIN_SIZE )
-						{
-							int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer, file,
-																						 (FDEEP_FLOAT_TYPE)minHK(),
-																						 (FDEEP_FLOAT_TYPE)maxHK(),
-																						 100, histMedianFrac() );
-							CHKERRXX( PetscPrintf( mpi.comm(), "[*] Saved %d out of %d samples to output file %s, with |hk*| in the range of [%f, %f].\n",
-												   savedSamples, bufferSize, fileName.c_str(), trackedMinHK, trackedMaxHK ) );
-							printLogHeader( mpi );
-
-							buffer.clear();							// Reset control variables.
-							if( mpi.rank() == 0 )
-								buffer.reserve( BUFFER_MIN_SIZE );
-							trackedMinHK = DBL_MAX;
-							trackedMaxHK = 0;
-							bufferSize = 0;
-							SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
-						}
-
-						step++;
-					}
-				}
-			}
-
-			// Save any samples left in the buffer.
-			if( bufferSize > 0 )
-			{
-				int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer, file,
-																			 (FDEEP_FLOAT_TYPE)minHK(),
-																			 (FDEEP_FLOAT_TYPE)maxHK(),
-																			 100, histMedianFrac() );
-				CHKERRXX( PetscPrintf( mpi.comm(), "[*] Saved %d out of %d samples to output file %s, with |hk*| in the range of [%f, %f].\n",
-									   savedSamples, bufferSize, fileName.c_str(), trackedMinHK, trackedMaxHK ) );
-				buffer.clear();
-			}
-
-			if( mpi.rank() == 0 )
-				file.close();
-
-			CHKERRXX( PetscPrintf( mpi.comm(), "<<< Done with A = %f, index %d\n", A, a ) );
-			SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
+		// Refine and partition forest.
+		gLS->toggleCache( true );		// Turn on cache to speed up repeated distance computations.
+		gLS->reserveCache( (size_t)pow( 0.75 * (xyz_max[0] - xyz_min[0]) / h, 3 ) );	// Reserve space in cache to improve hashing.
+		for( int i = 0; i < octMaxRL; i++ )												// queries for grid points.
+		{
+			my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
+			my_p4est_partition( p4est, P4EST_FALSE, nullptr );
 		}
 
-		watch.read_duration_current( true );
+		// Create the ghost (cell) and node structures.
+		ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
+		nodes = my_p4est_nodes_new( p4est, ghost );
+
+		// Initialize the neighbor nodes structure.
+		auto *hierarchy = new my_p4est_hierarchy_t( p4est, ghost, &brick );
+		auto *ngbd = new my_p4est_node_neighbors_t( hierarchy, nodes );
+		ngbd->init_neighbors();
+
+		// Verify mesh size.
+		double dxyz[P4EST_DIM];
+		get_dxyz_min( p4est, dxyz );
+		assert( dxyz[0] == dxyz[1] && dxyz[1] == dxyz[2] && dxyz[2] == h );
+
+		// A ghosted parallel PETSc vector to store level-set function values and where we computed exact signed distances.
+		Vec phi = nullptr, exactFlag = nullptr;
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phi ) );
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &exactFlag ) );
+
+		// Populate phi and compute exact distance for vertices within a (linearly estimated) shell around Gamma.  Reinitialization perturbs
+		// the otherwise calculated exact distances.
+		gLS->evaluate( p4est, nodes, phi, exactFlag );
+		my_p4est_level_set_t ls( ngbd );
+		ls.reinitialize_2nd_order( phi, reinitIters() );
+
+		// Collect samples.
+		Vec sampledFlag;					// This vector distinguishes sampled nodes along the interface.
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
+
+		Vec hkError, ihk, h2kgError, ih2kg;	// Vectors with sampled errors and interpolated dimensionless curvatures at the interface.
+		Vec phiError;						// Phi error only for sampled interface nodes.
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &hkError ) );
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &ihk ) );
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &h2kgError ) );
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &ih2kg ) );
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phiError ) );
+
+		std::vector<std::vector<double>> samples;
+		double trackedMaxErrors[P4EST_DIM];
+		int nNumericalSaddles;
+		gLS->collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMaxErrors, trackedMinHK, trackedMaxHK, samples,
+							 nNumericalSaddles, exactFlag, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError );
+		gLS->clearCache();
+		gLS->toggleCache( false );
+		delete gLS;
+
+		// Accumulate samples in the buffer; normalize phi by h, apply negative-mean-curvature normalization to non-saddle samples, and
+		// reorient data packets.  The last 2 parameter avoids flipping the signs of hk, ihk, h2kg, and ih2kg.  Then, augment samples by
+		// reflecting about y - x = 0.
+		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, 2 );
+		int nSamples = saveSamples( mpi, buffer, bufferSize, file );
+
+		// Export visual data.
+		const double *phiReadPtr, *phiErrorReadPtr, *sampledFlagReadPtr, *exactFlagReadPtr;
+		const double *hkErrorReadPtr, *ihkReadPtr, *h2kgErrorReadPtr, *ih2kgReadPtr;
+		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
+		CHKERRXX( VecGetArrayRead( sampledFlag, &sampledFlagReadPtr ) );
+		CHKERRXX( VecGetArrayRead( hkError, &hkErrorReadPtr ) );
+		CHKERRXX( VecGetArrayRead( ihk, &ihkReadPtr ) );
+		CHKERRXX( VecGetArrayRead( h2kgError, &h2kgErrorReadPtr ) );
+		CHKERRXX( VecGetArrayRead( ih2kg, &ih2kgReadPtr ) );
+		CHKERRXX( VecGetArrayRead( phiError, &phiErrorReadPtr ) );
+		CHKERRXX( VecGetArrayRead( exactFlag, &exactFlagReadPtr ) );
+
+		std::ostringstream oss;
+		oss << "gaussian_dataset_id" << (int)experimentId() << "_lvl" << (int)maxRL();
+		my_p4est_vtk_write_all( p4est, nodes, ghost,
+								P4EST_TRUE, P4EST_TRUE,
+								8, 0, oss.str().c_str(),
+								VTK_POINT_DATA, "phi", phiReadPtr,
+								VTK_POINT_DATA, "sampledFlag", sampledFlagReadPtr,
+								VTK_POINT_DATA, "hkError", hkErrorReadPtr,
+								VTK_POINT_DATA, "ihk", ihkReadPtr,
+								VTK_POINT_DATA, "h2kgError", h2kgErrorReadPtr,
+								VTK_POINT_DATA, "ih2kg", ih2kgReadPtr,
+								VTK_POINT_DATA, "phiError", phiErrorReadPtr,
+								VTK_POINT_DATA, "exactFlag", exactFlagReadPtr );
+
+		CHKERRXX( VecRestoreArrayRead( exactFlag, &exactFlagReadPtr ) );
+		CHKERRXX( VecRestoreArrayRead( phiError, &phiErrorReadPtr ) );
+		CHKERRXX( VecRestoreArrayRead( ih2kg, &ih2kgReadPtr ) );
+		CHKERRXX( VecRestoreArrayRead( h2kgError, &h2kgErrorReadPtr ) );
+		CHKERRXX( VecRestoreArrayRead( ihk, &ihkReadPtr ) );
+		CHKERRXX( VecRestoreArrayRead( hkError, &hkErrorReadPtr ) );
+		CHKERRXX( VecRestoreArrayRead( sampledFlag, &sampledFlagReadPtr ) );
+		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
+
+		// Clean up.
+		CHKERRXX( VecDestroy( phiError ) );
+		CHKERRXX( VecDestroy( ih2kg ) );
+		CHKERRXX( VecDestroy( h2kgError ) );
+		CHKERRXX( VecDestroy( ihk ) );
+		CHKERRXX( VecDestroy( hkError ) );
+		CHKERRXX( VecDestroy( sampledFlag ) );
+		CHKERRXX( VecDestroy( exactFlag ) );
+		CHKERRXX( VecDestroy( phi ) );
+
+		// Destroy the p4est and its connectivity structure.
+		delete ngbd;
+		delete hierarchy;
+		p4est_nodes_destroy( nodes );
+		p4est_ghost_destroy( ghost );
+		p4est_destroy( p4est );
+		my_p4est_brick_destroy( connectivity, &brick );
+
+		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples with the following stats:\n", nSamples ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of numerical saddles = %i\n", nNumericalSaddles ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked mean |hk*| in the range of [%.6g, %.6g]\n", trackedMinHK, trackedMaxHK ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max hk error      = %.6g\n", trackedMaxErrors[0] ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max h^2kg error   = %.6g\n", trackedMaxErrors[1] ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max |phi error|/h = %.6g\n", trackedMaxErrors[2] / h ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "<< Finished after %.2f secs.\n", watch.get_duration_current() ) );
 		watch.stop();
+		if( mpi.rank() == 0 )
+			file.close();
 	}
 	catch( const std::exception &e )
 	{
@@ -376,9 +299,161 @@ int main ( int argc, char* argv[] )
 	}
 }
 
-
-void printLogHeader( const mpi_environment_t& mpi )
+/**
+ * Create and write the Gaussian's params file.
+ * @param [in] mpi MPI environment.
+ * @param [in] path Full path where to place the file.
+ * @param [in] fileName File name.
+ * @param [in] a Amplitude.
+ * @param [in] su2 Variance along the u direction.
+ * @param [in] sv2 Variance along the v direction.
+ * @param [in] hk Absolute dimensionless mean curvature attained at the peak (i.e., at u=v=0).
+ * @throws runtime_error if path or file can't be created and or written.
+ */
+void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, const std::string& fileName,
+					  const double& a, const double& su2, const double& sv2, const double& hk )
 {
-	CHKERRXX( PetscPrintf( mpi.comm(), "_____________________________________________________________________________________________________________________\n") );
-	CHKERRXX( PetscPrintf( mpi.comm(), "[Step  ] \tHeight \t\t(ss) Start_MaxHK \t(tt) End_MaxHK \tAxis \tMaxHK_Error \tNum_Samples\t(%%_Done) \tTime\n" ) );
+	std::string errorPrefix = "[CASL_ERROR] writeParamsFile: ";
+	std::string fullFileName = path + "/" + fileName;
+
+	if( create_directory( path, mpi.rank(), mpi.comm() ) )
+		throw std::runtime_error( errorPrefix + "Couldn't create directory: " + path );
+
+	if( mpi.rank() == 0 )
+	{
+		std::ofstream file;
+		file.open( fullFileName, std::ofstream::trunc );
+		if( !file.is_open() )
+			throw std::runtime_error( errorPrefix + "Output file " + fullFileName + " couldn't be opened!" );
+
+		file << R"("a","su2","sv2","hk")" << std::endl;	// The header.
+		file.precision( 15 );
+		file << a << "," << su2 << "," << sv2 << "," << hk << std::endl;
+		file.close();
+	}
+
+	CHKERRXX( PetscPrintf( mpi.comm(), "Rank %d successfully created samples file '%s'\n", mpi.rank(), fullFileName.c_str() ) );
+	SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );				// Wait here until rank 0 is done.
+}
+
+/**
+ * Save buffered samples to a file.  Upon exiting, the buffer will be emptied.
+ * @param [in] mpi MPI environment.
+ * @param [in,out] buffer Sample buffer.
+ * @param [in,out] bufferSize Current buffer's size.
+ * @param [in,out] file File where to write samples.
+ * @return number of saved samples (already shared among processes).
+ * @throws invalid_argument exception if buffer is empty.
+ */
+int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>& buffer, int& bufferSize, std::ofstream& file )
+{
+	int savedSamples = 0;
+
+	if( bufferSize > 0 )
+	{
+		if( mpi.rank() == 0 )
+		{
+			int i;
+			for( i = 0; i < bufferSize; i++ )
+			{
+				int j;
+				for( j = 0; j < K_INPUT_SIZE_LEARN - 1; j++ )
+					file << buffer[i][j] << ",";				// Inner elements.
+				file << buffer[i][j] << std::endl;				// Last element is ihk in 2D or ih2kg in 3D.
+			}
+			savedSamples = i;
+
+			buffer.clear();
+		}
+		bufferSize = 0;
+	}
+	else
+		throw std::invalid_argument( "saveSamples: buffer is empty or there are less samples than intended number to save(?)!" );
+
+	// Communicate to everyone the total number of saved samples.
+	SC_CHECK_MPI( MPI_Bcast( &savedSamples, 1, MPI_INT, 0, mpi.comm() ) );
+
+	return savedSamples;
+}
+
+/**
+ * Set up domain and create a Gaussian level-set function.
+ * @param [in] mpi MPI environment object.
+ * @param [in] gaussian Gaussian function in canonical space.
+ * @param [in] h Mesh size.
+ * @param [in] origin Gaussian's local frame origin with respect to world coordinates.
+ * @param [in] maxRL Maximum level of refinement for the whole domain.
+ * @param [out] octMaxRL Effective maximum refinement for each octree to achieve desired h.
+ * @param [out] n_xyz Number of octrees in each direction.
+ * @param [out] xyz_min Mininum coordinates of computational domain.
+ * @param [out] xyz_max Maximum coordinates of computational domain.
+ * @return Dynamically allocated Gaussian level-set object.  You must delete it in caller function.
+ */
+GaussianLevelSet *setupDomain( const mpi_environment_t& mpi, const Gaussian& gaussian, const double& h, const double origin[P4EST_DIM],
+							   const u_char& maxRL, u_char& octMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
+							   double xyz_max[P4EST_DIM] )
+{
+	// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only within this region.
+	const double U_ZERO = gaussian.findKappaZero( h, dir::x );
+	const double V_ZERO = gaussian.findKappaZero( h, dir::y );
+	const double ULIM = U_ZERO + gaussian.su();		// Limiting ellipse semi-axes for triangulation.
+	const double VLIM = V_ZERO + gaussian.sv();
+	const double QTOP = gaussian.a() + 4 * h;		// Adding some padding so that we can sample points correctly at the tip.
+	double quZero = gaussian( ULIM, 0 );			// Let's find the lowest Q.
+	double qvZero = gaussian( 0, VLIM );
+	const double QBOT = MAX( 0., MIN( quZero, qvZero ) - 4 * h );
+	const size_t HALF_U_H = ceil(ULIM / h);			// Half u axis in h units.
+	const size_t HALF_V_H = ceil(VLIM / h);			// Half v axis in h units.
+
+	const double QCylCCoords[8][P4EST_DIM] = {		// Cylinder in canonical coords containing the Gaussian surface.
+		{-ULIM, 0, QTOP}, {+ULIM, 0, QTOP}, 		// Top coords (the four points lying on the same QTOP found above).
+		{0, -VLIM, QTOP}, {0, +VLIM, QTOP},
+		{-ULIM, 0, QBOT}, {+ULIM, 0, QBOT},			// Base coords (the four points lying on the same QBOT found above).
+		{0, -VLIM, QBOT}, {0, +VLIM, QBOT}
+	};
+
+	// Defining the transformed Gaussian level-set function.  This also discretizes the surface using a balltree to speed up queries
+	// during grid refinment.
+	auto *gLS = new GaussianLevelSet( &mpi, Point3( origin ), Point3(0, 0, 1), 0, HALF_U_H, HALF_V_H, maxRL, &gaussian, SQR(ULIM), SQR(VLIM), 5 );
+
+	// Finding the world coords of (canonical) cylinder containing Q(u,v).
+	double minQCylWCoords[P4EST_DIM] = {+DBL_MAX, +DBL_MAX, +DBL_MAX};	// Min and max cylinder world coords.
+	double maxQCylWCoords[P4EST_DIM] = {-DBL_MAX, -DBL_MAX, -DBL_MAX};
+	for( const auto& cylCPoint : QCylCCoords )
+	{
+		Point3 cylWPoint = gLS->toWorldCoordinates( cylCPoint[0], cylCPoint[1], cylCPoint[2] );
+		for( int i = 0; i < P4EST_DIM; i++ )
+		{
+			minQCylWCoords[i] = MIN( minQCylWCoords[i], cylWPoint.xyz( i ) );
+			maxQCylWCoords[i] = MAX( maxQCylWCoords[i], cylWPoint.xyz( i ) );
+		}
+	}
+
+	// Use the x,y,z ranges to find the domain's length in each direction.
+	double QCylWRange[P4EST_DIM];
+	double WCentroid[P4EST_DIM];
+	for( int i = 0; i < P4EST_DIM; i++ )
+	{
+		QCylWRange[i] = maxQCylWCoords[i] - minQCylWCoords[i];
+		WCentroid[i] = (minQCylWCoords[i] + maxQCylWCoords[i]) / 2;	// Raw centroid.
+		WCentroid[i] = round( WCentroid[i] / h ) * h;				// Centroid as a multiple of h.
+	}
+
+	const double CUBE_SIDE_LEN = MAX( QCylWRange[0], MAX( QCylWRange[1], QCylWRange[2] ) );
+	const unsigned char OCTREE_RL_FOR_LEN = MAX( 0, maxRL - 5 );	// Defines the log2 of octree's len (i.e., octree's len is a power of two).
+	const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
+	octMaxRL = maxRL - OCTREE_RL_FOR_LEN;							// Effective max refinement level to achieve desired h.
+	const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );			// Number of trees in each dimension.
+	const double D_CUBE_SIDE_LEN = N_TREES * OCTREE_LEN;			// Adjusted domain cube len as a multiple of *both* h and octree len.
+	const double HALF_D_CUBE_SIDE_LEN = D_CUBE_SIDE_LEN / 2;
+
+	// Defining a symmetric cubic domain whose dimensions are multiples of h and contain Gaussian and its limiting ellipse.
+	for( int i = 0; i < P4EST_DIM; i++ )
+	{
+		n_xyz[i] = N_TREES;
+		xyz_min[i] = WCentroid[i] - HALF_D_CUBE_SIDE_LEN;
+		xyz_max[i] = WCentroid[i] + HALF_D_CUBE_SIDE_LEN;
+	}
+
+	return gLS;
 }

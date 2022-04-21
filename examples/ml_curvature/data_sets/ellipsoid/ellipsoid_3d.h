@@ -396,7 +396,7 @@ public:
 	 * @param [out] trackedMaxHK Maximum |hk*| detected across processes for this batch of samples.
 	 * @param [out] samples Array of collected samples (one per interface node).
 	 * @param [out] nNumericalSaddles Number of numerical saddles detected from sampled nodes (reduced across processes).
-	 * @param [out] sampledFlag Parallel vector with 1s for sampled nodes (next to Gamma), 0s otherwise.
+	 * @param [out] sampledFlag Parallel vector with >= 1 for sampled nodes (next to Gamma), 0s otherwise.
 	 * @param [out] hkError Vector to hold absolute mean hk error for sampled nodes.
 	 * @param [out] ihk Vector to hold linearly interpolated hk for sampled nodes.
 	 * @param [out] h2kgError Vector to hold absolute Gaussian h^2*k error for sampled nodes.

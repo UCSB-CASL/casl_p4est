@@ -17,10 +17,10 @@
  * curvature, we normalize it by scaling it with h^2 ---which leads to the true h2kg and the linearly interpolated ih2kg values in the
  * collected data packets.
  *
- * The sample file is of the form "#/ellipsoid/data_$.csv", and the params file is "#/ellipsoid/params_$.csv", where # is the unit-octree
- * max level of refinement, and $ is the experiment id.  The data_$.csv contains as many rows as twice the number of collected samples with
- * all data-packet info.  The params_$.csv file stores the values for "a", "b", and "c" and its corresponding max hk values.  In addition,
- * we export VTK data for visualization.
+ * The sample file is of the form "#/ellipsoid/$/iter%_data.csv", and the params file is "#/ellipsoid/$/iter%_params.csv", where # is the
+ * unit-octree max level of refinement, $ is the experiment id, and % is the number of redistancing steps.  The data file contains as many
+ * rows as twice the number of collected samples with all data-packet info.  The params file stores the values for "a", "b", and "c" and its
+ * corresponding max hk values.  In addition, we export VTK data for visualization.
  *
  * @note Here and across related files to machine-learning computation of mean curvature use the geometrical definition of mean curvature;
  * that is, H = 0.5(k1 + k2), where k1 and k2 are principal curvatures.
@@ -59,7 +59,7 @@ int main ( int argc, char* argv[] )
 	// Setting up parameters from command line.
 	param_list_t pl;
 	param_t<u_char> experimentId( pl,     0, "experimentId"	, "Experiment Id (default: 0)" );
-	param_t<u_char>        maxRL( pl,     6, "maxRL"		, "Maximum level of refinement per unit-square quadtree (default: 6)" );
+	param_t<u_char>        maxRL( pl,     6, "maxRL"		, "Maximum level of refinement per unit-cube octree (default: 6)" );
 	param_t<u_short> reinitIters( pl,    10, "reinitIters"	, "Number of iterations for reinitialization (default: 10)" );
 	param_t<double>        maxHK( pl,  2./3, "maxHK"		, "Expected maximum dimensionless mean curvature (default: 2/3)" );
 	param_t<double>            a( pl,  1.65, "a"			, "Ellipsoid's x-semiaxis (default: 4)" );
