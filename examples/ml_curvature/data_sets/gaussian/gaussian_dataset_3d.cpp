@@ -29,7 +29,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: April 20, 2022.
+ * Updated: April 21, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -67,8 +67,8 @@ int main ( int argc, char* argv[] )
 	// Setting up parameters from command line.
 	param_list_t pl;
 	param_t<u_char> experimentId( pl,    0, "experimentId"	, "Experiment Id (default: 0)" );
-	param_t<double>        maxHK( pl, 2./3, "maxHK"			, "Desired maximum (absolute) dimensionless mean curvature at the peak.\n"
-														  	  "Must be in the range of (1/3, 2/3) (default: 2/3)" );
+	param_t<double>        maxHK( pl,  0.6, "maxHK"			, "Desired maximum (absolute) dimensionless mean curvature at the peak.\n"
+														  	  "Must be in the open interval of (1/3, 2/3) (default: 0.6)" );
 	param_t<u_char>        maxRL( pl,    6, "maxRL"			, "Maximum level of refinement per unit-cube octree (default: 6)" );
 	param_t<int>     reinitIters( pl,   10, "reinitIters"	, "Number of iterations for reinitialization (default: 10)" );
 	param_t<double>            a( pl,  0.5, "a"				, "Gaussian amplitude (i.e., Q(0,0)) in the range of [16h, 64h] (default 0.5)" );
@@ -106,10 +106,11 @@ int main ( int argc, char* argv[] )
 		const double h = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
 
 		if( a() < 16 * h || a() > 64 * h )
-			throw std::invalid_argument( "[CASL_ERROR] Gaussian amplitude must be in the range of [16h, 64h]." );
+			throw std::invalid_argument( "[CASL_ERROR] Gaussian amplitude must be in the range of [16h, 64h] "
+										 "= [" + std::to_string( 16 * h ) + ", " + std::to_string( 64 * h ) + "]." );
 
 		const double MAX_K = maxHK() / h;					// Now that we know the parameters are valid, find max hk and variances.
-		const double SV2 = a() * (1 + SQR( susvRatio() )) / (2 * SQR( susvRatio() * MAX_K ));
+		const double SV2 = a() * (1 + SQR( susvRatio() )) / (2 * SQR( susvRatio() ) * MAX_K);
 		const double SU2 = SQR( susvRatio() ) * SV2;
 
 		Gaussian gaussian( a(), SU2, SV2 );
@@ -282,8 +283,8 @@ int main ( int argc, char* argv[] )
 		p4est_destroy( p4est );
 		my_p4est_brick_destroy( connectivity, &brick );
 
-		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples with the following stats:\n", nSamples ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of numerical saddles = %i\n", nNumericalSaddles ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples (incl. standard and reflected) with the following stats:\n", nSamples ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of saddle points   = %i\n", nNumericalSaddles ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked mean |hk*| in the range of [%.6g, %.6g]\n", trackedMinHK, trackedMaxHK ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max hk error      = %.6g\n", trackedMaxErrors[0] ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max h^2kg error   = %.6g\n", trackedMaxErrors[1] ) );
@@ -332,7 +333,7 @@ void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, con
 		file.close();
 	}
 
-	CHKERRXX( PetscPrintf( mpi.comm(), "Rank %d successfully created samples file '%s'\n", mpi.rank(), fullFileName.c_str() ) );
+	CHKERRXX( PetscPrintf( mpi.comm(), "Rank %d successfully created params file '%s'\n", mpi.rank(), fullFileName.c_str() ) );
 	SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );				// Wait here until rank 0 is done.
 }
 
@@ -399,9 +400,9 @@ GaussianLevelSet *setupDomain( const mpi_environment_t& mpi, const Gaussian& gau
 	const double ULIM = U_ZERO + gaussian.su();		// Limiting ellipse semi-axes for triangulation.
 	const double VLIM = V_ZERO + gaussian.sv();
 	const double QTOP = gaussian.a() + 4 * h;		// Adding some padding so that we can sample points correctly at the tip.
-	double quZero = gaussian( ULIM, 0 );			// Let's find the lowest Q.
-	double qvZero = gaussian( 0, VLIM );
-	const double QBOT = MAX( 0., MIN( quZero, qvZero ) - 4 * h );
+	double qAtULim = gaussian( ULIM, 0 );			// Let's find the lowest Q.
+	double qAtVLim = gaussian( 0, VLIM );
+	const double QBOT = MIN( qAtULim, qAtVLim ) - 4 * h;
 	const size_t HALF_U_H = ceil(ULIM / h);			// Half u axis in h units.
 	const size_t HALF_V_H = ceil(VLIM / h);			// Half v axis in h units.
 

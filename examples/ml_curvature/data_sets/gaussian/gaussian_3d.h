@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a Gaussian surface embedded in 3d.
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: April 20, 2022.
+ * Updated: April 21, 2022.
  */
 
 #ifndef ML_CURVATURE_GAUSSIAN_3D_H
@@ -666,7 +666,7 @@ public:
 	 * @param [in] rv2 Override limiting ellipse v semiaxis squared just for sampling.
 	 * @return Maximum error in dimensionless curvature (reduced across processes).
 	 * @throws invalid_argument exception if phi or exactFlag vector is null, or if overriding ru2 and rv2 are non positive or larger than _ru2 and _rv2.
-	 * @throws runtime_error if the cache is disabled or empty, or if a query point is not found in the cache.
+	 * @throws runtime_error if the cache is disabled or empty, or if a candidate interface point is not in the cache.
 	 */
 	void collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
 						 const u_char& octMaxRL, const double xyzMin[P4EST_DIM], const double xyzMax[P4EST_DIM],
@@ -788,7 +788,7 @@ public:
 		std::cout << "    Rank " << _mpi->rank() << " reports " << indices.size() << " candidate nodes for sampling." << std::endl;
 #endif
 
-		int invalidNodes = 0;						// Let's count how many points we skipped.
+		int invalidNodes = 0;						// Count points we invalidate because they fail to have a uniform or signed-distance-computed stencil.
 		for( const auto& n : indices )
 		{
 			double xyz[P4EST_DIM];
@@ -871,7 +871,10 @@ public:
 					if( ih2kgVal >= 0 )
 						sampledFlagPtr[n] = 1;			// Non-saddle point: 1.
 					else
+					{
 						sampledFlagPtr[n] = 2;			// Saddle point: 2.
+						nNumericalSaddles++;
+					}
 				}
 
 				// Update stats.
