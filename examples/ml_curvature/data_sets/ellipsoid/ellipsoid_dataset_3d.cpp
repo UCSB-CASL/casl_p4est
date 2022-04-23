@@ -27,7 +27,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: April 15, 2022.
+ * Updated: April 23, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -58,17 +58,17 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<u_char> experimentId( pl,     0, "experimentId"	, "Experiment Id (default: 0)" );
-	param_t<u_char>        maxRL( pl,     6, "maxRL"		, "Maximum level of refinement per unit-cube octree (default: 6)" );
-	param_t<u_short> reinitIters( pl,    10, "reinitIters"	, "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>        maxHK( pl,  2./3, "maxHK"		, "Expected maximum dimensionless mean curvature (default: 2/3)" );
-	param_t<double>            a( pl,  1.65, "a"			, "Ellipsoid's x-semiaxis (default: 4)" );
-	param_t<double>            b( pl,  0.75, "b"			, "Ellipsoid's y-semiaxis (defulat: 2.5)" );
-	param_t<double>            c( pl,   0.2, "c"			, "Ellipsoid's z-semiaxis (default: 0.25)" );
-	param_t<bool>  perturbCenter( pl,  true, "perturbCenter", "Whether to perturb the ellipsoid's center randomly in [-h/2,+h/2]^3 (default: true)" );
-	param_t<std::string>  outDir( pl,   ".", "outDir"		, "Path where data and param files will be written to (default: build folder)" );
-
-	std::mt19937 gen{};			// NOLINT This engine is used for perturbing the ellipsoid center.
+	param_t<u_char> experimentId( pl,    0, "experimentId"	, "Experiment Id (default: 0)" );
+	param_t<u_char>        maxRL( pl,    6, "maxRL"			, "Maximum level of refinement per unit-cube octree (default: 6)" );
+	param_t<u_short> reinitIters( pl,   10, "reinitIters"	, "Number of iterations for reinitialization (default: 10)" );
+	param_t<double>        maxHK( pl, 2./3, "maxHK"			, "Expected maximum dimensionless mean curvature (default: 2/3)" );
+	param_t<double>            a( pl, 1.65, "a"				, "Ellipsoid's x-semiaxis (default: 4)" );
+	param_t<double>            b( pl, 0.75, "b"				, "Ellipsoid's y-semiaxis (default: 2.5)" );
+	param_t<double>            c( pl,  0.2, "c"				, "Ellipsoid's z-semiaxis (default: 0.25)" );
+	param_t<bool>  perturbCenter( pl, true, "perturbCenter"	, "Whether to perturb the ellipsoid's center randomly in [-h/2,+h/2]^3 (default: true)" );
+	param_t<bool> randomRotation( pl, true, "randomRotation", "Whether to apply a rotation with a random angle about a random unit axis (default: true)" );
+	param_t<u_int>   randomState( pl,    7, "randomState"	, "Seed for random perturbations of the canonical frame (default: 7)" );
+	param_t<std::string>  outDir( pl,  ".", "outDir"		, "Path where data and param files will be written to (default: build folder)" );
 
 	try
 	{
@@ -94,6 +94,7 @@ int main ( int argc, char* argv[] )
 		if( a() < 1.5 * h || b() < 1.5 * h || c() < 1.5 * h )
 			throw std::invalid_argument( "[CASL_ERROR] Any semiaxis must be larger than 1.5h" );
 
+		std::mt19937 gen( randomState() );						// Engine used for random perturbations of canonical frame: rotation and shift.
 		Ellipsoid ellipsoid( a(), b(), c() );					// An ellipsoid implicit function in canonical coords (i.e., untransformed).
 		double maxK[P4EST_DIM];
 		ellipsoid.getMaxMeanCurvatures( maxK );
@@ -105,6 +106,8 @@ int main ( int argc, char* argv[] )
 
 		std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer;		// Buffer of accumulated (normalized and augmented) samples.
 		double center[P4EST_DIM] = {0, 0, 0};					// Ellipsoidal center (possible perturbed).
+		double rotAxis[P4EST_DIM] = {0, 0, 1};					// Rotation axis for possible random rotation.
+		double rotAngle = 0;
 		double trackedMinHK = DBL_MAX;							// We want to track min and max mean |hk*| for debugging.
 		double trackedMaxHK = 0;
 		if( mpi.rank() == 0 )			// Only rank 0 controls the buffer and perturbs the ellipsoid's center to create an affine-trans-
@@ -117,8 +120,21 @@ int main ( int argc, char* argv[] )
 				for( auto& dim : center )
 					dim = uniformDistributionH_2( gen );
 			}
+
+			if( randomRotation() )		// Generate a random unit axis and its rotation angle.
+			{
+				std::uniform_real_distribution<double> uniformDist;
+				rotAngle = 2 * M_PI * uniformDist( gen );
+				double azimuthAngle = uniformDist( gen ) * 2 * M_PI;
+				double polarAngle = acos( 2 * uniformDist( gen ) - 1 );
+				rotAxis[0] = cos( azimuthAngle ) * sin( polarAngle );
+				rotAxis[1] = sin( azimuthAngle ) * sin( polarAngle );
+				rotAxis[2] = cos( polarAngle );
+			}
 		}
 		SC_CHECK_MPI( MPI_Bcast( center, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random shift.
+		SC_CHECK_MPI( MPI_Bcast( &rotAngle, 1, MPI_DOUBLE, 0, mpi.comm() ) );
+		SC_CHECK_MPI( MPI_Bcast( rotAxis, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );
 
 		const double maxHK_a = maxK[0] * h;
 		const double maxHK_b = maxK[1] * h;
@@ -157,7 +173,7 @@ int main ( int argc, char* argv[] )
 		p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
 		// Define a level-set function with ellipsoidal interface.
-		EllipsoidalLevelSet levelSet( &mpi, Point3( center ), Point3( 0, 0, 1 ), 0, &ellipsoid, h );
+		EllipsoidalLevelSet levelSet( &mpi, Point3( center ), Point3( rotAxis ), rotAngle, &ellipsoid, h );
 		splitting_criteria_cf_and_uniform_band_t splittingCriterion( 0, octMaxRL, &levelSet, 3.0 );
 
 		// Enable and reserve space for caching.

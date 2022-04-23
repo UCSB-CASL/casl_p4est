@@ -29,7 +29,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: April 21, 2022.
+ * Updated: April 23, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -58,8 +58,8 @@ void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, con
 int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>& buffer, int& bufferSize, std::ofstream& file );
 
 GaussianLevelSet *setupDomain( const mpi_environment_t& mpi, const Gaussian& gaussian, const double& h, const double origin[P4EST_DIM],
-							   const u_char& maxRL, u_char& octMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
-							   double xyz_max[P4EST_DIM] );
+							   const double& rotAngle, const double rotAxis[P4EST_DIM], const u_char& maxRL, u_char& octMaxRL,
+							   int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] );
 
 
 int main ( int argc, char* argv[] )
@@ -71,12 +71,12 @@ int main ( int argc, char* argv[] )
 														  	  "Must be in the open interval of (1/3, 2/3) (default: 0.6)" );
 	param_t<u_char>        maxRL( pl,    6, "maxRL"			, "Maximum level of refinement per unit-cube octree (default: 6)" );
 	param_t<int>     reinitIters( pl,   10, "reinitIters"	, "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>            a( pl,  0.5, "a"				, "Gaussian amplitude (i.e., Q(0,0)) in the range of [16h, 64h] (default 0.5)" );
-	param_t<double>    susvRatio( pl,   2., "susvRatio"		, "The ratio su/sv in the range of [1, 2] (default: 2)" );
+	param_t<double>            a( pl,  0.8, "a"				, "Gaussian amplitude (i.e., Q(0,0)) in the range of [16h, 64h] (default 0.8)" );
+	param_t<double>    susvRatio( pl, 1.75, "susvRatio"		, "The ratio su/sv in the range of [1, 2] (default: 1.75)" );
 	param_t<bool>  perturbOrigin( pl, true, "perturbFrame"	, "Whether to perturb the Gaussian's frame randomly in [-h/2,+h/2]^3 (default: true)" );
+	param_t<bool> randomRotation( pl, true, "randomRotation", "Whether to apply a rotation with a random angle about a random unit axis (default: true)" );
+	param_t<u_int>   randomState( pl,    7, "randomState"	, "Seed for random perturbations of the canonical frame (default: 7)" );
 	param_t<std::string>  outDir( pl,  ".", "outDir"		, "Path where files will be written to (default: build folder)" );
-
-	std::mt19937 gen{};	// NOLINT This engine is used for the random shift of the Gaussian's canonical frame.
 
 	try
 	{
@@ -109,6 +109,7 @@ int main ( int argc, char* argv[] )
 			throw std::invalid_argument( "[CASL_ERROR] Gaussian amplitude must be in the range of [16h, 64h] "
 										 "= [" + std::to_string( 16 * h ) + ", " + std::to_string( 64 * h ) + "]." );
 
+		std::mt19937 gen( randomState() );					// Engine used for random perturbations of the canonical frame: rotation and shift.
 		const double MAX_K = maxHK() / h;					// Now that we know the parameters are valid, find max hk and variances.
 		const double SV2 = a() * (1 + SQR( susvRatio() )) / (2 * SQR( susvRatio() ) * MAX_K);
 		const double SU2 = SQR( susvRatio() ) * SV2;
@@ -117,6 +118,9 @@ int main ( int argc, char* argv[] )
 
 		std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer;	// Buffer of accumulated (normalized and augmented) samples.
 		double origin[P4EST_DIM] = {0, 0, 0};				// Gaussian's frame origin (possible perturbed).
+		double rotAxis[P4EST_DIM] = {0, 0, 1};				// Rotation axis for possible random rotation.
+		double rotAngle = 0;
+
 		double trackedMinHK = DBL_MAX;						// We want to track min and max mean |hk*| for debugging.
 		double trackedMaxHK = 0;
 		if( mpi.rank() == 0 )			// Only rank 0 controls the buffer and perturbs the Gaussian's frame to create an affine-trans-
@@ -129,8 +133,21 @@ int main ( int argc, char* argv[] )
 				for( auto& dim : origin )
 					dim = uniformDistributionH_2( gen );
 			}
+
+			if( randomRotation() )		// Generate a random unit axis and its rotation angle.
+			{
+				std::uniform_real_distribution<double> uniformDist;
+				rotAngle = 2 * M_PI * uniformDist( gen );
+				double azimuthAngle = uniformDist( gen ) * 2 * M_PI;
+				double polarAngle = acos( 2 * uniformDist( gen ) - 1 );
+				rotAxis[0] = cos( azimuthAngle ) * sin( polarAngle );
+				rotAxis[1] = sin( azimuthAngle ) * sin( polarAngle );
+				rotAxis[2] = cos( polarAngle );
+			}
 		}
-		SC_CHECK_MPI( MPI_Bcast( origin, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random shift.
+		SC_CHECK_MPI( MPI_Bcast( origin, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random shift and rotation.
+		SC_CHECK_MPI( MPI_Bcast( &rotAngle, 1, MPI_DOUBLE, 0, mpi.comm() ) );
+		SC_CHECK_MPI( MPI_Bcast( rotAxis, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );
 
 		// Prepping the params.
 		const std::string DATA_PATH = outDir() + "/" + std::to_string( maxRL() ) + "/gaussian/" + std::to_string( experimentId() );
@@ -155,7 +172,7 @@ int main ( int argc, char* argv[] )
 		double xyz_min[P4EST_DIM];
 		double xyz_max[P4EST_DIM];
 		int periodic[P4EST_DIM] = {0, 0, 0};
-		GaussianLevelSet *gLS = setupDomain( mpi, gaussian, h, origin, maxRL(), octMaxRL, n_xyz, xyz_min, xyz_max );
+		GaussianLevelSet *gLS = setupDomain( mpi, gaussian, h, origin, rotAngle, rotAxis, maxRL(), octMaxRL, n_xyz, xyz_min, xyz_max );
 
 		// p4est variables and data structures.
 		p4est_t *p4est;
@@ -383,6 +400,8 @@ int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>&
  * @param [in] gaussian Gaussian function in canonical space.
  * @param [in] h Mesh size.
  * @param [in] origin Gaussian's local frame origin with respect to world coordinates.
+ * @param [in] rotAngle Gaussian's local frame angle of rotation about a unit axis.
+ * @param [in] rotAxis The unit axis to rotate the frame about.
  * @param [in] maxRL Maximum level of refinement for the whole domain.
  * @param [out] octMaxRL Effective maximum refinement for each octree to achieve desired h.
  * @param [out] n_xyz Number of octrees in each direction.
@@ -391,8 +410,8 @@ int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>&
  * @return Dynamically allocated Gaussian level-set object.  You must delete it in caller function.
  */
 GaussianLevelSet *setupDomain( const mpi_environment_t& mpi, const Gaussian& gaussian, const double& h, const double origin[P4EST_DIM],
-							   const u_char& maxRL, u_char& octMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
-							   double xyz_max[P4EST_DIM] )
+							   const double& rotAngle, const double rotAxis[P4EST_DIM], const u_char& maxRL, u_char& octMaxRL,
+							   int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] )
 {
 	// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only within this region.
 	const double U_ZERO = gaussian.findKappaZero( h, dir::x );
@@ -415,7 +434,7 @@ GaussianLevelSet *setupDomain( const mpi_environment_t& mpi, const Gaussian& gau
 
 	// Defining the transformed Gaussian level-set function.  This also discretizes the surface using a balltree to speed up queries
 	// during grid refinment.
-	auto *gLS = new GaussianLevelSet( &mpi, Point3( origin ), Point3(0, 0, 1), 0, HALF_U_H, HALF_V_H, maxRL, &gaussian, SQR(ULIM), SQR(VLIM), 5 );
+	auto *gLS = new GaussianLevelSet( &mpi, Point3( origin ), Point3( rotAxis ), rotAngle, HALF_U_H, HALF_V_H, maxRL, &gaussian, SQR(ULIM), SQR(VLIM), 5 );
 
 	// Finding the world coords of (canonical) cylinder containing Q(u,v).
 	double minQCylWCoords[P4EST_DIM] = {+DBL_MAX, +DBL_MAX, +DBL_MAX};	// Min and max cylinder world coords.

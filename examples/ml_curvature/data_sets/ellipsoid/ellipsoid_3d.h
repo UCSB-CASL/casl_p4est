@@ -2,7 +2,7 @@
  * A collection of classes and functions related to an ellipsoid.
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: April 15, 2022.
+ * Updated: April 23, 2022.
  */
 
 #ifndef ML_CURVATURE_ELLIPSOID_3D_H
@@ -311,21 +311,30 @@ private:
 			atan2( p.z, _ellipsoid->c() * sqrt( SQR( p.x ) / _ellipsoid->a2() + SQR( p.y ) / _ellipsoid->b2() ) )	// psi
 		};
 
-		double d0 = (_ellipsoid->getXYZFromAngularParams( initialPoint(0), initialPoint(1) ) - p).norm_L2();	// Distance to initial guess: we must improve this.
-		double D = dlib::find_min_trust_region( dlib::objective_delta_stop_strategy( _deltaStop ),				// Append .be_verbose() for debugging.
-									 EllipsoidPointDistanceModel( p, *(_ellipsoid) ), initialPoint, initialTrustRadius );
-		double d = sqrt( 2 * D );		// D is the 0.5*||dist||^2.
-		if( d > d0 )
-			throw std::runtime_error( errorPrefix + "Distance at nearest point is larger than distance at the initial guess." );
+		double cond1, cond2;	// Conditions for iterating until we find the closest point.
+		int iter = 0;
+		double d;				// Shortest distance found numerically.
+		do
+		{
+			double d0 = (_ellipsoid->getXYZFromAngularParams( initialPoint(0), initialPoint(1) ) - p).norm_L2();	// Distance to initial guess: we must improve this.
+			double D = dlib::find_min_trust_region( dlib::objective_delta_stop_strategy( _deltaStop ),				// Append .be_verbose() for debugging.
+													EllipsoidPointDistanceModel( p, *(_ellipsoid) ), initialPoint, initialTrustRadius );
+			d = sqrt( 2 * D );	// D is the 0.5*||dist||^2.
+			if( d > d0 )
+				throw std::runtime_error( errorPrefix + "Distance at nearest point is larger than distance at the initial guess." );
 
-		// To verify that the numerical method work, we can check that P-Q(theta,psi) is perpendicular to the tangen plane at Q(theta,psi).
-		// @see https://www.ma.ic.ac.uk/~rn/distance2ellipse.pdf:
-		// (P-Q)·dQ/dtheta = 0  and (P-Q)·dQ/dpsi = 0
-		theta = initialPoint(0);
-		psi = initialPoint(1);
-		double cond1 = (_ellipsoid->a2()-_ellipsoid->b2())*cos(theta)*sin(theta)*cos(psi) - p.x*_ellipsoid->a()*sin(theta) + p.y*_ellipsoid->b()*cos(theta);
-		double cond2 = (SQR(_ellipsoid->a()*cos(theta)) + SQR(_ellipsoid->b()*sin(theta)) - _ellipsoid->c2())*sin(psi)*cos(psi) - p.x*_ellipsoid->a()*sin(psi)*cos(theta)
-			- p.y*_ellipsoid->b()*sin(psi)*sin(theta) + p.z*_ellipsoid->c()*cos(psi);
+			// To verify that the numerical method work, we can check that P-Q(theta,psi) is perpendicular to the tangent plane at Q(theta,psi).
+			// @see https://www.ma.ic.ac.uk/~rn/distance2ellipse.pdf:
+			// (P-Q)·dQ/dtheta = 0  and (P-Q)·dQ/dpsi = 0
+			theta = initialPoint(0);
+			psi = initialPoint(1);
+			cond1 = (_ellipsoid->a2()-_ellipsoid->b2())*cos(theta)*sin(theta)*cos(psi) - p.x*_ellipsoid->a()*sin(theta) + p.y*_ellipsoid->b()*cos(theta);
+			cond2 = (SQR(_ellipsoid->a()*cos(theta)) + SQR(_ellipsoid->b()*sin(theta)) - _ellipsoid->c2())*sin(psi)*cos(psi) - p.x*_ellipsoid->a()*sin(psi)*cos(theta)
+				- p.y*_ellipsoid->b()*sin(psi)*sin(theta) + p.z*_ellipsoid->c()*cos(psi);
+			iter++;
+		}
+		while( iter < 5 && (ABS( cond1 ) > FLT_EPSILON || ABS( cond2 ) > FLT_EPSILON) );
+
 		if( ABS( cond1 ) > FLT_EPSILON || ABS( cond2 ) > FLT_EPSILON )
 			throw std::runtime_error( errorPrefix + "Vector PQ is not (numerically) perpendicular to tangent plane at Q(theta,psi)." );
 		return SIGN( (*_ellipsoid)( p ) ) * d;
