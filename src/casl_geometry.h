@@ -276,10 +276,10 @@ namespace geom
 	 * @return Closest point on the line segment v0v1.
 	 */
 	template<typename Point = Point2>
-	inline Point findClosestPointOnLineSegmentToPoint( const Point& p, const Point& v0, const Point& v1, double TOL = EPS )
+	inline Point findClosestPointOnLineSegmentToPoint( const Point& p, const Point& v0, const Point& v1, const double& TOL=EPS )
 	{
 		static_assert( std::is_base_of<Point2, Point>::value || std::is_base_of<Point3, Point>::value,
-					   "[CASL_ERROR]: geom::interpolatePoint: Function may be called only by Point2 or Point3 objects!" );
+					   "[CASL_ERROR] geom::interpolatePoint: Function may be called only with Point2 or Point3 objects!" );
 
 		Point v = v1 - v0;
 		double denom = v.dot( v );
@@ -292,6 +292,40 @@ namespace geom
 		if( t >= 1 )
 			return v1;
 		return v0 + v * t;
+	}
+
+	/**
+	 * Build a random set of orthonormal basis in 2 or 3d using a numerically stable Gram-Schmidth algorithm, as described on p. 316 in
+	 * "Matrix Analysis and Applied Linear Algebra", by Carl D. Meyer.
+	 * @tparam Point Either Point2 or Point3.
+	 * @param [out] basis Array of randomly generated orthnormal basis vectors.  To be emptied and fill with resulting vectors.
+	 * @param [in,out] gen Random-number-generating engine.
+	 */
+	template<typename Point = PointDIM>
+	inline void buildRandomBasis( std::vector<Point>& basis, std::mt19937& gen )
+	{
+		static_assert( std::is_base_of<Point2, Point>::value || std::is_base_of<Point3, Point>::value,
+			"[CASL_ERROR] geom::buildRandomBasis: Function may be called only with Point2 or Point3 objects!" );
+		u_short dim = std::is_base_of<Point2, Point>::value? 2 : 3;
+		basis.clear();
+
+		// Start with a set of random lin. independent vectors.
+		std::uniform_real_distribution<double> dist(-1, +1);
+		for( int i = 0; i < dim; i++ )
+		{
+			std::vector<double> values( dim );
+			for( int j = 0; j < dim; j++ )
+				values[j] = dist( gen );
+			basis.push_back( Point( values.data() ) );	// The to-be u_i basis vector.
+		}
+
+		// Construct the basis.
+		for( int k = 0; k < dim; k++ )
+		{
+			basis[k] = basis[k].normalize();
+			for( int j = k + 1; j < dim; j++ )
+				basis[j] = basis[j] - basis[k] * basis[k].dot( basis[j] );
+		}
 	}
 
 	/**

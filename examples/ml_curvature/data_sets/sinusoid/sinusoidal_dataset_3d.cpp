@@ -30,7 +30,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 26, 2022.
- * Updated: April 9, 2022.
+ * Updated: April 23, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -124,10 +124,8 @@ int main ( int argc, char* argv[] )
 		const double HK_MAX_UP = maxHK();
 
 		// Affine transformation parameters.
-		const int NUM_AXES = P4EST_DIM;
-		const Point3 ROT_AXES[NUM_AXES] = {{1,0,0}, {0,1,0}, {0,0,1}};	// Use Euler angles; these are the rotation axes.
-		const double MIN_THETA = -M_PI_2;								// For each axis, we vary the angle from -pi/2
-		const double MAX_THETA = +M_PI_2;								// +pi/2, excluding the right-end point.
+		const double MIN_THETA = -M_PI_2;						// For each random basis vector, we vary the angle from -pi/2
+		const double MAX_THETA = +M_PI_2;						// +pi/2, excluding the right-end point.
 		std::uniform_real_distribution<double> uniformDistributionH_2( -h/2, +h/2 );	// Random translation.
 
 		// Parameter validation.
@@ -238,9 +236,28 @@ int main ( int argc, char* argv[] )
 					setupDomain( sinusoid, numFullWaves(), h, MAX_A, maxRL(), samRadius, octreeMaxRL, uvLim, halfUV,
 								 n_xyz, xyz_min, xyz_max );
 
+					double rotAxes[P4EST_DIM][P4EST_DIM] = {{1,0,0}, {0,1,0}, {0,0,1}};		// Orthornal random basis vectors.
+					if( mpi.rank() == 0 )
+					{
+						std::vector<Point3> basis;
+						geom::buildRandomBasis( basis, gen );
+						for( int i = 0; i < P4EST_DIM; i++ )
+						{
+							rotAxes[i][0] = basis[i].x;
+							rotAxes[i][1] = basis[i].y;
+							rotAxes[i][2] = basis[i].z;
+						}
+					}
+					for( auto& rotAxis : rotAxes )
+						SC_CHECK_MPI( MPI_Bcast( &rotAxis, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random basis.
+
+					std::cout<< "Rank " << mpi.rank() << ": [" << rotAxes[0][0] << ", " << rotAxes[0][1] << ", " << rotAxes[0][2] << "]" << std::endl
+							 << "     " << ": [" << rotAxes[1][0] << ", " << rotAxes[1][1] << ", " << rotAxes[1][2] << "]" << std::endl
+							 << "     " << ": [" << rotAxes[2][0] << ", " << rotAxes[2][1] << ", " << rotAxes[2][2] << "]" << std::endl;
+
 					for( int axisIdx = 0; axisIdx < P4EST_DIM; axisIdx++ )	// Use Euler angles to rotate canonical coord system.
 					{
-						const Point3 ROT_AXIS = ROT_AXES[axisIdx];
+						const Point3 ROT_AXIS( rotAxes[axisIdx] );
 						double maxHKError = 0, maxIH2KGError = 0;		// Tracking the maximum error and number of samples
 						size_t loggedSamples[SAMPLE_TYPES] = {0, 0};	// collectively shared across processes for this rot axis.
 
