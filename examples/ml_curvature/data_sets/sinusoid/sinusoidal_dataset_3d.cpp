@@ -251,10 +251,6 @@ int main ( int argc, char* argv[] )
 					for( auto& rotAxis : rotAxes )
 						SC_CHECK_MPI( MPI_Bcast( &rotAxis, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random basis.
 
-					std::cout<< "Rank " << mpi.rank() << ": [" << rotAxes[0][0] << ", " << rotAxes[0][1] << ", " << rotAxes[0][2] << "]" << std::endl
-							 << "     " << ": [" << rotAxes[1][0] << ", " << rotAxes[1][1] << ", " << rotAxes[1][2] << "]" << std::endl
-							 << "     " << ": [" << rotAxes[2][0] << ", " << rotAxes[2][1] << ", " << rotAxes[2][2] << "]" << std::endl;
-
 					for( int axisIdx = 0; axisIdx < P4EST_DIM; axisIdx++ )	// Use Euler angles to rotate canonical coord system.
 					{
 						const Point3 ROT_AXIS( rotAxes[axisIdx] );
