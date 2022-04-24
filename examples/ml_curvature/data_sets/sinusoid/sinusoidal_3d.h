@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: March 12, 2022.
+ * Updated: April 24, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
@@ -567,6 +567,7 @@ public:
 	 * @param [in] xyzMax Domain's maximum coordinates.
 	 * @param [out] trackedMinHK Minimum |hk*| detected across processes for this batch of samples (non-saddle pos 0, saddle pos 1).
 	 * @param [out] trackedMaxHK Maximum |hk*| detected across processes for this batch of samples (non-saddle pos 0, saddle pos 1).
+	 * @param [in] nonSaddleMinIH2KG Min numerical dimensionless Gaussian curvature (at Gamma) for numerical non-saddle points.
 	 * @param [in,out] genP Random-number generator device to decide whether to take a sample or not.
 	 * @param [out] nonSaddleSamples Array of collected samples for non-saddle regions (i.e., ih2kg > 0).
 	 * @param [in] easingOffMaxHK Upper bound max |hk| for easing-off probability based on mean curvature for non-saddle points.
@@ -591,11 +592,11 @@ public:
 	 * 		   be cached too), or if the probability for lower bound max HK is invalid, or if the overriding sampling
 	 * 		   radius is less than 1.5h or bigger than local sampling radius.
 	 */
-	std::pair<double,double> collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes,
-											 const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
-											 const unsigned char octreeMaxRL, const double xyzMin[P4EST_DIM],
-											 const double xyzMax[P4EST_DIM], double trackedMinHK[SAMPLE_TYPES], double trackedMaxHK[SAMPLE_TYPES],
-											 std::mt19937& genP, std::vector<std::vector<double>>& nonSaddleSamples,
+	std::pair<double,double> collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
+											 const Vec& phi, const unsigned char octreeMaxRL, const double xyzMin[P4EST_DIM],
+											 const double xyzMax[P4EST_DIM], double trackedMinHK[SAMPLE_TYPES],
+											 double trackedMaxHK[SAMPLE_TYPES], std::mt19937& genP, const double& nonSaddleMinIH2KG,
+											 std::vector<std::vector<double>>& nonSaddleSamples,
 											 const double& easingOffMaxHK, const double& easingOffProbMaxHK,	// These 4 params apply
 											 const double& minHK, const double& probMinHK, 						// to non-saddle points.
 											 std::vector<std::vector<double>>& saddleSamples,
@@ -730,8 +731,8 @@ public:
 				throw std::runtime_error( errorPrefix + "Couldn't locate node in cache!" );
 			Point3 p = recordCCoords->second;
 
-			if( SQR( p.x ) + SQR( p.y ) + SQR( p.z ) > SAM_R2 )	// Skip nodes whose point on the surface lies outiside
-				continue;										// the sampling sphere.
+			if( SQR( p.x ) + SQR( p.y ) + SQR( p.z ) > SAM_R2 )	// Skip nodes whose point on the surface lies outside the sampling sphere.
+				continue;
 
 #ifdef DEBUG
 			if( coordsSet.find( coords ) != coordsSet.end() )	// Coords should be unique!
@@ -742,25 +743,25 @@ public:
 			std::vector<p4est_locidx_t> stencil;
 			try
 			{
-				if( !nodesAlongInterface.getFullStencilOfNode( n , stencil ) )	// Second check: Does it have a valid stencil?
+				if( !nodesAlongInterface.getFullStencilOfNode( n , stencil ) )	// Does it have a valid stencil?
 					continue;
 
 				if( filter )
 				{
 					for( auto s : stencil )
 					{
-						if( filterReadPtr[s] != 1 )				// Check again we don't include a stencil with some
-							throw std::runtime_error( "Skip" );	// invalid nodes: use a controlled exception.
+						if( filterReadPtr[s] != 1 )				// Check we don't include a stencil with some invalid nodes.
+							throw std::runtime_error( "Skip" );
 					}
 				}
 
-				auto record = _cache.find( coords );			// Use cache created during level-set computation: see
-				if( record == _cache.end() )					// the computeExactSignedDistance(...) function above.
+				auto record = _cache.find( coords );			// Use cache created during level-set computation: see the
+				if( record == _cache.end() )					// computeExactSignedDistance(...) function above.
 					throw std::invalid_argument( errorPrefix + "Point not found in the cache!" );	// Exception not captured!
 
 				// Starting at this point, we collect samples in two ways:
-				// If the Gaussian curvature is <= 0 at Gamma, we're near a saddle point => subsample based on |ih2kg|.
-				// If the Gaussian curvature is > 0 at Gamma, we're away from a saddle point => subsample based on true mean |hk*|.
+				// If the Gaussian curvature is < nonSaddleMinIH2KG at Gamma, this is a saddle-region point => subsample based on |ih2kg|.
+				// If the Gaussian curvature is >= nonSaddleMinIH2KG at Gamma, this is not a saddle-region point => subsample based on |hk*|.
 				Point3 nearestPoint = record->second.second;
 				double hk = _h * _mongeFunction->meanCurvature( nearestPoint.x, nearestPoint.y );	// Mean hk at the *exact* projection onto Gamma.
 				for( int c = 0; c < P4EST_DIM; c++ )			// Find the location where to (linearly) interpolate curvatures.
@@ -769,8 +770,9 @@ public:
 				kappaMGInterp( xyz, kappaMGValues );			// Get linearly interpolated mean and Gaussian curvature in one shot.
 				double ihkVal = _h * kappaMGValues[0];
 				double ih2kgVal = SQR( _h ) * kappaMGValues[1];
+
 				bool isNonSaddle;
-				if( ih2kgVal > 0 )								// Not a saddle?  Continue filtering based on true mean hk.
+				if( ih2kgVal >= nonSaddleMinIH2KG )				// Not a saddle?  Continue filtering based on true mean hk.
 				{
 					if( ABS( hk ) < minHK )						// Target mean |hk*| must be >= minHK for non-saddle regions.
 						continue;

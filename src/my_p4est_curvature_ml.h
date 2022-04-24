@@ -45,7 +45,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: April 10, 2022.
+ * Updated: April 24, 2022.
  */
 namespace kml
 {
@@ -371,7 +371,7 @@ namespace kml
 		 * reorientation and reflection.  Then, place these samples in a cumulative array.
 		 * @note 1: Only rank 0 accumulates processed samples, but all processes receive the total number of them.
 		 * @note 2: Use this function only to construct learning or offline-evaluation data sets since we include
-		 * 			true dimensionless curvature(s) too.
+		 * 			true (i.e., target) dimensionless curvature(s).
 		 * @param [in] mpi MPI environment.
 		 * @param [in,out] samples List of feature vectors.
 		 * @param [in,out] buffer Cumulative array of feature vectors.
@@ -379,8 +379,8 @@ namespace kml
 		 * @param [in] negMeanKNormalize 0 if we don't want negative-mean-curvature normalization for all samples
 		 * 			   or 1 if we do, independently of ih2kg; use 2 for deciding normalization based on ih2kg values
 		 * 			   individually AND to prevent changing the sign of hk and ihk.  This is useful to create data
-		 * 			   sets for offline evaluation that contains all columns of a learning data set but with hk, ihk,
-		 * 			   h2kg, and ih2kg preserve with their original signs.
+		 * 			   sets for offline evaluation that contain all learning data set columns but with hk, ihk,
+		 * 			   h2kg, and ih2kg preserving their original signs.
 		 * @return Number of samples collected from all processes.
 		 * @throws invalid_argument if user chooses an invalid option for negative-curvature normalization.
 		 */
