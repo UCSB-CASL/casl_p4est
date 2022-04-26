@@ -2,7 +2,7 @@
  * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
  * Developer: Luis Ángel.
  * Created: April 30, 2020.
- * Updated: March 8, 2022.
+ * Updated: April 25, 2022.
  */
 
 #ifndef CASL_GEOMETRY_H
@@ -884,6 +884,11 @@ namespace geom
 	public:
 		virtual double meanCurvature( const double& u, const double& v ) const = 0;
 		virtual double gaussianCurvature( const double& u, const double& v ) const = 0;
+		virtual double dQdu( const double& u, const double& v, double Q ) const = 0;
+		virtual double dQdv( const double& u, const double& v, double Q ) const = 0;
+		virtual double d2Qdu2( const double& u, const double& v, double Q, double Qu ) const = 0;
+		virtual double d2Qdv2( const double& u, const double& v, double Q, double Qv ) const = 0;
+		virtual double d2Qdudv( const double& u, const double& v, double Q ) const = 0;
 	};
 
 	/**

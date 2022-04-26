@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: April 24, 2022.
+ * Updated: April 25, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
@@ -75,9 +75,10 @@ public:
 	 * First derivative w.r.t. u.
 	 * @param [in] u Value along the u direction.
 	 * @param [in] v Value along the v direction.
+	 * @param [in] Q (Optional) Cached Q(u,v).
 	 * @return dQdu(u, v).
 	 */
-	double dQdu( double u, double v ) const
+	double dQdu( const double& u, const double& v, double Q ) const override
 	{
 		return _a * _wu * cos( _wu * u ) * sin ( _wv * v );
 	}
@@ -86,9 +87,10 @@ public:
 	 * First derivative w.r.t. v.
 	 * @param [in] u Value along the u direction.
 	 * @param [in] v Value along the v direction.
+	 * @param [in] Q (Optional) Cached Q(u,v).
 	 * @return dQdv(u, v).
 	 */
-	double dQdv( double u, double v ) const
+	double dQdv( const double& u, const double& v, double Q ) const override
 	{
 		return _a * _wv * sin( _wu * u ) * cos( _wv * v );
 	}
@@ -98,9 +100,10 @@ public:
 	 * @param [in] u Value along the u direction.
 	 * @param [in] v Value along the v direction.
 	 * @param [in] Q (Optional) Cached Q(u,v).
+	 * @param [in] Qu (Optional) Cached dQdu(u,v).
 	 * @return d2Qdu2(u, v).
 	 */
-	double d2Qdu2( double u, double v, double Q=NAN ) const
+	double d2Qdu2( const double& u, const double& v, double Q, double Qu ) const override
 	{
 		Q = (isnan( Q )? this->operator()( u, v ) : Q);
 		return -_wu2 * Q;
@@ -111,9 +114,10 @@ public:
 	 * @param [in] u Value along the u direction.
 	 * @param [in] v Value along the v direction.
 	 * @param [in] Q (Optional) Cached Q(u,v).
+	 * @param [in] Qv (Optional) Cached dQdv(u,v).
 	 * @return d2Qdv2(u, v).
 	 */
-	double d2Qdv2( double u, double v, double Q=NAN ) const
+	double d2Qdv2( const double& u, const double& v, double Q, double Qv ) const override
 	{
 		Q = (isnan( Q )? this->operator()( u, v ) : Q);
 		return -_wv2 * Q;
@@ -123,9 +127,10 @@ public:
 	 * Mixed second derivative.
 	 * @param [in] u Value along the u direction.
 	 * @param [in] v Value along the v direction.
+	 * @param [in] Q (Optional) Cached Q(u,v).
 	 * @return d2Qdudv(u, v).
 	 */
-	double d2Qdudv( double u, double v ) const
+	double d2Qdudv( const double& u, const double& v, double Q ) const override
 	{
 		return _a * _wu * _wv * cos( _wu * u ) * cos( _wv * v );
 	}
@@ -141,11 +146,11 @@ public:
 	double meanCurvature( const double& u, const double& v ) const override
 	{
 		double Q = this->operator()( u, v );
-		double Qu = dQdu( u, v );
-		double Qv = dQdv( u, v );
-		double Quu = d2Qdu2( u, v, Q );
-		double Qvv = d2Qdv2( u, v, Q );
-		double Quv = d2Qdudv( u, v );
+		double Qu = dQdu( u, v, NAN );
+		double Qv = dQdv( u, v, NAN );
+		double Quu = d2Qdu2( u, v, Q, NAN );
+		double Qvv = d2Qdv2( u, v, Q, NAN );
+		double Quv = d2Qdudv( u, v, NAN );
 		double kappa = ((1 + SQR( Qv )) * Quu - 2 * Qu * Qv * Quv + (1 + SQR( Qu )) * Qvv)
 					   / (2 * pow( 1 + SQR( Qu ) + SQR( Qv ), 1.5 ) );
 		return kappa;
@@ -160,9 +165,9 @@ public:
 	double gaussianCurvature( const double& u, const double& v ) const override
 	{
 		double Q = this->operator()( u, v );
-		double Qu = dQdu( u, v );
-		double Qv = dQdv( u, v );
-		double Quv = d2Qdudv( u, v );
+		double Qu = dQdu( u, v, NAN );
+		double Qv = dQdv( u, v, NAN );
+		double Quv = d2Qdudv( u, v, NAN );
 		return (_wu2 * _wv2 * SQR( Q ) - SQR( Quv )) / SQR( 1 + SQR( Qu ) + SQR( Qv ) );
 	}
 
@@ -236,8 +241,8 @@ private:
 	 */
 	double _evalDistance( const column_vector& m ) const
 	{
-		const double u = m( 0 );
-		const double v = m( 1 );
+		const double u = m(0);
+		const double v = m(1);
 
 		return 0.5 * (SQR( u - P.x ) + SQR( v - P.y ) + SQR( S(u,v) - P.z ));
 	}
@@ -249,16 +254,16 @@ private:
 	 */
 	column_vector _evalGradient( const column_vector& m ) const
 	{
-		const double u = m( 0 );
-		const double v = m( 1 );
+		const double u = m(0);
+		const double v = m(1);
 
 		// Make a column vector of length 2 to hold the gradient.
 		column_vector res( 2 );
 
 		// Now, compute the gradient vector.
-		double Q = S(u,v);
-		double Qu = S.dQdu( u, v );
-		double Qv = S.dQdv( u, v );
+		double Q = S( u, v );
+		double Qu = S.dQdu( u, v, NAN );
+		double Qv = S.dQdv( u, v, NAN );
 		res( 0 ) = (u - P.x) + (Q - P.z) * Qu; 	// dD/du.
 		res( 1 ) = (v - P.y) + (Q - P.z) * Qv; 	// dD/dv.
 		return res;
@@ -275,17 +280,17 @@ private:
 		const double v = m(1);
 
 		double Q = S( u, v );
-		double Qu = S.dQdu( u, v );
-		double Qv = S.dQdv( u, v );
-		double Quv = S.d2Qdudv( u, v );
+		double Qu = S.dQdu( u, v, NAN );
+		double Qv = S.dQdv( u, v, NAN );
+		double Quv = S.d2Qdudv( u, v, NAN );
 
 		// Make us a 2x2 matrix.
 		dlib::matrix<double> res( 2, 2 );
 
 		// Now, compute the second derivatives.
-		res( 0, 0 ) = 1 + SQR( Qu ) - (Q - P.z) * Q * S.wu2();	// d/du(dD/du).
-		res( 1, 0 ) = res( 0, 1 ) = (2 * Q - P.z) * Quv;		// d/du(dD/dv) and d/dv(dD/du).
-		res( 1, 1 ) = 1 + SQR( Qv ) - (Q - P.z) * Q * S.wv2();	// d/dv(dD/dv).
+		res(0, 0) = 1 + SQR( Qu ) - (Q - P.z) * Q * S.wu2();	// d/du(dD/du).
+		res(1, 0) = res(0, 1) = (2 * Q - P.z) * Quv;			// d/du(dD/dv) and d/dv(dD/du).
+		res(1, 1) = 1 + SQR( Qv ) - (Q - P.z) * Q * S.wv2();	// d/dv(dD/dv).
 		return res;
 	}
 

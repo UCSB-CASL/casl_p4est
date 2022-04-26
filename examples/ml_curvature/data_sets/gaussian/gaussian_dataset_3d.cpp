@@ -4,7 +4,7 @@
  *
  *                                           Q(u,v) = a*exp(-0.5*(u^2/su^2 + v^2/sv^2)),
  *
- * with zero means mu=mv=0, variances su^2 and sv^2, and height a.  As for the level-set function whose Gamma = Q(u,v), phi < 0 for points
+ * with zero means mu=mv=0, variances su^2 and sv^2, and height a.  As for the level-set function whose Gamma=Q(u,v)=0, phi < 0 for points
  * below Q(u,v), and phi > 0 for points above the Gaussian.  We simplify calculations by expressing query points in terms of the canonical
  * frame, which can be affected by a rigid transformation (i.e., translation and rotation).
  *
@@ -30,6 +30,8 @@
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
  * Updated: April 23, 2022.
+ *
+ * TODO: Modify to generate samples with no negative-curvature normalization.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -76,7 +78,7 @@ int main ( int argc, char* argv[] )
 	param_t<bool>  perturbOrigin( pl, true, "perturbFrame"	, "Whether to perturb the Gaussian's frame randomly in [-h/2,+h/2]^3 (default: true)" );
 	param_t<bool> randomRotation( pl, true, "randomRotation", "Whether to apply a rotation with a random angle about a random unit axis (default: true)" );
 	param_t<u_int>   randomState( pl,    7, "randomState"	, "Seed for random perturbations of the canonical frame (default: 7)" );
-	param_t<std::string>  outDir( pl,  ".", "outDir"		, "Path where files will be written to (default: build folder)" );
+	param_t<std::string>  outDir( pl,  ".", "outDir"		, "Path where data/param files will be written to (default: build folder)" );
 
 	try
 	{
