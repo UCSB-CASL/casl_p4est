@@ -694,7 +694,7 @@ public:
 										    splitting_criteria_cf_and_uniform_band_shs_t* &sp,
 										    p4est_connectivity_t *conn, const mpi_environment_t& mpi_, const int& lmin,
 											const unsigned int wall_layer, const double& lmid_delta_percent,
-											const double& lip_user )
+											const double& lip_user, const double& cfl_user )
   {
     P4EST_ASSERT( is_configured );
     delete sp;
@@ -724,7 +724,8 @@ public:
     const double tree_dim[P4EST_DIM] = {DIM( (brick->xyz_max[0] - brick->xyz_min[0]) / brick->nxyztrees[0],
 										(brick->xyz_max[1] - brick->xyz_min[1]) / brick->nxyztrees[1],
 										(brick->xyz_max[2] - brick->xyz_min[2])/brick->nxyztrees[2] )};
-    if( third_degree_ghost_are_required( tree_dim ) )
+	int n_ghost_addtnl_expansions = cfl_user > 1? (int)ceil(cfl_user - 1) : (int)third_degree_ghost_are_required(tree_dim);
+	for(int i = 0; i < n_ghost_addtnl_expansions; i++)
       my_p4est_ghost_expand( forest, ghost );
     if( nodes != nullptr )
       p4est_nodes_destroy( nodes );

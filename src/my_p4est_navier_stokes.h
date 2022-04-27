@@ -361,12 +361,13 @@ protected:
    * \param mpi             [in]    mpi environment to load the solver state in
    * \param path_to_folder  [in]    path to the folder where the solver state has been stored (absolute path)
    * \param tn              [inout] simulation time at which the data were saved (to be read from saved solver state)
+   * \param override_saved_cfl [in] allows overriding saved cfl value the ghost layer can be constructed accordingly (<=0 to use saved cfl).
    * [NOTE :] the function will destroy and overwrite any grid-related structure like p4est_n, nodes_n, ghost_n, faces_n, etc.
    * if they have already been constructed beforehand...
    * WARNING: this function throws an std::invalid_argument exception if path_to_folder is invalid
    * Raphael EGAN
    */
-  void load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn);
+  void load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn, const double& override_saved_cfl=0);
 
   /*!
    * \brief compute_velocity_at_local_node : function for interpolating face-sampled velocity components at a local grid node. Made private
@@ -425,7 +426,7 @@ protected:
 
 public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
-  my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double &simulation_time);
+  my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double& simulation_time, const double& override_cfl=0);
   ~my_p4est_navier_stokes_t();
 
   void set_parameters(double mu, double rho, int sl_order, double uniform_band, double vorticity_threshold_split_cell, double n_times_dt, double norm_grad_u_threshold_split_cell = DBL_MAX);
@@ -671,7 +672,8 @@ public:
     delete cell_solver;
   }
   double solve_projection(my_p4est_poisson_cells_t* &cell_poisson_solver, const bool& use_initial_guess = false, const KSPType& ksp = KSPBCGS, const PCType& pc = PCSOR,
-                          const bool& shift_to_zero_mean_if_floating = true, Vec hodge_old = NULL, Vec former_dxyz_hodge[P4EST_DIM] = NULL, const hodge_control& dxyz_hodge_chek = hodge_value);
+                          const bool& shift_to_zero_mean_if_floating = true, Vec hodge_old = NULL, Vec former_dxyz_hodge[P4EST_DIM] = NULL, const hodge_control& dxyz_hodge_chek = hodge_value,
+						  const double& ksp_rtol=1e-12, const bool& verbose=false);
 
   /*!
    * \brief get_correction_in_hodge_derivative_for_enforcing_mass_flow

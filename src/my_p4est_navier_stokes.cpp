@@ -333,7 +333,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
   interp_grad_phi->set_input(grad_phi, linear, P4EST_DIM);
 }
 
-my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_save_state, double &simulation_time)
+my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_save_state, double& simulation_time, const double& override_cfl)
   : semi_lagrangian_backtrace_is_done(false), interpolators_from_face_to_nodes_are_set(false), wall_bc_value_hodge(this), interface_bc_value_hodge(this)
 {
   PetscErrorCode ierr;
@@ -355,7 +355,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi,
     }
   }
   dt_updated = false;
-  load_state(mpi, path_to_save_state, simulation_time);
+  load_state(mpi, path_to_save_state, simulation_time, override_cfl);
   ierr = VecCreateGhostCells(p4est_n, ghost_n, &pressure); CHKERRXX(ierr);
 
   bc_v = NULL;
@@ -1223,8 +1223,10 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
 /* solve the projection step
  * laplace Hodge = -div(vstar)
  */
-double my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_solver, const bool& use_initial_guess, const KSPType& ksp, const PCType& pc,
-                                                  const bool& shift_to_zero_mean_if_floating, Vec hodge_old, Vec former_dxyz_hodge[P4EST_DIM], const hodge_control& hodge_chek)
+double my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_solver, const bool& use_initial_guess, const KSPType& ksp,
+												  const PCType& pc, const bool& shift_to_zero_mean_if_floating, Vec hodge_old,
+												  Vec former_dxyz_hodge[P4EST_DIM], const hodge_control& hodge_chek, const double& ksp_rtol,
+												  const bool& verbose)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_projection, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1261,7 +1263,7 @@ double my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cel
   }
   cell_solver->set_mu(1.0);
   cell_solver->set_rhs(rhs);
-  cell_solver->solve(hodge, use_initial_guess, ksp, pc);
+  cell_solver->solve(hodge, use_initial_guess, ksp, pc, ksp_rtol, verbose);
 
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
 
@@ -1870,7 +1872,8 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
   {
     ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est_np1, ghost_np1);
-    if(third_degree_ghost_are_required(convert_to_xyz))
+	int n_ghost_addtnl_expansions = get_cfl() > 1? (int)ceil(get_cfl() - 1) : (int)third_degree_ghost_are_required(convert_to_xyz);
+	for(int i = 0; i < n_ghost_addtnl_expansions; i++)
       my_p4est_ghost_expand(p4est_np1, ghost_np1);
   }
   else
@@ -3239,7 +3242,6 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, spl
           break;
         default:
           throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown default parameter to fill in missing data from backup file...");
-          break;
         }
       }
     }
@@ -3265,7 +3267,6 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, spl
           break;
         default:
           throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown default parameter to fill in missing data from backup file...");
-          break;
         }
       }
     }
@@ -3275,12 +3276,10 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, spl
   }
   default:
     throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown flag value");
-    break;
-    break;
   }
 }
 
-void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn)
+void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn, const double& override_saved_cfl)
 {
   PetscErrorCode ierr;
   char filename[PATH_MAX];
@@ -3289,9 +3288,10 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
     throw std::invalid_argument("my_p4est_navier_stokes_t::load_state: path_to_folder is invalid.");
 
   // load general solver parameters first
-  splitting_criteria_t* data = new splitting_criteria_t;
+  auto* data = new splitting_criteria_t;
   sprintf(filename, "%s/solver_parameters", path_to_folder);
-  save_or_load_parameters(filename, data, LOAD, tn, &mpi);
+  save_or_load_parameters(filename, data, LOAD, tn, &mpi);					// This loads saved cfl, but we might want to override it to
+  double cfl = override_saved_cfl <= 0? n_times_dt : override_saved_cfl;	// construct the appropriate ghost layer.
 
   sprintf(filename, "%s/smoke.petscbin", path_to_folder);
 
@@ -3300,7 +3300,7 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
   {
     my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
                                   p4est_n, conn,
-                                  P4EST_TRUE, ghost_n, nodes_n,
+                                  P4EST_TRUE, cfl, ghost_n, nodes_n,
                                   P4EST_TRUE, brick, P4EST_TRUE, faces_n, hierarchy_n, ngbd_c,
                                   "p4est_n", 5,
                                   "phi", NODE_DATA, 1, &phi,
@@ -3315,7 +3315,7 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
       refine_with_smoke = false;
     my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
                                   p4est_n, conn,
-                                  P4EST_TRUE, ghost_n, nodes_n,
+                                  P4EST_TRUE, cfl, ghost_n, nodes_n,
                                   P4EST_TRUE, brick, P4EST_TRUE, faces_n, hierarchy_n, ngbd_c,
                                   "p4est_n", 4,
                                   "phi", NODE_DATA, 1, &phi,
@@ -3325,25 +3325,22 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
   }
   P4EST_ASSERT(find_max_level(p4est_n) == data->max_lvl);
 
-  if(ngbd_n != NULL)
-    delete ngbd_n;
+  delete ngbd_n;
   ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
   ngbd_n->init_neighbors();
   // load p4est_nm1 and the corresponding objects
-  p4est_connectivity_t* conn_nm1 = NULL;
+  p4est_connectivity_t* conn_nm1 = nullptr;
   my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
                                 p4est_nm1, conn_nm1,
-                                P4EST_TRUE, ghost_nm1, nodes_nm1,
+                                P4EST_TRUE, cfl, ghost_nm1, nodes_nm1,
                                 "p4est_nm1", 1,
                                 "vnm1_nodes", NODE_DATA, P4EST_DIM, vnm1_nodes);
   p4est_connectivity_destroy(conn_nm1);
 
   p4est_nm1->connectivity = conn;
-  if(hierarchy_nm1 != NULL)
-    delete hierarchy_nm1;
+  delete hierarchy_nm1;
   hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
-  if(ngbd_nm1 != NULL)
-    delete ngbd_nm1;
+  delete ngbd_nm1;
   ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
   ngbd_nm1->init_neighbors();
 
@@ -3405,7 +3402,8 @@ void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_DIM *l
   p4est_t* p4est_nm1_saved        = p4est_copy(p4est_nm1, P4EST_FALSE);
   p4est_ghost_t* ghost_nm1_saved  = my_p4est_ghost_new(p4est_nm1_saved, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_nm1_saved, ghost_nm1_saved);
-  if(third_degree_ghost_are_required(convert_to_xyz))
+  int n_ghost_addtnl_expansions = get_cfl() > 1? (int)ceil(get_cfl() - 1) : (int)third_degree_ghost_are_required(convert_to_xyz);
+  for(int i = 0; i < n_ghost_addtnl_expansions; i++)
     my_p4est_ghost_expand(p4est_nm1_saved, ghost_nm1_saved);
   P4EST_ASSERT(ghosts_are_equal(ghost_nm1_saved, ghost_nm1));
   p4est_nodes_t* nodes_nm1_saved  = my_p4est_nodes_new(p4est_nm1_saved, ghost_nm1_saved);

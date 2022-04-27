@@ -194,12 +194,13 @@ void my_p4est_poisson_cells_t::preallocate_matrix()
   ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
+void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type,
+									 const PetscReal& ksp_rtol, const bool& verbose)
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_cells_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
-  if(bc == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
+  if(bc == nullptr) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
 
   {
     PetscInt sol_size;
@@ -211,11 +212,14 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
       throw std::invalid_argument(oss.str());
     }
   }
+
+  if(ksp_rtol <= 0 || ksp_rtol>=1)
+	throw std::invalid_argument("[CASL_ERROR]: cell solver residual relative norm tolerance must be in the range of (0,1).");
 #endif
 
   // set a local phi if not was given
   bool local_phi = false;
-  if(phi == NULL)
+  if(phi == nullptr)
   {
     local_phi = true;
     ierr = VecCreateSeq(PETSC_COMM_SELF, nodes->num_owned_indeps, &phi); CHKERRXX(ierr);
@@ -256,7 +260,7 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
   // setup rhs
   setup_negative_laplace_rhsvec();
 
-  P4EST_ASSERT(ksp != NULL);
+  P4EST_ASSERT(ksp != nullptr);
   // set ksp type
   KSPType ksp_type_as_such;
   ierr = KSPGetType(ksp, &ksp_type_as_such); CHKERRXX(ierr);
@@ -264,12 +268,12 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
   {
     ierr = KSPSetType(ksp, ksp_type); CHKERRXX(ierr);
   }
-  PetscReal ksp_tolerance;
-  ierr = KSPGetTolerances(ksp, &ksp_tolerance, NULL, NULL, NULL); CHKERRXX(ierr);
-  if(ksp_tolerance > 1.05e-12) // 1.05e-12 instead of 1e-12 to avoid floating-point arithmetics errors
-  {
-    ierr = KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
-  }
+//  PetscReal ksp_tolerance;
+//  ierr = KSPGetTolerances(ksp, &ksp_tolerance, nullptr, nullptr, nullptr); CHKERRXX(ierr);
+//  if(ksp_tolerance > 1.05e-12) // 1.05e-12 instead of 1e-12 to avoid floating-point arithmetics errors
+//  {
+    ierr = KSPSetTolerances(ksp, ksp_rtol, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
+//  }
   PetscBool ksp_initial_guess;
   ierr = KSPGetInitialGuessNonzero(ksp, &ksp_initial_guess); CHKERRXX(ierr);
   if (use_nonzero_initial_guess != ksp_initial_guess)
@@ -285,7 +289,7 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
   // set pc type
   PC pc;
   ierr = KSPGetPC(ksp, &pc); CHKERRXX(ierr);
-  P4EST_ASSERT(pc != NULL);
+  P4EST_ASSERT(pc != nullptr);
   PCType pc_type_as_such;
   ierr = PCGetType(pc, &pc_type_as_such); CHKERRXX(ierr);
   if(pc_type_as_such != pc_type)
@@ -338,11 +342,38 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
   ierr = KSPSolve(ksp, rhs, solution); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
 
+  // If user chooses to, show solver's reason(s) to converge/diverge, the max residual norm, and the max number of iterations.
+  if(verbose)
+  {
+	KSPConvergedReason reason;
+	CHKERRXX(KSPGetConvergedReason(ksp, &reason));
+	PetscReal resNorm;
+	CHKERRXX(KSPGetResidualNorm(ksp, &resNorm));
+	PetscInt iterNum;
+	CHKERRXX(KSPGetIterationNumber(ksp, &iterNum));
+
+	SC_CHECK_MPI(MPI_Allreduce(MPI_IN_PLACE, &resNorm, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm));	// Relative norm and max num of iters
+	SC_CHECK_MPI(MPI_Allreduce(MPI_IN_PLACE, &iterNum, 1, MPI_INT, MPI_MAX, p4est->mpicomm));		// across processes.
+
+	KSPConvergedReason minReason, maxReason;
+	SC_CHECK_MPI(MPI_Reduce(&reason, &minReason, 1, MPI_INT, MPI_MIN, 0, p4est->mpicomm));	// Convergence reasons.
+	SC_CHECK_MPI(MPI_Reduce(&reason, &maxReason, 1, MPI_INT, MPI_MAX, 0, p4est->mpicomm));
+
+	if(minReason < 0)		// Did it diverge?
+	  CHKERRXX(PetscPrintf(p4est->mpicomm, "   ¡¡¡¡The Krylov solver failed in at least one of the processes!!!!\n"));
+	std::ostringstream msg;
+	if(minReason != maxReason)
+	  msg << "   Solver convergence reasons range from: " << minReason << " to " << maxReason;
+	else
+	  msg << "   Solver convergence reason: " << minReason;
+	CHKERRXX(PetscPrintf(p4est->mpicomm, "%s,  Max residual norm: %g,  Max iterations: %i\n", msg.str().c_str(), resNorm, iterNum));
+  }
+
   // get rid of local stuff
   if(local_phi)
   {
     ierr = VecDestroy(phi); CHKERRXX(ierr);
-    phi = NULL;
+    phi = nullptr;
   }
 
   ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

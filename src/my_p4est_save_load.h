@@ -248,16 +248,17 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
  *                                        2) int DATA_SAMPLING: type of data-sampling, either NODE_DATA, NODE_BLOCK_VECTOR_DATA, CELL_DATA or FACE_DATA
  *                                        3) u_int nvecs: the number of PETSc vector(s) within the (grouped) load (greater than or equal to 1)
  *                                        4) Vec* pointer_to_vecs: pointer to the Vec object (if nvecs = 1) or the array of Vec objects (if nvecs > 1) to be filled with the loaded vector(s)
+ * \param cfl                     [in]    if expanding the ghost layer, a cfl > 1 will allow to call my_p4est_ghost_expand (possibly) more than once.
  * [NOTE 1:]  faces MUST be as it was when the data were exported, as it determines the size of cell-associated data chunks: if the data where exported with faces == NULL,
  *            they MUST be reloaded with faces == NULL as well, otherwise the cell-level data will be mismatched
  * [NOTE 2:]  if face-sampled data are reloaded, this function expects the corresponding number of grouped vectors to be loaded from file to be divisible by P4EST_DIM
  * Developer: Raphael Egan (raphaelegan@ucsb.edu)
  */
-void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
-                                   const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
-                                   const p4est_bool_t retrieve_brick, my_p4est_brick_t* &brick,
-                                   const p4est_bool_t create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
-                                   const char* forest_filename, const vector<save_or_load_element_t>& elements);
+void my_p4est_load_forest_and_data(const MPI_Comm& mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
+                                   const p4est_bool_t& expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
+                                   const p4est_bool_t& retrieve_brick, my_p4est_brick_t* &brick,
+                                   const p4est_bool_t& create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
+                                   const char* forest_filename, const vector<save_or_load_element_t>& elements, const double& cfl=1.0);
 
 /*!
  * \brief my_p4est_load_forest_and_data loads an (augmented) p4est object from a file on-disk and PETSc vector(s) from files on disks. The vectors
@@ -299,11 +300,20 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
  * [NOTE 2:]  if face-sampled data are reloaded, this function expects the corresponding number of grouped vectors to be loaded from file to be divisible by p4EST_DIM
  * Developer: Raphael Egan (raphaelegan@ucsb.edu)
  */
-void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
-                                   const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
-                                   const p4est_bool_t retrieve_brick, my_p4est_brick_t* &brick,
-                                   const p4est_bool_t create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
+void my_p4est_load_forest_and_data(const MPI_Comm& mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
+                                   const p4est_bool_t& expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
+                                   const p4est_bool_t& retrieve_brick, my_p4est_brick_t* &brick,
+                                   const p4est_bool_t& create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
                                    const char* forest_filename, u_int num_loads, ...);
+
+/**
+ * @see description of my_p4est_load_forest_and_data() above with additional cfl parameter for ghost layer expansion.
+ */
+void my_p4est_load_forest_and_data(const MPI_Comm& mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
+								   const p4est_bool_t& expand_ghost, const double& cfl, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
+								   const p4est_bool_t& retrieve_brick, my_p4est_brick_t* &brick,
+								   const p4est_bool_t& create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
+								   const char* forest_filename, u_int num_loads, ...);
 
 /*!
  * \brief my_p4est_load_forest_and_data loads an (augmented) p4est object from a file on-disk and PETSc vector(s) from files on disks. The vectors
@@ -325,11 +335,12 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
  *                                        2) int DATA_SAMPLING: type of data-sampling, either NODE_DATA, NODE_BLOCK_VECTOR_DATA, CELL_DATA or FACE_DATA
  *                                        3) u_int nvecs: the number of PETSc vector(s) within the (grouped) load (greater than or equal to 1)
  *                                        4) Vec* pointer_to_vecs: pointer to the Vec object (if nvecs = 1) or the array of Vec objects (if nvecs > 1) to be filled with the loaded vector(s)
+ * \param cfl                     [in]    if expanding the ghost layer, a cfl > 1 will allow to call my_p4est_ghost_expand (possibly) more than once.
  * Developer: Raphael Egan (raphaelegan@ucsb.edu)
  */
-void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
-                                   const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
-                                   const char* forest_filename, const std::vector<save_or_load_element_t>& elements);
+void my_p4est_load_forest_and_data(const MPI_Comm& mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
+                                   const p4est_bool_t& expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
+                                   const char* forest_filename, const std::vector<save_or_load_element_t>& elements, const double& cfl=1.0);
 
 /*!
  * \brief my_p4est_load_forest_and_data loads an (augmented) p4est object from a file on-disk and PETSc vector(s) from files on disks. The vectors
@@ -358,6 +369,13 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
 void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
                                    const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
                                    const char* forest_filename, u_int num_loads, ...);
+
+/**
+ * @see description of my_p4est_load_forest_and_data() above with additional cfl parameter for ghost layer expansion.
+ */
+void my_p4est_load_forest_and_data(const MPI_Comm& mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
+								   const p4est_bool_t& expand_ghost, const double& cfl, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
+								   const char* forest_filename, u_int num_loads, ...);
 
 /*!
  * \brief my_p4est_recover_brick  reconstructs a my_p4est_brick_t object based on a p4est_connectivity_t structure.
