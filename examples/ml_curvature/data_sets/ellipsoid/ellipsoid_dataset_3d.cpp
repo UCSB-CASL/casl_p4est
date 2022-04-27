@@ -69,7 +69,7 @@ int main ( int argc, char* argv[] )
 															   "(default: true)" );
 	param_t<bool> randomRotation( pl,  true, "randomRotation", "Whether to apply a rotation with a random angle about a random unit axis "
 															   "(default: true)" );
-	param_t<u_int>   randomState( pl,     7, "randomState"	 , "Seed for random perturbations of the canonical frame (default: 7)" );
+	param_t<u_int>   randomState( pl,    11, "randomState"	 , "Seed for random perturbations of the canonical frame (default: 11)" );
 	param_t<std::string>  outDir( pl,   ".", "outDir"		 , "Path where data files will be written to (default: build folder)" );
 	param_t<bool> useNegCurvNorm( pl, false, "useNegCurvNorm", "Whether we want to apply negative-mean-curvature normalization for non-"
 															   "saddle samples (default: false)" );

@@ -11,7 +11,7 @@
  *
  * The collected samples include level-set, gradient, and mean and Gaussian curvature data.  Unlike sinusoidal surfaces, all data belongs to
  * non-saddle regions.  For this reason, we can choose to either keep them as is or flip the stencil signs randomly.  In any case, we
- * perform gradient reorientation and augmentaion by reflecting about the plane y - x = 0.
+ * perform gradient reorientation and augmentation by reflecting about the plane y - x = 0.
  *
  * The file generated is named sphere_rand.csv and is specific for a domain mesh size and number of iterations for reinitialization.
  *
@@ -55,8 +55,8 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<bool>     flipSignRandomly( pl,  true, "flipSignRandomly"		, "Whether to generate convex and concave samples by "
-																			  "'flipping a coin' (default: true)" );
+	param_t<bool>     flipSignRandomly( pl,  true, "flipSignRandomly"		, "Whether to generate convex and concave samples by 'flipping "
+																			  "a coin' (default: true)" );
 	param_t<double>              minHK( pl, 0.004, "minHK"					, "Min dimensionless mean curvature for non-saddle points "
 																			  "(default: 0.004)" );
 	param_t<double>              maxHK( pl,  2./3, "maxHK"					, "Max dimensionless mean curvature (default: 2/3)" );
