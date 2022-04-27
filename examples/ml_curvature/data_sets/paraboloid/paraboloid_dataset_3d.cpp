@@ -24,7 +24,7 @@
  * that is, H = 0.5(k1 + k2), where k1 and k2 are principal curvatures.
  *
  * Developer: Luis Ángel.
- * Created: April 26, 2022.
+ * Created: April 27, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -238,16 +238,16 @@ int main ( int argc, char* argv[] )
 		std::vector<std::vector<double>> samples;
 		double trackedMaxErrors[P4EST_DIM];
 		int nNumericalSaddles;
-//		pLS->collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMaxErrors, trackedMinHK, trackedMaxHK, samples,
-//							 nNumericalSaddles, exactFlag, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError, ru2, rv2 );
+		pLS->collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMaxErrors, trackedMinHK, trackedMaxHK, samples,
+							 nNumericalSaddles, exactFlag, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError, ru2, rv2 );
 		pLS->clearCache();
 		pLS->toggleCache( false );
 		delete pLS;
 
 		// Accumulate samples in the buffer; normalize phi by h, apply negative-mean-curvature normalization to non-saddle samples only if
 		// requested, but always reorient data packets.  Also, augment samples by reflecting about plane y - x = 0.
-//		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, useNegCurvNorm()? 2 : 0 );
-//		int nSamples = saveSamples( mpi, buffer, bufferSize, file );
+		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, useNegCurvNorm()? 2 : 0 );
+		int nSamples = saveSamples( mpi, buffer, bufferSize, file );
 
 		// Export visual data.
 		const double *phiReadPtr, *phiErrorReadPtr, *sampledFlagReadPtr, *exactFlagReadPtr;
@@ -302,7 +302,7 @@ int main ( int argc, char* argv[] )
 		p4est_destroy( p4est );
 		my_p4est_brick_destroy( connectivity, &brick );
 
-//		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples (incl. standard and reflected) with the following stats:\n", nSamples ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples (incl. standard and reflected) with the following stats:\n", nSamples ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of saddle points   = %i\n", nNumericalSaddles ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked mean |hk*| in the range of [%.6g, %.6g]\n", trackedMinHK, trackedMaxHK ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max hk error      = %.6g\n", trackedMaxErrors[0] ) );
