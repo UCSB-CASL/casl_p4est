@@ -1,6 +1,10 @@
 /**
  * Abstract class for a signed-distance level-set function that we wish to discretize as a Monge patch of the form Q(u,v) with selective
  * exact signed-distance computations for a shell of grid nodes around Gamma.
+ *
+ * Developer: Luis Ángel.
+ * Created: April 25, 2022.
+ * Updated: April 26, 2022.
  */
 
 #ifndef ML_CURVATURE_LEVEL_SET_PATCH_3D_H
@@ -115,18 +119,22 @@ protected:
 	const std::string _errorPrefix = "[CASL_ERROR] SignedDistanceLevelSet::";
 
 	/**
-	 * In/out test w.r.t. limiting ellipse.
+	 * In/out test w.r.t. an ellipse.
 	 * @param [in] u Canonical coordinate along u axis.
 	 * @param [in] v Canonical coordinate along v axis.
+	 * @param [in] ru2 (Optional) Semi-axis length along the u direction; if not given, we'll use limiting ellipse _ru2.
+	 * @param [in] rv2 (Optional) Semi-axis length along the v direction; if not given, we'll use limiting ellipse _rv2.
 	 * @return True if on or inside ellipse, false otherwise.
 	 */
-	bool _inOutTest( const double& u, const double& v ) const
+	bool _inOutTest( const double& u, const double& v, double ru2=NAN, double rv2=NAN ) const
 	{
-		return SQR( u ) / _ru2 + SQR( v ) / _rv2 <= 1;
+		ru2 = isnan( ru2 )? _ru2 : ru2; assert( ru2 > 0 );
+		rv2 = isnan( rv2 )? _rv2 : rv2; assert( rv2 > 0 );
+		return SQR( u ) / ru2 + SQR( v ) / rv2 <= 1;
 	}
 
 	/**
-	 * Fix sign of computed distance to surface by using the Monge function.
+	 * Fix sign of computed distance to triangulated surface by using the Monge function.
 	 * @param [in] p Query point in canonical coordinates.
 	 * @param [in] nearestTriangle Nearest triangle found from querying the balltree.
 	 * @param [in] d Current POSITIVE distance to the triangulated surface.
@@ -147,7 +155,7 @@ protected:
 	/**
 	 * Compute exact signed distance to surface using dlib's trust region method.
 	 * @param [in] p Query point in canonical coordinates which we have corroborated that lies inside some limiting ellipse.
-	 * @param [in,out] d Current linearly computed signed distance and then found nearest point to Monge patch.
+	 * @param [in,out] d Current linearly computed signed distance and then found to nearest point on Monge patch.
 	 * @param [in,out] nearestPoint Current linearly computed nearest point to triangulated surface and then a more accurate version.
 	 */
 	virtual void _computeExactSignedDistance( const Point3& p, double& d, Point3& nearestPoint ) const = 0;
@@ -230,7 +238,7 @@ public:
 	 * @param [in] z Query z-coordinate.
 	 * @param [out] updated Set to 1 if exact distance was computed, 2 otherwise.
 	 * @return Shortest distance.
-	 * @throws runtime_error if not using cache, if point wasn't located in cache, or if exact distance deviates by more than 0.15h from linear estimation.
+	 * @throws runtime_error if not using cache, if point wasn't located in cache, or if exact signed distance computation fails.
 	 */
 	double computeExactSignedDistance( double x, double y, double z, unsigned char& updated ) const override
 	{
@@ -247,9 +255,16 @@ public:
 					// Let's compute exact distances only for points within the limiting ellipse (enlaged by a few h).
 					Point3 p = ccRecord->second;
 					updated = 2;
-					if( SQR( p.x ) / _sdsu2 + SQR( p.y ) / _sdsv2 <= 1 )
+					if( _inOutTest( p.x, p.y, _sdsu2, _sdsv2 ) )
 					{
-						_computeExactSignedDistance( p, record->second.first, record->second.second );
+						try
+						{
+							_computeExactSignedDistance( p, record->second.first, record->second.second );
+						}
+						catch( std::exception& e )	// Catch any possible exception and regenerate it with additional information.
+						{
+							throw std::runtime_error( errorPrefix + "Error for grid point " + coords + ": [" + e.what() + "]" );
+						}
 						updated = 1;
 					}
 					return record->second.first;
@@ -502,7 +517,7 @@ public:
 			}
 			Point3 p = recordCCoords->second;					// Grid point in canonical coordinates.
 
-			if( SQR( p.x ) / ru2 + SQR( p.y ) / rv2 > 1 )		// Skip nodes whose canonical projection falls outside the (possibly over-
+			if( !_inOutTest( p.x, p.y, ru2, rv2 ) )				// Skip nodes whose canonical projection falls outside the (possibly over-
 				continue;										// riden) limiting ellipse.
 
 			std::vector<p4est_locidx_t> stencil;

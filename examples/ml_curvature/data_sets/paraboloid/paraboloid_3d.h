@@ -1,18 +1,20 @@
+/**
+ * A collection of classes and functions related to a paraboloid.
+ *
+ * Developer: Luis Ángel.
+ * Created: November 20, 2021.
+ * Updated: April 25, 2022.
+ */
+
 #ifndef ML_CURVATURE_PARABOLOID_3D_H
 #define ML_CURVATURE_PARABOLOID_3D_H
 
-#include <src/casl_geometry.h>
-#include <dlib/optimization.h>
-#include <unordered_map>
-#include <string>
-#include <iostream>
-#include <fstream>
+#include "../level_set_patch_3d.h"
 
-///////////////////////////////////////////// Paraboloid in canonical space ////////////////////////////////////////////
+////////////////////////////////////////////////////// Paraboloid in canonical space ///////////////////////////////////////////////////////
 
 /**
- * A paraboloid in canonical space modeling the parametrized function Q(u,v) = a * u^2 + b * v^2, where a and b are
- * positive.
+ * A paraboloid in canonical space modeling the parametrized function Q(u,v) = a * u^2 + b * v^2, where a and b are positive.
  */
 class Paraboloid : public geom::MongeFunction
 {
@@ -25,12 +27,12 @@ public:
 	 * Constructor.
 	 * @param [in] a Paraboloid x-coefficient.
 	 * @param [in] b Paraboloid y-coefficient.
-	 * @throws Runtime error if a or b is not positive.
+	 * @throws invalid_argument error if a or b is not positive.
 	 */
 	Paraboloid( const double& a, const double& b ) : _a( a ), _b( b )
 	{
 		if( a <= 0 || b <= 0 )
-			throw std::runtime_error( "[CASL_ERROR] Paraboloid::constructor: a and b must be positive params!" );
+			throw std::invalid_argument( "[CASL_ERROR] Paraboloid::constructor: a and b must be positive!" );
 	}
 
 	/**
@@ -45,16 +47,89 @@ public:
 	}
 
 	/**
+	 * First derivative w.r.t. u.
+	 * @param [in] u Value along the u direction.
+	 * @param [in] v Value along the v direction.
+	 * @param [in] Q (Optional) Cached Q(u,v).
+	 * @return dQdu(u, v).
+	 */
+	double dQdu( const double& u, const double& v, double Q ) const override
+	{
+		return 2 * _a * u;
+	}
+
+	/**
+	 * First derivative w.r.t. v.
+	 * @param [in] u Value along the u direction.
+	 * @param [in] v Value along the v direction.
+	 * @param [in] Q (Optional) Cached Q(u,v).
+	 * @return dQdv(u, v).
+	 */
+	double dQdv( const double& u, const double& v, double Q ) const override
+	{
+		return 2 * _b * v;
+	}
+
+	/**
+	 * Second derivative w.r.t. u.
+	 * @param [in] u Value along the u direction.
+	 * @param [in] v Value along the v direction.
+	 * @param [in] Q (Optional) Cached Q(u,v).
+	 * @param [in] Qu (Optional) Cached dQdu(u,v).
+	 * @return d2Qdu2(u, v).
+	 */
+	double d2Qdu2( const double& u, const double& v, double Q, double Qu ) const override
+	{
+		return 2 * _a;
+	}
+
+	/**
+	 * Second derivative w.r.t. v.
+	 * @param [in] u Value along the u direction.
+	 * @param [in] v Value along the v direction.
+	 * @param [in] Q (Optional) Cached Q(u,v).
+	 * @param [in] Qv (Optional) Cached dQdv(u,v).
+	 * @return d2Qdv2(u, v).
+	 */
+	double d2Qdv2( const double& u, const double& v, double Q, double Qv ) const override
+	{
+		return 2 * _b;
+	}
+
+	/**
+	 * Crossed second derivative.
+	 * @param [in] u Value along the u direction.
+	 * @param [in] v Value along the v direction.
+	 * @param [in] Q (Optional) Cached Q(u,v).
+	 * @return d2Qdudv(u, v).
+	 */
+	double d2Qdudv( const double& u, const double& v, double Q ) const override
+	{
+		return 0;
+	}
+
+	/**
 	 * Compute mean curvature (always positive because the paraboloid is convex).
 	 * @param [in] u x-coordinate value.
 	 * @param [in] v y-coordinate value.
-	 * @return 2H, where H is the mean curvature at (u,v,Q(u,v)) on the paraboloid.
+	 * @return 0.5*(k1+k2), where k1 and k2 are the principal curvatures.
 	 */
 	double meanCurvature( const double& u, const double& v ) const override
 	{
-		double num = 2 * _a * (1 + SQR( 2 * _b * v )) + 2 * _b * (1 + SQR( 2 * _a * u ));
-		double den = pow( sqrt( 1 + SQR( 2 * _a * u ) + SQR( 2 * _b * v ) ), 3 );
+		double num = _a * (1 + SQR( 2 * _b * v )) +  _b * (1 + SQR( 2 * _a * u ));
+		double den = pow( 1 + SQR( 2 * _a * u ) + SQR( 2 * _b * v ), 1.5 );
 		return num / den;
+	}
+
+	/**
+	 * Compute the Gaussian curvature (always positive because the paraboloid has no saddle regions).
+	 * @param [in] u x-coordinate value.
+	 * @param [in] v y-coordinate value.
+	 * @return k1*k2, where k1 and k2 are the principal curvatures.
+	 */
+	double gaussianCurvature( const double& u, const double& v ) const override
+	{
+		return 4 * _a * _b / SQR( 1 + SQR(2 * _a * u) + SQR(2 * _b * v) );
 	}
 
 	/**
@@ -76,53 +151,33 @@ public:
 	}
 };
 
-//////////////////////////////////// Distance from P to paraboloid as a model class ////////////////////////////////////
+////////////////////////////////////////////// Distance from P to paraboloid as a model class //////////////////////////////////////////////
 
 /**
- * A function model for the distance function to the paraboloid.  This can be used with the find_min_trust_region()
- * routine from dlib.
- * This class represents the function 0.5*norm(Q(u,v) - P)^2, where Q is the paraboloid Q(u,v) = a*u^2 + b*v^2 for posi-
- * tive a and b, and P is the query (but fixed) point.  The goal is to find the closest point on Q(u,v) to P.
+ * A function model for the distance function to the paraboloid.  This can be used with the find_min_trust_region() routine from dlib.
+ * This class represents the function 0.5*norm(Q(u,v) - P)^2, where Q is the paraboloid Q(u,v) = a*u^2 + b*v^2 for positive a and b, and P
+ * is the query (but fixed) point.  The goal is to find the closest point on Q(u,v) to P.
  */
-class ParaboloidPointDistanceModel
+class ParaboloidPointDistanceModel : public PointDistanceModel
 {
-public:
-	typedef dlib::matrix<double,0,1> column_vector;
-	typedef dlib::matrix<double> general_matrix;
-
 private:
-	const Point3 P;			// Fixed query point.
-	const Paraboloid& Q;	// Reference to the paraboloid in canonical coordinates.
-
-	/**
-	 * Compute the distance from the paraboloid surface to a fixed point.
-	 * @param [in] m (u,v) parameters to evaluate in distance function.
-	 * @return D(u,v) = 0.5*norm(Q(u,v) - P)^2.
-	 */
-	double _evalDistance( const column_vector& m ) const
-	{
-		const double u = m( 0 );
-		const double v = m( 1 );
-
-		return 0.5 * (SQR( u - P.x ) + SQR( v - P.y ) + SQR( Q(u,v) - P.z ));
-	}
-
 	/**
 	 * Gradient of the distance function.
 	 * @param [in] m (u,v) parameters to evaluate in gradient of distance function.
 	 * @return grad(D)(u,v).
 	 */
-	column_vector _evalGradient( const column_vector& m ) const
+	column_vector _evalGradient( const column_vector& m ) const override
 	{
-		const double u = m( 0 );
-		const double v = m( 1 );
+		const double u = m(0);
+		const double v = m(1);
 
 		// Make us a column vector of length 2 to hold the gradient.
 		column_vector res( 2 );
 
 		// Now, compute the gradient vector.
-		res( 0 ) = (u - P.x) + (Q(u,v) - P.z) * 2 * u * Q.a(); 	// dD/du.
-		res( 1 ) = (v - P.y) + (Q(u,v) - P.z) * 2 * v * Q.b(); 	// dD/dv.
+		auto& Q = (Paraboloid&)F;
+		res(0) = (u - P.x) + (Q(u,v) - P.z) * 2 * u * Q.a(); 	// dD/du.
+		res(1) = (v - P.y) + (Q(u,v) - P.z) * 2 * v * Q.b(); 	// dD/dv.
 		return res;
 	}
 
@@ -131,7 +186,7 @@ private:
 	 * @param [in] m (u,v) parameters to evaluate in Hessian of distance function.
 	 * @return grad(grad(D))(u,v)
 	 */
-	dlib::matrix<double> _evalHessian ( const column_vector& m ) const
+	dlib::matrix<double> _evalHessian ( const column_vector& m ) const override
 	{
 		const double u = m(0);
 		const double v = m(1);
@@ -140,9 +195,10 @@ private:
 		dlib::matrix<double> res( 2, 2 );
 
 		// Now, compute the second derivatives.
-		res( 0, 0 ) = 1 + 6 * SQR(Q.a()) * u * u + 2 * Q.a() * Q.b() * v * v - 2 * Q.a() * P.z;	// d/du(dD/du).
-		res( 1, 0 ) = res( 0, 1 ) = 4 * Q.a() * Q.b() * u * v;									// d/du(dD/dv) and d/dv(dD/du).
-		res( 1, 1 ) = 1 + 2 * Q.a() * Q.b() * u * u + 6 * SQR(Q.b()) * v * v - 2 * Q.b() * P.z;	// d/dv(dD/dv).
+		auto& Q = (Paraboloid&)F;
+		res(0, 0) = 1 + 6 * SQR(Q.a()) * u * u + 2 * Q.a() * Q.b() * v * v - 2 * Q.a() * P.z;	// d/du(dD/du).
+		res(1, 0) = res(0, 1) = 4 * Q.a() * Q.b() * u * v;										// d/du(dD/dv) and d/dv(dD/du).
+		res(1, 1) = 1 + 2 * Q.a() * Q.b() * u * u + 6 * SQR(Q.b()) * v * v - 2 * Q.b() * P.z;	// d/dv(dD/dv).
 		return res;
 	}
 
@@ -152,289 +208,112 @@ public:
 	 * @param [in] p Query fixed point.
 	 * @param [in] q Paraboloid object.
 	 */
-	ParaboloidPointDistanceModel( const Point3& p, const Paraboloid& q ) : P( p ), Q( q ) {}
-
-	/**
-	 * Interface for evaluating the paraboloid-point distance function.
-	 * @param [in] x The (u,v) parameters to obtain the point on the paraboloid (u,v,Q(u,v)).
-	 * @return D(x) = 0.5*norm(Q(x) - P)^2.
-	 */
-	double operator()( const column_vector& x ) const
-	{
-		return _evalDistance( x );
-	}
-
-	/**
-	 * Compute gradient and Hessian of the paraboloid-point distance function.
-	 * @note The function name and parameter order shouldn't change as this is the signature that dlib expects.
-	 * @param [in] x The (u,v) parameters to calculate the point on the paraboloid (u,v,Q(u,v)).
-	 * @param [out] grad Gradient of distance-point function.
-	 * @param [out] H Hessian of distance-point function.
-	 */
-	__attribute__((unused))
-	void get_derivative_and_hessian( const column_vector& x, column_vector& grad, general_matrix& H ) const
-	{
-		grad = _evalGradient( x );
-		H = _evalHessian( x );
-	}
+	ParaboloidPointDistanceModel( const Point3& p, const Paraboloid& q ) : PointDistanceModel( p, q ) {}
 };
 
-///////////////////////////////// Signed distance function to a discretized paraboloid /////////////////////////////////
+/////////////////////////////////////////// Signed distance function to a discretized paraboloid ///////////////////////////////////////////
 
-class ParaboloidLevelSet : public geom::DiscretizedMongePatch
+class ParaboloidLevelSet : public SignedDistanceLevelSet
 {
 private:
-	__attribute__((unused)) const double _beta;	// Transformation parameters to vary canonical system w.r.t. world coor-
-	const Point3 _axis;							// dinate system.  These include a rotation (unit) axis and angle, and a
-	const Point3 _trns;							// translation vector that sets the origin of the canonical system to
-												// any point in space.
-	const double _c, _s;						// Since we use cosine and sine of beta a lot, let's precompute them.
-	const double _one_m_c;						// (1-cos(beta)).
-
-	double _deltaStop;							// Convergence for Newton's method for finding close-to-analytical
-												// distance to paraboloid.
-
-	const Paraboloid *_paraboloid;				// Paraboloid in canonical coordinates.
-
-	bool _useCache = false;						// Computing distance to triangulated surface is expensive --let's cache
-	mutable std::unordered_map<std::string, std::pair<double, Point3>> _cache;		// distances and nearest points.
-
-public:
-	typedef dlib::matrix<double,0,1> column_vector;
+	const std::string _errorPrefix = "[CASL_ERROR] ParaboloidLevelSet::";
 
 	/**
-	 * Constructor.
-	 * @note If a limiting ellipse is desired, both sau and sav must be positive and less than DBL_MAX.
-	 * @param [in] trans Translation vector.
-	 * @param [in] rotAxis Rotation axis (must be nonzero).
-	 * @param [in] rotAngle Rotation angle about rotAxis.
-	 * @param [in] ku Number of min cells in u half direction to define a symmetric domain.
-	 * @param [in] kv Number of min cells in v half direction to define a symmetric domain.
-	 * @param [in] L Number of refinement levels per unit length (so that h is a power of two).
-	 * @param [in] paraboloid Paraboloid object in canonical coordinates.
-	 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
-	 * @param [in] ru2 Squared half-axis length on the u direction for the limiting ellipse on the uv plane.
-	 * @param [in] rv2 Squared half-axis length on the v direction for the limiting ellipse on the uv plane.
+	 * Fix sign of computed distance to triangulated surface by using the Monge function.
+	 * @param [in] p Query point in canonical coordinates.
+	 * @param [in] nearestTriangle Nearest triangle found from querying the balltree.
+	 * @param [in] d Current POSITIVE distance to the triangulated surface.
+	 * @return signed d.
 	 */
-	ParaboloidLevelSet( const Point3& trans, const Point3& rotAxis, const double& rotAngle,
-						const size_t& ku, const size_t& kv, const size_t& L, const Paraboloid *paraboloid,
-						const size_t& btKLeaf=40, const double& ru2=DBL_MAX, const double& rv2=DBL_MAX )
-						: _trns( trans ), _axis( rotAxis.normalize() ), _beta( rotAngle), _paraboloid( paraboloid ),
-						_c( cos( rotAngle ) ), _s( sin( rotAngle ) ), _one_m_c( 1 - cos( rotAngle ) ),
-						DiscretizedMongePatch( ku, kv, L, paraboloid, btKLeaf, ru2, rv2 )
+	double _fixSignOfDistance( const Point3& p, const geom::Triangle *nearestTriangle, const double& d ) const override
 	{
-		if( rotAxis.norm_L2() < EPS )		// Singular rotation axis?
-			throw std::runtime_error( "[CASL_ERROR] ParaboloidLevelSet::constructor: Rotation axis shouldn't be 0!" );
-		_deltaStop = 1e-8 * _h;
-	}
-
-	/**
-	 * Transform a point/vector in world coordinates to canonical coordinates using the tranformation info.
-	 * @param [in] x x-coordinate.
-	 * @param [in] y y-coordinate.
-	 * @param [in] z z-coordinate.
-	 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
-	 * @return The coordinates of (x,y,z) in the representation of the paraboloid canonical coordinate system.
-	 */
-	Point3 toCanonicalCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
-	{
-		Point3 r;
-		const double xmt = isVector? x : x - _trns.x;		// Displacements affect points only.
-		const double ymt = isVector? y : y - _trns.y;
-		const double zmt = isVector? z : z - _trns.z;
-		r.x = (_c + _one_m_c*SQR(_axis.x))*xmt + (_one_m_c*_axis.x*_axis.y + _s*_axis.z)*ymt + (_one_m_c*_axis.x*_axis.z - _s*_axis.y)*zmt;
-		r.y = (_one_m_c*_axis.y*_axis.x - _s*_axis.z)*xmt + (_c + _one_m_c*SQR(_axis.y))*ymt + (_one_m_c*_axis.y*_axis.z + _s*_axis.x)*zmt;
-		r.z = (_one_m_c*_axis.z*_axis.x + _s*_axis.y)*xmt + (_one_m_c*_axis.z*_axis.y - _s*_axis.x)*ymt + (_c + _one_m_c*SQR(_axis.z))*zmt;
-
-		return r;
-	}
-
-	/**
-	 * Transform a point/vector in canonical coordinates to world coordinates using the transformation info.
-	 * @param [in] x x-coordinate.
-	 * @param [in] y y-coordinate.
-	 * @param [in] z z-coordinate.
-	 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
-	 * @return The coordinates (x,y,z) in the representation of the world coordinate system.
-	 */
-	__attribute__((unused))
-	Point3 toWorldCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
-	{
-		Point3 r;
-		r.x = x*(_c + _one_m_c*SQR(_axis.x)) + y*(_one_m_c*_axis.y*_axis.x - _s*_axis.z) + z*(_one_m_c*_axis.z*_axis.x + _s*_axis.y);
-		r.y = x*(_one_m_c*_axis.x*_axis.y + _s*_axis.z) + y*(_c + _one_m_c*SQR(_axis.y)) + z*(_one_m_c*_axis.z*_axis.y - _s*_axis.x);
-		r.z = x*(_one_m_c*_axis.x*_axis.z - _s*_axis.y) + y*(_one_m_c*_axis.y*_axis.z + _s*_axis.x) + z*(_c + _one_m_c*SQR(_axis.z));
-
-		if( !isVector )
+		// Fix sign: points inside paraboloid are negative and outside are positive.  Because of the way we created the triangles, their
+		// normal vector points up in the canonical coord. system (into the negative region Omega-).
+		if( p.z > 0 )		// Save time, points above the uv plane can have negative distance, but not those below.
 		{
-			r.x += _trns.x;
-			r.y += _trns.y;
-			r.z += _trns.z;
-		}
-
-		return r;
-	}
-
-	/**
-	 * Get signed distance to discretized paraboloid (triangulated and with vertices structured into a balltree).
-	 * @note You can speed up the process by caching grid point distance to the surface iff these map to integer-based
-	 * coordinates.
-	 * @param [in] x x-coordinate.
-	 * @param [in] y y-coordinate.
-	 * @param [in] z z-coordinate.
-	 * @return phi(x,y,z).
-	 */
-	double operator()( double x, double y, double z ) const override
-	{
-		std::string coords;
-		if( _useCache )		// Use this only if you know that the coordinate normalized by h yields an integer!
-		{
-			coords = std::to_string( (int)(x/_h) ) + "," + std::to_string( (int)(y/_h) ) + "," + std::to_string( (int)(z/_h) );
-			auto record = _cache.find( coords );
-			if( record != _cache.end() )
-			{
-				return (record->second).first;
-			}
-		}
-
-		Point3 p = toCanonicalCoordinates( x, y, z );		// Transform query point to canonical coordinates.
-		double d = DBL_MAX;
-		const geom::Triangle *nearestTriangle;
-		Point3 nearestPoint = findNearestPoint( p, d, nearestTriangle ); // Compute shortest distance.
-
-		// Fix sign: points inside paraboloid are negative and outside are positive.  Because of the way we created the
-		// triangles, their normal vector points up in the canonical coord. system (into the negative region Omega-).
-		Point3 w = p - *(nearestTriangle->getVertex(0));
-		if( w.dot( *(nearestTriangle->getNormal()) ) >= 0 )	// In the direction of the normal?
-			d *= -1;
-
-		if( _useCache )
-		{
-#pragma omp critical (update_paraboloid_cache)
-			_cache[coords] = std::make_pair( d, nearestPoint );
+			Point3 w = p - *(nearestTriangle->getVertex(0));
+			if( w.dot( *(nearestTriangle->getNormal()) ) >= 0 )			// In the direction of the normal?
+				return d * -1;
 		}
 		return d;
 	}
 
 	/**
-	 * Compute exact signed distance to paraboloid using Newton's method and trust region in dlib.
-	 * @param [in] x Query x-coordinate.
-	 * @param [in] y Query y-coordinate.
-	 * @param [in] z Query z-coordinate.
-	 * @return Shortest distance.
-	 * @throws runtime error if new shortest distance is larger than the one from computed from the triangulated surface.
+	 * Handle the case of points whose projections onto the uv plane fall outside the limiting ellipse by possibly correcting their signed
+	 * distance and currently set nearest point to triangulated surface.
+	 * @param [in] p Query point in canonical coordinates.
+	 * @param [in] nearestTriangle Nearest triangle found from querying the balltree.
+	 * @param [in,out] d Current linearly computed signed distance.
+	 * @param [in,out] nearestPoint Current linearly computed nearest point.
 	 */
-	double computeExactSignedDistance( double x, double y, double z ) const
+	void _handlePointsBeyondLimitingEllipse( const Point3& p, const geom::Triangle *nearestTriangle, double& d, Point3& nearestPoint ) const override
 	{
-		if( _useCache )		// Use this only if you know that the coordinate normalized by h yields an integer!
+		// Do nothing...
+	}
+
+	/**
+	 * Compute exact signed distance to surface using dlib's trust region method.
+	 * @param [in] p Query point in canonical coordinates which we have corroborated that lies inside some limiting ellipse.
+	 * @param [in,out] d Current linearly computed signed distance and then found to nearest point on Monge patch.
+	 * @param [in,out] nearestPoint Current linearly computed nearest point to triangulated surface and then a more accurate version.
+	 * @throws runtime_error if exact signed distance computation fails.
+	 */
+	void _computeExactSignedDistance( const Point3& p, double& d, Point3& nearestPoint ) const override
+	{
+		const std::string errorPrefix = _errorPrefix + "_computeExactSignedDistance: ";
+		double initialTrustRadius = MAX( _h, ABS( d ) );
+		column_vector initialPoint = {nearestPoint.x, nearestPoint.y};					// Initial (u,v) comes from cached closest point.
+
+		double cond;			// Condition for iterating until we find the closest point.
+		int iter = 0;
+		double d1;				// Shortest distance found numerically.
+		Point3 q;				// Potential new nearest point on paraboloid.
+		do
 		{
-			std::string coords = std::to_string( (int)(x/_h) ) + "," + std::to_string( (int)(y/_h) ) + "," + std::to_string( (int)(z/_h) );
-			auto record = _cache.find( coords );
-			if( record != _cache.end() )
-			{
-				double initialTrustRadius = MAX( _h, ABS( (record->second).first ) );
-				column_vector initialPoint = {(record->second).second.x, (record->second).second.y};	// u and v coords for initial point.
+			double d0 = (Point3( initialPoint(0), initialPoint(1), (*_mongeFunction)( initialPoint(0), initialPoint(1) ) ) - p).norm_L2();	// Distance to initial guess: we must improve this.
+			double D = dlib::find_min_trust_region( dlib::objective_delta_stop_strategy( _deltaStop ),	// Append .be_verbose() for debugging.
+													ParaboloidPointDistanceModel( p, *((Paraboloid*)_mongeFunction) ), initialPoint, initialTrustRadius );
+			d1 = sqrt( 2 * D );	// D is the 0.5*||dist||^2.
+			if( d1 > d0 )
+				throw std::runtime_error( errorPrefix + "Distance at nearest point is larger than distance at the initial guess." );
 
-				Point3 p = toCanonicalCoordinates( x, y, z );
-				dlib::find_min_trust_region( dlib::objective_delta_stop_strategy( _deltaStop ),			// Append .be_verbose() for debugging.
-											 ParaboloidPointDistanceModel( p, *_paraboloid ), initialPoint, initialTrustRadius );
-
-				// Check if minimization produced a better d* distance from q to the paraboloid.  Exploit paraboloid's
-				// convexity to detect if the optimization process succeeded.  If p is in Omega+, then d* <= d always.
-				// If p is in Omega-, then |d*| >= |d| most of the time; the exception is for points inside critical
-				// regions between the linear approximation of Gamma and the exact surface.
-				Point3 q( initialPoint(0), initialPoint(1), (*_paraboloid)( initialPoint(0), initialPoint(1) ) );
-				double refSign = (p.z >= (*_paraboloid)( p.x, p.y ))? -1 : 1;	// This defines the exact sign for the distance to paraboloid.
-				double dist = (p - q).norm_L2();
-
-				// Let's check: it's possible that even the sign is wrong in the distance computed to the linear IR.
-				if( record->second.first > 0 )
-				{
-					if( refSign > 0 )		// Both IR and exact signs agree: the exact distance should only get smaller.
-					{
-						if( dist - (record->second).first > EPS * _h )
-							throw std::runtime_error( "Computed shortest distance is larger than before for node key " + coords + " in Omega+!" );
-					}
-					else	// Query point inside critical region: IR says dist > 0 but exact says dist <= 0.
-					{
-						if( dist > 0.15 * _h )		// We accept the exact distance only if it doesn't overshoot the width of the critical region.
-							throw std::runtime_error( "Distance overshoots critical region width for node key " + coords + "!" );
-					}
-				}
-				else
-				{
-					if( refSign <= 0 )		// Both IR and exact signs agree: the exact distance should only get bigger.
-					{
-						if( dist - ABS( (record->second).first ) < -EPS * _h )
-							throw std::runtime_error( "Computed shortest distance is smaller than before for node key " + coords + " in Omega-!" );
-					}
-					else					// If we get to this point, there's something really wrong with the discretization!
-						throw std::runtime_error( "Wrong discretization!" );
-				}
-
-				record->second.first = refSign * dist;	// Update shortest distance and closest point on the paraboloid
-				record->second.second = q;				// by fixing the sign if needed too.
-				return record->second.first;
-			}
-			else
-				throw std::runtime_error( "[CASL_ERROR] ParaboloidLevelSet::computeExactSignedDistance: Can't locate point in cache!" );
+			// To verify that the numerical method work, we must verify that the normal vector at q (new nearest point) is parallel to vector r=pq.
+			q = Point3( initialPoint(0), initialPoint(1), (*_mongeFunction)( initialPoint(0), initialPoint(1) ) );
+			Point3 r( p - q );
+			Point3 g( (*_mongeFunction).dQdu( q.x, q.y, q.z ), (*_mongeFunction).dQdv( q.x, q.y, q.z ), -1 );	// Gradient at q.
+			cond = ABS( r.dot( g ) / (r.norm_L2() * g.norm_L2()) ) - 1;		//  We expect cos(t) = r·g/(|r||g|) = +- 1.
+			iter++;
 		}
-		else
-			throw std::runtime_error( "[CASL_ERROR] ParaboloidLevelSet::computeExactSignedDistance: Method works only with cache enabled and nonempty!" );
+		while( iter < 5 && cond > FLT_EPSILON );
+
+		if( cond > FLT_EPSILON )
+			throw std::runtime_error( errorPrefix + "Vector PQ is not (numerically) perpendicular to tangent plane at nearest point on paraboloid." );
+
+		double refSign = (p.z >= (*_mongeFunction)( p.x, p.y ))? -1 : 1;	// Exact sign for the distance to Gaussian.
+		d = refSign * d1;			// Update shortest distance and closest point on Gaussian by fixing the sign too (if needed).
+		nearestPoint = q;
 	}
 
+public:
 	/**
-	 * @see computeExactSignedDistance( double x, double y, double z )
-	 * @param [in] xyz Query point in world coordinates.
-	 * @return Shortest distance to paraboloid.
+	 * Constructor.
+	 * @param [in] mpi MPI environment.
+	 * @param [in] trans Translation vector.
+	 * @param [in] rotAxis Rotation axis (must be nonzero).
+	 * @param [in] rotAngle Rotation angle about rotAxis.
+	 * @param [in] ku Number of min cells in u half direction to define a symmetric domain.
+	 * @param [in] kv Number of min cells in v half direction to define a symmetric domain.
+	 * @param [in] L Number of refinement levels per unit length (so that h=2^{-L} is a power of two).
+	 * @param [in] paraboloid Paraboloid Monge patch in canonical coordinates.
+	 * @param [in] ru2 Squared half-axis length on the u direction for the limiting ellipse on the canonical uv plane.
+	 * @param [in] rv2 Squared half-axis length on the v direction for the limiting ellipse on the canonical uv plane.
+	 * @param [in] btKLeaf Maximum number of points in balltree leaves.
 	 */
-	double computeExactSignedDistance( const double xyz[P4EST_DIM] ) const
-	{
-		return computeExactSignedDistance( xyz[0], xyz[1], xyz[2] );
-	}
-
-	/**
-	 * Dump triangles into a data file for debugging/visualizing.
-	 * @param [in] filename Output file.
-	 * @throws Runtime error if file can't be opened.
-	 */
-	void dumpTriangles( const std::string& filename )
-	{
-		std::ofstream trianglesFile;				// Dumping triangles' vertices into a file for debugging/visualizing.
-		trianglesFile.open( filename, std::ofstream::trunc );
-		if( !trianglesFile.is_open() )
-			throw std::runtime_error( filename + " couldn't be opened for dumping mesh!" );
-		trianglesFile << R"("x0","y0","z0","x1","y1","z1","x2","y2","z2")" << std::endl;
-		trianglesFile.precision( 15 );
-		geom::DiscretizedMongePatch::dumpTriangles( trianglesFile );
-		trianglesFile.close();
-	}
-
-	/**
-	 * Turn on/off cache for faster distance retrieval.
-	 * @param [in] useCache True to enable cache, false to disable it.
-	 */
-	void toggleCache( const bool& useCache )
-	{
-		_useCache = useCache;
-	}
-
-	/**
-	 * Empty cache.
-	 */
-	void clearCache()
-	{
-		_cache.clear();
-	}
-
-	/**
-	 * Reserve space for cache.  Call this function, preferably, at the beginning of queries or octree construction.
-	 * @param n
-	 */
-	void reserveCache( size_t n )
-	{
-		_cache.reserve( n );
-	}
+	ParaboloidLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis, const double& rotAngle, const size_t& ku,
+						const size_t& kv, const size_t& L, const Paraboloid *paraboloid, const double& ru2, const double& rv2,
+						const size_t& btKLeaf=40 )
+						: SignedDistanceLevelSet( mpi, trans, rotAxis, rotAngle, ku, kv, L, paraboloid, ru2, rv2, btKLeaf ) {}
 };
+
 
 #endif //ML_CURVATURE_PARABOLOID_3D_H

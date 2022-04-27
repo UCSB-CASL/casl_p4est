@@ -16,21 +16,7 @@
 #define omp_get_thread_num() 0
 #endif
 
-#include <src/my_p8est_utils.h>
-#include <src/my_p8est_nodes.h>
-#include <src/casl_geometry.h>
-#include <src/my_p8est_nodes_along_interface.h>
-#include <src/my_p8est_curvature_ml.h>
-#include <src/my_p8est_interpolation_nodes.h>
-#include <dlib/optimization.h>
-#include <unordered_map>
-#include <unordered_set>
-#include <string>
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <boost/math/tools/roots.hpp>
-#include <random>
+#include "../level_set_patch_3d.h"
 
 //////////////////////////////////////// Sinusoidal surface in canonical space /////////////////////////////////////////
 
@@ -224,35 +210,15 @@ public:
  * This class represents the function 0.5*norm(Q(u,v) - P)^2, where Q(u,v) = a*sin(wu*u)*sin(wv*v) for positive a, wu,
  * and wv, and P is the query (but fixed) point.  The goal is to find the closest point on canonical Q(u,v) to P.
  */
-class SinusoidPointDistanceModel
+class SinusoidPointDistanceModel : public PointDistanceModel
 {
-public:
-	typedef dlib::matrix<double,0,1> column_vector;
-	typedef dlib::matrix<double> general_matrix;
-
 private:
-	const Point3 P;		// Fixed query point in canonical coordinates.
-	const Sinusoid& S;	// Reference to the sinusoidal surface in canonical coordinates.
-
-	/**
-	 * Compute the distance from sinusoidal surface to a fixed point.
-	 * @param [in] m (u,v) parameters to evaluate in distance function.
-	 * @return D(u,v) = 0.5*norm(Q(u,v) - P)^2.
-	 */
-	double _evalDistance( const column_vector& m ) const
-	{
-		const double u = m(0);
-		const double v = m(1);
-
-		return 0.5 * (SQR( u - P.x ) + SQR( v - P.y ) + SQR( S(u,v) - P.z ));
-	}
-
 	/**
 	 * Gradient of the distance function.
 	 * @param [in] m (u,v) parameters to evaluate in gradient of distance function.
 	 * @return grad(D)(u,v).
 	 */
-	column_vector _evalGradient( const column_vector& m ) const
+	column_vector _evalGradient( const column_vector& m ) const override
 	{
 		const double u = m(0);
 		const double v = m(1);
@@ -261,11 +227,11 @@ private:
 		column_vector res( 2 );
 
 		// Now, compute the gradient vector.
-		double Q = S( u, v );
-		double Qu = S.dQdu( u, v, NAN );
-		double Qv = S.dQdv( u, v, NAN );
-		res( 0 ) = (u - P.x) + (Q - P.z) * Qu; 	// dD/du.
-		res( 1 ) = (v - P.y) + (Q - P.z) * Qv; 	// dD/dv.
+		double Q = F( u, v );
+		double Qu = F.dQdu( u, v, NAN );
+		double Qv = F.dQdv( u, v, NAN );
+		res(0) = (u - P.x) + (Q - P.z) * Qu; 	// dD/du.
+		res(1) = (v - P.y) + (Q - P.z) * Qv; 	// dD/dv.
 		return res;
 	}
 
@@ -274,20 +240,21 @@ private:
 	 * @param [in] m (u,v) parameters to evaluate in Hessian of distance function.
 	 * @return grad(grad(D))(u,v)
 	 */
-	dlib::matrix<double> _evalHessian ( const column_vector& m ) const
+	dlib::matrix<double> _evalHessian ( const column_vector& m ) const override
 	{
 		const double u = m(0);
 		const double v = m(1);
 
-		double Q = S( u, v );
-		double Qu = S.dQdu( u, v, NAN );
-		double Qv = S.dQdv( u, v, NAN );
-		double Quv = S.d2Qdudv( u, v, NAN );
+		double Q = F( u, v );
+		double Qu = F.dQdu( u, v, NAN );
+		double Qv = F.dQdv( u, v, NAN );
+		double Quv = F.d2Qdudv( u, v, NAN );
 
 		// Make us a 2x2 matrix.
 		dlib::matrix<double> res( 2, 2 );
 
 		// Now, compute the second derivatives.
+		auto& S = (Sinusoid&)F;
 		res(0, 0) = 1 + SQR( Qu ) - (Q - P.z) * Q * S.wu2();	// d/du(dD/du).
 		res(1, 0) = res(0, 1) = (2 * Q - P.z) * Quv;			// d/du(dD/dv) and d/dv(dD/du).
 		res(1, 1) = 1 + SQR( Qv ) - (Q - P.z) * Q * S.wv2();	// d/dv(dD/dv).
@@ -300,31 +267,7 @@ public:
 	 * @param [in] p Query fixed point.
 	 * @param [in] s Sinusoidal Monge patch object.
 	 */
-	SinusoidPointDistanceModel( const Point3& p, const Sinusoid& s ) : P( p ), S( s ) {}
-
-	/**
-	 * Interface for evaluating the sinusoid-point distance function.
-	 * @param [in] x The (u,v) parameters to obtain the point on the sinusoid (u,v,Q(u,v)).
-	 * @return D(x) = 0.5*norm(Q(x) - P)^2.
-	 */
-	double operator()( const column_vector& x ) const
-	{
-		return _evalDistance( x );
-	}
-
-	/**
-	 * Compute gradient and Hessian of the sinusoid-point distance function.
-	 * @note The function name and parameter order shouldn't change as this is the signature that dlib expects.
-	 * @param [in] x The (u,v) parameters to calculate the point on the sinusoid, (u,v,Q(u,v)).
-	 * @param [out] grad Gradient of distance function.
-	 * @param [out] H Hessian of distance function.
-	 */
-	__attribute__((unused))
-	void get_derivative_and_hessian( const column_vector& x, column_vector& grad, general_matrix& H ) const
-	{
-		grad = _evalGradient( x );
-		H = _evalHessian( x );
-	}
+	SinusoidPointDistanceModel( const Point3& p, const Sinusoid& s ) : PointDistanceModel( p, s ) {}
 };
 
 ////////////////////////////// Signed distance function to a discretized sinusoidal patch //////////////////////////////

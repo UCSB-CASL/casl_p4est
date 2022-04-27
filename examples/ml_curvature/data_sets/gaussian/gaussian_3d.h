@@ -346,7 +346,7 @@ private:
 	const std::string _errorPrefix = "[CASL_ERROR] GaussianLevelSet::";
 
 	/**
-	 * Fix sign of computed distance to surface by using the Monge function.
+	 * Fix sign of computed distance to triangulated surface by using the Monge function.
 	 * @param [in] p Query point in canonical coordinates.
 	 * @param [in] nearestTriangle Nearest triangle found from querying the balltree.
 	 * @param [in] d Current POSITIVE distance to the triangulated surface.
@@ -389,8 +389,9 @@ private:
 	/**
 	 * Compute exact signed distance to surface using dlib's trust region method.
 	 * @param [in] p Query point in canonical coordinates which we have corroborated that lies inside some limiting ellipse.
-	 * @param [in,out] d Current linearly computed signed distance and then found nearest point to Monge patch.
+	 * @param [in,out] d Current linearly computed signed distance and then found to nearest point on Monge patch.
 	 * @param [in,out] nearestPoint Current linearly computed nearest point to triangulated surface and then a more accurate version.
+	 * @throws runtime_error if exact signed distance computation fails.
 	 */
 	void _computeExactSignedDistance( const Point3& p, double& d, Point3& nearestPoint ) const override
 	{
@@ -437,8 +438,7 @@ public:
 	GaussianLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis, const double& rotAngle,
 					  const size_t& ku, const size_t& kv, const size_t& L, const Gaussian *gaussian,
 					  const double& ru2, const double& rv2, const size_t& btKLeaf=40 )
-					  : SignedDistanceLevelSet( mpi, trans, rotAxis, rotAngle, ku, kv, L, gaussian, ru2, rv2, btKLeaf )
-	{}
+					  : SignedDistanceLevelSet( mpi, trans, rotAxis, rotAngle, ku, kv, L, gaussian, ru2, rv2, btKLeaf ) {}
 };
 
 #endif //ML_CURVATURE_GAUSSIAN_3D_H

@@ -8,10 +8,10 @@
  * Q(u,v) have shown that samples for which ih2kg > -0.0004 (i.e., the numerical estimation of h^2 times the Gaussian curvature at Gamma),
  * the mean curvature error increases as |ihk| -> infty (i.e., h times the mean curvature at Gamma).  On the other hand, saddle samples are
  * not that consistent, and, because of them, we can't create a single neural network that allows the simplification provided by negative
- * mean curvature normalization (as in the 2d case).  For these reasons, we need to train a model that works for both types of samples, but
- * we can still reorient all stencils so that the gradient at the center node has all its components positive.  Similarly, we perform sample
- * augmentation by reflecting stencils about the x - y = 0 plane (which preserves mean and Gaussian curvature).  Finally, histogram
- * subsampling helps keep well-balanced data sets (regarding mean |hk*|) as much as possible.
+ * mean curvature normalization (as in the 2d case).  However, we can still reorient all stencils so that the gradient at the center node
+ * has all its components non-negative.  Similarly, we can perform sample augmentation by reflecting stencils about the x-y = 0 plane (which
+ * preserves mean and Gaussian curvature).  Finally, histogram subsampling helps keep well-balanced data sets (regarding mean |hk*|) as much
+ * as possible.
  *
  * Files written are of the form "#/non_saddle_sinusoid_$.csv" and "#/saddle_sinusoid_$.csv", where # is the unit-cube max level of
  * refinement and $ is the sinusoidal amplitude index (i.e., 0, 1,... NUM_A-1, with NUM_A being the number of distinct amplitudes).
@@ -22,7 +22,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 26, 2022.
- * Updated: April 24, 2022.
+ * Updated: April 26, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -63,37 +63,39 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<double>   nonSaddleMinIH2KG( pl, -4e-4, "nonSaddleMinIH2KG"		, "Min numerical dimensionless Gaussian curvature (at Gamma) "
-																			  "for numerical non-saddle points (default: -4e-4)" );
-	param_t<double>               minHK( pl, 0.004, "minHK"					, "Min dimensionless mean curvature for numerical non-saddle "
-																			  "points (i.e., where ih2kg >= nonSaddleMinIH2KG) "
-																			  "(default: 0.004)" );
-	param_t<double>               maxHK( pl,  2./3, "maxHK"					, "Max dimensionless mean curvature (default: 2/3)" );
-	param_t<u_char>               maxRL( pl,     6, "maxRL"					, "Max level of refinement per unit-cube octree (default: 6)" );
-	param_t<u_short>        reinitIters( pl,    10, "reinitIters"			, "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>    easeOffProbMaxHK( pl,  0.25, "easeOffProbMaxHK"		, "Easing-off prob for |hk*| upper bound for subsampling "
-																			  "numerical non-saddle points (default: 0.25)" );
-	param_t<double>    easeOffProbMinHK( pl, 0.005, "easeOffProbMinHK"		, "Easing-off prob for |hk*| lower bound for subsampling "
+	param_t<double>   nonSaddleMinIH2KG( pl, -4e-4, "nonSaddleMinIH2KG"	 , "Min numerical dimensionless Gaussian curvature (at Gamma) for "
+																		   "for numerical non-saddle samples (default: -4e-4)" );
+	param_t<double>               minHK( pl, 0.004, "minHK"				 , "Min dimensionless mean curvature for numerical non-saddle "
+																		   "samples (i.e., where ih2kg >= nonSaddleMinIH2KG) "
+																		   "(default: 0.004)" );
+	param_t<double>               maxHK( pl,  2./3, "maxHK"				 , "Max dimensionless mean curvature (default: 2/3)" );
+	param_t<u_char>               maxRL( pl,     6, "maxRL"				 , "Max level of refinement per unit-cube octree (default: 6)" );
+	param_t<u_short>        reinitIters( pl,    10, "reinitIters"		 , "Number of iterations for reinitialization (default: 10)" );
+	param_t<double>    easeOffProbMaxHK( pl,  0.25, "easeOffProbMaxHK"	 , "Easing-off prob for |hk*| upper bound for subsampling numerical"
+																		   " non-saddle samples (default: 0.25)" );
+	param_t<double>    easeOffProbMinHK( pl, 0.005, "easeOffProbMinHK"	 , "Easing-off prob for |hk*| lower bound for subsampling numerical"
 																			  "numerical non-saddle points (default: 0.005)" );
-	param_t<double> easeOffProbMaxIH2KG( pl, 0.075, "easeOffProbMaxIH2KG"	, "Easing-off prob for |ih2kg| upper bound for subsampling "
-																			  "saddle points (default: 0.075)" );
-	param_t<double> easeOffProbMinIH2KG( pl,0.0025, "easeOffProbMinIH2KG"	, "Easing-off prob for |ih2kg| lower bound for subsampling "
-																			  "saddle points (default: 0.0025)" );
-	param_t<u_short>          startAIdx( pl,     0, "startAIdx"				, "Start index for sinusoidal amplitude (default: 0)" );
-	param_t<float>       histMedianFrac( pl,  1./3, "histMedianFrac"		, "Post-histogram subsampling median fraction (default: 1/3)" );
-	param_t<float>          histMinFold( pl,   1.5, "histMinFold"			, "Post-histogram subsampling min count fold (default: 1.5)" );
-	param_t<u_short>          nHistBins( pl,   100, "nHistBins"				, "Number of bins in |hk*| histogram (default: 100)" );
-	param_t<std::string>         outDir( pl,   ".", "outDir"				, "Path where to write data files (default: build folder)" );
-	param_t<size_t>       bufferMinSize( pl,   3e5, "bufferMinSize"			, "Buffer minimum overflow size to trigger histogram-based "
-																			  "subsampling and storage (default: 300K)" );
-	param_t<u_short>      numHKMaxSteps( pl,     7, "numHKMaxSteps" 		, "Number of steps to vary target max hk (default: 7)" );
-	param_t<u_short>          numThetas( pl,    10, "numThetas"				, "Number of angular steps from -pi/2 to +pi/2 (inclusive) "
-																			  "(default: 10)" );
-	param_t<u_short>      numAmplitudes( pl,    13, "numAmplitudes"			, "Number of amplitude steps (default: 13)" );
-	param_t<double>        numFullWaves( pl,   2.0, "numFullWaves"          , "How many full sinusoidal cycles to have inside the domain "
-																			  "(default: 2.0)" );
-	param_t<double>         randomNoise( pl,  1e-4, "randomNoise"			, "How much uniform random noise to add to phi(x) as "
-																			  "[+/-]h*randomNoise (default: 1e-4)" );
+	param_t<double> easeOffProbMaxIH2KG( pl, 0.075, "easeOffProbMaxIH2KG", "Easing-off prob for |ih2kg| upper bound for subsampling saddle "
+																		   "samples (default: 0.075)" );
+	param_t<double> easeOffProbMinIH2KG( pl,0.0025, "easeOffProbMinIH2KG", "Easing-off prob for |ih2kg| lower bound for subsampling saddle "
+																		   "samples (default: 0.0025)" );
+	param_t<u_short>          startAIdx( pl,     0, "startAIdx"			 , "Start index for sinusoidal amplitude (default: 0)" );
+	param_t<float>       histMedianFrac( pl,  1./3, "histMedianFrac"	 , "Post-histogram subsampling median fraction (default: 1/3)" );
+	param_t<float>          histMinFold( pl,   1.5, "histMinFold"		 , "Post-histogram subsampling min count fold (default: 1.5)" );
+	param_t<u_short>          nHistBins( pl,   100, "nHistBins"			 , "Number of bins in |hk*| histogram (default: 100)" );
+	param_t<std::string>         outDir( pl,   ".", "outDir"			 , "Path where to write data files (default: build folder)" );
+	param_t<size_t>       bufferMinSize( pl,   3e5, "bufferMinSize"		 , "Buffer minimum overflow size to trigger histogram-based "
+																		   "subsampling and storage (default: 300K)" );
+	param_t<u_short>      numHKMaxSteps( pl,     7, "numHKMaxSteps" 	 , "Number of steps to vary target max hk (default: 7)" );
+	param_t<u_short>          numThetas( pl,    10, "numThetas"			 , "Number of angular steps from -pi/2 to +pi/2 (inclusive) "
+																		   "(default: 10)" );
+	param_t<u_short>      numAmplitudes( pl,    13, "numAmplitudes"		 , "Number of amplitude steps (default: 13)" );
+	param_t<double>        numFullWaves( pl,   2.0, "numFullWaves"       , "How many full sinusoidal cycles to have inside the domain "
+																		   "(default: 2.0)" );
+	param_t<double>         randomNoise( pl,  1e-4, "randomNoise"		 , "How much uniform random noise to add to phi(x) as "
+																		   "[+/-]h*randomNoise (default: 1e-4)" );
+	param_t<bool>        useNegCurvNorm( pl, false, "useNegCurvNorm"	 , "Whether we want to apply negative-mean-curvature normalization "
+																		   "for non-saddle samples (default: false)" );
 
 	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes (it's OK that it's not in sync among processes).
 	std::mt19937 gen{};			// NOLINT This engine is used shifts and spacing out amplitudes, hk_max values, and angles.
@@ -355,8 +357,8 @@ int main ( int argc, char* argv[] )
 								trackedMinHK[i] = MIN( minHKInBatch[i], trackedMinHK[i] );	// Update the tracked mean |hk*| bounds.
 								trackedMaxHK[i] = MAX( maxHKInBatch[i], trackedMaxHK[i] );	// These are shared across processes.
 
-								// Accumulate samples in buffers; don't apply negative-mean-curvature normalization to anyone.
-								int batchSize = kml::utils::processSamplesAndAccumulate( mpi, samples[i], buffer[i], h, 0 );
+								// Accumulate samples in buffers; apply negative-mean-curvature normalization only if requested.
+								int batchSize = kml::utils::processSamplesAndAccumulate( mpi, samples[i], buffer[i], h, useNegCurvNorm()? (i == 0? 1 : 0) : 0 );
 
 								loggedSamples[i] += batchSize;
 								bufferSize[i] += batchSize;
