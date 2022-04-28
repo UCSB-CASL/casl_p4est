@@ -4,7 +4,7 @@
  * run the program with the -help flag to see the available options
  *
  * Author: Raphael Egan, with updates by Luis Ángel.
- * Updated: April 20, 2022.
+ * Updated: April 27, 2022.
  */
 
 // System
@@ -1077,7 +1077,7 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   data = new splitting_criteria_cf_and_uniform_band_shs_t(cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl),
       channel.lmax(), &channel, uniform_band, channel.delta(), cmd.get<double>("lmid_delta_percent", default_lmid_delta_percent ), lip);
   auto* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
-  bool fix_restarted_grid = (channel.lmax() != to_delete->max_lvl || cmd.get<double>("cfl", ns->get_cfl()) != ns->get_cfl());
+  bool fix_restarted_grid = (channel.lmax() != to_delete->max_lvl);
   delete to_delete;
   p4est_n->user_pointer   = (void*) data;
   p4est_nm1->user_pointer = (void*) data; // p4est_n and p4est_nm1 always point to the same splitting_criteria_t no need to delete the nm1 one, it's just been done
