@@ -219,9 +219,13 @@ kml::NeuralNetwork::NeuralNetwork( const std::string& folder, const double& h, c
 			W[i][j] = weights[j];
 	}	// When this loop ends, we have weights and bias all in row-major (hidden and output) weight matrices.
 
-	// Enforce single-thread OpenBlas execution.
+	// Enforce single-threaded BLAS execution.
+#ifdef CASL_ON_STAMPEDE
+	mkl_set_num_threads( 1 );
+#else
 	goto_set_num_threads( 1 );
 	openblas_set_num_threads( 1 );
+#endif
 }
 
 

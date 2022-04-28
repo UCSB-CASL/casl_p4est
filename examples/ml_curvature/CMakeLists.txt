@@ -1,6 +1,6 @@
 # This CMakeLists.txt file has been built manually from the common.pri and libparcasl.pri config files under qmake/
 # To create different configurations, look into https://www.jetbrains.com/help/clion/quick-cmake-tutorial.html
-cmake_minimum_required( VERSION 3.17 )
+cmake_minimum_required( VERSION 3.16 )
 project( ml_curvature )
 
 set( CMAKE_CXX_STANDARD 14 )
@@ -35,7 +35,7 @@ endif()
 
 ############################################# Compiler optimization flags ##############################################
 
-if( CMAKE_BUILD_TYPE MATCHES Release )
+if( CMAKE_BUILD_TYPE MATCHES Release AND NOT CASL_ON_STAMPEDE )	# These optimization flags don't work on Stampede2.
 	set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
 	set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
 	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )

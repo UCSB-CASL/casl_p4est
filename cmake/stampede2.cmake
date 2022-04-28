@@ -75,33 +75,38 @@ message( "** Boost   : " ${BOOST_DIR} )
 
 if( ENABLE_ML MATCHES 1 )		# Set this CMake variable as -DENABLE_ML=1.
 
-	set( OpenBLAS_DIR / ) 	# OpenBLAS.
-	set( DLIB_DIR / )					# dlib.
-	set( JSON_DIR / )					# json: only headers.  You can also add `nlohmann_json::nlohmann_json`
-												# to LIBS list if you use `find_package( nlohmann_json CONFIG REQUIRED )`.
-	set( FDEEP_DIR / )					# frugally-deep: only headers.
+	set( MKL_DIR $ENV{TACC_MKL_DIR} )		# BLAS library from Intel's MKL
+	set( DLIB_DIR $ENV{WORK}/local )		# dlib.
+	set( JSON_DIR $ENV{WORK}/local )		# json: only headers.  You can also add `nlohmann_json::nlohmann_json`
+											# to LIBS list if you use `find_package( nlohmann_json CONFIG REQUIRED )`.
+	set( FDEEP_DIR $ENV{WORK}/local )		# frugally-deep: only headers.
 
 	# Append to lists.
 	list( APPEND INC_DIRS					# Include directories.
-			${OpenBLAS_DIR}/include
+			$ENV{TACC_MKL_INC}
 			${DLIB_DIR}/include
 			${JSON_DIR}/include				# nlohmann's json and frugally-deep are header-only libraries.
 			${FDEEP_DIR}/include )
 
 	list( APPEND LIB_DIRS					# Library directories.
-			${OpenBLAS_DIR}/lib
-			${DLIB_DIR}/lib )
+			$ENV{TACC_MKL_LIB}
+			${DLIB_DIR}/lib64 )
 
 	list( APPEND LIBS						# Libraries.
-			openblas
+			mkl_core
+			mkl_gnu_thread
+			mkl_intel_ilp64
 			dlib )
 
 	message( "" )
 	message( "---------------- Machine-learning libraries ----------------" )
-	message( "** OpenBLAS     : " ${OpenBLAS_DIR} )
+	message( "** Intel's MKL  : " ${MKL_DIR} )
 	message( "** dlib         : " ${DLIB_DIR} )
 	message( "** json         : " ${JSON_DIR} )
 	message( "** frugally-deep: " ${FDEEP_DIR} )
+
+	add_compile_definitions( PRIVATE CASL_ON_STAMPEDE )
+	set( CASL_ON_STAMPEDE ON )
 
 endif()
 

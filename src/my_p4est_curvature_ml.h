@@ -27,7 +27,12 @@
 #include <fdeep/fdeep.hpp>
 #include <nlohmann/json.hpp>
 #include <vector>
+#ifdef CASL_ON_STAMPEDE
+#include <mkl.h>
+#include <mkl_cblas.h>
+#else
 #include <cblas.h>
+#endif
 #include <algorithm>
 #include <random>
 
