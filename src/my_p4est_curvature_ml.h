@@ -50,7 +50,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: April 24, 2022.
+ * Updated: April 30, 2022.
  */
 namespace kml
 {
@@ -386,12 +386,13 @@ namespace kml
 		 * 			   individually AND to prevent changing the sign of hk and ihk.  This is useful to create data
 		 * 			   sets for offline evaluation that contain all learning data set columns but with hk, ihk,
 		 * 			   h2kg, and ih2kg preserving their original signs.
+		 * @param [in] nonSaddleMinIH2KG Lower bound on interpolated ih2kg to classify sample as a non-saddle.
 		 * @return Number of samples collected from all processes.
 		 * @throws invalid_argument if user chooses an invalid option for negative-curvature normalization.
 		 */
 		int processSamplesAndAccumulate( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
 										 std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer, const double& h,
-										 const u_char& negMeanKNormalize );
+										 const u_char& negMeanKNormalize, const double& nonSaddleMinIH2KG=-4e-4 );
 
 		/**
 		 * Transform samples with (optional) negative-mean-curvature and phi-by-h normalization, followed by reorienta-

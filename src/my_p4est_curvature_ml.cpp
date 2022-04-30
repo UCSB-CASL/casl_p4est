@@ -572,7 +572,7 @@ void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::st
 
 int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
 											 std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer, const double& h,
-											 const u_char& negMeanKNormalize )
+											 const u_char& negMeanKNormalize, const double& nonSaddleMinIH2KG )
 {
 	if( negMeanKNormalize >= P4EST_DIM )	// Only two options in 2d as there are no saddle/non-saddle points.
 		throw std::invalid_argument( "[CASL_ERROR] kml::utils::processSamplesAndAccumulate: Invalid negMeanKnormalize option!" );
@@ -591,7 +591,7 @@ int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::
 #ifdef P4_TO_P8
 		else
 		{
-			if( negMeanKNormalize == 2 && samples[i][K_INPUT_SIZE_LEARN - 1] >= 0 )	// Data set for offline evaluation?
+			if( negMeanKNormalize == 2 && samples[i][K_INPUT_SIZE_LEARN - 1] >= nonSaddleMinIH2KG )	// Data set for offline evaluation?
 			{																		// Allows us to send normalized and reoriented data,
 				double hkSign = SIGN( samples[i][K_INPUT_SIZE - (P4EST_DIM - 1)] );	// except for the hk, ihk, h2kg, and ih2kg fields.
 				normalizeToNegativeCurvature( samples[i], samples[i][K_INPUT_SIZE - (P4EST_DIM - 2)], false );	// Leverage the 'learning' flag to avoid touching ihk.

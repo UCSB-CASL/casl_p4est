@@ -64,7 +64,7 @@ int main ( int argc, char* argv[] )
 	// Setting up parameters from command line.
 	param_list_t pl;
 	param_t<double>   nonSaddleMinIH2KG( pl, -4e-4, "nonSaddleMinIH2KG"	 , "Min numerical dimensionless Gaussian curvature (at Gamma) for "
-																		   "for numerical non-saddle samples (default: -4e-4)" );
+																		   "numerical non-saddle samples (default: -4e-4)" );
 	param_t<double>               minHK( pl, 0.004, "minHK"				 , "Min dimensionless mean curvature for numerical non-saddle "
 																		   "samples (i.e., where ih2kg >= nonSaddleMinIH2KG) "
 																		   "(default: 0.004)" );

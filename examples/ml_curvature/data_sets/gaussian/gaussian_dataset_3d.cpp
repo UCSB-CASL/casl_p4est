@@ -29,7 +29,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: April 26, 2022.
+ * Updated: April 30, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -66,21 +66,24 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<u_char> experimentId( pl,     0, "experimentId"	 , "Experiment Id (default: 0)" );
-	param_t<double>        maxHK( pl,   0.6, "maxHK"		 , "Desired maximum (absolute) dimensionless mean curvature at the peak. "
-														  	   "Must be in the open interval of (1/3, 2/3) (default: 0.6)" );
-	param_t<u_char>        maxRL( pl,     6, "maxRL"		 , "Maximum level of refinement per unit-cube octree (default: 6)" );
-	param_t<int>     reinitIters( pl,    10, "reinitIters"	 , "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>            a( pl,   0.8, "a"			 , "Gaussian height (i.e., Q(0,0)) in the range of [16h, 64h] (default 0.8)" );
-	param_t<double>    susvRatio( pl,  1.75, "susvRatio"	 , "The ratio su/sv in the range of [1, 2] (default: 1.75)" );
-	param_t<bool>  perturbOrigin( pl,  true, "perturbFrame"	 , "Whether to perturb the Gaussian's frame randomly in [-h/2,+h/2]^3 "
-															   "(default: true)" );
-	param_t<bool> randomRotation( pl,  true, "randomRotation", "Whether to apply a rotation with a random angle about a random unit axis "
-															   "(default: true)" );
-	param_t<u_int>   randomState( pl,     7, "randomState"	 , "Seed for random perturbations of the canonical frame (default: 7)" );
-	param_t<std::string>  outDir( pl,   ".", "outDir"		 , "Path where data/param files will be written to (default: build folder)" );
-	param_t<bool> useNegCurvNorm( pl, false, "useNegCurvNorm", "Whether we want to apply negative-mean-curvature normalization for non-"
-															   "saddle samples (default: false)" );
+	param_t<u_char>      experimentId( pl,     0, "experimentId"	 , "Experiment Id (default: 0)" );
+	param_t<double> nonSaddleMinIH2KG( pl, -4e-4, "nonSaddleMinIH2KG", "Min numerical dimensionless Gaussian curvature (at Gamma) for "
+																	   "numerical non-saddle samples (default: -4e-4)" );
+	param_t<double>             maxHK( pl,   0.6, "maxHK"			 , "Desired max (absolute) dimensionless mean curvature at the peak. "
+																	   "Must be in the open interval of (1/3, 2/3) (default: 0.6)" );
+	param_t<u_char>             maxRL( pl,     6, "maxRL"			 , "Maximum level of refinement per unit-cube octree (default: 6)" );
+	param_t<int>          reinitIters( pl,    10, "reinitIters"		 , "Number of iterations for reinitialization (default: 10)" );
+	param_t<double>                 a( pl,   1.0, "a"				 , "Gaussian height (i.e., Q(0,0)) in the range of [16h, 64h] "
+																	  "(default 1)" );
+	param_t<double>         susvRatio( pl,   3.0, "susvRatio"	 	 , "The ratio su/sv in the range of [1, 3] (default: 3)" );
+	param_t<bool>  		perturbOrigin( pl,  true, "perturbOrigin"	 , "Whether to perturb the Gaussian's frame randomly in [-h/2,+h/2]^3 "
+															   		   "(default: true)" );
+	param_t<bool>      randomRotation( pl,  true, "randomRotation"	 , "Whether to apply a rotation with a random angle about a random unit"
+																	   " axis (default: true)" );
+	param_t<u_int>        randomState( pl,     7, "randomState"	 	 , "Seed for canonical frame's random perturbations (default: 7)" );
+	param_t<std::string>       outDir( pl,   ".", "outDir"		 	 , "Path where data files will be written to (default: build folder)" );
+	param_t<bool>      useNegCurvNorm( pl, false, "useNegCurvNorm"	 , "Whether we want to apply negative-mean-curvature normalization for "
+																	   "non-saddle samples (default: false)" );
 
 	try
 	{
@@ -104,8 +107,8 @@ int main ( int argc, char* argv[] )
 		if( maxHK() <= 1./3 || maxHK() >= 2./3 )
 			throw std::invalid_argument( "[CASL_ERROR] Desired max hk must be in the range of (1/3, 2/3)." );
 
-		if( susvRatio() < 1 || susvRatio() > 2 )
-			throw std::invalid_argument( "[CASL_ERROR] The ratio su/sv must be in the range of [1, 2]." );
+		if( susvRatio() < 1 || susvRatio() > 3 )
+			throw std::invalid_argument( "[CASL_ERROR] The ratio su/sv must be in the range of [1, 3]." );
 
 		const double h = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
 
@@ -248,7 +251,7 @@ int main ( int argc, char* argv[] )
 		// Accumulate samples in the buffer; normalize phi by h, apply negative-mean-curvature normalization to non-saddle samples only if
 		// requested, and reorient data packets.  The last 2 parameter avoids flipping the signs of hk, ihk, h2kg, and ih2kg.  Then, augment
 		// samples by reflecting about y - x = 0.
-		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, useNegCurvNorm()? 2 : 0 );
+		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, useNegCurvNorm()? 2 : 0, nonSaddleMinIH2KG() );
 		int nSamples = saveSamples( mpi, buffer, bufferSize, file );
 
 		// Export visual data.
