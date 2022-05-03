@@ -71,7 +71,8 @@ public:
 
 void prepareFile( std::ofstream& rlsFile, const std::string& rlsFileName, const u_short& numColumns, const std::string* columnNames );
 void sampleVelocityField( Vec vel[P4EST_DIM], const p4est_t *p4est, const p4est_nodes_t *nodes, const CF_3 *velocityField[P4EST_DIM], const double& tn=0 );
-void writeVTK( const u_char& MRL, const int& vtkIdx, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, Vec phi, Vec phiExact );
+void writeVTK( const u_char& MRL, const int& vtkIdx, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, Vec phi, Vec phiExact,
+			   Vec hk, Vec ihk, Vec hkError );
 void setUpP4estStructs( const mpi_environment_t& mpi, p4est_t *& p4est, p4est_nodes_t *& nodes, my_p4est_brick_t& brick,
 						p4est_connectivity_t *& connectivity, splitting_criteria_cf_and_uniform_band_t *& spl, p4est_ghost_t *& ghost,
 						my_p4est_hierarchy_t *& hierarchy, my_p4est_node_neighbors_t *& ngbd, const int n_xyz[P4EST_DIM],
@@ -89,7 +90,7 @@ int main ( int argc, char* argv[] )
 	const double CFL = 1.0;									// Courant-Friedrichs-Lewy condition.
 	const double DURATION = 2.0;							// The velocity flips direction at half this duration.
 	const double HALF_BAND_WIDTH = 6.0;
-	const int REF_FACTOR = 2;								// Reference grid will be 2^{REF_FACTOR} times finer.
+	const int REF_FACTOR = 4;								// Reference grid will be 2^{REF_FACTOR} times finer.
 
 	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data/vortex/";	// Destination folder.
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting data sets.
@@ -180,13 +181,18 @@ int main ( int argc, char* argv[] )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &exactPhi ) );
 			sample_cf_on_nodes( p4est, nodes, sphere, exactPhi );
 
+			Vec hk, ihk, hkError;						// Let's keep track of the curvature and its error, although we populate these until the end.
+			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &hk ) );
+			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &ihk ) );
+			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &hkError ) );
+
 			double tn = 0;								// Current time.
 			bool hasVelSwitched = false;
 			int iter = 0;
 			const double MAX_VEL_NORM = 1.0; 			// Maximum velocity norm is known analitically.
 			double dt = CFL * dxyz_min / MAX_VEL_NORM;	// deltaT knowing that the CFL condition is c*dt/dx <= CFL.
 			int vtkIdx = 1;
-			writeVTK( MRL, 0, p4est, nodes, ghost, phi, exactPhi );
+			writeVTK( MRL, 0, p4est, nodes, ghost, phi, exactPhi, hk, ihk, hkError );
 			while( tn < DURATION )
 			{
 				if( tn + dt > DURATION )				// Clip step if it's going to go over the final time.
@@ -246,14 +252,18 @@ int main ( int argc, char* argv[] )
 				CHKERRXX( VecCreateGhostNodes( p4est, nodes, &exactPhi ) );
 				sample_cf_on_nodes( p4est, nodes, sphere, exactPhi );
 
+				// Reallocate curvature vectors.
+				CHKERRXX( VecDestroy( hk ) ); CHKERRXX( VecCreateGhostNodes( p4est, nodes, &hk ) );
+				CHKERRXX( VecDestroy( ihk ) ); CHKERRXX( VecCreateGhostNodes( p4est, nodes, &ihk ) );
+				CHKERRXX( VecDestroy( hkError ) ); CHKERRXX( VecCreateGhostNodes( p4est, nodes, &hkError ) );
+
 				// Display iteration message.
 				CHKERRXX( PetscPrintf( mpi.comm(), "\tIteration %04d: t = %1.4f \n", iter, tn ) );
 
-				// Save to vtk format (last and mid file are always written, the others are written if exportAllVTK is true).
-				if( ABS( tn - DURATION ) <= PETSC_MACHINE_EPSILON || ABS( tn - DURATION / 2.0 ) <=PETSC_MACHINE_EPSILON ||
-					iter % NUM_ITER_VTK == 0 )
+				// Save to vtk format (mid file is always written).  The last state is saved after we collect samples and record errors.
+				if( ABS( tn - DURATION / 2.0 ) <=PETSC_MACHINE_EPSILON || (iter % NUM_ITER_VTK == 0 && ABS( tn - DURATION ) > PETSC_MACHINE_EPSILON) )
 				{
-					writeVTK( MRL, vtkIdx, p4est, nodes, ghost, phi, exactPhi );
+					writeVTK( MRL, vtkIdx, p4est, nodes, ghost, phi, exactPhi, hk, ihk, hkError );
 					vtkIdx++;
 				}
 			}
@@ -296,7 +306,7 @@ int main ( int argc, char* argv[] )
 			CHKERRXX( VecRestoreArray( refPhi, &refPhiPtr ) );
 
 			my_p4est_level_set_t refLS( ref_ngbd );
-			refLS.reinitialize_2nd_order( refPhi, NUM_REINIT_ITERS * 5 );	// Notice how many more iterations we use.
+			refLS.reinitialize_2nd_order( refPhi, NUM_REINIT_ITERS * 15 );	// Notice how many more iterations we use.
 
 			// Prepare queries from coarse grid for curvature.
 			Vec refNormals[P4EST_DIM];
@@ -305,7 +315,7 @@ int main ( int argc, char* argv[] )
 			for( auto& dim : refNormals )
 				CHKERRXX( VecCreateGhostNodes( ref_p4est, ref_nodes, &dim ) );
 			compute_normals( *ref_ngbd, refPhi, refNormals );
-			compute_mean_curvature( *ref_ngbd, refNormals, refCurvature );	// Notice I'm using the most accurate way of computing curvature.
+			compute_mean_curvature( *ref_ngbd, refNormals, refCurvature );	// Notice I'm using the most accurate way of computing kappa.
 
 			Vec refCurvature_xx[P4EST_DIM];
 			for( auto& dim : refCurvature_xx )
@@ -313,6 +323,14 @@ int main ( int argc, char* argv[] )
 			ref_ngbd->second_derivatives_central( refCurvature, refCurvature_xx[0], refCurvature_xx[1] );
 			my_p4est_interpolation_nodes_t refCurvatureInterp( ref_ngbd );
 			refCurvatureInterp.set_input( refCurvature, refCurvature_xx[0], refCurvature_xx[1], interpolation_method::quadratic );
+
+			my_p4est_interpolation_nodes_t refPhiInterp( ref_ngbd );	// We also need to interpolate the phi and normal values from the reference grid.
+			refPhiInterp.set_input( refPhi, interpolation_method::linear );
+
+			my_p4est_interpolation_nodes_t refNormalsXInterp( ref_ngbd );
+			refNormalsXInterp.set_input( refNormals[0], interpolation_method::linear );
+			my_p4est_interpolation_nodes_t refNormalsYInterp( ref_ngbd );
+			refNormalsYInterp.set_input( refNormals[1], interpolation_method::linear );
 
 			//////////////////////////////// Sample-collection step: use finer grid to find "true" curvature ///////////////////////////////
 
@@ -339,6 +357,10 @@ int main ( int argc, char* argv[] )
 				CHKERRXX( VecGetArrayRead( normals[i], &normalsReadPtr[i] ) );
 
 			double maxHKError = 0;						// And this one is the max difference between ref hk and coarse hk.
+			double *hkPtr, *ihkPtr, *hkErrorPtr;
+			CHKERRXX( VecGetArray( hk, &hkPtr ) );		// Record curvature and its error in these vectors.
+			CHKERRXX( VecGetArray( ihk, &ihkPtr ) );
+			CHKERRXX( VecGetArray( hkError, &hkErrorPtr ) );
 			for( auto n : indices )
 			{
 				std::vector<p4est_locidx_t> stencil;
@@ -355,12 +377,24 @@ int main ( int argc, char* argv[] )
 						double xyz[P4EST_DIM];					// Position of node at the center of the stencil.
 						node_xyz_fr_n( n, p4est, nodes, xyz );
 
-						for( int i = 0; i < P4EST_DIM; i++ )
-							xyz[i] -= normalsReadPtr[i][n] * phiReadPtr[n];
+						double refXYZ[P4EST_DIM] = {xyz[0], xyz[1]};
+						double refPhiVal = refPhiInterp( refXYZ[0], refXYZ[1] );
+						double refGrad[P4EST_DIM] = {refNormalsXInterp( refXYZ[0], refXYZ[1] ), refNormalsYInterp( refXYZ[0], refXYZ[1] )};
+						double refGradNorm = sqrt( SQR( refGrad[0] ) + SQR( refGrad[1] ) );
 
-						sample.push_back( -H * refCurvatureInterp( xyz[0], xyz[1] ) );		// Appending the reference "target" h*kappa.
-						sample.push_back( -H * interpolation( xyz[0], xyz[1] ) );			// Attach interpolated h*kappa.
-						maxHKError = MAX( maxHKError, ABS(sample[NUM_COLUMNS - 1] - sample[NUM_COLUMNS - 2]) );
+						for( int i = 0; i < P4EST_DIM; i++ )
+						{
+							xyz[i] -= normalsReadPtr[i][n] * phiReadPtr[n];					// Coarse location where to interpolate curvature.
+							refXYZ[i] -= refPhiVal * refGrad[i] / refGradNorm;				// Reference projection.
+						}
+
+						hkPtr[n] = refCurvatureInterp( refXYZ[0], refXYZ[1] );				// Record curvature and error.
+						ihkPtr[n] = interpolation( xyz[0], xyz[1] );
+						hkErrorPtr[n] = ABS( hkPtr[n] - ihkPtr[n] );
+
+						sample.push_back( -H * hkPtr[n] );									// Appending the reference "target" h*kappa.
+						sample.push_back( -H * ihkPtr[n] );									// Attach interpolated h*kappa.
+						maxHKError = MAX( maxHKError, H * hkErrorPtr[n] );
 
 						rlsSamples.push_back( sample );			// Accumulating samples.
 					}
@@ -393,10 +427,24 @@ int main ( int argc, char* argv[] )
 			CHKERRXX( VecRestoreArrayRead( refPhi, &refPhiReadPtr ) );
 			CHKERRXX( PetscPrintf( p4est->mpicomm, ":: Saved vtk file for reference grid ::\n" ) );
 
+			// Save las visualization for coarse grid with its errors.
+			writeVTK( MRL, vtkIdx, p4est, nodes, ghost, phi, exactPhi, hk, ihk, hkError );
+
+			// Clearing interpolators.
+			interpolation.clear();
+			refNormalsYInterp.clear();
+			refNormalsXInterp.clear();
+			refPhiInterp.clear();
+			refCurvatureInterp.clear();
+			phiInterp.clear();
+
 			// Cleaning up coarse data.
 			CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 			for( int i = 0; i < P4EST_DIM; i++ )
 				CHKERRXX( VecGetArrayRead( normals[i], &normalsReadPtr[i] ) );
+			CHKERRXX( VecRestoreArray( hk, &hkPtr ) );
+			CHKERRXX( VecRestoreArray( ihk, &ihkPtr ) );
+			CHKERRXX( VecRestoreArray( hkError, &hkErrorPtr ) );
 
 			CHKERRXX( VecDestroy( exactPhi ) );
 			CHKERRXX( VecDestroy( phi ) );
@@ -407,6 +455,9 @@ int main ( int argc, char* argv[] )
 				CHKERRXX( VecDestroy( dim ) );
 			for( auto& dim : vel )
 				CHKERRXX( VecDestroy( dim ) );
+			CHKERRXX( VecDestroy( hk ) );
+			CHKERRXX( VecDestroy( ihk ) );
+			CHKERRXX( VecDestroy( hkError ) );
 
 			// Cleaning up reference data.
 			CHKERRXX( VecDestroy( refPhi ) );
@@ -465,7 +516,7 @@ void setUpP4estStructs( const mpi_environment_t& mpi, p4est_t *& p4est, p4est_no
 
 	// Create the forest using exact signed-distance level set as refinement criterion.
 	p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
-	spl = new splitting_criteria_cf_and_uniform_band_t( 1, mrl, &levelSetFunction, halfBandWidth );
+	spl = new splitting_criteria_cf_and_uniform_band_t( 1, mrl, &levelSetFunction, halfBandWidth, 3 );
 	p4est->user_pointer = (void *)(spl);
 
 	// Refine and recursively partition forest.
@@ -485,20 +536,30 @@ void setUpP4estStructs( const mpi_environment_t& mpi, p4est_t *& p4est, p4est_no
 	ngbd->init_neighbors();
 }
 
-void writeVTK( const u_char& MRL, const int& vtkIdx, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, Vec phi, Vec phiExact )
+void writeVTK( const u_char& MRL, const int& vtkIdx, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, Vec phi, Vec phiExact,
+			   Vec hk, Vec ihk, Vec hkError )
 {
 	char name[1024];
 
-	const double *phiReadPtr, *phiExactReadPtr;	// Pointers to vector contents.
+	const double *phiReadPtr, *phiExactReadPtr, *hkReadPtr, *ihkReadPtr, *hkErrorReadPtr;	// Pointers to vector contents.
 
 	sprintf( name, "vtu_%d/vortex_%d", MRL, vtkIdx );
 	CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
 	CHKERRXX( VecGetArrayRead( phiExact, &phiExactReadPtr ) );
+	CHKERRXX( VecGetArrayRead( hk, &hkReadPtr ) );
+	CHKERRXX( VecGetArrayRead( ihk, &ihkReadPtr ) );
+	CHKERRXX( VecGetArrayRead( hkError, &hkErrorReadPtr ) );
 	my_p4est_vtk_write_all( p4est, nodes, ghost,
 							P4EST_TRUE, P4EST_TRUE,
-							2, 0, name,
+							5, 0, name,
 							VTK_POINT_DATA, "phi", phiReadPtr,
-							VTK_POINT_DATA, "phiExact", phiExactReadPtr );
+							VTK_POINT_DATA, "phiExact", phiExactReadPtr,
+							VTK_POINT_DATA, "hk", hkReadPtr,
+							VTK_POINT_DATA, "ihk", ihkReadPtr,
+							VTK_POINT_DATA, "hkError", hkErrorReadPtr );
+	CHKERRXX( VecRestoreArrayRead( hkError, &hkErrorReadPtr ) );
+	CHKERRXX( VecRestoreArrayRead( ihk, &ihkReadPtr ) );
+	CHKERRXX( VecRestoreArrayRead( hk, &hkReadPtr ) );
 	CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 	CHKERRXX( VecRestoreArrayRead( phiExact, &phiExactReadPtr ) );
 
