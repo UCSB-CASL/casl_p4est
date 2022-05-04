@@ -13,6 +13,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 2, 2022.
+ * Updated: May 4, 2022.
  */
 
 // System.
@@ -187,6 +188,7 @@ int main ( int argc, char* argv[] )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &hkError ) );
 
 			double tn = 0;								// Current time.
+			double tn_vel = 0;
 			bool hasVelSwitched = false;
 			int iter = 0;
 			const double MAX_VEL_NORM = 1.0; 			// Maximum velocity norm is known analitically.
@@ -203,6 +205,7 @@ int main ( int argc, char* argv[] )
 					dt = (DURATION / 2.0) - tn;
 					hasVelSwitched = true;
 					CHKERRXX( PetscPrintf( mpi.comm(), "*** Switching velocity direction at the end of this iteration ***\n" ) );
+					tn_vel += dt;						// To skip the stall point at tn = T/2.
 				}
 
 				// Coarse p4est objects at time tnp1; they will be updated during the semi-Lagrangian advection step.
@@ -212,8 +215,8 @@ int main ( int argc, char* argv[] )
 
 				// Create semi-Lagrangian object and advect.
 				my_p4est_semi_lagrangian_t semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, ngbd );
-				semiLagrangian.set_phi_interpolation( interpolation_method::quadratic );
-				semiLagrangian.set_velo_interpolation( interpolation_method::quadratic );
+				semiLagrangian.set_phi_interpolation( interpolation_method::quadratic_non_oscillatory_continuous_v1 );
+				semiLagrangian.set_velo_interpolation( interpolation_method::quadratic_non_oscillatory_continuous_v1 );
 				semiLagrangian.update_p4est( vel, dt, phi );
 
 				// Destroy old forest and create new structures.
@@ -236,6 +239,7 @@ int main ( int argc, char* argv[] )
 
 				// Update stepping variables and velocities.
 				tn += dt;
+				tn_vel += dt;
 				dt = CFL * dxyz_min / MAX_VEL_NORM;				// Restore time step size.
 				iter++;
 
@@ -245,7 +249,7 @@ int main ( int argc, char* argv[] )
 					CHKERRXX( VecDestroy( dir ) );
 					CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dir ) );
 				}
-				sampleVelocityField( vel, p4est, nodes, velocityField, tn );
+				sampleVelocityField( vel, p4est, nodes, velocityField, tn_vel );
 
 				// Resample exact solution.
 				CHKERRXX( VecDestroy( exactPhi ) );
@@ -294,7 +298,7 @@ int main ( int argc, char* argv[] )
 				CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
 			ngbd->second_derivatives_central( phi, phi_xx[0], phi_xx[1] );
 			my_p4est_interpolation_nodes_t phiInterp( ngbd );
-			phiInterp.set_input( phi, phi_xx[0], phi_xx[1], interpolation_method::quadratic );
+			phiInterp.set_input( phi, phi_xx[0], phi_xx[1], interpolation_method::quadratic_non_oscillatory_continuous_v1 );
 			foreach_node( n, ref_nodes )
 			{
 				double xyz[P4EST_DIM];
@@ -322,7 +326,7 @@ int main ( int argc, char* argv[] )
 				CHKERRXX( VecCreateGhostNodes( ref_p4est, ref_nodes, &dim ) );
 			ref_ngbd->second_derivatives_central( refCurvature, refCurvature_xx[0], refCurvature_xx[1] );
 			my_p4est_interpolation_nodes_t refCurvatureInterp( ref_ngbd );
-			refCurvatureInterp.set_input( refCurvature, refCurvature_xx[0], refCurvature_xx[1], interpolation_method::quadratic );
+			refCurvatureInterp.set_input( refCurvature, refCurvature_xx[0], refCurvature_xx[1], interpolation_method::quadratic_non_oscillatory );
 
 			my_p4est_interpolation_nodes_t refPhiInterp( ref_ngbd );	// We also need to interpolate the phi and normal values from the reference grid.
 			refPhiInterp.set_input( refPhi, interpolation_method::linear );
