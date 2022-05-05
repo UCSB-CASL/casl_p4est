@@ -26,6 +26,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
+ * Updated: May 5, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -107,7 +108,7 @@ int main ( int argc, char* argv[] )
 		if( maxHK() < 1./15 || maxHK() >= 2./3 )
 			throw std::invalid_argument( "[CASL_ERROR] Desired max hk must be in the range of [1/15, 2/3)." );
 
-		if( r() < 10 || (r() >= -1 && r() < 1) || r() > 10 )
+		if( r() < -10 || (r() >= -1 && r() < 1) || r() > 10 )
 			throw std::invalid_argument( "[CASL_ERROR] The ratio a/b must be in the range of [-10, -1) union [1, 10]." );
 
 		if( minSamRadiusH() < 16 || minSamRadiusH() > 64 )
@@ -256,7 +257,8 @@ int main ( int argc, char* argv[] )
 		double trackedMaxErrors[P4EST_DIM];
 		int nNumericalSaddles;
 		pLS->collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMaxErrors, trackedMinHK, trackedMaxHK, samples,
-							 nNumericalSaddles, exactFlag, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError, SQR(samRadius), SQR(samRadius) );
+							 nNumericalSaddles, exactFlag, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError,
+							 SQR(samRadius), SQR(samRadius), nonSaddleMinIH2KG() );
 		pLS->clearCache();
 		pLS->toggleCache( false );
 		delete pLS;
@@ -494,7 +496,8 @@ HypParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const HypParab
 	const double UVLIM = D / 2;
 	const size_t HALF_UV_H = ceil( UVLIM / h );						// Half axes in h units.
 
-	// Defining the transformed level-set function.  This also discretizes the surface using a balltree to speed up queries during grid refinement.
+	// Defining the transformed level-set function.  This also discretizes the surface using a balltree to speed up queries during grid
+	// refinement.  Note we're sending a signed-distance radius possibly way smaller than the triangulation limiting ellipse.
 	return new HypParaboloidLevelSet( &mpi, Point3(origin), Point3(rotAxis), rotAngle, HALF_UV_H, HALF_UV_H, maxRL, &hypParaboloid,
-									  SQR(UVLIM), SQR(UVLIM), 5 );
+									  SQR(UVLIM), SQR(UVLIM), SQR(samRadius + 4 * h), SQR(samRadius + 4 * h), 5 );
 }

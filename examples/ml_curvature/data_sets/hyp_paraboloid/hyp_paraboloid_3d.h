@@ -3,6 +3,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
+ * Updated: May 5, 2022.
  */
 
 #ifndef ML_CURVATURE_HYP_PARABOLOID_3D_H
@@ -361,12 +362,15 @@ public:
 	 * @param [in] hypParaboloid Hyp-paraboloid Monge patch in canonical coordinates.
 	 * @param [in] ru2 Squared half-axis length on the u direction for the limiting ellipse on the canonical uv plane.
 	 * @param [in] rv2 Squared half-axis length on the v direction for the limiting ellipse on the canonical uv plane.
+	 * @param [in] sdsu2 Squared half-axis length on the u direction for signed-distance computation on the canonical uv plane.
+	 * @param [in] sdsv2 Squared half-axis length on the v direction for signed-distance computation on the canonical uv plane.
 	 * @param [in] btKLeaf Maximum number of points in balltree leaves.
 	 */
 	HypParaboloidLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis, const double& rotAngle,
 						   const size_t& ku, const size_t& kv, const size_t& L, const HypParaboloid *hypParaboloid, const double& ru2,
-						   const double& rv2, const size_t& btKLeaf=40 )
-						   : SignedDistanceLevelSet( mpi, trans, rotAxis, rotAngle, ku, kv, L, hypParaboloid, ru2, rv2, btKLeaf ) {}
+						   const double& rv2, const double& sdsu2, const double& sdsv2, const size_t& btKLeaf=40 )
+						   : SignedDistanceLevelSet( mpi, trans, rotAxis, rotAngle, ku, kv, L, hypParaboloid, ru2, rv2, sdsu2, sdsv2,
+													 btKLeaf ) {}
 };
 
 

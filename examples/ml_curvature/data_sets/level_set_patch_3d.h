@@ -4,7 +4,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 25, 2022.
- * Updated: April 26, 2022.
+ * Updated: May 5, 2022.
  */
 
 #ifndef ML_CURVATURE_LEVEL_SET_PATCH_3D_H
@@ -188,7 +188,39 @@ public:
 		_deltaStop = 1e-8 * _h;
 
 		if( _ru2 == DBL_MAX || _rv2 == DBL_MAX )
-			throw std::runtime_error( errorPrefix + "Squared half-axes must be smaller than DBL_MAX!" );
+			throw std::invalid_argument( errorPrefix + "Squared half-axes must be smaller than DBL_MAX!" );
+	}
+
+	/**
+	 * Constructor.
+	 * @param [in] mpi MPI environment.
+	 * @param [in] trans Translation vector.
+	 * @param [in] rotAxis Rotation axis (must be nonzero).
+	 * @param [in] rotAngle Rotation angle about rotAxis.
+	 * @param [in] ku Number of min cells in u half direction to define a symmetric domain.
+	 * @param [in] kv Number of min cells in v half direction to define a symmetric domain.
+	 * @param [in] L Number of refinement levels per unit length (so that h=2^{-L} is a power of two).
+	 * @param [in] gaussian Gaussian object in canonical coordinates.
+	 * @param [in] ru2 Squared half-axis length on the u direction for the limiting ellipse on the canonical uv plane.
+	 * @param [in] rv2 Squared half-axis length on the v direction for the limiting ellipse on the canonical uv plane.
+	 * @param [in] sdsu2 Squared half-axis length on the u direction for signed-distance computation on the canonical uv plane.
+	 * @param [in] sdsv2 Squared half-axis length on the v direction for signed-distance computation on the canonical uv plane.
+	 * @param [in] btKLeaf Maximum number of points in balltree leaves.
+	 */
+	SignedDistanceLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis, const double& rotAngle,
+							const size_t& ku, const size_t& kv, const size_t& L, const geom::MongeFunction *mongeFunction,
+							const double& ru2, const double& rv2, const double& sdsu2, const double& sdsv2, const size_t& btKLeaf=40 )
+		: _mpi( mpi ), DiscretizedLevelSet( trans, rotAxis, rotAngle, ku, kv, L, mongeFunction, ru2, rv2, btKLeaf ),
+		  _ru2( ABS( ru2 ) ), _rv2( ABS( rv2 ) ), _sdsu2( sdsu2 ), _sdsv2( sdsv2 )
+	{
+		const std::string errorPrefix = _errorPrefix + "constructor: ";
+		_deltaStop = 1e-8 * _h;
+
+		if( _ru2 == DBL_MAX || _rv2 == DBL_MAX )
+			throw std::invalid_argument( errorPrefix + "Squared half-axes must be smaller than DBL_MAX!" );
+
+		if( _sdsu2 <= SQR( _h ) || _sdsv2 <= SQR( _h ) )
+			throw std::invalid_argument( errorPrefix + "Squared half-axes for signed-distance computation must be at least h^2." );
 	}
 
 	/**
@@ -372,6 +404,7 @@ public:
 	 * @param [out] phiError Vector to hold phi error for sampled nodes.
 	 * @param [in] ru2 Override limiting ellipse u semiaxis squared just for sampling.
 	 * @param [in] rv2 Override limiting ellipse v semiaxis squared just for sampling.
+	 * @param [in] nonSaddleMinIH2KG Min numerical dimensionless Gaussian curvature (at Gamma) for numerical non-saddle samples.
 	 * @return Maximum error in dimensionless curvature (reduced across processes).
 	 * @throws invalid_argument exception if phi or exactFlag vector is null, or if overriding ru2 and rv2 are non positive or larger than _ru2 and _rv2.
 	 * @throws runtime_error if the cache is disabled or empty, or if a candidate interface point is not in the cache.
@@ -381,7 +414,7 @@ public:
 						 double trackedMaxErrors[P4EST_DIM], double& trackedMinHK, double& trackedMaxHK,
 						 std::vector<std::vector<double>>& samples, int& nNumericalSaddles, const Vec& exactFlag, Vec sampledFlag=nullptr,
 						 Vec hkError=nullptr, Vec ihk=nullptr, Vec h2kgError=nullptr, Vec ih2kg=nullptr, Vec phiError=nullptr,
-						 double ru2=NAN, double rv2=NAN ) const
+						 double ru2=NAN, double rv2=NAN, const double& nonSaddleMinIH2KG=-4e-4 ) const
 	{
 		std::string errorPrefix = _errorPrefix + "collectSamples: ";
 		nNumericalSaddles = 0;
@@ -573,10 +606,10 @@ public:
 				sample->push_back( h2kg );						// And, attach true Gaussian h^2*kg and ih2kg.
 				sample->push_back( ih2kgVal );
 
-				// Update flags: we should expect both non-saddles and saddles.
+				// Update flags.
 				if( sampledFlag )
 				{
-					if( ih2kgVal >= 0 )
+					if( ih2kgVal >= nonSaddleMinIH2KG )
 						sampledFlagPtr[n] = 1;			// Non-saddle point: 1.
 					else
 					{
