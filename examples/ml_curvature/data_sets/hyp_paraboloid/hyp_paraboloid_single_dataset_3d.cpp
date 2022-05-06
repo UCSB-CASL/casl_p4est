@@ -67,19 +67,19 @@ int main ( int argc, char* argv[] )
 	param_t<double> nonSaddleMinIH2KG( pl, -4e-4, "nonSaddleMinIH2KG", "Min numerical dimensionless Gaussian curvature (at Gamma) for "
 																	   "numerical non-saddle samples (default: -4e-4)" );
 	param_t<u_char>      experimentId( pl,     0, "experimentId"	 , "Experiment Id (default: 0)" );
-	param_t<double>             maxHK( pl,   0.5, "maxHK"		 	 , "Desired max (absolute) dimensionless mean curvature at the critical"
-																	   " points.  Must be in the interval of [1/15, 2/3) (default: 0.5)" );
+	param_t<double>             maxHK( pl,  0.15, "maxHK"		 	 , "Desired max (absolute) dimensionless mean curvature at the critical"
+																	   " points.  Must be in the interval of [1/15, 3/20] (default: 3/20)" );
 	param_t<u_char>             maxRL( pl,     6, "maxRL"		 	 , "Max level of refinement per unit-cube octree (default: 6)" );
 	param_t<int>          reinitIters( pl,    10, "reinitIters"	 	 , "Number of iterations for reinitialization (default: 10)" );
 	param_t<u_short>    minSamRadiusH( pl,    16, "minSamRadiusH"	 , "Min sampling radius in h units on the uv plane.  Must be in the "
-																	   "range of [16, 64] (default 16)" );
+																	   "range of [16, 32] (default 16)" );
 	param_t<double>                 r( pl,     3, "r"		     	 , "The ratio a/b in the range of [-10, -1) union [1, 10].  If it's "
 																	   "negative, then b=|r|a; otherwise, a=rb (default: 3)" );
 	param_t<bool>       perturbOrigin( pl,  true, "perturbFrame"	 , "Whether to perturb the surface's frame randomly in [-h/2,+h/2]^3 "
 																	   "(default: true)" );
 	param_t<bool>      randomRotation( pl,  true, "randomRotation"	 , "Whether to apply a rotation with a random angle about a random unit"
 																	   " axis (default: true)" );
-	param_t<u_int>        randomState( pl,    14, "randomState"	 	 , "Seed for random perturbations of canonical frame (default: 14)" );
+	param_t<u_int>        randomState( pl,    11, "randomState"	 	 , "Seed for random perturbations of canonical frame (default: 11)" );
 	param_t<std::string>       outDir( pl,   ".", "outDir"		 	 , "Path where files will be written to (default: build folder)" );
 	param_t<bool>      useNegCurvNorm( pl, false, "useNegCurvNorm"	 , "Whether to apply negative-mean-curvature normalization for non-"
 																	   "saddle samples (default: false)" );
@@ -105,14 +105,14 @@ int main ( int argc, char* argv[] )
 		if( reinitIters() <= 0 )
 			throw std::invalid_argument( "[CASL_ERROR] Number of reinitializating iterations must be strictly positive." );
 
-		if( maxHK() < 1./15 || maxHK() >= 2./3 )
-			throw std::invalid_argument( "[CASL_ERROR] Desired max hk must be in the range of [1/15, 2/3)." );
+		if( maxHK() < 1./15 || maxHK() > 3./20 )
+			throw std::invalid_argument( "[CASL_ERROR] Desired max hk must be in the range of [1/15, 3/20]." );
 
 		if( r() < -10 || (r() >= -1 && r() < 1) || r() > 10 )
 			throw std::invalid_argument( "[CASL_ERROR] The ratio a/b must be in the range of [-10, -1) union [1, 10]." );
 
-		if( minSamRadiusH() < 16 || minSamRadiusH() > 64 )
-			throw std::invalid_argument( "[CASL_ERROR] Desired sampling radius in h units must be in the range of [16, 64]." );
+		if( minSamRadiusH() < 16 || minSamRadiusH() > 32 )
+			throw std::invalid_argument( "[CASL_ERROR] Desired sampling radius in h units must be in the range of [16, 32]." );
 
 		const double h = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
 		std::mt19937 gen( randomState() );					// Engine used for random perturbations and random noise if requested
