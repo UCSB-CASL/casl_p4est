@@ -4,7 +4,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 25, 2022.
- * Updated: May 5, 2022.
+ * Updated: May 6, 2022.
  */
 
 #ifndef ML_CURVATURE_LEVEL_SET_PATCH_3D_H
@@ -314,16 +314,17 @@ public:
 	/**
 	 * Evaluate Gaussian level-set function and compute "exact" signed distances for points whose projections lie within a 3h-enlarged
 	 * limiting ellipse in the canonical coordinate system.  We select these points by checking if their linear-reconstruction distance is
-	 * less than 3h*sqrt(3) (i.e., within a shell around Gamma).
+	 * less than numMinDiag * h*sqrt(3) (i.e., within a shell around Gamma).
 	 * @param [in] p4est Pointer to p4est data structure.
 	 * @param [in] nodes Pointer to nodes structure.
 	 * @param [out] phi Parallel PETSc vector where to place (linearly approximated) level-set values and exact distances.
 	 * @param [out] exactFlag Parallel PETSc vector to indicate if exact distance was computed (1) or not (0).
+	 * @param [in] numMinDiag Number of min diagonals (i.e., h*sqrt(3)) to take as half band width around linear shell for candidate nodes.
 	 * @throws invalid_argument if phi vector is null.
 	 */
-	void evaluate( const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec exactFlag )
+	void evaluate( const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec exactFlag, const double& numMinDiag=3 )
 	{
-		const double linearShellHalfWidth = 3 * _h * sqrt( 3 );
+		const double linearShellHalfWidth = numMinDiag * _h * sqrt( 3 );
 
 		if( !phi )
 			throw std::invalid_argument( _errorPrefix + "evaluate: Phi vector can't be null!" );

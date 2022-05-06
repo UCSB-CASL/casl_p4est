@@ -26,7 +26,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
- * Updated: May 5, 2022.
+ * Updated: May 6, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -67,19 +67,19 @@ int main ( int argc, char* argv[] )
 	param_t<double> nonSaddleMinIH2KG( pl, -4e-4, "nonSaddleMinIH2KG", "Min numerical dimensionless Gaussian curvature (at Gamma) for "
 																	   "numerical non-saddle samples (default: -4e-4)" );
 	param_t<u_char>      experimentId( pl,     0, "experimentId"	 , "Experiment Id (default: 0)" );
-	param_t<double>             maxHK( pl, 1./15, "maxHK"		 	 , "Desired max (absolute) dimensionless mean curvature at the critical"
-																	   " points.  Must be in the interval of [1/15, 2/3) (default: 1/15)" );
+	param_t<double>             maxHK( pl,   0.5, "maxHK"		 	 , "Desired max (absolute) dimensionless mean curvature at the critical"
+																	   " points.  Must be in the interval of [1/15, 2/3) (default: 0.5)" );
 	param_t<u_char>             maxRL( pl,     6, "maxRL"		 	 , "Max level of refinement per unit-cube octree (default: 6)" );
 	param_t<int>          reinitIters( pl,    10, "reinitIters"	 	 , "Number of iterations for reinitialization (default: 10)" );
 	param_t<u_short>    minSamRadiusH( pl,    16, "minSamRadiusH"	 , "Min sampling radius in h units on the uv plane.  Must be in the "
 																	   "range of [16, 64] (default 16)" );
-	param_t<double>                 r( pl,     1, "r"		     	 , "The ratio a/b in the range of [-10, -1) union [1, 10].  If it's "
-																	   "negative, then b=|r|a; otherwise, a=rb (default: 1)" );
+	param_t<double>                 r( pl,     3, "r"		     	 , "The ratio a/b in the range of [-10, -1) union [1, 10].  If it's "
+																	   "negative, then b=|r|a; otherwise, a=rb (default: 3)" );
 	param_t<bool>       perturbOrigin( pl,  true, "perturbFrame"	 , "Whether to perturb the surface's frame randomly in [-h/2,+h/2]^3 "
 																	   "(default: true)" );
 	param_t<bool>      randomRotation( pl,  true, "randomRotation"	 , "Whether to apply a rotation with a random angle about a random unit"
 																	   " axis (default: true)" );
-	param_t<u_int>        randomState( pl,     7, "randomState"	 	 , "Seed for random perturbations of canonical frame (default: 7)" );
+	param_t<u_int>        randomState( pl,    14, "randomState"	 	 , "Seed for random perturbations of canonical frame (default: 14)" );
 	param_t<std::string>       outDir( pl,   ".", "outDir"		 	 , "Path where files will be written to (default: build folder)" );
 	param_t<bool>      useNegCurvNorm( pl, false, "useNegCurvNorm"	 , "Whether to apply negative-mean-curvature normalization for non-"
 																	   "saddle samples (default: false)" );
@@ -226,7 +226,7 @@ int main ( int argc, char* argv[] )
 
 		// Populate phi and compute exact distance for vertices within a (linearly estimated) shell around Gamma.  Reinitialization perturbs
 		// the otherwise calculated exact distances.
-		pLS->evaluate( p4est, nodes, phi, exactFlag );
+		pLS->evaluate( p4est, nodes, phi, exactFlag, 5 );
 
 		// Add random noise if requested.
 		if( randomNoise() > 0 )
@@ -436,14 +436,14 @@ HypParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const HypParab
 								 double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] )
 {
 	// First, determine the bounds of the cylinder containing the surface.
-	const double QTOP = MAX(
+	const double QTOP = MIN( 32 * h, MAX(
 		MAX( hypParaboloid(-samRadius, 0), hypParaboloid(samRadius, 0) ),
 		hypParaboloid(0, 0),
-		MAX( hypParaboloid(0, -samRadius), hypParaboloid(0, samRadius) ) ) + 4 * h;		// Adding some padding at the top.
-	const double QBOT = MIN(
+		MAX( hypParaboloid(0, -samRadius), hypParaboloid(0, samRadius) ) ) ) + 4 * h;		// Adding some padding at the top.
+	const double QBOT = MAX( -32 * h, MIN(
 		MIN( hypParaboloid(-samRadius, 0), hypParaboloid(samRadius, 0) ),
 		hypParaboloid(0, 0),
-		MIN( hypParaboloid(0, -samRadius), hypParaboloid(0, samRadius) ) ) - 4 * h;		// Adding some padding at the bottom.
+		MIN( hypParaboloid(0, -samRadius), hypParaboloid(0, samRadius) ) ) ) - 4 * h;		// Adding some padding at the bottom.
 	const double QCylCCoords[8][P4EST_DIM] = {			// Cylinder in canonical coords containing the desired surface.
 		{-samRadius, 0, QTOP}, {+samRadius, 0, QTOP}, 	// Top coords (the four points lying on the same QTOP found above).
 		{0, -samRadius, QTOP}, {0, +samRadius, QTOP},
@@ -498,6 +498,6 @@ HypParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const HypParab
 
 	// Defining the transformed level-set function.  This also discretizes the surface using a balltree to speed up queries during grid
 	// refinement.  Note we're sending a signed-distance radius possibly way smaller than the triangulation limiting ellipse.
-	return new HypParaboloidLevelSet( &mpi, Point3(origin), Point3(rotAxis), rotAngle, HALF_UV_H, HALF_UV_H, maxRL, &hypParaboloid,
+	return new HypParaboloidLevelSet( &mpi, Point3(origin), Point3(rotAxis), rotAngle, 2*HALF_UV_H, 2*HALF_UV_H, maxRL+1, &hypParaboloid,
 									  SQR(UVLIM), SQR(UVLIM), SQR(samRadius + 4 * h), SQR(samRadius + 4 * h), 5 );
 }
