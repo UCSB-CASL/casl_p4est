@@ -903,7 +903,8 @@ namespace geom
 	protected:
 		size_t _nPointsAlongU, _nPointsAlongV;	// How many points in each Cartesian direction.
 		double _uMin, _vMin;					// Minimum coordinates (_uMin, _vMin) or the lower-left corner.
-		double _h;								// "Mesh" size or the spacing between grid points on the uv plane.
+		double _uvh;							// "Mesh" size or the spacing between grid points on the uv plane (can be different to mesh
+												// size used by derived classes --this allows to possibly refine the discrete surface more).
 		Balltree *_balltree;					// Underlying balltree organization of points in space.
 		std::vector<Triangle> _triangles;		// List of triangles discretizing the Monge patch.
 		const MongeFunction *_mongeFunction;	// Monge function to compute the "height" and curvature at any (x,y).
@@ -925,7 +926,7 @@ namespace geom
 		 * @param [in] sau2 Squared half-axis length on the u direction for the limiting ellipse on the uv plane.
 		 * @param [in] sav2 Squared half-axis length on the v direction for the limiting ellipse on the uv plane.
 		 */
-		DiscretizedMongePatch( const size_t& ku, const size_t& kv, const size_t& L, const MongeFunction *mongeFunction,
+		DiscretizedMongePatch( const size_t& ku, const size_t& kv, const u_short& L, const MongeFunction *mongeFunction,
 							   const size_t& btKLeaf=40, const double& sau2=DBL_MAX, const double& sav2=DBL_MAX )
 							   : _mongeFunction( mongeFunction ), _lastNearestTriangle( nullptr )
 		{
@@ -944,9 +945,9 @@ namespace geom
 				throw std::runtime_error( errorPrefix + "Limiting ellipse squared half-axis lengths must be positive!" );
 
 			// Initializing space variables and domain.
-			_h = 1. / (1 << L);								// Spacing.
-			_uMin = -(double)ku * _h;						// Lower-left coordinate is at (_uMin, _vMin).
-			_vMin = -(double)kv * _h;
+			_uvh = 1. / (1 << L);							// Spacing.
+			_uMin = -(double)ku * _uvh;						// Lower-left coordinate is at (_uMin, _vMin).
+			_vMin = -(double)kv * _uvh;
 			_nPointsAlongU = 2 * ku + 1;					// This is equivalent to (2|_dMin|/h + 1).
 			_nPointsAlongV = 2 * kv + 1;
 			_points.resize( _nPointsAlongU * _nPointsAlongV, nullptr );
@@ -965,8 +966,8 @@ namespace geom
 			{
 				for( int i = 0; i < _nPointsAlongU; i++ )	// Columns.
 				{
-					double x = _uMin + (double)i * _h;
-					double y = _vMin + (double)j * _h;
+					double x = _uMin + (double)i * _uvh;
+					double y = _vMin + (double)j * _uvh;
 					double z = _mongeFunction->operator()( x, y );
 					size_t idx = _nPointsAlongU * j + i;
 
@@ -989,8 +990,8 @@ namespace geom
 							if( (neighbor[0] >= 0 && neighbor[0] < _nPointsAlongU) &&
 								(neighbor[1] >= 0 && neighbor[1] < _nPointsAlongV) )
 							{
-								double xn = _uMin + (double)neighbor[0] * _h;
-								double yn = _vMin + (double)neighbor[1] * _h;
+								double xn = _uMin + (double)neighbor[0] * _uvh;
+								double yn = _vMin + (double)neighbor[1] * _uvh;
 								if( _inOutTest( xn, yn ) )
 								{
 									_points[idx] = new Point3( x, y, z );
@@ -1098,8 +1099,8 @@ namespace geom
 			std::unordered_set<Triangle const*> visitedT( k * 8 );		// Memoization to avoid double-checking triangles.
 			while( nn < k && xs[nn] )							// Check triangles attached to each found nearest point.
 			{
-				auto j = (size_t)((xs[nn]->y - _vMin) / _h);	// Row.
-				auto i = (size_t)((xs[nn]->x - _uMin) / _h);	// Col.
+				auto j = (size_t)((xs[nn]->y - _vMin) / _uvh);	// Row.
+				auto i = (size_t)((xs[nn]->x - _uMin) / _uvh);	// Col.
 				size_t idx = j * _nPointsAlongU + i;			// Node id.
 				for( const auto& triangle : _pointsToTriangles[idx] )
 				{
@@ -1310,6 +1311,7 @@ namespace geom
 	class DiscretizedLevelSet : public geom::AffineTransformedSpace, public geom::DiscretizedMongePatch
 	{
 	protected:
+		double _h;		// True min mesh size (which can be, e.g., larger than the one used for creating the balltree).
 		bool _useCache = false;	// Computing distance to triangulated surface is expensive --let's cache distances and
 		mutable std::unordered_map<std::string, std::pair<double, Point3>> _cache;	// nearest points.  Also, cache can-
 		mutable std::unordered_map<std::string, Point3> _canonicalCoordsCache;		// onical coords for grid points.
@@ -1350,16 +1352,17 @@ namespace geom
 		 * @param [in] sau2 Squared half-axis length on the u direction for the limiting ellipse on the uv plane.
 		 * @param [in] sav2 Squared half-axis length on the v direction for the limiting ellipse on the uv plane.
 		 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
+		 * @param [in] addToL Adds more "levels of refinement" to triangulate the surface.
 		 * @throws invalid_argument exception if no Monge function object is provided or if the rotation axis is singular.
 		 */
-		DiscretizedLevelSet( const Point3& trans, const Point3& rotAxis, const double& rotAngle, const size_t& ku,
-							 const size_t& kv, const size_t& L, const MongeFunction *mongeFunction,
-							 const double& sau2=DBL_MAX, const double& sav2=DBL_MAX, const size_t& btKLeaf=40 )
+		DiscretizedLevelSet( const Point3& trans, const Point3& rotAxis, const double& rotAngle, const size_t& ku, const size_t& kv,
+							 const u_short& L, const MongeFunction *mongeFunction, const double& sau2=DBL_MAX, const double& sav2=DBL_MAX,
+							 const size_t& btKLeaf=40, const u_short& addToL=0 )
 							 : AffineTransformedSpace( trans, rotAxis, rotAngle ),
-							 DiscretizedMongePatch( ku, kv, L, mongeFunction, btKLeaf, sau2, sav2 )
+							 DiscretizedMongePatch( ku * (1 << addToL), kv * (1 << addToL), L + addToL, mongeFunction, btKLeaf, sau2, sav2 )
 		{
 			const std::string errorPrefix = "[CASL_ERROR] DiscretizedLevelSet::constructor: ";
-
+			_h = 1. / (1 << L);
 			if( !mongeFunction )
 				throw std::invalid_argument( errorPrefix + "Sinusoid surface object can't be null!" );
 		}

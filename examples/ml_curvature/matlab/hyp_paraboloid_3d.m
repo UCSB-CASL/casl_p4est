@@ -1,6 +1,6 @@
 %% Modeling a hyperbolic paraboloid surface.
 clc; clear; close all;
-b = 4.8; a = 3*b;		% Paraboloid coefficients.
+b = 4; a = 5*b;		% Paraboloid coefficients.
 
 % The hyperbolic paraboloid.
 Q = @(u,v) a*u.^2 - b*v.^2;

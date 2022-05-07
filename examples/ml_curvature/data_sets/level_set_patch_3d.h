@@ -176,13 +176,14 @@ public:
 	 * @param [in] ru2 Squared half-axis length on the u direction for the limiting ellipse on the canonical uv plane.
 	 * @param [in] rv2 Squared half-axis length on the v direction for the limiting ellipse on the canonical uv plane.
 	 * @param [in] btKLeaf Maximum number of points in balltree leaves.
+	 * @param [in] addToL Adds more "levels of refinement" to triangulate the surface with balltree.
 	 */
 	SignedDistanceLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis, const double& rotAngle,
-							const size_t& ku, const size_t& kv, const size_t& L, const geom::MongeFunction *mongeFunction,
-							const double& ru2, const double& rv2, const size_t& btKLeaf=40 )
-							: _mpi( mpi ), DiscretizedLevelSet( trans, rotAxis, rotAngle, ku, kv, L, mongeFunction, ru2, rv2, btKLeaf ),
-							_ru2( ABS( ru2 ) ), _rv2( ABS( rv2 ) ),
-							_sdsu2( SQR( sqrt( _ru2 ) + 4 * _h ) ), _sdsv2( SQR( sqrt( _rv2 ) + 4 * _h ) )	// Notice the padding.
+							const size_t& ku, const size_t& kv, const u_short& L, const geom::MongeFunction *mongeFunction,
+							const double& ru2, const double& rv2, const size_t& btKLeaf=40, const u_short& addToL=0 )
+							: DiscretizedLevelSet( trans, rotAxis, rotAngle, ku, kv, L, mongeFunction, ru2, rv2, btKLeaf, addToL ),
+							  _mpi( mpi ), _ru2( ABS( ru2 ) ), _rv2( ABS( rv2 ) ),
+							  _sdsu2( SQR( sqrt( _ru2 ) + 4 * _h ) ), _sdsv2( SQR( sqrt( _rv2 ) + 4 * _h ) )	// Notice the padding.
 	{
 		const std::string errorPrefix = _errorPrefix + "constructor: ";
 		_deltaStop = 1e-8 * _h;
@@ -206,11 +207,13 @@ public:
 	 * @param [in] sdsu2 Squared half-axis length on the u direction for signed-distance computation on the canonical uv plane.
 	 * @param [in] sdsv2 Squared half-axis length on the v direction for signed-distance computation on the canonical uv plane.
 	 * @param [in] btKLeaf Maximum number of points in balltree leaves.
+	 * @param [in] addToL Adds more "levels of refinement" to triangulate the surface with balltree.
 	 */
 	SignedDistanceLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis, const double& rotAngle,
-							const size_t& ku, const size_t& kv, const size_t& L, const geom::MongeFunction *mongeFunction,
-							const double& ru2, const double& rv2, const double& sdsu2, const double& sdsv2, const size_t& btKLeaf=40 )
-		: _mpi( mpi ), DiscretizedLevelSet( trans, rotAxis, rotAngle, ku, kv, L, mongeFunction, ru2, rv2, btKLeaf ),
+							const size_t& ku, const size_t& kv, const u_short& L, const geom::MongeFunction *mongeFunction,
+							const double& ru2, const double& rv2, const double& sdsu2, const double& sdsv2, const size_t& btKLeaf=40,
+							const u_short& addToL=0 )
+		: _mpi( mpi ), DiscretizedLevelSet( trans, rotAxis, rotAngle, ku, kv, L, mongeFunction, ru2, rv2, btKLeaf, addToL ),
 		  _ru2( ABS( ru2 ) ), _rv2( ABS( rv2 ) ), _sdsu2( sdsu2 ), _sdsv2( sdsv2 )
 	{
 		const std::string errorPrefix = _errorPrefix + "constructor: ";

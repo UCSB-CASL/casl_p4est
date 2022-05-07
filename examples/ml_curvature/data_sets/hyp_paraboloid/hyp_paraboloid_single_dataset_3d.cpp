@@ -26,7 +26,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
- * Updated: May 6, 2022.
+ * Updated: May 7, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -67,8 +67,8 @@ int main ( int argc, char* argv[] )
 	param_t<double> nonSaddleMinIH2KG( pl, -7e-6, "nonSaddleMinIH2KG", "Min numerical dimensionless Gaussian curvature (at Gamma) for "
 																	   "numerical non-saddle samples (default: -7e-6)" );
 	param_t<u_char>      experimentId( pl,     0, "experimentId"	 , "Experiment Id (default: 0)" );
-	param_t<double>             maxHK( pl,  0.15, "maxHK"		 	 , "Desired max (absolute) dimensionless mean curvature at the critical"
-																	   " points.  Must be in the interval of [1/15, 3/20] (default: 3/20)" );
+	param_t<double>             maxHK( pl,  0.35, "maxHK"		 	 , "Desired max (absolute) dimensionless mean curvature at the critical"
+																	   " points.  Must be in the interval of [1/15, 2/3) (default: 0.35)" );
 	param_t<u_char>             maxRL( pl,     6, "maxRL"		 	 , "Max level of refinement per unit-cube octree (default: 6)" );
 	param_t<int>          reinitIters( pl,    10, "reinitIters"	 	 , "Number of iterations for reinitialization (default: 10)" );
 	param_t<u_short>    minSamRadiusH( pl,    16, "minSamRadiusH"	 , "Min sampling radius in h units on the uv plane.  Must be in the "
@@ -83,7 +83,7 @@ int main ( int argc, char* argv[] )
 	param_t<std::string>       outDir( pl,   ".", "outDir"		 	 , "Path where files will be written to (default: build folder)" );
 	param_t<bool>      useNegCurvNorm( pl,  true, "useNegCurvNorm"	 , "Whether to apply negative-mean-curvature normalization for non-"
 																	   "saddle samples (default: true)" );
-	param_t<double>       randomNoise( pl,  1e-4, "randomNoise"		 , "How much random noise to add to phi(x) as [+/-]h*randomNoise.  Use"
+	param_t<double>       randomNoise( pl,  1e-4, "randomNoise"		 , "How much random noise to add to phi(x) as [+/-]h*randomNoise.  Use "
 																	   "a negative value or 0 to disable this feature (default: 1e-4)" );
 
 	try
@@ -105,7 +105,7 @@ int main ( int argc, char* argv[] )
 		if( reinitIters() <= 0 )
 			throw std::invalid_argument( "[CASL_ERROR] Number of reinitializating iterations must be strictly positive." );
 
-		if( maxHK() < 1./15 || maxHK() > 3./20 )
+		if( maxHK() < 1./15 || maxHK() > 2./3 )
 			throw std::invalid_argument( "[CASL_ERROR] Desired max hk must be in the range of [1/15, 3/20]." );
 
 		if( r() < -10 || (r() >= -1 && r() < 1) || r() > 10 )
@@ -496,8 +496,11 @@ HypParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const HypParab
 	const double UVLIM = D / 2;
 	const size_t HALF_UV_H = ceil( UVLIM / h );						// Half axes in h units.
 
+//	PetscPrintf( mpi.comm(), "D = %.6f\n", D );
+
 	// Defining the transformed level-set function.  This also discretizes the surface using a balltree to speed up queries during grid
-	// refinement.  Note we're sending a signed-distance radius possibly way smaller than the triangulation limiting ellipse.
-	return new HypParaboloidLevelSet( &mpi, Point3(origin), Point3(rotAxis), rotAngle, 2*HALF_UV_H, 2*HALF_UV_H, maxRL+1, &hypParaboloid,
-									  SQR(UVLIM), SQR(UVLIM), SQR(samRadius + 4 * h), SQR(samRadius + 4 * h), 5 );
+	// refinement.  Note we're sending a signed-distance radius possibly way smaller than the triangulation limiting ellipse.  Also, the
+	// last +1 tells the discretizer that we want to use 1 more level of refinement when triangulating the surface.
+	return new HypParaboloidLevelSet( &mpi, Point3(origin), Point3(rotAxis), rotAngle, HALF_UV_H, HALF_UV_H, maxRL, &hypParaboloid,
+									  SQR(UVLIM), SQR(UVLIM), SQR(samRadius + 4 * h), SQR(samRadius + 4 * h), 5, +1 );
 }

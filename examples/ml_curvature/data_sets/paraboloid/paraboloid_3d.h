@@ -308,11 +308,12 @@ public:
 	 * @param [in] ru2 Squared half-axis length on the u direction for the limiting ellipse on the canonical uv plane.
 	 * @param [in] rv2 Squared half-axis length on the v direction for the limiting ellipse on the canonical uv plane.
 	 * @param [in] btKLeaf Maximum number of points in balltree leaves.
+	 * @param [in] addToL Adds more "levels of refinement" to triangulate the surface with a balltree.
 	 */
 	ParaboloidLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis, const double& rotAngle, const size_t& ku,
 						const size_t& kv, const size_t& L, const Paraboloid *paraboloid, const double& ru2, const double& rv2,
-						const size_t& btKLeaf=40 )
-						: SignedDistanceLevelSet( mpi, trans, rotAxis, rotAngle, ku, kv, L, paraboloid, ru2, rv2, btKLeaf ) {}
+						const size_t& btKLeaf=40, const u_short& addToL=0 )
+						: SignedDistanceLevelSet( mpi, trans, rotAxis, rotAngle, ku, kv, L, paraboloid, ru2, rv2, btKLeaf, addToL ) {}
 };
 
 

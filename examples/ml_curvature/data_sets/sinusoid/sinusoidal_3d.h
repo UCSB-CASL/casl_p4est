@@ -299,11 +299,12 @@ public:
 	 * @param [in] limR2 Squared limiting radius for triangulation.
 	 * @param [in] samR Sampling radius to exclude points lying outside canonical sphere.
 	 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
+	 * @param [in] addToL Adds more "levels of refinement" to triangulate the surface.
 	 */
 	SinusoidalLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis, const double& rotAngle,
 						const size_t& ku, const size_t& kv, const size_t& L, const Sinusoid *sinusoid,
-						const double& limR2, const double& samR=DBL_MAX, const size_t& btKLeaf=40 )
-						: _mpi( mpi ), DiscretizedLevelSet( trans, rotAxis, rotAngle, ku, kv, L, sinusoid, limR2, limR2, btKLeaf ),
+						const double& limR2, const double& samR=DBL_MAX, const size_t& btKLeaf=40, const u_short& addToL=0 )
+						: _mpi( mpi ), DiscretizedLevelSet( trans, rotAxis, rotAngle, ku, kv, L, sinusoid, limR2, limR2, btKLeaf, addToL ),
 						_samR2( samR == DBL_MAX? samR : SQR( samR ) ),
 						_sdR2( samR == DBL_MAX? samR : SQR( ABS( samR ) + 4 * _h ) )
 	{

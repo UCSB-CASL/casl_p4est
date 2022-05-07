@@ -27,7 +27,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: May 6, 2022.
+ * Updated: May 7, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -75,6 +75,8 @@ int main ( int argc, char* argv[] )
 	param_t<std::string>       outDir( pl,   ".", "outDir"			 , "Path where data files will be written to (default: build folder)" );
 	param_t<bool>      useNegCurvNorm( pl,  true, "useNegCurvNorm"	 , "Whether we want to apply negative-mean-curvature normalization for "
 															   		   "numerical non-saddle samples (default: true)" );
+	param_t<double>       randomNoise( pl,  1e-4, "randomNoise"		 , "How much random noise to add to phi(x) as [+/-]h*randomNoise.  Use "
+																	   "a negative value or 0 to disable this feature (default: 1e-4)" );
 
 	try
 	{
@@ -101,6 +103,10 @@ int main ( int argc, char* argv[] )
 			throw std::invalid_argument( "[CASL_ERROR] Any semiaxis must be larger than 1.5h" );
 
 		std::mt19937 gen( randomState() );						// Engine used for random perturbations of canonical frame: rotation and shift.
+		std::mt19937 genNoise( mpi.rank() );					// Engine for random noise on phi(x) if requested (and different for each rank).
+		const double RAND_NOISE = randomNoise() > 0? randomNoise() : 1;
+		std::uniform_real_distribution<double> randomNoiseDist( -h * RAND_NOISE, +h * RAND_NOISE );
+
 		Ellipsoid ellipsoid( a(), b(), c() );					// An ellipsoid implicit function in canonical coords (i.e., untransformed).
 		double maxK[P4EST_DIM];
 		ellipsoid.getMaxMeanCurvatures( maxK );
@@ -217,8 +223,17 @@ int main ( int argc, char* argv[] )
 		Vec phi;
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phi ) );
 
-		// Evaluate level-set function and reinitialize it.
+		// Evaluate level-set function, reinitialize it, and add noise if requested.
 		sample_cf_on_nodes( p4est, nodes, levelSet, phi );
+		if( randomNoise() > 0 )
+		{
+			double *phiPtr;
+			CHKERRXX( VecGetArray( phi, &phiPtr ) );
+			foreach_node( n, nodes )
+				phiPtr[n] += randomNoiseDist( genNoise );
+			CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
+		}
+
 		my_p4est_level_set_t ls( ngbd );
 		ls.reinitialize_2nd_order( phi, reinitIters() );
 

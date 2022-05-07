@@ -25,6 +25,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 27, 2022.
+ * Updated: May 7, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -80,6 +81,8 @@ int main ( int argc, char* argv[] )
 	param_t<std::string>       outDir( pl,   ".", "outDir"			 , "Path where files will be written to (default: build folder)" );
 	param_t<bool>      useNegCurvNorm( pl,  true, "useNegCurvNorm"	 , "Whether we want to apply negative-mean-curvature normalization for "
 															   		   "numerical non-saddle samples (default: true)" );
+	param_t<double>       randomNoise( pl,  1e-4, "randomNoise"		 , "How much random noise to add to phi(x) as [+/-]h*randomNoise.  Use "
+																	   "a negative value or 0 to disable this feature (default: 1e-4)" );
 
 	try
 	{
@@ -113,6 +116,9 @@ int main ( int argc, char* argv[] )
 										 "= [" + std::to_string( 16 * h ) + ", " + std::to_string( 64 * h ) + "]." );
 
 		std::mt19937 gen( randomState() );					// Engine used for perturbing canonical frame randomly: rotation and shift.
+		std::mt19937 genNoise( mpi.rank() );				// Engine for random noise on phi(x) if requested (and different for each rank).
+		const double RAND_NOISE = randomNoise() > 0? randomNoise() : 1;
+		std::uniform_real_distribution<double> randomNoiseDist( -h * RAND_NOISE, +h * RAND_NOISE );
 		const double MAX_K = maxHK() / h;					// Now that we know the parameters are valid, find max hk, a and b.
 		const double B = MAX_K / (abRatio() + 1);
 		const double A = abRatio() * B;
@@ -220,8 +226,18 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &exactFlag ) );
 
 		// Populate phi and compute exact distance for vertices within a (linearly estimated) shell around Gamma.  Reinitialization perturbs
-		// the otherwise calculated exact distances.
+		// the otherwise calculated exact distances.  Add noise as requested.
 		pLS->evaluate( p4est, nodes, phi, exactFlag );
+
+		if( randomNoise() > 0 )
+		{
+			double *phiPtr;
+			CHKERRXX( VecGetArray( phi, &phiPtr ) );
+			foreach_node( n, nodes )
+				phiPtr[n] += randomNoiseDist( genNoise );
+			CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
+		}
+
 		my_p4est_level_set_t ls( ngbd );
 		ls.reinitialize_2nd_order( phi, reinitIters() );
 
