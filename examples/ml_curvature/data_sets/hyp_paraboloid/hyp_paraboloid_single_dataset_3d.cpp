@@ -68,7 +68,7 @@ int main ( int argc, char* argv[] )
 																	   "numerical non-saddle samples (default: -7e-6)" );
 	param_t<u_char>      experimentId( pl,     0, "experimentId"	 , "Experiment Id (default: 0)" );
 	param_t<double>             maxHK( pl,  0.35, "maxHK"		 	 , "Desired max (absolute) dimensionless mean curvature at the critical"
-																	   " points.  Must be in the interval of [1/15, 2/3) (default: 0.35)" );
+																	   " points.  Must be in the interval of [1/15, 2/3] (default: 0.35)" );
 	param_t<u_char>             maxRL( pl,     6, "maxRL"		 	 , "Max level of refinement per unit-cube octree (default: 6)" );
 	param_t<int>          reinitIters( pl,    10, "reinitIters"	 	 , "Number of iterations for reinitialization (default: 10)" );
 	param_t<u_short>    minSamRadiusH( pl,    16, "minSamRadiusH"	 , "Min sampling radius in h units on the uv plane.  Must be in the "
@@ -106,7 +106,7 @@ int main ( int argc, char* argv[] )
 			throw std::invalid_argument( "[CASL_ERROR] Number of reinitializating iterations must be strictly positive." );
 
 		if( maxHK() < 1./15 || maxHK() > 2./3 )
-			throw std::invalid_argument( "[CASL_ERROR] Desired max hk must be in the range of [1/15, 3/20]." );
+			throw std::invalid_argument( "[CASL_ERROR] Desired max hk must be in the range of [1/15, 2/3]." );
 
 		if( r() < -10 || (r() >= -1 && r() < 1) || r() > 10 )
 			throw std::invalid_argument( "[CASL_ERROR] The ratio a/b must be in the range of [-10, -1) union [1, 10]." );
@@ -322,7 +322,7 @@ int main ( int argc, char* argv[] )
 		my_p4est_brick_destroy( connectivity, &brick );
 
 		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples (incl. standard and reflected) with the following stats:\n", nSamples ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of saddle points   = %i\n", nNumericalSaddles ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of saddle points   = %i (or %i samples)\n", nNumericalSaddles, 2 * nNumericalSaddles ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked mean |hk*| in the range of [%.6g, %.6g]\n", trackedMinHK, trackedMaxHK ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max hk error      = %.6g\n", trackedMaxErrors[0] ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max h^2kg error   = %.6g\n", trackedMaxErrors[1] ) );

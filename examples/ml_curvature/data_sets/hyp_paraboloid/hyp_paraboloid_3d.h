@@ -3,7 +3,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
- * Updated: May 5, 2022.
+ * Updated: May 7, 2022.
  */
 
 #ifndef ML_CURVATURE_HYP_PARABOLOID_3D_H
@@ -169,7 +169,7 @@ public:
 		if( r < 0 )			// We have b=|r|a with |r| > 1; thus, k_max should be negative.
 		{
 			r = ABS( r );
-			maxK *= -ABS( maxK );
+			maxK = -ABS( maxK );
 			v = 0;
 			if( r < 3 )		// Bifurcation occurs at |r| = 3; before it, we have two u values where |k_max| is attained (with v=0).
 			{
