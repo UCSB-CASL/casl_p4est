@@ -7,7 +7,7 @@
  * query points in terms of the canonical frame, which can be affected by a rigid transformation (i.e., translation and rotation).
  *
  * Theoretically, the Gaussian curvature should be positive everywhere on the surface, but because of numerical inaccuracies, we can get
- * negative Gaussian curvature samples.  In any case, if a point belongs to non-saddle region (i.e., ih2kg > 0), it'll be negative-mean-
+ * negative Gaussian curvature samples.  In any case, if a point belongs to non-saddle region (i.e., ih2kg > C), it'll be negative-mean-
  * curvature normalized by taking the sign of ihk ONLY if requested.  On the other hand, if the point belongs to a (numerical) saddle
  * region, its sample won't be negative-mean-curvature normalized.  Then, we apply sample reorientation by rotating the stencil so that the
  * (possibly updated) gradient has all its components non-negative.  Finally, we reflect the sample about the y - x = 0 plane, and thus we
@@ -27,7 +27,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: April 26, 2022.
+ * Updated: May 6, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -58,21 +58,23 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<u_char> experimentId( pl,     0, "experimentId"	 , "Experiment Id (default: 0)" );
-	param_t<u_char>        maxRL( pl,     6, "maxRL"	     , "Maximum level of refinement per unit-cube octree (default: 6)" );
-	param_t<u_short> reinitIters( pl,    10, "reinitIters"	 , "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>        maxHK( pl,  2./3, "maxHK"		 , "Expected maximum dimensionless mean curvature (default: 2/3)" );
-	param_t<double>            a( pl,  1.65, "a"			 , "Ellipsoid's x-semiaxis (default: 4)" );
-	param_t<double>            b( pl,  0.75, "b"			 , "Ellipsoid's y-semiaxis (default: 2.5)" );
-	param_t<double>            c( pl,   0.2, "c"			 , "Ellipsoid's z-semiaxis (default: 0.25)" );
-	param_t<bool>  perturbCenter( pl,  true, "perturbCenter" , "Whether to perturb the ellipsoid's center randomly in [-h/2,+h/2]^3 "
-															   "(default: true)" );
-	param_t<bool> randomRotation( pl,  true, "randomRotation", "Whether to apply a rotation with a random angle about a random unit axis "
-															   "(default: true)" );
-	param_t<u_int>   randomState( pl,    11, "randomState"	 , "Seed for random perturbations of the canonical frame (default: 11)" );
-	param_t<std::string>  outDir( pl,   ".", "outDir"		 , "Path where data files will be written to (default: build folder)" );
-	param_t<bool> useNegCurvNorm( pl, false, "useNegCurvNorm", "Whether we want to apply negative-mean-curvature normalization for non-"
-															   "saddle samples (default: false)" );
+	param_t<double> nonSaddleMinIH2KG( pl, -7e-6, "nonSaddleMinIH2KG", "Min numerical dimensionless Gaussian curvature (at Gamma) for "
+																	   "numerical non-saddle samples (default: -7e-6)" );
+	param_t<u_char>      experimentId( pl,     0, "experimentId"	 , "Experiment Id (default: 0)" );
+	param_t<u_char>             maxRL( pl,     6, "maxRL"			 , "Maximum level of refinement per unit-cube octree (default: 6)" );
+	param_t<u_short>      reinitIters( pl,    10, "reinitIters"		 , "Number of iterations for reinitialization (default: 10)" );
+	param_t<double>             maxHK( pl,  2./3, "maxHK"			 , "Expected maximum dimensionless mean curvature (default: 2/3)" );
+	param_t<double>                 a( pl,  1.65, "a"				 , "Ellipsoid's x-semiaxis (default: 4)" );
+	param_t<double>                 b( pl,  0.75, "b"				 , "Ellipsoid's y-semiaxis (default: 2.5)" );
+	param_t<double>                 c( pl,   0.2, "c"				 , "Ellipsoid's z-semiaxis (default: 0.25)" );
+	param_t<bool>       perturbCenter( pl,  true, "perturbCenter"	 , "Whether to perturb the ellipsoid's center randomly in [-h/2,+h/2]^3"
+															   		   " (default: true)" );
+	param_t<bool>      randomRotation( pl,  true, "randomRotation"	 , "Whether to apply a rotation with a random angle about a random unit"
+																	   " axis (default: true)" );
+	param_t<u_int>        randomState( pl,    11, "randomState"		 , "Seed for random perturbations of the canonical frame (default: 11)" );
+	param_t<std::string>       outDir( pl,   ".", "outDir"			 , "Path where data files will be written to (default: build folder)" );
+	param_t<bool>      useNegCurvNorm( pl,  true, "useNegCurvNorm"	 , "Whether we want to apply negative-mean-curvature normalization for "
+															   		   "numerical non-saddle samples (default: true)" );
 
 	try
 	{
@@ -236,14 +238,14 @@ int main ( int argc, char* argv[] )
 		double trackedMaxErrors[P4EST_DIM];
 		int nNumericalSaddles;
 		levelSet.collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMaxErrors, trackedMinHK, trackedMaxHK, samples,
-								 nNumericalSaddles, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError );
+								 nNumericalSaddles, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError, nonSaddleMinIH2KG() );
 		levelSet.clearCache();
 		levelSet.toggleCache( false );
 
 		// Accumulate samples in the buffer; normalize phi by h, apply negative-mean-curvature normalization to non-saddle samples only if
 		// requested, and reorient data packets.  The last 2 parameter avoids flipping the signs of hk, ihk, h2kg, and ih2kg.  Then, augment
 		// samples by reflecting about y - x = 0.
-		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, useNegCurvNorm()? 2 : 0 );
+		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, useNegCurvNorm()? 2 : 0, nonSaddleMinIH2KG() );
 		int nSamples = saveSamples( mpi, buffer, bufferSize, file );
 
 		// Export visual data.

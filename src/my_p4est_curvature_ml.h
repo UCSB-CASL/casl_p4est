@@ -50,7 +50,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: April 30, 2022.
+ * Updated: May 6, 2022.
  */
 namespace kml
 {
@@ -392,7 +392,7 @@ namespace kml
 		 */
 		int processSamplesAndAccumulate( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
 										 std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer, const double& h,
-										 const u_char& negMeanKNormalize, const double& nonSaddleMinIH2KG=-4e-4 );
+										 const u_char& negMeanKNormalize, const double& nonSaddleMinIH2KG=-7e-6 );
 
 		/**
 		 * Transform samples with (optional) negative-mean-curvature and phi-by-h normalization, followed by reorienta-

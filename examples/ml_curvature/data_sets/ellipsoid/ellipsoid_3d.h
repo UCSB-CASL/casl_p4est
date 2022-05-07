@@ -2,7 +2,7 @@
  * A collection of classes and functions related to an ellipsoid.
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: April 23, 2022.
+ * Updated: May 6, 2022.
  */
 
 #ifndef ML_CURVATURE_ELLIPSOID_3D_H
@@ -411,6 +411,7 @@ public:
 	 * @param [out] h2kgError Vector to hold absolute Gaussian h^2*k error for sampled nodes.
 	 * @param [out] ih2kg Vector to hold linearly interpolated Gaussian h^2*k for sampled nodes.
 	 * @param [out] phiError Vector to hold phi error for sampled nodes.
+	 * @param [in] nonSaddleMinIH2KG Min numerical dimensionless Gaussian curvature (at Gamma) for numerical non-saddle samples.
 	 * @throws invalid_argument exception if phi vector is null.
 	 * 		   runtime_error if the cache is disabled or empty, or if a query point is not found in the cache.
 	 */
@@ -418,7 +419,8 @@ public:
 						 const u_char& octMaxRL, const double xyzMin[P4EST_DIM], const double xyzMax[P4EST_DIM],
 						 double trackedMaxErrors[P4EST_DIM], double& trackedMinHK, double& trackedMaxHK,
 						 std::vector<std::vector<double>>& samples, int& nNumericalSaddles, Vec sampledFlag=nullptr, Vec hkError=nullptr,
-						 Vec ihk=nullptr, Vec h2kgError=nullptr, Vec ih2kg=nullptr, Vec phiError=nullptr ) const
+						 Vec ihk=nullptr, Vec h2kgError=nullptr, Vec ih2kg=nullptr, Vec phiError=nullptr,
+						 const double& nonSaddleMinIH2KG=-7e-6 ) const
 	{
 		std::string errorPrefix = _errorPrefix + "collectSamples: ";
 		nNumericalSaddles = 0;
@@ -595,7 +597,7 @@ public:
 				// Update flags: we should expect only non-saddles, with ihk*hk >= 0.
 				if( sampledFlag )
 				{
-					if( ih2kgVal >= 0 )
+					if( ih2kgVal >= nonSaddleMinIH2KG )
 					{
 						if( ihkVal * hk >= 0 )
 							sampledFlagPtr[n] = 1;		// OK candidate node: not a numerical saddle and hk and ihk have same sign.

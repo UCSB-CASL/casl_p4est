@@ -415,7 +415,7 @@ public:
 						 double trackedMaxErrors[P4EST_DIM], double& trackedMinHK, double& trackedMaxHK,
 						 std::vector<std::vector<double>>& samples, int& nNumericalSaddles, const Vec& exactFlag, Vec sampledFlag=nullptr,
 						 Vec hkError=nullptr, Vec ihk=nullptr, Vec h2kgError=nullptr, Vec ih2kg=nullptr, Vec phiError=nullptr,
-						 double ru2=NAN, double rv2=NAN, const double& nonSaddleMinIH2KG=-4e-4 ) const
+						 double ru2=NAN, double rv2=NAN, const double& nonSaddleMinIH2KG=-7e-6 ) const
 	{
 		std::string errorPrefix = _errorPrefix + "collectSamples: ";
 		nNumericalSaddles = 0;

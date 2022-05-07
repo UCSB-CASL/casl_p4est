@@ -64,8 +64,8 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<double> nonSaddleMinIH2KG( pl, -4e-4, "nonSaddleMinIH2KG", "Min numerical dimensionless Gaussian curvature (at Gamma) for "
-																	   "numerical non-saddle samples (default: -4e-4)" );
+	param_t<double> nonSaddleMinIH2KG( pl, -7e-6, "nonSaddleMinIH2KG", "Min numerical dimensionless Gaussian curvature (at Gamma) for "
+																	   "numerical non-saddle samples (default: -7e-6)" );
 	param_t<u_char>      experimentId( pl,     0, "experimentId"	 , "Experiment Id (default: 0)" );
 	param_t<double>             maxHK( pl,  0.15, "maxHK"		 	 , "Desired max (absolute) dimensionless mean curvature at the critical"
 																	   " points.  Must be in the interval of [1/15, 3/20] (default: 3/20)" );
@@ -81,8 +81,8 @@ int main ( int argc, char* argv[] )
 																	   " axis (default: true)" );
 	param_t<u_int>        randomState( pl,    11, "randomState"	 	 , "Seed for random perturbations of canonical frame (default: 11)" );
 	param_t<std::string>       outDir( pl,   ".", "outDir"		 	 , "Path where files will be written to (default: build folder)" );
-	param_t<bool>      useNegCurvNorm( pl, false, "useNegCurvNorm"	 , "Whether to apply negative-mean-curvature normalization for non-"
-																	   "saddle samples (default: false)" );
+	param_t<bool>      useNegCurvNorm( pl,  true, "useNegCurvNorm"	 , "Whether to apply negative-mean-curvature normalization for non-"
+																	   "saddle samples (default: true)" );
 	param_t<double>       randomNoise( pl,  1e-4, "randomNoise"		 , "How much random noise to add to phi(x) as [+/-]h*randomNoise.  Use"
 																	   "a negative value or 0 to disable this feature (default: 1e-4)" );
 

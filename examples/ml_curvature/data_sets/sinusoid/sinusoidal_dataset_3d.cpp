@@ -3,15 +3,14 @@
  *                                      Q(u,v) = A * sin(wu*u) * sin(wv*v),
  *
  * where A, wu, and wv specify the surface in its canonical space.  Also, by applying rotations and random translations, we inject further
- * pattern variations.  We classify samples into two types: fron non-saddle regions and from saddle regions for a better analysis.  To
+ * pattern variations.  We classify samples into two types: from non-saddle regions and from saddle regions, for a better analysis.  To
  * classify samples, we use the (dimensionless) Gaussian curvature linearly interpolated at the normal projection onto Gamma.  Tests on
- * Q(u,v) have shown that samples for which ih2kg > -0.0004 (i.e., the numerical estimation of h^2 times the Gaussian curvature at Gamma),
+ * Q(u,v) have shown that samples for which ih2kg > -7e-6 (i.e., the numerical estimation of h^2 times the Gaussian curvature at Gamma),
  * the mean curvature error increases as |ihk| -> infty (i.e., h times the mean curvature at Gamma).  On the other hand, saddle samples are
- * not that consistent, and, because of them, we can't create a single neural network that allows the simplification provided by negative
- * mean curvature normalization (as in the 2d case).  However, we can still reorient all stencils so that the gradient at the center node
- * has all its components non-negative.  Similarly, we can perform sample augmentation by reflecting stencils about the x-y = 0 plane (which
- * preserves mean and Gaussian curvature).  Finally, histogram subsampling helps keep well-balanced data sets (regarding mean |hk*|) as much
- * as possible.
+ * not that consistent, and, because of them, we can't always simplify the problem by normalizing to the negative mean curvature spectrum
+ * (as in the 2d case).  However, we can still reorient all stencils so that the gradient at the center node has all its components non-
+ * negative.  Similarly, we can perform sample augmentation by reflecting stencils about the x-y = 0 plane (which preserves mean and
+ * Gaussian curvature).  Finally, histogram subsampling helps keep well-balanced data sets (regarding mean |hk*|) as much as possible.
  *
  * Files written are of the form "#/non_saddle_sinusoid_$.csv" and "#/saddle_sinusoid_$.csv", where # is the unit-cube max level of
  * refinement and $ is the sinusoidal amplitude index (i.e., 0, 1,... NUM_A-1, with NUM_A being the number of distinct amplitudes).
@@ -22,7 +21,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 26, 2022.
- * Updated: April 26, 2022.
+ * Updated: May 6, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -63,8 +62,8 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<double>   nonSaddleMinIH2KG( pl, -4e-4, "nonSaddleMinIH2KG"	 , "Min numerical dimensionless Gaussian curvature (at Gamma) for "
-																		   "numerical non-saddle samples (default: -4e-4)" );
+	param_t<double>   nonSaddleMinIH2KG( pl, -7e-6, "nonSaddleMinIH2KG"	 , "Min numerical dimensionless Gaussian curvature (at Gamma) for "
+																		   "numerical non-saddle samples (default: -7e-6)" );
 	param_t<double>               minHK( pl, 0.004, "minHK"				 , "Min dimensionless mean curvature for numerical non-saddle "
 																		   "samples (i.e., where ih2kg >= nonSaddleMinIH2KG) "
 																		   "(default: 0.004)" );
@@ -93,12 +92,10 @@ int main ( int argc, char* argv[] )
 	param_t<double>        numFullWaves( pl,   2.0, "numFullWaves"       , "How many full sinusoidal cycles to have inside the domain "
 																		   "(default: 2.0)" );
 	param_t<double>         randomNoise( pl,  1e-4, "randomNoise"		 , "How much uniform random noise to add to phi(x) as "
-																		   "[+/-]h*randomNoise (default: 1e-4)" );
-	param_t<bool>        useNegCurvNorm( pl, false, "useNegCurvNorm"	 , "Whether we want to apply negative-mean-curvature normalization "
-																		   "for non-saddle samples (default: false)" );
-
-	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes (it's OK that it's not in sync among processes).
-	std::mt19937 gen{};			// NOLINT This engine is used shifts and spacing out amplitudes, hk_max values, and angles.
+																		   "[+/-]h*randomNoise; use 0 or a negative value to disable "
+																		   "(default: 1e-4)" );
+	param_t<bool>        useNegCurvNorm( pl,  true, "useNegCurvNorm"	 , "Whether we want to apply negative-mean-curvature normalization "
+																		   "for numerical non-saddle samples (default: true)" );
 
 	try
 	{
@@ -127,6 +124,9 @@ int main ( int argc, char* argv[] )
 		const double MIN_A = 5 / MAX_K;							// MIN_A = 5*(min radius).
 		const double HK_MAX_LO = maxHK() / 2;					// Maximum HK bounds at the peaks.
 		const double HK_MAX_UP = maxHK();
+
+		std::mt19937 genProb( mpi.rank() );	// Random engine for probability when choosing candidate nodes.
+		std::mt19937 gen{};					// NOLINT Rank 0 uses this for random domain perturbations and spacing out amplitudes, hk_max values, and angles.
 
 		// Affine transformation parameters.
 		const double MIN_THETA = -M_PI_2;						// For each random basis vector, we vary the angle from -pi/2

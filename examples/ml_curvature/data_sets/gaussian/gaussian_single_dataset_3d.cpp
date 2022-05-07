@@ -1,30 +1,35 @@
 /**
- * Generate samples from a paraboloid surface for *offline inference* (i.e., using Python).  The canonical surface is a Monge patch
- * represented by
+ * Generate samples from a Gaussian surface for *offline inference* (i.e., using Python).  The canonical surface is a Monge patch represen-
+ * ted by
  *
- *                                                    Q(u,v) = a*u^2 + b*v^2,
+ *                                           Q(u,v) = a*exp(-0.5*(u^2/su^2 + v^2/sv^2)),
  *
- * where a > 0 and b > 0.  As for the level-set function whose Gamma = Q(u,v) = 0, phi < 0 for points inside Q(u,v), and phi > 0 for points
- * outside Q(u,v).  We simplify calculations by expressing query points in terms of the canonical frame, which can be affected by rigid-body
- * transformations (i.e., a translation and rotation).
+ * with zero means mu=mv=0, variances su^2 and sv^2, and height a.  As for the level-set function whose Gamma=Q(u,v)=0, phi < 0 for points
+ * below Q(u,v), and phi > 0 for points above the Gaussian.  We simplify calculations by expressing query points in terms of the canonical
+ * frame, which can be affected by a rigid-body transformation (i.e., translation and rotation).
  *
- * Theoretically, the paraboloid mean curvature is always positive.  Thus, its data set contains samples only from non-saddle regions (i.e.,
- * ih2kg > 0).  If requested, we can apply negative-mean-curvature normalization selectively for each numerical non-saddle sample.  In any
- * case, every sample is reoriented by rotating the stencil so that the gradient at the center node has all its components non-negative.
- * Finally, we reflect the data packet about the y-x = 0 plane, and we produce two samples for each interface point.  At inference time,
- * both outputs are averaged to improve accuracy.
+ * Theoretically, the Gaussian curvature can be positive and negative.  Thus, this data set can be used to test the neural network ability
+ * on saddle samples.  In any case, if a point belongs to a non-saddle region (i.e., ih2kg>=C), it'll be negative-mean-curvature normalized
+ * by taking the sign of ihk ONLY if requested.  On the other hand, if the point belongs to a (numerical) saddle region, its sample will
+ * never be negative-mean-curvature-normalized.  In any case, we apply sample reorientation by rotating the stencil so that the (possibly
+ * updated) gradient has all its components non-negative.  Finally, we reflect the data packet about the y-x = 0 plane, and thus we produce
+ * two samples for each interface point.  At inference time, both outputs are averaged to improve accuracy.
  *
- * The sample file is of the form "#/paraboloid/$/iter%_data.csv", and the params file is "#/paraboloid/$/iter%_params.csv", where # is the
+ * Negative-mean-curvature normalization, when applicable, depends on the sign of the linearly interpolated mean ihk at the interface.  As
+ * for the Gaussian curvature, we normalize it by scaling it with h^2 ---which leads to the true h2kg and the linearly interpolated ih2kg
+ * values in the collected data packets.
+ *
+ * The sample file is of the form "#/gaussian/$/iter%_data.csv", and the params file is "#/gaussian/$/iter%_params.csv", where # is the
  * unit-octree max level of refinement, $ is the experiment id, and % is the number of redistancing steps.  The data file contains as many
- * rows as twice the number of collected samples with all data-packet info.  The params file stores the values for "a", "b", "c", and "hk",
- * where "c" is the user-defined paraboloid height, and "hk" is the true dimensionless mean curvature at the peak.  In addition, we export
- * VTK data for visualization and validation.
+ * rows as twice the number of collected samples with all data-packet info.  The params file stores the values for "a", "su^2", and "sv^2"
+ * and the maximum (true) "hk" at the peak.  In addition, we export VTK data for visualization and validation.
  *
  * @note Here and across related files to machine-learning computation of mean curvature use the geometrical definition of mean curvature;
  * that is, H = 0.5(k1 + k2), where k1 and k2 are principal curvatures.
  *
  * Developer: Luis Ángel.
- * Created: April 27, 2022.
+ * Created: February 5, 2022.
+ * Updated: May 6, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -42,42 +47,43 @@
 #include <src/my_p8est_hierarchy.h>
 #include <src/my_p8est_level_set.h>
 #include <random>
-#include "paraboloid_3d.h"
+#include "gaussian_3d.h"
 #include <src/parameter_list.h>
 #include <cassert>
 
 
-void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, const std::string& fileName, const double& a, const double& b,
-					  const double& c, const double& hk );
+void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, const std::string& fileName,
+					  const double& a, const double& su2, const double& sv2, const double& hk );
 
 int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>& buffer, int& bufferSize, std::ofstream& file );
 
-ParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const Paraboloid& paraboloid, const double& h,
-								 const double origin[P4EST_DIM], const double& rotAngle, const double rotAxis[P4EST_DIM],
-								 const u_char& maxRL, u_char& octMaxRL, const double& c, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
-								 double xyz_max[P4EST_DIM], double& ru2, double& rv2 );
+GaussianLevelSet *setupDomain( const mpi_environment_t& mpi, const Gaussian& gaussian, const double& h, const double origin[P4EST_DIM],
+							   const double& rotAngle, const double rotAxis[P4EST_DIM], const u_char& maxRL, u_char& octMaxRL,
+							   int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] );
 
 
 int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<u_char> experimentId( pl,     0, "experimentId"	 , "Experiment Id (default: 0)" );
-	param_t<double>        maxHK( pl,   0.6, "maxHK"		 , "Desired maximum (absolute) dimensionless mean curvature at the peak. "
-														  	   "Must be in the open interval of (1/3, 2/3) (default: 0.6)" );
-	param_t<u_char>        maxRL( pl,     6, "maxRL"		 , "Maximum level of refinement per unit-cube octree (default: 6)" );
-	param_t<int>     reinitIters( pl,    10, "reinitIters"	 , "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>            c( pl,   0.5, "c"			 , "Paraboloid height (i.e., how much we want to have inside the computational "
-															   "domain) in the range of [16h, 64h] (default 0.5)" );
-	param_t<double>      abRatio( pl,     2, "abRatio"		 , "The ratio a/b in the range of [1, 2] (default: 2)" );
-	param_t<bool>  perturbOrigin( pl,  true, "perturbFrame"	 , "Whether to perturb the paraboloid's frame randomly in [-h/2,+h/2]^3 "
-															   "(default: true)" );
-	param_t<bool> randomRotation( pl,  true, "randomRotation", "Whether to apply a rotation with a random angle about a random unit axis "
-															   "(default: true)" );
-	param_t<u_int>   randomState( pl,     7, "randomState"	 , "Seed for random perturbations of the canonical frame (default: 7)" );
-	param_t<std::string>  outDir( pl,   ".", "outDir"		 , "Path where data/param files will be written to (default: build folder)" );
-	param_t<bool> useNegCurvNorm( pl, false, "useNegCurvNorm", "Whether we want to apply negative-mean-curvature normalization for non-"
-															   "saddle samples (default: false)" );
+	param_t<u_char>      experimentId( pl,     0, "experimentId"	 , "Experiment Id (default: 0)" );
+	param_t<double> nonSaddleMinIH2KG( pl, -7e-6, "nonSaddleMinIH2KG", "Min numerical dimensionless Gaussian curvature (at Gamma) for "
+																	   "numerical non-saddle samples (default: -7e-6)" );
+	param_t<double>             maxHK( pl,   0.6, "maxHK"			 , "Desired max (absolute) dimensionless mean curvature at the peak. "
+																	   "Must be in the open interval of (1/3, 2/3) (default: 0.6)" );
+	param_t<u_char>             maxRL( pl,     6, "maxRL"			 , "Maximum level of refinement per unit-cube octree (default: 6)" );
+	param_t<int>          reinitIters( pl,    10, "reinitIters"		 , "Number of iterations for reinitialization (default: 10)" );
+	param_t<double>                 a( pl,   1.0, "a"				 , "Gaussian height (i.e., Q(0,0)) in the range of [16h, 64h] "
+																	  "(default 1)" );
+	param_t<double>         susvRatio( pl,   3.0, "susvRatio"	 	 , "The ratio su/sv in the range of [1, 3] (default: 3)" );
+	param_t<bool>  		perturbOrigin( pl,  true, "perturbOrigin"	 , "Whether to perturb the Gaussian's frame randomly in [-h/2,+h/2]^3 "
+															   		   "(default: true)" );
+	param_t<bool>      randomRotation( pl,  true, "randomRotation"	 , "Whether to apply a rotation with a random angle about a random unit"
+																	   " axis (default: true)" );
+	param_t<u_int>        randomState( pl,     7, "randomState"	 	 , "Seed for canonical frame's random perturbations (default: 7)" );
+	param_t<std::string>       outDir( pl,   ".", "outDir"		 	 , "Path where data files will be written to (default: build folder)" );
+	param_t<bool>      useNegCurvNorm( pl,  true, "useNegCurvNorm"	 , "Whether we want to apply negative-mean-curvature normalization for "
+																	   "numerical non-saddle samples (default: true)" );
 
 	try
 	{
@@ -90,7 +96,7 @@ int main ( int argc, char* argv[] )
 		// Loading parameters from command line.
 		cmdParser cmd;
 		pl.initialize_parser( cmd );
-		if( cmd.parse( argc, argv, "Generating paraboloid data set for offline evaluation of a trained error-correcting neural network" ) )
+		if( cmd.parse( argc, argv, "Generating Gaussian data set for offline evaluation of a trained error-correcting neural network" ) )
 			return 0;
 		pl.set_from_cmd_all( cmd );
 
@@ -101,31 +107,31 @@ int main ( int argc, char* argv[] )
 		if( maxHK() <= 1./3 || maxHK() >= 2./3 )
 			throw std::invalid_argument( "[CASL_ERROR] Desired max hk must be in the range of (1/3, 2/3)." );
 
-		if( abRatio() < 1 || abRatio() > 2 )
-			throw std::invalid_argument( "[CASL_ERROR] The ratio a/b must be in the range of [1, 2]." );
+		if( susvRatio() < 1 || susvRatio() > 3 )
+			throw std::invalid_argument( "[CASL_ERROR] The ratio su/sv must be in the range of [1, 3]." );
 
 		const double h = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
 
-		if( c() < 16 * h || c() > 64 * h )
-			throw std::invalid_argument( "[CASL_ERROR] Desired paraboloid's height must be in the range of [16h, 64h] "
+		if( a() < 16 * h || a() > 64 * h )
+			throw std::invalid_argument( "[CASL_ERROR] Gaussian amplitude must be in the range of [16h, 64h] "
 										 "= [" + std::to_string( 16 * h ) + ", " + std::to_string( 64 * h ) + "]." );
 
-		std::mt19937 gen( randomState() );					// Engine used for perturbing canonical frame randomly: rotation and shift.
-		const double MAX_K = maxHK() / h;					// Now that we know the parameters are valid, find max hk, a and b.
-		const double B = MAX_K / (abRatio() + 1);
-		const double A = abRatio() * B;
+		std::mt19937 gen( randomState() );					// Engine used for random perturbations of the canonical frame: rotation and shift.
+		const double MAX_K = maxHK() / h;					// Now that we know the parameters are valid, find max hk and variances.
+		const double SV2 = a() * (1 + SQR( susvRatio() )) / (2 * SQR( susvRatio() ) * MAX_K);
+		const double SU2 = SQR( susvRatio() ) * SV2;
 
-		Paraboloid paraboloid( A, B );
+		Gaussian gaussian( a(), SU2, SV2 );
 
 		std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer;	// Buffer of accumulated (normalized and augmented) samples.
-		double origin[P4EST_DIM] = {0, 0, 0};				// Paraboloid's frame origin (possible perturbed).
+		double origin[P4EST_DIM] = {0, 0, 0};				// Gaussian's frame origin (possible perturbed).
 		double rotAxis[P4EST_DIM] = {0, 0, 1};				// Rotation axis for possible random rotation.
 		double rotAngle = 0;
 
 		double trackedMinHK = DBL_MAX;						// We want to track min and max mean |hk*| for debugging.
 		double trackedMaxHK = 0;
-		if( mpi.rank() == 0 )			// Only rank 0 controls the buffer and perturbs paraboloid's frame to create an affine-transformed
-		{								// level-set function.
+		if( mpi.rank() == 0 )			// Only rank 0 controls the buffer and perturbs the Gaussian's frame to create an affine-trans-
+		{								// formed level-set function.
 			buffer.reserve( 1e5 );
 
 			if( perturbOrigin() )
@@ -151,8 +157,8 @@ int main ( int argc, char* argv[] )
 		SC_CHECK_MPI( MPI_Bcast( rotAxis, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );
 
 		// Prepping the params.
-		const std::string DATA_PATH = outDir() + "/" + std::to_string( maxRL() ) + "/paraboloid/" + std::to_string( experimentId() );
-		writeParamsFile( mpi, DATA_PATH, "iter" + std::to_string( reinitIters() ) + "_params.csv", A, B, c(), maxHK() );
+		const std::string DATA_PATH = outDir() + "/" + std::to_string( maxRL() ) + "/gaussian/" + std::to_string( experimentId() );
+		writeParamsFile( mpi, DATA_PATH, "iter" + std::to_string( reinitIters() ) + "_params.csv", a(), SU2, SV2, maxHK() );
 
 		// Prepping the samples file.  Only rank 0 writes the samples to a file.
 		std::ofstream file;
@@ -161,8 +167,8 @@ int main ( int argc, char* argv[] )
 
 		///////////////////////////////////////////////////////// Data production //////////////////////////////////////////////////////////
 
-		PetscPrintf( mpi.comm(), ">> Began generating paraboloid data set for offline evaluation with a = %g, b = %g, c = %g, max |hk| = %g,"
-								 " and h = %g (level %i)\n", A, B, c(), maxHK(), h, maxRL() );
+		PetscPrintf( mpi.comm(), ">> Began generating Gaussian data set for offline evaluation with a = %g, su^2 = %g, sv^2 = %g, max "
+								 "|hk| = %g, and h = %g (level %i)\n", a(), SU2, SV2, maxHK(), h, maxRL() );
 
 		parStopWatch watch;
 		watch.start();
@@ -173,9 +179,7 @@ int main ( int argc, char* argv[] )
 		double xyz_min[P4EST_DIM];
 		double xyz_max[P4EST_DIM];
 		int periodic[P4EST_DIM] = {0, 0, 0};
-		double ru2, rv2;		// These are the semi-axes (squared) we'll use for sampling instead of the default limiting ellipse.
-		ParaboloidLevelSet *pLS = setupDomain( mpi, paraboloid, h, origin, rotAngle, rotAxis, maxRL(), octMaxRL, c(), n_xyz,
-											   xyz_min, xyz_max, ru2, rv2 );
+		GaussianLevelSet *gLS = setupDomain( mpi, gaussian, h, origin, rotAngle, rotAxis, maxRL(), octMaxRL, n_xyz, xyz_min, xyz_max );
 
 		// p4est variables and data structures.
 		p4est_t *p4est;
@@ -184,14 +188,14 @@ int main ( int argc, char* argv[] )
 		p4est_ghost_t *ghost;
 		p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
-		// Create the forest using the paraboloid level-set as a refinement criterion.
-		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( 0, octMaxRL, pLS, 3.0 );
+		// Create the forest using the Gaussian level-set as a refinement criterion.
+		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( 0, octMaxRL, gLS, 3.0 );
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
 		p4est->user_pointer = (void *)( &levelSetSplittingCriterion );
 
 		// Refine and partition forest.
-		pLS->toggleCache( true );		// Turn on cache to speed up repeated distance computations.
-		pLS->reserveCache( (size_t)pow( 0.75 * (xyz_max[0] - xyz_min[0]) / h, 3 ) );	// Reserve space in cache to improve hashing.
+		gLS->toggleCache( true );		// Turn on cache to speed up repeated distance computations.
+		gLS->reserveCache( (size_t)pow( 0.75 * (xyz_max[0] - xyz_min[0]) / h, 3 ) );	// Reserve space in cache to improve hashing.
 		for( int i = 0; i < octMaxRL; i++ )												// queries for grid points.
 		{
 			my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
@@ -219,7 +223,7 @@ int main ( int argc, char* argv[] )
 
 		// Populate phi and compute exact distance for vertices within a (linearly estimated) shell around Gamma.  Reinitialization perturbs
 		// the otherwise calculated exact distances.
-		pLS->evaluate( p4est, nodes, phi, exactFlag );
+		gLS->evaluate( p4est, nodes, phi, exactFlag );
 		my_p4est_level_set_t ls( ngbd );
 		ls.reinitialize_2nd_order( phi, reinitIters() );
 
@@ -238,15 +242,16 @@ int main ( int argc, char* argv[] )
 		std::vector<std::vector<double>> samples;
 		double trackedMaxErrors[P4EST_DIM];
 		int nNumericalSaddles;
-		pLS->collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMaxErrors, trackedMinHK, trackedMaxHK, samples,
-							 nNumericalSaddles, exactFlag, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError, ru2, rv2 );
-		pLS->clearCache();
-		pLS->toggleCache( false );
-		delete pLS;
+		gLS->collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMaxErrors, trackedMinHK, trackedMaxHK, samples,
+							 nNumericalSaddles, exactFlag, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError, nonSaddleMinIH2KG() );
+		gLS->clearCache();
+		gLS->toggleCache( false );
+		delete gLS;
 
 		// Accumulate samples in the buffer; normalize phi by h, apply negative-mean-curvature normalization to non-saddle samples only if
-		// requested, but always reorient data packets.  Also, augment samples by reflecting about plane y - x = 0.
-		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, useNegCurvNorm()? 2 : 0 );
+		// requested, and reorient data packets.  The last 2 parameter avoids flipping the signs of hk, ihk, h2kg, and ih2kg.  Then, augment
+		// samples by reflecting about y - x = 0.
+		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, useNegCurvNorm()? 2 : 0, nonSaddleMinIH2KG() );
 		int nSamples = saveSamples( mpi, buffer, bufferSize, file );
 
 		// Export visual data.
@@ -262,7 +267,7 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecGetArrayRead( exactFlag, &exactFlagReadPtr ) );
 
 		std::ostringstream oss;
-		oss << "paraboloid_dataset_id" << (int)experimentId() << "_lvl" << (int)maxRL();
+		oss << "gaussian_dataset_id" << (int)experimentId() << "_lvl" << (int)maxRL();
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
 								8, 0, oss.str().c_str(),
@@ -320,18 +325,18 @@ int main ( int argc, char* argv[] )
 }
 
 /**
- * Create and write the paraboloid's params file (for Q(u,v) = a*u^2 + b*v^2).
+ * Create and write the Gaussian's params file.
  * @param [in] mpi MPI environment.
  * @param [in] path Full path where to place the file.
  * @param [in] fileName File name.
- * @param [in] a The a parameter along the u direction.
- * @param [in] b The b parameter along the v direction.
- * @param [in] c User-defined height to be contained inside the cubic domain.
+ * @param [in] a Amplitude.
+ * @param [in] su2 Variance along the u direction.
+ * @param [in] sv2 Variance along the v direction.
  * @param [in] hk Absolute dimensionless mean curvature attained at the peak (i.e., at u=v=0).
  * @throws runtime_error if path or file can't be created and or written.
  */
-void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, const std::string& fileName, const double& a, const double& b,
-					  const double& c, const double& hk )
+void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, const std::string& fileName,
+					  const double& a, const double& su2, const double& sv2, const double& hk )
 {
 	std::string errorPrefix = "[CASL_ERROR] writeParamsFile: ";
 	std::string fullFileName = path + "/" + fileName;
@@ -346,9 +351,9 @@ void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, con
 		if( !file.is_open() )
 			throw std::runtime_error( errorPrefix + "Output file " + fullFileName + " couldn't be opened!" );
 
-		file << R"("a","b","c","hk")" << std::endl;	// The header.
+		file << R"("a","su2","sv2","hk")" << std::endl;	// The header.
 		file.precision( 15 );
-		file << a << "," << b << "," << c << "," << hk << std::endl;
+		file << a << "," << su2 << "," << sv2 << "," << hk << std::endl;
 		file.close();
 	}
 
@@ -397,49 +402,53 @@ int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>&
 }
 
 /**
- * Set up domain and create a paboloid level-set function.
+ * Set up domain and create a Gaussian level-set function.
  * @param [in] mpi MPI environment object.
- * @param [in] paraboloid Paraboloid function in canonical space.
+ * @param [in] gaussian Gaussian function in canonical space.
  * @param [in] h Mesh size.
- * @param [in] origin Paraboloid's local frame origin with respect to world coordinates.
- * @param [in] rotAngle Paraboloid's local frame angle of rotation about a unit axis.
+ * @param [in] origin Gaussian's local frame origin with respect to world coordinates.
+ * @param [in] rotAngle Gaussian's local frame angle of rotation about a unit axis.
  * @param [in] rotAxis The unit axis to rotate the frame about.
  * @param [in] maxRL Maximum level of refinement for the whole domain.
  * @param [out] octMaxRL Effective maximum refinement for each octree to achieve desired h.
- * @param [in] c User-defined height to be contained inside the cubic domain.
  * @param [out] n_xyz Number of octrees in each direction.
  * @param [out] xyz_min Mininum coordinates of computational domain.
  * @param [out] xyz_max Maximum coordinates of computational domain.
- * @param [out] ru2 Semi-axis length on the u-direction for sampling (and reaching up to desired Q(u,v) = c).
- * @param [out] rv2 Semi-axis length on the v-direction for sampling (and reaching up to desired Q(u,v) = c).
- * @return Dynamically allocated paraboloid level-set object.  You must delete it in caller function.
+ * @return Dynamically allocated Gaussian level-set object.  You must delete it in caller function.
  */
-ParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const Paraboloid& paraboloid, const double& h,
-								 const double origin[P4EST_DIM], const double& rotAngle, const double rotAxis[P4EST_DIM],
-								 const u_char& maxRL, u_char& octMaxRL, const double& c, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
-								 double xyz_max[P4EST_DIM], double& ru2, double& rv2 )
+GaussianLevelSet *setupDomain( const mpi_environment_t& mpi, const Gaussian& gaussian, const double& h, const double origin[P4EST_DIM],
+							   const double& rotAngle, const double rotAxis[P4EST_DIM], const u_char& maxRL, u_char& octMaxRL,
+							   int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] )
 {
-	// First, determine region on the uv plane that contains paraboloid up to Q(u,v) = c.
-	ru2 = c / paraboloid.a();
-	rv2 = c / paraboloid.b();
-	const double U_C = sqrt( ru2 );
-	const double V_C = sqrt( rv2 );
-	const double QTOP = c + 4 * h;					// Adding some padding at top and bottom.
-	const double QBOT = -4 * h;
-	const double QCylCCoords[8][P4EST_DIM] = {		// Cylinder in canonical coords containing the desired paraboloid surface.
-		{-U_C, 0, QTOP}, {+U_C, 0, QTOP}, 			// Top coords (the four points lying on the same QTOP found above).
-		{0, -V_C, QTOP}, {0, +V_C, QTOP},
-		{-U_C, 0, QBOT}, {+U_C, 0, QBOT},			// Base coords (the four points lying on the same QBOT found above).
-		{0, -V_C, QBOT}, {0, +V_C, QBOT}
+	// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only within this region.
+	const double U_ZERO = gaussian.findKappaZero( h, dir::x );
+	const double V_ZERO = gaussian.findKappaZero( h, dir::y );
+	const double ULIM = U_ZERO + gaussian.su();		// Limiting ellipse semi-axes for triangulation.
+	const double VLIM = V_ZERO + gaussian.sv();
+	const double QTOP = gaussian.a() + 4 * h;		// Adding some padding so that we can sample points correctly at the tip.
+	double qAtULim = gaussian( ULIM, 0 );			// Let's find the lowest Q.
+	double qAtVLim = gaussian( 0, VLIM );
+	const double QBOT = MIN( qAtULim, qAtVLim ) - 4 * h;
+	const size_t HALF_U_H = ceil(ULIM / h);			// Half u axis in h units.
+	const size_t HALF_V_H = ceil(VLIM / h);			// Half v axis in h units.
+
+	const double QCylCCoords[8][P4EST_DIM] = {		// Cylinder in canonical coords containing the Gaussian surface.
+		{-ULIM, 0, QTOP}, {+ULIM, 0, QTOP}, 		// Top coords (the four points lying on the same QTOP found above).
+		{0, -VLIM, QTOP}, {0, +VLIM, QTOP},
+		{-ULIM, 0, QBOT}, {+ULIM, 0, QBOT},			// Base coords (the four points lying on the same QBOT found above).
+		{0, -VLIM, QBOT}, {0, +VLIM, QBOT}
 	};
 
+	// Defining the transformed Gaussian level-set function.  This also discretizes the surface using a balltree to speed up queries
+	// during grid refinment.
+	auto *gLS = new GaussianLevelSet( &mpi, Point3( origin ), Point3( rotAxis ), rotAngle, HALF_U_H, HALF_V_H, maxRL, &gaussian, SQR(ULIM), SQR(VLIM), 5 );
+
 	// Finding the world coords of (canonical) cylinder containing Q(u,v).
-	geom::AffineTransformedSpace ats( Point3( origin ), Point3( rotAxis ), rotAngle );
 	double minQCylWCoords[P4EST_DIM] = {+DBL_MAX, +DBL_MAX, +DBL_MAX};	// Min and max cylinder world coords.
 	double maxQCylWCoords[P4EST_DIM] = {-DBL_MAX, -DBL_MAX, -DBL_MAX};
 	for( const auto& cylCPoint : QCylCCoords )
 	{
-		Point3 cylWPoint = ats.toWorldCoordinates( cylCPoint[0], cylCPoint[1], cylCPoint[2] );
+		Point3 cylWPoint = gLS->toWorldCoordinates( cylCPoint[0], cylCPoint[1], cylCPoint[2] );
 		for( int i = 0; i < P4EST_DIM; i++ )
 		{
 			minQCylWCoords[i] = MIN( minQCylWCoords[i], cylWPoint.xyz( i ) );
@@ -447,7 +456,7 @@ ParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const Paraboloid&
 		}
 	}
 
-	// Use the cylinder x, y, z ranges to find the domain's length in each direction.
+	// Use the x,y,z ranges to find the domain's length in each direction.
 	double QCylWRange[P4EST_DIM];
 	double WCentroid[P4EST_DIM];
 	for( int i = 0; i < P4EST_DIM; i++ )
@@ -465,7 +474,7 @@ ParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const Paraboloid&
 	const double D_CUBE_SIDE_LEN = N_TREES * OCTREE_LEN;			// Adjusted domain cube len as a multiple of *both* h and octree len.
 	const double HALF_D_CUBE_SIDE_LEN = D_CUBE_SIDE_LEN / 2;
 
-	// Defining a symmetric cubic domain whose dimensions are multiples of h and contain paraboloid and its limiting ellipse.
+	// Defining a symmetric cubic domain whose dimensions are multiples of h and contain Gaussian and its limiting ellipse.
 	for( int i = 0; i < P4EST_DIM; i++ )
 	{
 		n_xyz[i] = N_TREES;
@@ -473,14 +482,5 @@ ParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const Paraboloid&
 		xyz_max[i] = WCentroid[i] + HALF_D_CUBE_SIDE_LEN;
 	}
 
-	// Now that we know the domain, define the limiting ellipse to triangulate the paraboloid.
-	const double D = CUBE_SIDE_LEN * sqrt( 3 );						// To do this, use the circumscribing sphere with this diameter.
-	const double ULIM = sqrt( D / paraboloid.a() );					// Limiting ellipse semi-axes for triangulation.
-	const double VLIM = sqrt( D / paraboloid.b() );
-	const size_t HALF_U_H = ceil( ULIM / h );						// Half axes in h units.
-	const size_t HALF_V_H = ceil( VLIM / h );
-
-	// Defining transformed paraboloid level-set function.  This also discretizes the surface using a balltree to speed up queries during
-	// grid refinment.
-	return new ParaboloidLevelSet( &mpi, Point3(origin), Point3(rotAxis), rotAngle, HALF_U_H, HALF_V_H, maxRL, &paraboloid, SQR(ULIM), SQR(VLIM), 5 );
+	return gLS;
 }
