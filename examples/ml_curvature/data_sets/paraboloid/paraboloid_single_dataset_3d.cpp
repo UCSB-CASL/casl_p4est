@@ -51,8 +51,6 @@
 void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, const std::string& fileName, const double& a, const double& b,
 					  const double& c, const double& hk );
 
-int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>& buffer, int& bufferSize, std::ofstream& file );
-
 ParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const Paraboloid& paraboloid, const double& h,
 								 const double origin[P4EST_DIM], const double& rotAngle, const double rotAxis[P4EST_DIM],
 								 const u_char& maxRL, u_char& octMaxRL, const double& c, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
@@ -373,46 +371,6 @@ void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, con
 
 	CHKERRXX( PetscPrintf( mpi.comm(), "Rank %d successfully created params file '%s'\n", mpi.rank(), fullFileName.c_str() ) );
 	SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );				// Wait here until rank 0 is done.
-}
-
-/**
- * Save buffered samples to a file.  Upon exiting, the buffer will be emptied.
- * @param [in] mpi MPI environment.
- * @param [in,out] buffer Sample buffer.
- * @param [in,out] bufferSize Current buffer's size.
- * @param [in,out] file File where to write samples.
- * @return number of saved samples (already shared among processes).
- * @throws invalid_argument exception if buffer is empty.
- */
-int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>& buffer, int& bufferSize, std::ofstream& file )
-{
-	int savedSamples = 0;
-
-	if( bufferSize > 0 )
-	{
-		if( mpi.rank() == 0 )
-		{
-			int i;
-			for( i = 0; i < bufferSize; i++ )
-			{
-				int j;
-				for( j = 0; j < K_INPUT_SIZE_LEARN - 1; j++ )
-					file << buffer[i][j] << ",";				// Inner elements.
-				file << buffer[i][j] << std::endl;				// Last element is ihk in 2D or ih2kg in 3D.
-			}
-			savedSamples = i;
-
-			buffer.clear();
-		}
-		bufferSize = 0;
-	}
-	else
-		throw std::invalid_argument( "saveSamples: buffer is empty or there are less samples than intended number to save(?)!" );
-
-	// Communicate to everyone the total number of saved samples.
-	SC_CHECK_MPI( MPI_Bcast( &savedSamples, 1, MPI_INT, 0, mpi.comm() ) );
-
-	return savedSamples;
 }
 
 /**

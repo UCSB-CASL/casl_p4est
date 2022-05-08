@@ -2,7 +2,7 @@
  * A collection of classes and functions related to an ellipsoid.
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: May 6, 2022.
+ * Updated: May 7, 2022.
  */
 
 #ifndef ML_CURVATURE_ELLIPSOID_3D_H
@@ -26,6 +26,7 @@
 #include <vector>
 #include <random>
 #include <dlib/optimization.h>
+#include "../level_set_patch_3d.h"
 
 /////////////////////////////////////////////////////// Ellipsoid in canonical space ///////////////////////////////////////////////////////
 
