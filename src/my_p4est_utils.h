@@ -32,6 +32,7 @@
 #include <sstream>
 #include <vector>
 #include <fstream>
+#include <random>
 
 #if SIZE_MAX == UCHAR_MAX
    #define my_MPI_SIZE_T MPI_UNSIGNED_CHAR
@@ -3788,6 +3789,20 @@ void truncate_exportation_file_up_to_tstart(const double& tstart, const std::str
  * @param [out] data Pointer to 3D matrix; must be backed by an array of appropriate dimensions in caller.
  */
 void getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, const double *f, double data[P4EST_DIM][2][2] );
+
+
+/**
+ * Add uniform random noise to a level-set function sampled on a vector phi.  This function adds noise to local nodes and then scatters the
+ * altered values to other ranks.
+ * Noise is added as phi += rand, where rand must be already in the appropriate range of values, for example [-1e-5, +1e-5).  To do this,
+ * you must configure the input parameter dist *before* calling this function.
+ * @param [in,out] phi Sampled level-set function.
+ * @param [in] nodes Nodes structure.
+ * @param [in,out] gen Random entine.
+ * @param [in] dist Uniform random distribution with the range of noise you'll add to the level-set values.
+ * @throws invalid_argument if phi is null.
+ */
+void addRandomNoiseToLSFunction( Vec phi, const p4est_nodes_t *nodes, std::mt19937& gen, std::uniform_real_distribution<double>& dist );
 
 #endif // UTILS_H
 

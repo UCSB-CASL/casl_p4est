@@ -21,7 +21,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 26, 2022.
- * Updated: May 6, 2022.
+ * Updated: May 8, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -53,9 +53,6 @@ bool saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>
 void setupDomain( const Sinusoid& sinusoid, const double& N_WAVES, const double& h, const double& MAX_A, const u_char& MAX_RL,
 				  double& samRadius, u_char& octreeMaxRL, double& uvLim, size_t& halfUV, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
 				  double xyz_max[P4EST_DIM] );
-
-void uniformRandomSpace( const mpi_environment_t& mpi, const double& start, const double& end, const int& n, std::vector<double>& values,
-						 std::mt19937& gen );
 
 
 int main ( int argc, char* argv[] )
@@ -162,17 +159,14 @@ int main ( int argc, char* argv[] )
 		if( numFullWaves() < 1 )
 			throw std::invalid_argument( "[CASL_ERROR] Choose at least one full cycle for sampling!" );
 
-		if( randomNoise() < 0 || randomNoise() >= 1 )
-			throw std::invalid_argument( "[CASL_ERROR] Uniform random noise factor can only be in the range [0, 1)." );
-
 		PetscPrintf( mpi.comm(), ">> Began to generate dataset for %i amplitudes, starting at A index %i, with MaxRL = %i and h = %g\n",
 					 numAmplitudes(), startAIdx(), maxRL(), h );
 
 		std::vector<double> linspaceA;						// Random amplitude values from MIN_A to MAX_A.
-		uniformRandomSpace( mpi, MIN_A, MAX_A, numAmplitudes(), linspaceA, gen );
+		kml::utils::uniformRandomSpace( mpi, MIN_A, MAX_A, numAmplitudes(), linspaceA, gen );
 
 		std::uniform_real_distribution<double> randomNoiseDist( -h * randomNoise(), +h * randomNoise() );
-		std::mt19937 genNoise( mpi.rank() );				// A separate see for each rank: to be used only for noise, if requested.
+		std::mt19937 genNoise( mpi.rank() );				// A separate seed for each rank: to be used only for noise, if requested.
 
 		/////////////////////////////////////////////////////// Data-production loop ///////////////////////////////////////////////////////
 
@@ -210,7 +204,7 @@ int main ( int argc, char* argv[] )
 				kml::utils::prepareSamplesFile( mpi, DATA_PATH, fileName[i], file[i] );
 
 			std::vector<double> linspaceHK_MAX;	// Random HK_MAX values for current A (i.e., the desired max hk at the peaks).
-			uniformRandomSpace( mpi, HK_MAX_LO, HK_MAX_UP, numHKMaxSteps(), linspaceHK_MAX, gen );
+			kml::utils::uniformRandomSpace( mpi, HK_MAX_LO, HK_MAX_UP, numHKMaxSteps(), linspaceHK_MAX, gen );
 
 			printLogHeader( mpi );
 			size_t iters = 0;
@@ -261,7 +255,7 @@ int main ( int argc, char* argv[] )
 						size_t loggedSamples[SAMPLE_TYPES] = {0, 0};	// shared across processes for this rot axis.
 
 						std::vector<double> linspaceTheta;				// Random angular values for each random unit axis.
-						uniformRandomSpace( mpi, MIN_THETA, MAX_THETA, numThetas(), linspaceTheta, gen );
+						kml::utils::uniformRandomSpace( mpi, MIN_THETA, MAX_THETA, numThetas(), linspaceTheta, gen );
 
 						for( int nt = 0; nt < numThetas() - 1; nt++ )	// numThetas rotation angles for same axis (skipping last one).
 						{
@@ -329,13 +323,7 @@ int main ( int argc, char* argv[] )
 
 							// Add random noise if requested.
 							if( randomNoise() > 0 )
-							{
-								double *phiPtr;
-								CHKERRXX( VecGetArray( phi, &phiPtr ) );
-								foreach_node( n, nodes )
-									phiPtr[n] += randomNoiseDist( genNoise );
-								CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
-							}
+								addRandomNoiseToLSFunction( phi, nodes, genNoise, randomNoiseDist );
 
 							// Reinitialize level-set function.
 							my_p4est_level_set_t ls( ngbd );
@@ -488,38 +476,6 @@ bool saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>
 		printLogHeader( mpi );
 
 	return wroteSamples;
-}
-
-/**
- * Space out values in the range [start, end] uniformly using a random distribution that includes the end points.
- * @note Compare this function with linspace.
- * @param [in] mpi MPI environment.
- * @param [in] start Initial value.
- * @param [in] end End value.
- * @param [in] n Number of values (including the end points).
- * @param [out] values Vector of values.
- * @param [in,out] gen Random generator.
- */
-void uniformRandomSpace( const mpi_environment_t& mpi, const double& start, const double& end, const int& n, std::vector<double>& values,
-						 std::mt19937& gen )
-{
-	if( n < 2 )
-		throw std::invalid_argument( "uniformRandomSpace: n must be at least 2!" );
-
-	if( start >= end )
-		throw std::invalid_argument( "uniformRandomSpace: start must be strictly less than end!" );
-
-	values.resize( n );
-	if( mpi.rank() == 0 )
-	{
-		std::uniform_real_distribution<double> uniformDist( start, end );
-		for( int i = 0; i < n; i++ )						// Uniform random dist in [start, end] with n steps to be
-			values[i] = uniformDist( gen );					// shared among processes.
-		values[0] = start;									// Make sure we include the end points.
-		values[n - 1] = end;
-		std::sort( values.begin(), values.end() );
-	}
-	SC_CHECK_MPI( MPI_Bcast( values.data(), n, MPI_DOUBLE, 0, mpi.comm() ) );
 }
 
 /**

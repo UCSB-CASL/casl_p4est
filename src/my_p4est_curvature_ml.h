@@ -9,6 +9,8 @@
 #define K_INPUT_HK_SIZE			  1	// Dimensionless mean curvature = h * H.
 #define K_INPUT_H2KG_SIZE		  1	// Dimensionless Gaussian curvature = h^2 * K.
 
+#define SAMPLE_TYPES 	2			// Two types of samples: from non-saddle regions (0), and from saddle regions (1).
+
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_nodes_along_interface.h>
@@ -50,7 +52,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: May 6, 2022.
+ * Updated: May 8, 2022.
  */
 namespace kml
 {
@@ -450,6 +452,23 @@ namespace kml
 		 */
 		double easingOffProbability( double x, const double& lowVal=0, const double& lowProb=0, const double& upVal=1,
 									 const double& upProb=1 );
+
+		/**
+ 		 * Space out values in the range [start, end] uniformly using a random distribution that includes the end points.
+		 * @note Compare this function with linspace.
+		 * @param [in] mpi MPI environment.
+		 * @param [in] start Initial value.
+		 * @param [in] end End value.
+		 * @param [in] n Number of values (including the end points).
+		 * @param [out] values Vector of values.
+		 * @param [in,out] gen Random generator.
+		 * @param [in] includeLeftEndPoint Whether to enforce 'start' to be the left-most point.
+		 * @param [in] includeRightEndPoint Whether to enforce 'end' to be the right-most point.
+		 * @throws invalid_argument if n < 2 or end >= start.
+		 */
+		void uniformRandomSpace( const mpi_environment_t& mpi, const double& start, const double& end, const int& n,
+								 std::vector<double>& values, std::mt19937& gen, const bool& includeLeftEndPoint=true,
+								 const bool& includeRightEndPoint=true );
 	}
 
 

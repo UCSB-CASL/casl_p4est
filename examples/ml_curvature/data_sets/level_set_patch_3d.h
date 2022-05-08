@@ -315,7 +315,7 @@ public:
 	}
 
 	/**
-	 * Evaluate Gaussian level-set function and compute "exact" signed distances for points whose projections lie within a 3h-enlarged
+	 * Evaluate Gaussian level-set function and compute "exact" signed distances for points whose projections lie within an enlarged
 	 * limiting ellipse in the canonical coordinate system.  We select these points by checking if their linear-reconstruction distance is
 	 * less than numMinDiag * h*sqrt(3) (i.e., within a shell around Gamma).
 	 * @param [in] p4est Pointer to p4est data structure.

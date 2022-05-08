@@ -2,13 +2,11 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: April 25, 2022.
+ * Updated: May 7, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
 #define ML_CURVATURE_SINUSOIDAL_3D_H
-
-#define SAMPLE_TYPES 	2				// Two types of samples: from non-saddle points (0), and from saddle points (1).
 
 #ifdef _OPENMP
 #include <omp.h>

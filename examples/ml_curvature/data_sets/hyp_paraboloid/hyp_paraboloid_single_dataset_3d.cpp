@@ -10,7 +10,7 @@
  *
  * Theoretically, the hyperbolic paraboloid Gaussian curvature is always negative (never 0).  Thus, its data set contains samples only
  * saddle regions (i.e., h2kg < 0).  If requested, we can apply negative-mean-curvature normalization selectively for each numerical
- * non-saddle sample (say we found some point for which ih2kg < nonSaddleMinIH2KG).  In any case, every sample is reoriented by rotating
+ * non-saddle sample (say we found some point for which ih2kg >= nonSaddleMinIH2KG).  In any case, every sample is reoriented by rotating
  * the stencil so that the gradient at the center node has all its components non-negative.  Finally, we reflect the data packet about the
  * y-x = 0 plane, and we produce two samples for each interface point.  At inference time, both outputs are averaged to improve accuracy.
  *
@@ -26,7 +26,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
- * Updated: May 7, 2022.
+ * Updated: May 8, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -108,7 +108,7 @@ int main ( int argc, char* argv[] )
 			throw std::invalid_argument( "[CASL_ERROR] Desired sampling radius in h units must be in the range of [16, 32]." );
 
 		const double h = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
-		std::mt19937 gen( randomState() );					// Engine used for random perturbations and random noise if requested
+		std::mt19937 gen( randomState() );					// Engine used for random perturbations.
 		std::mt19937 genNoise( mpi.rank() );				// Engine for random noise on phi(x) if requested (and different for each rank).
 		const double RAND_NOISE = randomNoise() > 0? randomNoise() : 1;
 		std::uniform_real_distribution<double> randomNoiseDist( -h * RAND_NOISE, +h * RAND_NOISE );
@@ -162,7 +162,7 @@ int main ( int argc, char* argv[] )
 
 		///////////////////////////////////////////////////////// Data production //////////////////////////////////////////////////////////
 
-		PetscPrintf( mpi.comm(), ">> Began generating hyperboloic paraboloid data set for offline evaluation with a = %g, b = %g, "
+		PetscPrintf( mpi.comm(), ">> Began generating hyperbolic paraboloid data set for offline evaluation with a = %g, b = %g, "
 								 "max |hk| = %g, and h = %g (level %i)\n", A, B, maxHK(), h, maxRL() );
 
 		parStopWatch watch;
@@ -223,13 +223,7 @@ int main ( int argc, char* argv[] )
 
 		// Add random noise if requested.
 		if( randomNoise() > 0 )
-		{
-			double *phiPtr;
-			CHKERRXX( VecGetArray( phi, &phiPtr ) );
-			foreach_node( n, nodes )
-				phiPtr[n] += randomNoiseDist( genNoise );
-			CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
-		}
+			addRandomNoiseToLSFunction( phi, nodes, genNoise, randomNoiseDist );
 
 		my_p4est_level_set_t ls( ngbd );
 		ls.reinitialize_2nd_order( phi, reinitIters() );

@@ -3560,6 +3560,22 @@ void getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, const double *f, 
 }
 
 
+void addRandomNoiseToLSFunction( Vec phi, const p4est_nodes_t *nodes, std::mt19937& gen, std::uniform_real_distribution<double>& dist )
+{
+	if( !phi )
+		throw std::invalid_argument( "[CASL_ERROR] addRandomNoiseToLSFunction: phi can't be null!" );
+
+	double *phiPtr;
+	CHKERRXX( VecGetArray( phi, &phiPtr ) );
+	foreach_local_node( n, nodes )
+		phiPtr[n] += dist( gen );
+	CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
+
+	CHKERRXX( VecGhostUpdateBegin( phi, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( phi, INSERT_VALUES, SCATTER_FORWARD ) );
+}
+
+
 void truncate_exportation_file_up_to_tstart(const double& tstart, const std::string &filename, const u_int& n_extra_values_exported_per_line)
 {
   FILE* fp = fopen(filename.c_str(), "r+");

@@ -856,6 +856,33 @@ double kml::utils::easingOffProbability( double x, const double& lowVal, const d
 }
 
 
+void kml::utils::uniformRandomSpace( const mpi_environment_t& mpi, const double& start, const double& end, const int& n,
+									 std::vector<double>& values, std::mt19937& gen, const bool& includeLeftEndPoint,
+									 const bool& includeRightEndPoint )
+{
+	if( n < 2 )
+		throw std::invalid_argument( "uniformRandomSpace: n must be at least 2!" );
+
+	if( start >= end )
+		throw std::invalid_argument( "uniformRandomSpace: start must be strictly less than end!" );
+
+	values.resize( n );
+	if( mpi.rank() == 0 )
+	{
+		std::uniform_real_distribution<double> uniformDist( start, end );
+		for( int i = 0; i < n; i++ )						// Uniform random dist in [start, end] with n steps to be
+			values[i] = uniformDist( gen );					// shared among processes.
+
+		if( includeLeftEndPoint )
+			values[0] = start;								// Make sure we include the end points if requested
+		if( includeRightEndPoint )
+			values[n - 1] = end;
+		std::sort( values.begin(), values.end() );
+	}
+	SC_CHECK_MPI( MPI_Bcast( values.data(), n, MPI_DOUBLE, 0, mpi.comm() ) );
+}
+
+
 ////////////////////////////////////////////////////// Curvature ///////////////////////////////////////////////////////
 
 kml::Curvature::Curvature( const NeuralNetwork *nnet, const double& h, const double& loMinHK, const double& upMinHK )

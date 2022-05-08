@@ -29,7 +29,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: May 7, 2022.
+ * Updated: May 8, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -229,13 +229,7 @@ int main ( int argc, char* argv[] )
 		gLS->evaluate( p4est, nodes, phi, exactFlag );
 
 		if( randomNoise() > 0 )
-		{
-			double *phiPtr;
-			CHKERRXX( VecGetArray( phi, &phiPtr ) );
-			foreach_node( n, nodes )
-				phiPtr[n] += randomNoiseDist( genNoise );
-			CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
-		}
+			addRandomNoiseToLSFunction( phi, nodes, genNoise, randomNoiseDist );
 
 		my_p4est_level_set_t ls( ngbd );
 		ls.reinitialize_2nd_order( phi, reinitIters() );

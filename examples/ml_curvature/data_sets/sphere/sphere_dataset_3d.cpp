@@ -17,7 +17,7 @@
  *
  * Developer: Luis Ángel.
  * Created: March 31, 2022.
- * Updated: April 24, 2022.
+ * Updated: May 8, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -211,12 +211,13 @@ int main ( int argc, char* argv[] )
 				double xyz[P4EST_DIM];
 				node_xyz_fr_n( n, p4est, nodes, xyz );
 				phiPtr[n] = (useSignedDistanceFun()? sphere( xyz[0], xyz[1], xyz[2] ) : (*sphereNsd)( xyz[0], xyz[1], xyz[2] ));
-				if( randomNoise() > 0 )
-					phiPtr[n] += randomNoiseDist( genNoise );
-
 			}
 			CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
 			delete sphereNsd;
+
+			// Add random noise if requested.
+			if( randomNoise() > 0 )
+				addRandomNoiseToLSFunction( phi, nodes, genNoise, randomNoiseDist );
 
 			// Reinitialize level-set function.
 			my_p4est_level_set_t ls( ngbd );
