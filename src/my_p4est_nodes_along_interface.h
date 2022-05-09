@@ -215,7 +215,7 @@ public:
 	 * @param [in] nodeIdx Query node index, which must be locally owned by partition.
 	 * @param [out] stencil Output vector with node indices sorted as above (in x-y[-z]).  Invalid if function returns false.
 	 * @return True if uniform stencil is well defined, false otherwise.
-	 * @throws Runtime exception if stencil cannot be defined for input node index and if CASL_THROWS macro is defined.
+	 * @throws runtime_error exception if stencil cannot be defined for input node index and if CASL_THROWS macro is defined.
 	 */
 	bool getFullStencilOfNode( p4est_locidx_t nodeIdx, std::vector<p4est_locidx_t>& stencil );
 

@@ -45,11 +45,6 @@
 
 void printLogHeader( const mpi_environment_t& mpi );
 
-bool saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>> buffer[SAMPLE_TYPES], int bufferSize[SAMPLE_TYPES],
-				  std::ofstream file[SAMPLE_TYPES], double trackedMinHK[SAMPLE_TYPES], double trackedMaxHK[SAMPLE_TYPES],
-				  const double& hkDist, const std::string fileName[SAMPLE_TYPES], const size_t& bufferMinSize, const u_short& nHistBins,
-				  const float& histMedianFrac, const float& histMinFold, const bool& force );
-
 void setupDomain( const Sinusoid& sinusoid, const double& N_WAVES, const double& h, const double& MAX_A, const u_char& MAX_RL,
 				  double& samRadius, u_char& octreeMaxRL, double& uvLim, size_t& halfUV, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
 				  double xyz_max[P4EST_DIM] );
@@ -378,8 +373,9 @@ int main ( int argc, char* argv[] )
 											   loggedSamples[0]+loggedSamples[1], (100.0*iters/TOT_ITERS), watch.get_duration_current() ) );
 
 						// Save samples if it's time.
-						saveSamples( mpi, buffer, bufferSize, file, trackedMinHK, trackedMaxHK, ABS( maxHK() - minHK() ), fileName,
-									 bufferMinSize(), nHistBins(), histMedianFrac(), histMinFold(), false );
+						if( kml::utils::saveSamples( mpi, buffer, bufferSize, file, trackedMinHK, trackedMaxHK, ABS( maxHK() - minHK() ),
+													 fileName, bufferMinSize(), nHistBins(), histMedianFrac(), histMinFold(), false ) )
+							printLogHeader( mpi );
 
 						step++;
 					}
@@ -387,8 +383,9 @@ int main ( int argc, char* argv[] )
 			}
 
 			// Save any samples left in the buffers (by forcing the process) and start afresh for next A value.
-			saveSamples( mpi, buffer, bufferSize, file, trackedMinHK, trackedMaxHK, ABS( maxHK() - minHK() ), fileName, bufferMinSize(),
-						 nHistBins(), histMedianFrac(), histMinFold(), true );
+			if( kml::utils::saveSamples( mpi, buffer, bufferSize, file, trackedMinHK, trackedMaxHK, ABS( maxHK() - minHK() ), fileName,
+										 bufferMinSize(), nHistBins(), histMedianFrac(), histMinFold(), true ) )
+				printLogHeader( mpi );
 
 			if( mpi.rank() == 0 )
 			{
@@ -396,8 +393,8 @@ int main ( int argc, char* argv[] )
 					f.close();
 			}
 
-			CHKERRXX( PetscPrintf( mpi.comm(), "<<< Done with A = %f, index %d\n", A, a ) );
 			SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "<<< Done with A = %f, index %d\n", A, a ) );
 		}
 
 		watch.read_duration_current( true );
@@ -418,64 +415,6 @@ void printLogHeader( const mpi_environment_t& mpi )
 {
 	CHKERRXX( PetscPrintf( mpi.comm(), "_____________________________________________________________________________________________________________________\n") );
 	CHKERRXX( PetscPrintf( mpi.comm(), "[Step  ] \tAmplitude \t(ss) Start_MaxHK \t(tt) End_MaxHK \tAxis \tMaxHK_Error \tNum_Samples\t(%%_Done) \tTime\n" ) );
-}
-
-/**
- * Save samples in buffers if it's time or if the user forces the process (i.e., if corresponding buffer has overflowed the user-defined min
- * size or we have finished but there are samples left in the buffers).  Upon exiting, the buffer will be emptied and re-reserved, and the
- * tracked min HK, max HK, and buffer size variable will be reset if buffer was saved to a file.
- * @param [in] mpi MPI environment.
- * @param [in,out] buffer Sample buffers for non-saddle and saddle points.
- * @param [in,out] bufferSize Current buffers' size.
- * @param [in,out] file Files where to write samples.
- * @param [in,out] trackedMinHK Currently tracked minimum true |hk*| for non-saddles and saddles.
- * @param [in,out] trackedMaxHK Currently tracked maximum true |hk*| for non-saddles and saddles.
- * @param [in] hkDist Distance between min and max |hk*| one would expect (i.e., 100).
- * @param [in] fileName File names array.
- * @param [in] bufferMinSize Predefined minimum size to trigger file saving (same value for non-saddles and saddles).
- * @param [in] nHistBins Number of bins one would expect for histogram-based subsampling.
- * @param [in] histMedianFrac Median scaling factor for histogram-based subsampling.
- * @param [in] histMinFold Fold factor for minimum non-zero count in histogram-based subsampling.
- * @param [in] force Set it to true if you want to bypass the overflow condition (i.e., if there are samples left in the buffers).
- * @return true if wrote any type of samples, false otherwise.
- */
-bool saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>> buffer[SAMPLE_TYPES], int bufferSize[SAMPLE_TYPES],
-				  std::ofstream file[SAMPLE_TYPES], double trackedMinHK[SAMPLE_TYPES], double trackedMaxHK[SAMPLE_TYPES],
-				  const double& hkDist, const std::string fileName[SAMPLE_TYPES], const size_t& bufferMinSize, const u_short& nHistBins,
-				  const float& histMedianFrac, const float& histMinFold, const bool& force )
-{
-	bool wroteSamples = false;
-	for( int i = 0; i < SAMPLE_TYPES; i++ )				// Do this for 0: non-saddle points and 1: saddle points.
-	{
-		if( bufferSize[i] > 0 && (force || bufferSize[i] >= bufferMinSize) )	// Check if it's time to save samples.
-		{
-			// Effective number of bins is proportional to the difference between tracked min and max mean |hk*|, but not less than 50 and more than nHistBins.
-			const u_short nBins = MAX( (u_short)50, MIN( (u_short)ceil(nHistBins * (trackedMaxHK[i] - trackedMinHK[i]) / hkDist), nHistBins ) );
-			int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer[i], file[i],
-																		 (FDEEP_FLOAT_TYPE) trackedMinHK[i],
-																		 (FDEEP_FLOAT_TYPE) trackedMaxHK[i],
-																		 nBins, histMedianFrac, histMinFold );
-
-			CHKERRXX( PetscPrintf( mpi.comm(),
-								   "[*] Saved %d out of %d samples to output file %s, with |hk*| in the range of [%f, %f] using %i bins.\n",
-								   savedSamples, bufferSize[i], fileName[i].c_str(), trackedMinHK[i], trackedMaxHK[i], nBins ) );
-			wroteSamples = true;
-
-			buffer[i].clear();							// Reset control variables.
-			if( mpi.rank() == 0 )
-				buffer[i].reserve( bufferMinSize );
-			trackedMinHK[i] = DBL_MAX;
-			trackedMaxHK[i] = 0;
-			bufferSize[i] = 0;
-
-			SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
-		}
-	}
-
-	if( wroteSamples )
-		printLogHeader( mpi );
-
-	return wroteSamples;
 }
 
 /**

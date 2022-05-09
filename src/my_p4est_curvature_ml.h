@@ -469,6 +469,31 @@ namespace kml
 		void uniformRandomSpace( const mpi_environment_t& mpi, const double& start, const double& end, const int& n,
 								 std::vector<double>& values, std::mt19937& gen, const bool& includeLeftEndPoint=true,
 								 const bool& includeRightEndPoint=true );
+
+		/**
+		 * Save buffered non-saddle and saddle samples to separate files using a histogram-based subsampling strategy if it's time or if the
+		 * user forces the process (i.e., if corresponding buffer has overflowed the user-defined min size or we have finished but there are
+		 * samples left in the buffers).  Upon exiting, the buffer will be emptied and re-reserved, and the tracked min HK, max HK, and
+		 * buffer size variable will be reset if buffer was saved to a file.
+		 * @param [in] mpi MPI environment.
+		 * @param [in,out] buffer Sample buffers for non-saddle and saddle points.
+		 * @param [in,out] bufferSize Current buffers' size.
+		 * @param [in,out] file Files where to write samples.
+		 * @param [in,out] trackedMinHK Currently tracked minimum true |hk*| for non-saddles and saddles.
+		 * @param [in,out] trackedMaxHK Currently tracked maximum true |hk*| for non-saddles and saddles.
+		 * @param [in] hkDist Distance between min and max |hk*| one would expect (i.e., 100).
+		 * @param [in] fileName File names array.
+		 * @param [in] bufferMinSize Predefined minimum size to trigger file saving (same value for non-saddles and saddles).
+		 * @param [in] nHistBins Number of bins one would expect for histogram-based subsampling.
+		 * @param [in] histMedianFrac Median scaling factor for histogram-based subsampling.
+		 * @param [in] histMinFold Fold factor for minimum non-zero count in histogram-based subsampling.
+		 * @param [in] force Set it to true if you want to bypass the overflow condition (i.e., if there are samples left in the buffers).
+		 * @return true if wrote any type of samples, false otherwise.
+		 */
+		bool saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>> buffer[SAMPLE_TYPES], int bufferSize[SAMPLE_TYPES],
+						  std::ofstream file[SAMPLE_TYPES], double trackedMinHK[SAMPLE_TYPES], double trackedMaxHK[SAMPLE_TYPES],
+						  const double& hkDist, const std::string fileName[SAMPLE_TYPES], const size_t& bufferMinSize,
+						  const u_short& nHistBins, const float& histMedianFrac, const float& histMinFold, const bool& force );
 	}
 
 

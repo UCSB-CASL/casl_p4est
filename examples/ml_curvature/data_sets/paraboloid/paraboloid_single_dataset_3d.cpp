@@ -445,7 +445,7 @@ ParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const Paraboloid&
 	}
 
 	// Now that we know the domain, define the limiting ellipse to triangulate the paraboloid.
-	const double D = CUBE_SIDE_LEN * sqrt( 3 );						// To do this, use the circumscribing sphere with this diameter.
+	const double D = D_CUBE_SIDE_LEN * sqrt( 3 );					// To do this, use the circumscribing sphere with this diameter.
 	const double ULIM = sqrt( D / paraboloid.a() );					// Limiting ellipse semi-axes for triangulation.
 	const double VLIM = sqrt( D / paraboloid.b() );
 	const size_t HALF_U_H = ceil( ULIM / h );						// Half axes in h units.

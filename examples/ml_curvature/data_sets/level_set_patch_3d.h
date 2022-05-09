@@ -596,7 +596,7 @@ public:
 #ifdef DEBUG
 				// Verify that phi(center)'s sign differs with any of its irradiating neighbors.
 				if( !NodesAlongInterface::isInterfaceStencil( *sample ) )
-					throw std::runtime_error( errorPrefix + "Detected a non-interface stencil!" );
+					throw std::invalid_argument( errorPrefix + "Detected a non-interface stencil!" );
 #endif
 
 				for( const auto &component : normalsReadPtr)	// Next, normal components (First x group, then y, then z).
@@ -651,6 +651,10 @@ public:
 				std::cerr << rt.what() << std::endl;
 #endif
 				invalidNodes++;
+			}
+			catch( std::invalid_argument &ia )
+			{
+				throw std::runtime_error( ia.what() );
 			}
 		}
 

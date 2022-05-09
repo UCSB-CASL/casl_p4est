@@ -883,6 +883,44 @@ void kml::utils::uniformRandomSpace( const mpi_environment_t& mpi, const double&
 }
 
 
+bool kml::utils::saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>> buffer[SAMPLE_TYPES],
+							  int bufferSize[SAMPLE_TYPES], std::ofstream file[SAMPLE_TYPES], double trackedMinHK[SAMPLE_TYPES],
+							  double trackedMaxHK[SAMPLE_TYPES], const double& hkDist, const std::string fileName[SAMPLE_TYPES],
+							  const size_t& bufferMinSize, const u_short& nHistBins, const float& histMedianFrac, const float& histMinFold,
+							  const bool& force )
+{
+	bool wroteSamples = false;
+	for( int i = 0; i < SAMPLE_TYPES; i++ )				// Do this for 0: non-saddle points and 1: saddle points.
+	{
+		if( bufferSize[i] > 0 && (force || bufferSize[i] >= bufferMinSize) )	// Check if it's time to save samples.
+		{
+			// Effective number of bins is proportional to the difference between tracked min and max mean |hk*|, but not less than 50 and more than nHistBins.
+			const u_short nBins = MAX( (u_short)50, MIN( (u_short)ceil(nHistBins * (trackedMaxHK[i] - trackedMinHK[i]) / hkDist), nHistBins ) );
+			int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer[i], file[i],
+																		 (FDEEP_FLOAT_TYPE) trackedMinHK[i],
+																		 (FDEEP_FLOAT_TYPE) trackedMaxHK[i],
+																		 nBins, histMedianFrac, histMinFold );
+
+			CHKERRXX( PetscPrintf( mpi.comm(),
+								   "[*] Saved %d out of %d samples to %s, with |hk*| in the range of [%f, %f] using %i bins.\n",
+								   savedSamples, bufferSize[i], fileName[i].c_str(), trackedMinHK[i], trackedMaxHK[i], nBins ) );
+			wroteSamples = true;
+
+			buffer[i].clear();							// Reset control variables.
+			if( mpi.rank() == 0 )
+				buffer[i].reserve( bufferMinSize );
+			trackedMinHK[i] = DBL_MAX;
+			trackedMaxHK[i] = 0;
+			bufferSize[i] = 0;
+
+			SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
+		}
+	}
+
+	return wroteSamples;
+}
+
+
 ////////////////////////////////////////////////////// Curvature ///////////////////////////////////////////////////////
 
 kml::Curvature::Curvature( const NeuralNetwork *nnet, const double& h, const double& loMinHK, const double& upMinHK )

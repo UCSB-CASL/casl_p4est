@@ -372,6 +372,236 @@ public:
 						   const double& rv2, const double& sdsu2, const double& sdsv2, const size_t& btKLeaf=40, const u_short& addToL=0 )
 						   : SignedDistanceLevelSet( mpi, trans, rotAxis, rotAngle, ku, kv, L, hypParaboloid, ru2, rv2, sdsu2, sdsv2,
 													 btKLeaf, addToL ) {}
+
+	/**
+	 * Collect samples by splitting them into non-saddle and saddle types.
+	 * @note Samples are not normalized in any way: not negative-mean-curvature nor gradient-reoriented to first octant.
+	 * @param [in] p4est P4est data structure.
+	 * @param [in] nodes Nodes data structure.
+	 * @param [in] ngbd Nodes' neighborhood data structure.
+	 * @param [in] phi Parallel vector with level-set values.
+	 * @param [in] octMaxRL Effective octree maximum level of refinement (octree's side length must be a multiple of h).
+	 * @param [in] xyzMin Domain's minimum coordinates.
+	 * @param [in] xyzMax Domain's maximum coordinates.
+	 * @param [out] trackedMinHK Minimum |hk*| detected across processes for this batch of samples (non-saddle idx 0, saddle idx 1).
+	 * @param [out] trackedMaxHK Maximum |hk*| detected across processes for this batch of samples (non-saddle idx 0, saddle idx 1).
+	 * @param [out] nonSaddleSamples Array of collected samples for non-saddle regions (i.e., ih2kg > nonSaddleMinH2KG).
+	 * @param [in] minHK Minimum expected |hk*| for non-saddle samples.
+	 * @param [out] saddleSamples Array of collected samples for saddle regions (i.e., ih2kg <= 0).
+	 * @param [in] filter Vector with 1s for nodes we are allowed to sample from and anything else for non-sampling nodes.
+	 * @param [in] samR2 Overriding sampling sphere radius^2 on canonical space (to be used instead of limiting circle used for triangulation).
+	 * @param [in] nonSaddleMinIH2KG Min numerical dimensionless Gaussian curvature (at Gamma) for numerical non-saddle points.
+	 * @return Maximum errors in dimensionless mean and Gaussian curvatures (reduced across processes).
+	 * @throws runtime_error if cache is disabled or empty, or if we can't locate a node in the cache, or if sampling fails critically.
+	 * @throws invalid_argument if phi or filter are null, or if sampling radius^2 is larger than limiting radius^2 or smaller than (1.5h)^2.
+	 */
+	std::pair<double,double> collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
+											 const Vec& phi, const unsigned char octMaxRL, const double xyzMin[P4EST_DIM],
+											 const double xyzMax[P4EST_DIM], double trackedMinHK[SAMPLE_TYPES],
+											 double trackedMaxHK[SAMPLE_TYPES], std::vector<std::vector<double>>& nonSaddleSamples,
+											 const double& minHK, std::vector<std::vector<double>>& saddleSamples, Vec filter,
+											 double samR2=NAN, const double& nonSaddleMinIH2KG=-7e-6 ) const
+	{
+		std::string errorPrefix = _errorPrefix + "collectSamples: ";
+		if( !_useCache || _cache.empty() || _canonicalCoordsCache.empty() )
+			throw std::runtime_error( errorPrefix + "Cache must be enabled and nonempty!" );
+
+		if( !phi )
+			throw std::invalid_argument( errorPrefix + "phi vector can't be null!" );
+
+		if( !filter )
+			throw std::invalid_argument( errorPrefix + "filter vector can't be null!" );
+
+		if( !isnan( samR2 ) && (samR2 > _ru2 || samR2 > _rv2 || samR2 < SQR(1.5 * _h)) )
+			throw std::invalid_argument( errorPrefix + "Overriding sampling radius can't be larger than local sampling radius or less than 1.5h!" );
+		samR2 = (isnan( samR2 )? _ru2 : samR2);
+
+		// Get indices for locally owned candidate nodes next to Gamma.
+		NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd, (char)octMaxRL );
+		std::vector<p4est_locidx_t> indices;
+		nodesAlongInterface.getIndices( &phi, indices );
+
+		// Compute normal vectors and mean/Gaussian/principal curvatures.
+		Vec normals[P4EST_DIM],	kappaMG[2], kappa12[2];
+		for( auto& component : normals )
+			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &component ) );
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaMG[0] ) );	// This is mean curvature, and
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaMG[1] ) );	// this is Gaussian curvature.
+		for( auto& pk : kappa12 )
+			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &pk ) );
+
+		compute_normals_and_curvatures( *ngbd, phi, normals, kappaMG[0], kappaMG[1], kappa12 );
+
+		const double *phiReadPtr;								// We need access to phi to project points onto Gamma.
+		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
+
+		const double *normalsReadPtr[P4EST_DIM];
+		for( int i = 0; i < P4EST_DIM; i++ )
+			CHKERRXX( VecGetArrayRead( normals[i], &normalsReadPtr[i] ) );
+
+		const double *filterReadPtr = nullptr;					// Load the filter vector.
+		CHKERRXX( VecGetArrayRead( filter, &filterReadPtr ) );
+
+		nonSaddleSamples.clear();								// We'll get (possibly) as many as points next to Gamma
+		nonSaddleSamples.reserve( indices.size() );				// and within limiting sampling circle.
+		saddleSamples.clear();
+		saddleSamples.reserve( indices.size() );
+
+		// Prepare mean and Gaussian curvatures interpolation.
+		my_p4est_interpolation_nodes_t kappaMGInterp( ngbd );
+		kappaMGInterp.set_input( kappaMG, interpolation_method::linear, 2 );
+
+		trackedMinHK[0] = DBL_MAX, trackedMinHK[1] = DBL_MAX, trackedMaxHK[0] = 0, trackedMaxHK[1] = 0;	// Track the min and max mean |hk*|
+		double trackedMaxHKError = 0;																	// and Gaussian curvature errors.
+		double trackedMaxH2KGError = 0;
+
+#ifdef DEBUG
+		std::cout << "Rank " << _mpi->rank() << " reports " << indices.size() << " candidate nodes for sampling." << std::endl;
+#endif
+
+		for( const auto& n : indices )
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( n, p4est, nodes, xyz );
+			if( ABS( xyz[0] - xyzMin[0] ) <= 4 * _h || ABS( xyz[0] - xyzMax[0] ) <= 4 * _h ||	// Skip nodes too close
+				ABS( xyz[1] - xyzMin[1] ) <= 4 * _h || ABS( xyz[1] - xyzMax[1] ) <= 4 * _h ||	// to domain boundary.
+				ABS( xyz[2] - xyzMin[2] ) <= 4 * _h || ABS( xyz[2] - xyzMax[2] ) <= 4 * _h )
+				continue;
+
+			std::string coords = getDiscreteCoords( xyz[0], xyz[1], xyz[2] );
+			const auto record = _cache.find( coords );
+			const auto recordCCoords = _canonicalCoordsCache.find( coords );
+			if( record == _cache.end() && recordCCoords == _canonicalCoordsCache.end() )		// Canonical coords should be recorded.
+			{
+				std::stringstream msg;
+				msg << errorPrefix << "Couldn't find [" << Point3( xyz ) << "] (or " << coords << ") in the cache!";
+				throw std::runtime_error( msg.str() );
+			}
+			Point3 p = recordCCoords->second;
+
+			if( SQR( p.x ) + SQR( p.y ) + SQR( p.z ) > samR2 )	// Skip nodes whose point on the surface lies outside the sampling sphere.
+				continue;
+
+			std::vector<p4est_locidx_t> stencil;
+			try
+			{
+				if( !nodesAlongInterface.getFullStencilOfNode( n , stencil ) )	// Does it have a valid stencil?
+					continue;
+
+				for( auto& s : stencil )						// Invalidate point if at least one stencil node is not exact-distance-flagged.
+				{
+					if( filterReadPtr[s] != 1 )
+						throw std::runtime_error( "Caught invalid point for " + std::to_string( n ) + "!" );
+				}
+
+				// Valid candidate grid node.  Get its exact distance to Gaussian and true curvatures at closest point.
+				Point3 nearestPoint = record->second.second;
+				double hk = _h * _mongeFunction->meanCurvature( nearestPoint.x, nearestPoint.y );
+				double h2kg = SQR( _h ) * _mongeFunction->gaussianCurvature( nearestPoint.x, nearestPoint.y );
+
+				for( int c = 0; c < P4EST_DIM; c++ )			// Find the location where to (linearly) interpolate curvatures.
+					xyz[c] -= phiReadPtr[n] * normalsReadPtr[c][n];
+				double kappaMGValues[2];
+				kappaMGInterp( xyz, kappaMGValues );			// Get linearly interpolated mean and Gaussian curvature in one shot.
+				double ihkVal = _h * kappaMGValues[0];
+				double ih2kgVal = SQR( _h ) * kappaMGValues[1];
+
+				bool isNonSaddle;
+				if( ih2kgVal >= nonSaddleMinIH2KG )				// Not a saddle?
+				{
+					if( ABS( hk ) < minHK )						// Target mean |hk*| must be >= minHK for non-saddle regions.
+						continue;
+					isNonSaddle = true;							// Flag point as non-saddle.
+				}
+				else
+					isNonSaddle = false;
+
+				// Up to this point, we got a good sample.  Populate its features.
+				std::vector<double> *sample;					// Points to new sample in the appropriate array.
+				if( isNonSaddle )
+				{
+					nonSaddleSamples.emplace_back();
+					sample = &nonSaddleSamples.back();
+				}
+				else
+				{
+					saddleSamples.emplace_back();
+					sample = &saddleSamples.back();
+				}
+				sample->reserve( K_INPUT_SIZE_LEARN );			// phi + normals + hk* + ihk + h2kg* + ih2kg = 112 fields.
+
+				for( const auto& idx : stencil )				// First, phi values.
+					sample->push_back( phiReadPtr[idx] );
+
+#ifdef DEBUG
+				// Verify that phi(center)'s sign differs with any of its irradiating neighbors.
+				if( !NodesAlongInterface::isInterfaceStencil( *sample ) )
+					throw std::invalid_argument( errorPrefix + "Detected a non-interface stencil!" );
+#endif
+
+				for( const auto &component : normalsReadPtr)	// Next, normal components (First x group, then y, then z).
+				{
+					for( const auto& idx: stencil )
+						sample->push_back( component[idx] );
+				}
+
+				sample->push_back( hk );						// Then, attach target mean hk* and numerical ihk.
+				sample->push_back( ihkVal );
+				sample->push_back( h2kg );						// And, attach true Gaussian h^2*kg and ih2kg.
+				sample->push_back( ih2kgVal );
+
+				// Update stats.
+				int which = isNonSaddle? 0 : 1;
+				trackedMinHK[which] = MIN( trackedMinHK[which], ABS( (*sample)[K_INPUT_SIZE_LEARN - 4] ) );
+				trackedMaxHK[which] = MAX( trackedMaxHK[which], ABS( (*sample)[K_INPUT_SIZE_LEARN - 4] ) );
+
+				double errorHK = ABS( (*sample)[K_INPUT_SIZE_LEARN - 4] - (*sample)[K_INPUT_SIZE_LEARN - 3] );
+				double errorH2KG = ABS( (*sample)[K_INPUT_SIZE_LEARN - 2] - (*sample)[K_INPUT_SIZE_LEARN - 1] );
+
+				trackedMaxHKError = MAX( trackedMaxHKError, errorHK );
+				trackedMaxH2KGError = MAX( trackedMaxH2KGError, errorH2KG );
+			}
+			catch( std::runtime_error &rt ) {}
+			catch( std::invalid_argument &ia )
+			{
+				throw std::runtime_error( ia.what() );			// Raise again the exception for critical errors.
+			}
+		}
+
+#ifdef DEBUG
+		std::cout << "Rank " << _mpi->rank() << " collected " << nonSaddleSamples.size() + saddleSamples.size()
+				  << " *unique* samples." << std::endl;
+#endif
+		kappaMGInterp.clear();
+
+		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, trackedMinHK, SAMPLE_TYPES, MPI_DOUBLE, MPI_MIN, _mpi->comm() ) );
+		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, trackedMaxHK, SAMPLE_TYPES, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
+		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxHKError, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
+		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxH2KGError, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
+
+#ifdef DEBUG	// Printing the errors.
+		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked mean hk in the range of [%g, %g] for non-saddles and [%g, %g] for saddles\n",
+							   trackedMinHK[0], trackedMaxHK[0], trackedMinHK[1], trackedMaxHK[1] ) );
+		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked max mean hk error = %f\n", trackedMaxHKError ) );
+		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked max Gaussian h^2k error = %f\n", trackedMaxH2KGError ) );
+#endif
+
+		// Clean up.
+		CHKERRXX( VecRestoreArrayRead( filter, &filterReadPtr ) );
+
+		for( int i = 0; i < P4EST_DIM; i++ )
+			CHKERRXX( VecRestoreArrayRead( normals[i], &normalsReadPtr[i] ) );
+		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
+
+		for( auto& pk : kappa12 )
+			CHKERRXX( VecDestroy( pk ) );
+		CHKERRXX( VecDestroy( kappaMG[0] ) );
+		CHKERRXX( VecDestroy( kappaMG[1] ) );
+		for( auto& component : normals )
+			CHKERRXX( VecDestroy( component ) );
+
+		return std::make_pair( trackedMaxHKError, trackedMaxH2KGError );
+	}
 };
 
 ////////////////////////////////////////// Utility functions for hyperbolic paraboloid data sets ///////////////////////////////////////////
@@ -459,7 +689,7 @@ HypParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const HypParab
 		}
 
 		// Now that we know the domain, define the limiting ellipse to triangulate the hyp-paraboloid.
-		const double D = CUBE_SIDE_LEN * sqrt( 3 );						// To do this, use the circumscribing sphere with this diameter.
+		const double D = D_CUBE_SIDE_LEN * sqrt( 3 );					// To do this, use the circumscribing sphere with this diameter.
 		uvLim = D / 2;
 		halfUVH = ceil( uvLim / h );									// Half axes in h units.
 
