@@ -444,7 +444,7 @@ void set_geometry(){
       r0 = s0; // for consistency, and for setting up NS problem (if wanted)
       break;
       }
-
+    
     case FLOW_PAST_CYLINDER: // intentionally waterfalls into same settings as ice around cylinder
 
     case ICE_AROUND_CYLINDER:{ // Ice layer growing around a constant temperature cooled cylinder
@@ -480,7 +480,7 @@ void set_geometry(){
       px = 1;
       py = 0;
 
-      // Problem geometry:
+      // Problem geometry: hi there
       r0 = 0.5;     // Computational radius of the sphere
       break;
     }

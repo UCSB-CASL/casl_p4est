@@ -55,3 +55,7 @@ Default/
 
 # CLion.
 .idea/
+
+# VSCODE 
+.vscode/
+*.json
