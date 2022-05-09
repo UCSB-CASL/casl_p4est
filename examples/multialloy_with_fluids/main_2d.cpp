@@ -422,7 +422,6 @@ std::vector<double> rvals;
 
 void set_geometry(){
   switch(example_){
-    printf("SET GEOM CALLED \n");
     case FRANK_SPHERE: {
       // Corresponds to the Frank Sphere 2d analytical solution to the Stefan problem
       // Was added to verify that the Stefan problem was being solved correctly independent of flow
@@ -513,7 +512,7 @@ void set_geometry(){
 
       // Periodicity:
       px = 0;
-      py = 1;
+      py = 0;
 
       // Problem geometry:
       r0 = 0.1;     // Computational radius of the sphere // to-do: check this, p sure it gets ignored
@@ -824,7 +823,6 @@ void set_physical_properties(){
     case ICE_AROUND_CYLINDER:{
       alpha_s = (1.18e-6);    //ice
       alpha_l = (0.13275e-6); //water
-
       k_s = 2.22;       // W/[m*K]
       k_l = 558.61e-3;  // W/[m*K]
 
@@ -2147,6 +2145,7 @@ class INITIAL_TEMP: public CF_DIM
       }
     }
     case EVOLVING_POROUS_MEDIA:
+      return theta_interface;
     case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:{
       switch(dom){
@@ -2379,6 +2378,9 @@ bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
     return (yupper_wall(DIM(x,y,z)));
   }
   case EVOLVING_POROUS_MEDIA:
+  {
+    return xlower_wall(DIM(x,y,z));
+  }
   case MELTING_ICE_SPHERE:
   case ICE_AROUND_CYLINDER:{
     return (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
@@ -2411,7 +2413,8 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
   case FLOW_PAST_CYLINDER:
   case EVOLVING_POROUS_MEDIA:{
     // no dirichlet wall velocity conditions
-    return 0.;/*(ylower_wall(DIM(x,y,z)) || (yupper_wall(DIM(x,y,z))))*/;
+//    return 0.;/*(ylower_wall(DIM(x,y,z)) || (yupper_wall(DIM(x,y,z))))*/;
+    return (ylower_wall(DIM(x,y,z)) || (yupper_wall(DIM(x,y,z))));
   }
   case MELTING_ICE_SPHERE_NAT_CONV:
   case MELTING_ICE_SPHERE:

@@ -22,7 +22,7 @@ add_compile_definitions( PRIVATE EIGEN_DONT_PARALLELIZE )		# Prevents paralleliz
 ############################# Load paths to libraries and set compiler for current system ##############################
 
 set( PARCASL ${CMAKE_CURRENT_SOURCE_DIR}/../../ )				# CASL library root directory.
-include( ${PARCASL}/cmake/darkness.cmake )							# Set paths for this machine and populate LIBS, INC_DIRS, and LIB_DIRS lists.
+include( ${PARCASL}/cmake/harrow.cmake )							# Set paths for this machine and populate LIBS, INC_DIRS, and LIB_DIRS lists.
 
 if( CMAKE_BUILD_TYPE MATCHES Debug )
 	add_compile_definitions( PRIVATE DEBUG )					# Enable debug macro.
