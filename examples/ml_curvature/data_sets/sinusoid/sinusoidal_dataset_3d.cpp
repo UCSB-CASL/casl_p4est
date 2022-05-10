@@ -65,7 +65,7 @@ int main ( int argc, char* argv[] )
 	param_t<double>    easeOffProbMaxHK( pl,  0.25, "easeOffProbMaxHK"	 , "Easing-off prob for |hk*| upper bound for subsampling numerical"
 																		   " non-saddle samples (default: 0.25)" );
 	param_t<double>    easeOffProbMinHK( pl, 0.005, "easeOffProbMinHK"	 , "Easing-off prob for |hk*| lower bound for subsampling numerical"
-																			  "numerical non-saddle points (default: 0.005)" );
+																		   "numerical non-saddle points (default: 0.005)" );
 	param_t<double> easeOffProbMaxIH2KG( pl, 0.075, "easeOffProbMaxIH2KG", "Easing-off prob for |ih2kg| upper bound for subsampling saddle "
 																		   "samples (default: 0.075)" );
 	param_t<double> easeOffProbMinIH2KG( pl,0.0025, "easeOffProbMinIH2KG", "Easing-off prob for |ih2kg| lower bound for subsampling saddle "

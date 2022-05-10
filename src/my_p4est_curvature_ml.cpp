@@ -727,7 +727,7 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 											  const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer,
 											  std::ofstream& file, FDEEP_FLOAT_TYPE minHK, FDEEP_FLOAT_TYPE maxHK,
 											  const unsigned short& nbins, const FDEEP_FLOAT_TYPE& frac,
-											  const FDEEP_FLOAT_TYPE& minFold)
+											  const FDEEP_FLOAT_TYPE& minFold, const bool& useAbsValues )
 {
 	const std::string errorPrefix = "[CASL_ERROR] kml::utils::histSubSamplingAndSaveToFile: ";
 
@@ -748,16 +748,21 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 	{
 		if( !buffer.empty() )
 		{
-			// Begin by finding the range of mean |hk*| if not given.
+			// Begin by finding the range of mean hk* if not given.
 			if( isnan( minHK ) || isnan( maxHK ) )
 			{
 				minHK = FLT_MAX;
-				maxHK = 0;
+				maxHK = -FLT_MAX;
 				for( const auto& sample : buffer )
 				{
-					minHK = MIN( minHK, ABS( sample[K_INPUT_SIZE - (P4EST_DIM - 1)] ) );
-					maxHK = MAX( maxHK, ABS( sample[K_INPUT_SIZE - (P4EST_DIM - 1)] ) );
+					FDEEP_FLOAT_TYPE hk = sample[K_INPUT_SIZE - (P4EST_DIM - 1)];
+					if( useAbsValues )
+						hk = ABS( hk );
+					minHK = MIN( minHK, hk );
+					maxHK = MAX( maxHK, hk );
 				}
+
+				CHKERRXX( PetscPrintf( mpi.comm(), "[/] Recomputed min and max signed hk values: [%f, %f]\n", minHK, maxHK ) );
 			}
 
 			minHK -= FLT_EPSILON;		// Some padding to the histogran end points.
@@ -765,13 +770,15 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 
 			// Build the histogram.
 			std::vector<FDEEP_FLOAT_TYPE> limits;										// Bin i specifies the semi-open interval [limits[i], limits[i+1]),
-			const FDEEP_FLOAT_TYPE dx = linspace( minHK, maxHK, nbins + 1, limits );	// except the end points, which extend numerically to -inf and +inf.
+			const FDEEP_FLOAT_TYPE dx = linspace( minHK, maxHK, nbins + 1, limits );	// except the end points, which extend a little bit to the left and right.
 
 			std::vector<std::vector<int>> bins( nbins, std::vector<int>() );	// Bins act like buckets holding sample indices.
 			std::vector<int>counts( nbins, 0 );									// Keeps track of how many samples lie in each bin.
 			for( int i = 0; i < buffer.size(); i++ )
 			{
-				FDEEP_FLOAT_TYPE hk = ABS( buffer[i][K_INPUT_SIZE - (P4EST_DIM - 1)] );	// Mean |hk*|
+				FDEEP_FLOAT_TYPE hk = buffer[i][K_INPUT_SIZE - (P4EST_DIM - 1)];				// Mean hk*
+				if( useAbsValues )
+					hk = ABS( hk );
 				int idx = (int)MAX( 0.0f, MIN( floor( (hk - minHK) / dx ), (FDEEP_FLOAT_TYPE)nbins - 1.0f ) );
 				if( !(hk >= limits[idx] && hk < limits[idx+1]) )				// Check that |hk| does fall in the range.
 				{
@@ -887,19 +894,21 @@ bool kml::utils::saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_
 							  int bufferSize[SAMPLE_TYPES], std::ofstream file[SAMPLE_TYPES], double trackedMinHK[SAMPLE_TYPES],
 							  double trackedMaxHK[SAMPLE_TYPES], const double& hkDist, const std::string fileName[SAMPLE_TYPES],
 							  const size_t& bufferMinSize, const u_short& nHistBins, const float& histMedianFrac, const float& histMinFold,
-							  const bool& force )
+							  const bool& force, const bool& useAbsValues )
 {
 	bool wroteSamples = false;
 	for( int i = 0; i < SAMPLE_TYPES; i++ )				// Do this for 0: non-saddle points and 1: saddle points.
 	{
 		if( bufferSize[i] > 0 && (force || bufferSize[i] >= bufferMinSize) )	// Check if it's time to save samples.
 		{
-			// Effective number of bins is proportional to the difference between tracked min and max mean |hk*|, but not less than 50 and more than nHistBins.
-			const u_short nBins = MAX( (u_short)50, MIN( (u_short)ceil(nHistBins * (trackedMaxHK[i] - trackedMinHK[i]) / hkDist), nHistBins ) );
+			// Effective number of bins is proportional to (twice if using sined values) the difference between tracked min and max mean
+			// |hk*|, but not less than 50 and more than nHistBins.
+			u_short nBins = (useAbsValues? 1 : 2 ) * (u_short)ceil(nHistBins * (trackedMaxHK[i] - trackedMinHK[i]) / hkDist);
+			nBins = MAX( (u_short)50, MIN( nBins, nHistBins ) );
 			int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer[i], file[i],
-																		 (FDEEP_FLOAT_TYPE) trackedMinHK[i],
-																		 (FDEEP_FLOAT_TYPE) trackedMaxHK[i],
-																		 nBins, histMedianFrac, histMinFold );
+																		 useAbsValues? (FDEEP_FLOAT_TYPE) trackedMinHK[i] : NAN,	// Find true hk limits
+																		 useAbsValues? (FDEEP_FLOAT_TYPE) trackedMaxHK[i] : NAN,	// if using signed vals.
+																		 nBins, histMedianFrac, histMinFold, useAbsValues );
 
 			CHKERRXX( PetscPrintf( mpi.comm(),
 								   "[*] Saved %d out of %d samples to %s, with |hk*| in the range of [%f, %f] using %i bins.\n",

@@ -52,7 +52,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: May 8, 2022.
+ * Updated: May 10, 2022.
  */
 namespace kml
 {
@@ -416,27 +416,29 @@ namespace kml
 
 		/**
 		 * Perform histogram-based subsampling by first splitting the data set into nbins intervals based on true mean
-		 * |hk*|.  Then, compute the median and subsample the intervals until the number of items in each bin is at most
+		 * hk*.  Then, compute the median and subsample the intervals until the number of items in each bin is at most
 		 * max(frac*median, minFold*minCount), where minFold >= 1 and minCount is the smallest number of samples in any
 		 * bin.  After that, save the remaining samples into a file.
 		 * @note Only rank 0 writes samples to a file, but all processes receive the total number of saved samples.
 		 * @param [in] mpi MPI environment.
 		 * @param [in] buffer Array of buffered (already normalized and augmented) samples.
 		 * @param [in,out] file File object.
-		 * @param [in] minHK Minimum mean |hk*| to consider for provided buffer; if not given, it'll be computed.
-		 * @param [in] maxHK Maximum mean |hk*| to consider for provided buffer; if not given, it'll be computed.
+		 * @param [in] minHK Minimum mean hk* to consider for provided buffer; if not given, it'll be computed.
+		 * @param [in] maxHK Maximum mean hk* to consider for provided buffer; if not given, it'll be computed.
 		 * @param [in] nbins Number of bins or intervals in the histogram.
 		 * @param [in] frac Fraction of the median to be used for subsampling.
 		 * @param [in] minFold Number of times to consider the count of the bin with the least samples.
+		 * @param [in] useAbsValues Whether to consider hk* absolute values instead of signed values.
 		 * @return Number of samples that made it to the input file after subsampling.
-		 * @throws invalid_argument and runtime_error if minHK >= maxHK, or if computing the histogram fails, or if frac
-		 * 		   is non-positive, or if minFold is less than 1, or if the number of bins is less than 10.
+		 * @throws invalid_argument if minHK >= maxHK, or if frac is non-positive, or if minFold < 1, or if number of
+		 * 		   bins is less than 10.
+		 * @throws runtime_error if computing the histogram fails.
 		 */
 		int histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 										  const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer,
 										  std::ofstream& file, FDEEP_FLOAT_TYPE minHK=NAN, FDEEP_FLOAT_TYPE maxHK=NAN,
 										  const unsigned short& nbins=100, const FDEEP_FLOAT_TYPE& frac=1,
-										  const FDEEP_FLOAT_TYPE& minFold=2 );
+										  const FDEEP_FLOAT_TYPE& minFold=2, const bool& useAbsValues=true );
 
 		/**
 		 * Compute an easing-off probability value based on a sinusoidal distribution in the domain [-pi/2, +pi/2].
@@ -481,19 +483,21 @@ namespace kml
 		 * @param [in,out] file Files where to write samples.
 		 * @param [in,out] trackedMinHK Currently tracked minimum true |hk*| for non-saddles and saddles.
 		 * @param [in,out] trackedMaxHK Currently tracked maximum true |hk*| for non-saddles and saddles.
-		 * @param [in] hkDist Distance between min and max |hk*| one would expect (i.e., 100).
+		 * @param [in] hkDist Distance between min and max |hk*| one would expect.
 		 * @param [in] fileName File names array.
 		 * @param [in] bufferMinSize Predefined minimum size to trigger file saving (same value for non-saddles and saddles).
 		 * @param [in] nHistBins Number of bins one would expect for histogram-based subsampling.
 		 * @param [in] histMedianFrac Median scaling factor for histogram-based subsampling.
 		 * @param [in] histMinFold Fold factor for minimum non-zero count in histogram-based subsampling.
 		 * @param [in] force Set it to true if you want to bypass the overflow condition (i.e., if there are samples left in the buffers).
+		 * @param [in] useAbsValues Whether to consider hk* absolute values instead of signed values for histogram-based subsampling.
 		 * @return true if wrote any type of samples, false otherwise.
 		 */
 		bool saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>> buffer[SAMPLE_TYPES], int bufferSize[SAMPLE_TYPES],
 						  std::ofstream file[SAMPLE_TYPES], double trackedMinHK[SAMPLE_TYPES], double trackedMaxHK[SAMPLE_TYPES],
 						  const double& hkDist, const std::string fileName[SAMPLE_TYPES], const size_t& bufferMinSize,
-						  const u_short& nHistBins, const float& histMedianFrac, const float& histMinFold, const bool& force );
+						  const u_short& nHistBins, const float& histMedianFrac, const float& histMinFold, const bool& force,
+						  const bool& useAbsValues=true );
 	}
 
 

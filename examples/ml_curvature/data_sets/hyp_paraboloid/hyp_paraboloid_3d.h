@@ -3,7 +3,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
- * Updated: May 7, 2022.
+ * Updated: May 10, 2022.
  */
 
 #ifndef ML_CURVATURE_HYP_PARABOLOID_3D_H
@@ -385,9 +385,13 @@ public:
 	 * @param [in] xyzMax Domain's maximum coordinates.
 	 * @param [out] trackedMinHK Minimum |hk*| detected across processes for this batch of samples (non-saddle idx 0, saddle idx 1).
 	 * @param [out] trackedMaxHK Maximum |hk*| detected across processes for this batch of samples (non-saddle idx 0, saddle idx 1).
+	 * @param [in,out] genP Random engine for ease-off subsampling.
 	 * @param [out] nonSaddleSamples Array of collected samples for non-saddle regions (i.e., ih2kg > nonSaddleMinH2KG).
 	 * @param [in] minHK Minimum expected |hk*| for non-saddle samples.
 	 * @param [out] saddleSamples Array of collected samples for saddle regions (i.e., ih2kg <= 0).
+	 * @param [in] easeOffMaxIH2KG Max value for ease-off distribution according to ih2kg.
+	 * @param [in] easeOffProbMaxIH2KG Probability associated with max value for ease-off distribution according to ih2kg.
+	 * @param [in] easeOffProbMinIH2KG Probability associated with min value (i.e., nonSaddleMinIH2KG) for ease-off distribution according to ih2kg.
 	 * @param [in] filter Vector with 1s for nodes we are allowed to sample from and anything else for non-sampling nodes.
 	 * @param [in] samR2 Overriding sampling sphere radius^2 on canonical space (to be used instead of limiting circle used for triangulation).
 	 * @param [in] nonSaddleMinIH2KG Min numerical dimensionless Gaussian curvature (at Gamma) for numerical non-saddle points.
@@ -398,9 +402,11 @@ public:
 	std::pair<double,double> collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
 											 const Vec& phi, const unsigned char octMaxRL, const double xyzMin[P4EST_DIM],
 											 const double xyzMax[P4EST_DIM], double trackedMinHK[SAMPLE_TYPES],
-											 double trackedMaxHK[SAMPLE_TYPES], std::vector<std::vector<double>>& nonSaddleSamples,
-											 const double& minHK, std::vector<std::vector<double>>& saddleSamples, Vec filter,
-											 double samR2=NAN, const double& nonSaddleMinIH2KG=-7e-6 ) const
+											 double trackedMaxHK[SAMPLE_TYPES], std::mt19937& genP,
+											 std::vector<std::vector<double>>& nonSaddleSamples, const double& minHK, 			// Non-saddle params.
+											 std::vector<std::vector<double>>& saddleSamples, const double& easeOffMaxIH2KG, 	// Saddle params.
+											 const double& easeOffProbMaxIH2KG, const double& easeOffProbMinIH2KG,
+											 Vec filter, double samR2=NAN, const double& nonSaddleMinIH2KG=-7e-6 ) const
 	{
 		std::string errorPrefix = _errorPrefix + "collectSamples: ";
 		if( !_useCache || _cache.empty() || _canonicalCoordsCache.empty() )
@@ -451,6 +457,7 @@ public:
 		my_p4est_interpolation_nodes_t kappaMGInterp( ngbd );
 		kappaMGInterp.set_input( kappaMG, interpolation_method::linear, 2 );
 
+		std::uniform_real_distribution<double> pDistribution;
 		trackedMinHK[0] = DBL_MAX, trackedMinHK[1] = DBL_MAX, trackedMaxHK[0] = 0, trackedMaxHK[1] = 0;	// Track the min and max mean |hk*|
 		double trackedMaxHKError = 0;																	// and Gaussian curvature errors.
 		double trackedMaxH2KGError = 0;
@@ -514,7 +521,18 @@ public:
 					isNonSaddle = true;							// Flag point as non-saddle.
 				}
 				else
+				{
+					double prob = kml::utils::easingOffProbability( ABS( ih2kgVal ), nonSaddleMinIH2KG, easeOffProbMinIH2KG,
+																	easeOffMaxIH2KG, easeOffProbMaxIH2KG );
+					if( pDistribution( genP ) > prob )
+						continue;								// Use an easing-off prob to keep samples.
+
+					prob = kml::utils::easingOffProbability( ABS(hk - ihkVal), 0, 1e-3, 1e-2, 1 );
+					if( pDistribution( genP ) > prob )
+						continue;
+
 					isNonSaddle = false;
+				}
 
 				// Up to this point, we got a good sample.  Populate its features.
 				std::vector<double> *sample;					// Points to new sample in the appropriate array.
@@ -560,8 +578,17 @@ public:
 
 				trackedMaxHKError = MAX( trackedMaxHKError, errorHK );
 				trackedMaxH2KGError = MAX( trackedMaxH2KGError, errorH2KG );
+
+				// Saddle samples are biased towards negative mean hk.  Let's level up the situation by flipping randomly some of them.
+//				if( !isNonSaddle && hk < 0 && pDistribution( genP ) <= 0.125 )
+//					kml::utils::normalizeToNegativeCurvature( *sample, -hk, true );		// Note the -hk to force sign flipping.
 			}
-			catch( std::runtime_error &rt ) {}
+			catch( std::runtime_error &rt )
+			{
+#ifdef DEBUG
+				std::cerr << rt.what() << std::endl;
+#endif
+			}
 			catch( std::invalid_argument &ia )
 			{
 				throw std::runtime_error( ia.what() );			// Raise again the exception for critical errors.

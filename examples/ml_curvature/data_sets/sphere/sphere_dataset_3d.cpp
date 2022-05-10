@@ -17,7 +17,7 @@
  *
  * Developer: Luis Ángel.
  * Created: March 31, 2022.
- * Updated: May 8, 2022.
+ * Updated: May 10, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -55,8 +55,11 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<bool>     flipSignRandomly( pl,  true, "flipSignRandomly"		, "Whether to generate convex and concave samples by 'flipping "
-																			  "a coin' (default: true)" );
+	param_t<bool>     flipSignRandomly( pl, false, "flipSignRandomly"		, "Whether to generate convex and concave samples by 'flipping "
+																			  "a coin' (default: false)" );
+	param_t<bool>        useNegCurvNorm( pl, true, "useNegCurvNorm"	 		, "Whether to apply negative-mean-curvature normalization for "
+																		   	  "non-saddle samples if flipSignRandomly is false "
+																			  "(default: true)" );
 	param_t<double>              minHK( pl, 0.004, "minHK"					, "Min dimensionless mean curvature for non-saddle points "
 																			  "(default: 0.004)" );
 	param_t<double>              maxHK( pl,  2./3, "maxHK"					, "Max dimensionless mean curvature (default: 2/3)" );
@@ -227,8 +230,10 @@ int main ( int argc, char* argv[] )
 			std::vector<std::vector<double>> samples;
 			collectSamples( R, h, mpi, p4est, nodes, ngbd, phi, octreeMaxRL, xyz_min, xyz_max, samples, flipSignRandomly(), genSign );
 
+			// Don't neg-curvature normalize if you're flipping signs randomly!  If not perturbing signs, apply neg-curvature normalization
+			// only if requested.
 			double maxErrors[2];
-			int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, 0 );	// Don't neg-curvature normalize!  We already did so for each sample randomly.
+			int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, flipSignRandomly()? 0 : (useNegCurvNorm()? 1 : 0) );
 			int savedSamples = saveSamples( mpi, buffer, bufferSize, file, numSamplesPerSphere(), gen, maxErrors[0], maxErrors[1] );
 			nSamples += savedSamples;
 
