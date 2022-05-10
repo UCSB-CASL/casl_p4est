@@ -4,7 +4,7 @@
  * run the program with the -help flag to see the available options
  *
  * Author: Raphael Egan, with updates by Luis Ángel.
- * Updated: April 27, 2022.
+ * Updated: May 10, 2022.
  */
 
 // System
@@ -196,6 +196,7 @@ struct simulation_setup
   // exportation
   const std::string export_dir;
   const bool save_vtk;
+  const bool minimal_vtk;
   const bool save_ratios;
   const bool save_timing;
   double vtk_dt;
@@ -232,6 +233,7 @@ struct simulation_setup
     Reynolds((cmd.contains("Re_tau") ? cmd.get<double>("Re_tau") : (cmd.contains("Re_b") ? cmd.get<double>("Re_b") : NAN))),
     export_dir(cmd.get<std::string>("export_folder", default_export_dir)),
     save_vtk(cmd.contains("save_vtk")),
+	minimal_vtk(cmd.contains("minimal_vtk")),
 	save_ratios(cmd.contains("save_ratios")),
     save_timing(cmd.contains("timing")),
     save_drag(cmd.contains("save_drag")),
@@ -253,6 +255,12 @@ struct simulation_setup
       if (vtk_dt <= 0.0 && !do_accuracy_check)
         throw std::invalid_argument("simulation_setup::simulation_setup(): the value of vtk_dt must be strictly positive.");
     }
+
+	if(minimal_vtk)
+	{
+	  if(!cmd.contains("save_vtk"))
+		throw std::runtime_error("simulation_setup::simulation_setup(): the argument save_vtk MUST be provided if minimal vtk exportations are desired.");
+	}
 
 	ratios_dt = -1;
 	if( save_ratios )
@@ -1451,7 +1459,10 @@ bool monitor_simulation(const simulation_setup &setup, const mass_flow_controlle
     if (setup.save_vtk)
     {
       const std::string vtk_name = setup.vtk_path + "/snapshot_" + std::to_string(setup.export_vtk + 1);
-      ns->save_vtk(vtk_name.c_str());
+	  if(!setup.minimal_vtk)
+      	ns->save_vtk(vtk_name.c_str());
+	  else
+		ns->save_vtk(vtk_name.c_str(), false, 1, 1, false);
     }
 
 	if( setup.save_ratios  )
@@ -1550,6 +1561,7 @@ int main (int argc, char* argv[])
   cmd.add_option("export_folder",       "exportation folder (monitoring and drag files in there, velocity profiles, vtk and backup files in subfolder), will be created if inexistent;\n\t default is " + default_export_dir);
   cmd.add_option("save_vtk",            "activates exportation of results in vtk format");
   cmd.add_option("vtk_dt",              "export vtk files every vtk_dt time lapse (REQUIRED if save_vtk is activated)");
+  cmd.add_option("minimal_vtk",			"don't include lambada-2, Q, phi, and leaf level in the vtk exportations (requires save_vtk to be provided)");
   cmd.add_option("save_ratios",			"activates exportation of ratios dx/u, dy/v[, dz/w]");
   cmd.add_option("ratios_dt",			"export ratios files every ratios_dt time lapse (REQUIRED if save_ratios is activated)");
   cmd.add_option("save_drag",           "activates exportation of the total drag, non-dimensionalized by 2.0*rho*U_b^2*length (*width) (--> estimate of (Re_tau/Re_b)^2 at steady state)");
@@ -1683,7 +1695,10 @@ int main (int argc, char* argv[])
     {
       setup.update_export_vtk();
       const std::string vtk_name = setup.vtk_path + "/snapshot_" + std::to_string(setup.export_vtk);
-      ns->save_vtk(vtk_name.c_str(), true, channel.mean_u(flow_controller->read_latest_mass_flow(), ns->get_rho()), channel.height()*0.5);
+	  if(!setup.minimal_vtk)
+      	ns->save_vtk(vtk_name.c_str(), true, channel.mean_u(flow_controller->read_latest_mass_flow(), ns->get_rho()), channel.height()*0.5);
+	  else
+		ns->save_vtk(vtk_name.c_str(), false, 1, 1, false);
     }
 
 	if( setup.time_to_save_ratios() )
