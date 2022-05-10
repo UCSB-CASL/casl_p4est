@@ -2538,7 +2538,8 @@ void my_p4est_navier_stokes_t::compute_forces(double *f)
   return;
 }
 
-void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda_2_value, const double U_scaling_for_Q_and_lambda_2, const double x_scaling_for_Q_and_lambda_2)
+void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda_2_value, const double& U_scaling_for_Q_and_lambda_2,
+										const double& x_scaling_for_Q_and_lambda_2, const bool& with_phi_and_leaf_level)
 {
   PetscErrorCode ierr;
 
@@ -2546,10 +2547,10 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda
   const double *vn_p[P4EST_DIM];
   const double *hodge_p;
 
-  Vec Q_value_nodes               = NULL;
-  Vec lambda_2_nodes              = NULL;
-  const double *Q_value_nodes_p   = NULL;
-  const double *lambda_2_nodes_p  = NULL;
+  Vec Q_value_nodes               = nullptr;
+  Vec lambda_2_nodes              = nullptr;
+  const double *Q_value_nodes_p   = nullptr;
+  const double *lambda_2_nodes_p  = nullptr;
   if(with_Q_and_lambda_2_value)
   {
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &Q_value_nodes); CHKERRXX(ierr);
@@ -2622,80 +2623,150 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda
     l_p[p4est_n->local_num_quadrants + q] = p4est_quadrant_array_index(&ghost_n->ghosts, q)->level;
 
   const double *smoke_p;
-  if(smoke != NULL)
+  if(smoke != nullptr)
   {
     ierr = VecGetArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
 
     if(with_Q_and_lambda_2_value)
-      my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
-                                     P4EST_TRUE, P4EST_TRUE,
-                                     6, /* number of VTK_NODE_SCALAR */
-                                     1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
-                                     0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
-                                     1, /* number of VTK_CELL_SCALAR */
-                                     0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
-                                     0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
-                                     name,
-                                     VTK_NODE_SCALAR, "phi", phi_p,
-                                     VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
-                                     VTK_NODE_SCALAR, "smoke", smoke_p,
-                                     VTK_NODE_SCALAR, "vorticity", vort_p,
-                                     VTK_NODE_SCALAR, "Q-value", Q_value_nodes_p,
-                                     VTK_NODE_SCALAR, "lambda_2", lambda_2_nodes_p,
-                                     VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM(vn_p[0], vn_p[1], vn_p[2]),
-          VTK_CELL_SCALAR, "leaf_level", l_p );
+	{
+	  if(with_phi_and_leaf_level)
+		my_p4est_vtk_write_all_general( p4est_n, nodes_n, ghost_n,
+										P4EST_TRUE, P4EST_TRUE,
+										6, /* number of VTK_NODE_SCALAR */
+										1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+										1, /* number of VTK_CELL_SCALAR */
+										0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+										name,
+										VTK_NODE_SCALAR, "phi", phi_p,
+										VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
+										VTK_NODE_SCALAR, "smoke", smoke_p,
+										VTK_NODE_SCALAR, "vorticity", vort_p,
+										VTK_NODE_SCALAR, "Q-value", Q_value_nodes_p,
+										VTK_NODE_SCALAR, "lambda_2", lambda_2_nodes_p,
+										VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM( vn_p[0], vn_p[1], vn_p[2] ),
+										VTK_CELL_SCALAR, "leaf_level", l_p );
+	  else
+		my_p4est_vtk_write_all_general( p4est_n, nodes_n, ghost_n,
+										P4EST_TRUE, P4EST_TRUE,
+										5, /* number of VTK_NODE_SCALAR */
+										1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+										0, /* number of VTK_CELL_SCALAR */
+										0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+										name,
+										VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
+										VTK_NODE_SCALAR, "smoke", smoke_p,
+										VTK_NODE_SCALAR, "vorticity", vort_p,
+										VTK_NODE_SCALAR, "Q-value", Q_value_nodes_p,
+										VTK_NODE_SCALAR, "lambda_2", lambda_2_nodes_p,
+										VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM( vn_p[0], vn_p[1], vn_p[2] ) );
+	}
     else
-      my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
-                                     P4EST_TRUE, P4EST_TRUE,
-                                     4, /* number of VTK_NODE_SCALAR */
-                                     1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
-                                     0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
-                                     1, /* number of VTK_CELL_SCALAR */
-                                     0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
-                                     0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
-                                     name,
-                                     VTK_NODE_SCALAR, "phi", phi_p,
-                                     VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
-                                     VTK_NODE_SCALAR, "smoke", smoke_p,
-                                     VTK_NODE_SCALAR, "vorticity", vort_p,
-                                     VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM(vn_p[0], vn_p[1], vn_p[2]),
-          VTK_CELL_DATA, "leaf_level", l_p);
+	{
+	  if(with_phi_and_leaf_level)
+		my_p4est_vtk_write_all_general( p4est_n, nodes_n, ghost_n,
+										P4EST_TRUE, P4EST_TRUE,
+										4, /* number of VTK_NODE_SCALAR */
+										1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+										1, /* number of VTK_CELL_SCALAR */
+										0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+										name,
+										VTK_NODE_SCALAR, "phi", phi_p,
+										VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
+										VTK_NODE_SCALAR, "smoke", smoke_p,
+										VTK_NODE_SCALAR, "vorticity", vort_p,
+										VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM( vn_p[0], vn_p[1], vn_p[2] ),
+										VTK_CELL_DATA, "leaf_level", l_p );
+	  else
+		my_p4est_vtk_write_all_general( p4est_n, nodes_n, ghost_n,
+										P4EST_TRUE, P4EST_TRUE,
+										3, /* number of VTK_NODE_SCALAR */
+										1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+										0, /* number of VTK_CELL_SCALAR */
+										0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+										name,
+										VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
+										VTK_NODE_SCALAR, "smoke", smoke_p,
+										VTK_NODE_SCALAR, "vorticity", vort_p,
+										VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM( vn_p[0], vn_p[1], vn_p[2] ) );
+	}
     ierr = VecRestoreArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
   }
   else
   {
     if(with_Q_and_lambda_2_value)
-      my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
-                                     P4EST_TRUE, P4EST_TRUE,
-                                     5, /* number of VTK_NODE_SCALAR */
-                                     1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
-                                     0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
-                                     1, /* number of VTK_CELL_SCALAR */
-                                     0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
-                                     0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
-                                     name,
-                                     VTK_NODE_SCALAR, "phi", phi_p,
-                                     VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
-                                     VTK_NODE_SCALAR, "vorticity", vort_p,
-                                     VTK_NODE_SCALAR, "Q-value", Q_value_nodes_p,
-                                     VTK_NODE_SCALAR, "lambda_2", lambda_2_nodes_p,
-                                     VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM(vn_p[0], vn_p[1], vn_p[2]),
-          VTK_CELL_DATA, "leaf_level", l_p);
+	{
+	  if(with_phi_and_leaf_level)
+		my_p4est_vtk_write_all_general( p4est_n, nodes_n, ghost_n,
+										P4EST_TRUE, P4EST_TRUE,
+										5, /* number of VTK_NODE_SCALAR */
+										1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+										1, /* number of VTK_CELL_SCALAR */
+										0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+										name,
+										VTK_NODE_SCALAR, "phi", phi_p,
+										VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
+										VTK_NODE_SCALAR, "vorticity", vort_p,
+										VTK_NODE_SCALAR, "Q-value", Q_value_nodes_p,
+										VTK_NODE_SCALAR, "lambda_2", lambda_2_nodes_p,
+										VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM( vn_p[0], vn_p[1], vn_p[2] ),
+										VTK_CELL_DATA, "leaf_level", l_p );
+	  else
+		my_p4est_vtk_write_all_general( p4est_n, nodes_n, ghost_n,
+										P4EST_TRUE, P4EST_TRUE,
+										4, /* number of VTK_NODE_SCALAR */
+										1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+										0, /* number of VTK_CELL_SCALAR */
+										0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+										name,
+										VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
+										VTK_NODE_SCALAR, "vorticity", vort_p,
+										VTK_NODE_SCALAR, "Q-value", Q_value_nodes_p,
+										VTK_NODE_SCALAR, "lambda_2", lambda_2_nodes_p,
+										VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM( vn_p[0], vn_p[1], vn_p[2] ) );
+	}
     else
-      my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
-                                     P4EST_TRUE, P4EST_TRUE,
-                                     3, /* number of VTK_NODE_SCALAR */
-                                     1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
-                                     0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
-                                     1, /* number of VTK_CELL_SCALAR */
-                                     0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
-                                     0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
-                                     name,
-                                     VTK_NODE_SCALAR, "phi", phi_p,
-                                     VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
-                                     VTK_NODE_SCALAR, "vorticity", vort_p,
-                                     VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM(vn_p[0], vn_p[1], vn_p[2]),
-          VTK_CELL_DATA, "leaf_level", l_p);
+	{
+	  if(with_phi_and_leaf_level)
+		my_p4est_vtk_write_all_general( p4est_n, nodes_n, ghost_n,
+										P4EST_TRUE, P4EST_TRUE,
+										3, /* number of VTK_NODE_SCALAR */
+										1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+										1, /* number of VTK_CELL_SCALAR */
+										0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+										name,
+										VTK_NODE_SCALAR, "phi", phi_p,
+										VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
+										VTK_NODE_SCALAR, "vorticity", vort_p,
+										VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM( vn_p[0], vn_p[1], vn_p[2] ),
+										VTK_CELL_DATA, "leaf_level", l_p );
+	  else
+		my_p4est_vtk_write_all_general( p4est_n, nodes_n, ghost_n,
+										P4EST_TRUE, P4EST_TRUE,
+										2, /* number of VTK_NODE_SCALAR */
+										1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+										0, /* number of VTK_CELL_SCALAR */
+										0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+										0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+										name,
+										VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
+										VTK_NODE_SCALAR, "vorticity", vort_p,
+										VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM( vn_p[0], vn_p[1], vn_p[2] ) );
+	}
   }
 
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);

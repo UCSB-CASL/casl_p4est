@@ -757,7 +757,8 @@ public:
 
   void compute_forces(double *f);
 
-  void save_vtk(const char* name, bool with_Q_and_lambda_2_value = false, const double U_scaling_for_Q_and_lambda_2 = 1.0, const double x_scaling_for_Q_and_lambda_2 = 1.0);
+  void save_vtk(const char* name, bool with_Q_and_lambda_2_value = false, const double& U_scaling_for_Q_and_lambda_2=1.0,
+				const double& x_scaling_for_Q_and_lambda_2=1.0, const bool& with_phi_and_leaf_level=true);
 
   /*!
    * \brief calculates the mass flow through a slice in Cartesian direction in the computational domain. The slice must coincide with
