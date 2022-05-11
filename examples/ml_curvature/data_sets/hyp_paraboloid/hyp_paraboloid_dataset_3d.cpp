@@ -20,8 +20,10 @@
  * @note Here and across related files to machine-learning computation of mean curvature use the geometrical definition of mean curvature;
  * that is, H = 0.5(k1 + k2), where k1 and k2 are principal curvatures.
  *
+ * @note Although we collect non-saddle samples, we won't use them since the purpose is to generate samples for saddle regions.
+ *
  * Developer: Luis Ángel.
- * Created: May 10, 2022.
+ * Created: May 11, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -69,8 +71,8 @@ int main ( int argc, char* argv[] )
 																	   	   " (default: 10)" );
 	param_t<u_int>          randomState( pl,    11, "randomState"	 	 , "Seed for random perturbations of canonical frame (default: 11)" );
 	param_t<std::string>         outDir( pl,   ".", "outDir"		 	 , "Path where files will be written to (default: build folder)" );
-	param_t<size_t>       bufferMinSize( pl,   1e5, "bufferMinSize"	 	 , "Buffer minimum overflow size to trigger histogram-based "
-																	   	   "subsampling and storage (default: 100K)" );
+	param_t<size_t>       bufferMinSize( pl,   3e4, "bufferMinSize"	 	 , "Buffer minimum overflow size to trigger histogram-based "
+																	   	   "subsampling and storage (default: 30K)" );
 	param_t<double>     easeOffMaxIH2KG( pl,  1e-2, "easeOffMaxIH2KG"	 , "Easing-off upper bound for |ih2kg| for subsampling saddle "
 																		   "samples (default: 1e-2)" );
 	param_t<double> easeOffProbMaxIH2KG( pl,   1.0, "easeOffProbMaxIH2KG", "Easing-off prob for |ih2kg| upper bound for subsampling saddle "
@@ -80,9 +82,11 @@ int main ( int argc, char* argv[] )
 	param_t<float>       histMedianFrac( pl,  2./3, "histMedianFrac"	 , "Post-histogram subsampling median fraction (default: 2/3)" );
 	param_t<float>          histMinFold( pl,  1.25, "histMinFold"		 , "Post-histogram subsampling min count fold (default: 1.25)" );
 	param_t<u_short>          nHistBins( pl,   100, "nHistBins"		 	 , "Max number of bins in |hk*| histogram (default: 100)" );
-	param_t<u_short>      numMaxHKSteps( pl,   100, "numMaxHKSteps" 	 , "Number of steps to vary target max |hk| (default: 100)" );
+	param_t<u_short>      numMaxHKSteps( pl,   150, "numMaxHKSteps" 	 , "Number of steps to vary target max |hk| (default: 150)" );
 	param_t<u_short>        numABRatios( pl,     6, "numABRatios"		 , "Min number of random a/b (for r>0) or b/a (for r<0) ratios in "
-																	   	   "[1, 10] or [-10, -1) for each max |hk| value (default: 3)" );
+																	   	   "[1, 10] or [-10, -1) for each max |hk| value (default: 6)" );
+	param_t<u_short>      startMaxHKIdx( pl,     0, "startMaxHKIdx"		 , "Start index for max |hk| (helpful for restarting) (default: 0)" );
+	param_t<u_short>    startABRatioIdx( pl,     0, "startABRatioIdx"	 , "Start index for a:b ratio (helpful for restarting) (default: 0)" );
 	param_t<u_short>       numRotations( pl,    10, "numRotations"	 	 , "Number of rotations around random axes and by random angles for"
 																	   	   " each ratio (default: 10)" );
 	param_t<bool>        useNegCurvNorm( pl,  true, "useNegCurvNorm"	 , "Whether to apply negative-mean-curvature normalization for non-"
@@ -121,6 +125,9 @@ int main ( int argc, char* argv[] )
 		if( numMaxHKSteps() < 2 )
 			throw std::invalid_argument( "[CASL_ERROR] You must ask for at least two different values of max |hk|." );
 
+		if( startMaxHKIdx() >= numMaxHKSteps() )
+			throw std::invalid_argument( "[CASL_ERROR] Start index for max hk must be smaller than " + std::to_string( numMaxHKSteps() ) + "." );
+
 		if( numABRatios() < 2 )
 			throw std::invalid_argument( "[CASL_ERROR] You must ask for at least two different ratios a/b or b/a." );
 
@@ -158,7 +165,7 @@ int main ( int argc, char* argv[] )
 		std::ofstream file[SAMPLE_TYPES];
 		std::string fileName[SAMPLE_TYPES] = {"non_saddle_hyp_paraboloid.csv", "saddle_hyp_paraboloid.csv"};
 		for( int i = 0; i < SAMPLE_TYPES; i++ )
-			kml::utils::prepareSamplesFile( mpi, DATA_PATH, fileName[i], file[i] );
+			kml::utils::prepareSamplesFile( mpi, DATA_PATH, fileName[i], file[i], startMaxHKIdx() > 0 || startABRatioIdx() > 0 );
 
 		std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer[SAMPLE_TYPES];	// Buffer of accumulated (normalized and augmented) samples for
 																			// non-saddle (0) and saddle (1) points.
@@ -177,20 +184,27 @@ int main ( int argc, char* argv[] )
 
 		printLogHeader( mpi );
 
-		int hkIdx = -1;
-		for( const auto& maxHKVal : linspaceMaxHK )
+		for( int hkIdx = startMaxHKIdx(); hkIdx < numMaxHKSteps(); hkIdx++ )
 		{
-			hkIdx++;
+			const double maxHKVal = linspaceMaxHK[hkIdx];
 			std::vector<double> ratios;
 			int numRatios = (int)round( numABRatios() * (1 + hkIdx / (double)(numMaxHKSteps() - 1)) );
 			randomizeRatios( mpi, minABRatio(), maxABRatio(), numRatios, ratios, gen );
 
-			int rIdx = -1;
-			for( const auto& ratio : ratios )				// Process every ratio for current max |hk|
+			int rIdx = 0;
+			if( hkIdx == startMaxHKIdx() )					// Load restart index for a:b ratio just once, and check it's valid.
 			{
+				if( startABRatioIdx() >= numRatios )
+					throw std::runtime_error( "[CASL_ERROR] Requested a:b start index must be smaller than " + std::to_string( numRatios ) +
+											  " for start hk index " + std::to_string( startMaxHKIdx() ) );
+				rIdx = startABRatioIdx();
+			}
+
+			for( ; rIdx < numRatios; rIdx++ )				// Process every ratio for current max |hk|
+			{
+				const double ratio = ratios[rIdx];
 				const double MAX_K = maxHKVal / h;
 				double A, B, samRadius;
-				rIdx++;
 
 				try 										// Not all |ratios| between 1 and 3 are possible because the critical points may
 				{											// be too close (at a distance less than 1.5h on the uv plane).  Skeep those.
@@ -336,8 +350,9 @@ int main ( int argc, char* argv[] )
 				}
 
 				// Logging stats.
-				CHKERRXX( PetscPrintf( mpi.comm(), "[  %03i] %8.6f  ( %03i) %+8.6f  %10.6f  %12.6f  %7i  %9.2f\n", hkIdx, maxHKVal, rIdx,
-									   ratio, maxHKError, maxIH2KGError, loggedSamples[0]+loggedSamples[1], watch.get_duration_current() ) );
+				CHKERRXX( PetscPrintf( mpi.comm(), "[  %03i] %8.6f  ( %03i) %+8.6f  %10.6f  %12.6f  %7i  %9.2f  %6.2f%% | %6.2f%%\n", hkIdx,
+									   maxHKVal, rIdx, ratio, maxHKError, maxIH2KGError, loggedSamples[0]+loggedSamples[1],
+									   watch.get_duration_current(), (100.*bufferSize[0])/bufferMinSize(), (100.*bufferSize[1])/bufferMinSize() ) );
 
 				// Save samples if it's time.  Don't use abs hk* values for histogram-based subsampling.
 				if( kml::utils::saveSamples( mpi, buffer, bufferSize, file, trackedMinHK, trackedMaxHK, ABS( maxHK() - minHK() ), fileName,
@@ -371,8 +386,8 @@ int main ( int argc, char* argv[] )
  */
 void printLogHeader( const mpi_environment_t& mpi )
 {
-	CHKERRXX( PetscPrintf( mpi.comm(), "________________________________________________________________________________\n") );
-	CHKERRXX( PetscPrintf( mpi.comm(), "[hkIdx] hk_max    (rIdx) ratio      hk_max_err  h2kg_max_err  samples  time     \n" ) );
+	CHKERRXX( PetscPrintf( mpi.comm(), "___________________________________________________________________________________________________\n") );
+	CHKERRXX( PetscPrintf( mpi.comm(), "[hkIdx] hk_max    (rIdx) ratio      hk_max_err  h2kg_max_err  samples  time       buffers_status   \n" ) );
 }
 
 /**

@@ -52,7 +52,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: May 10, 2022.
+ * Updated: May 11, 2022.
  */
 namespace kml
 {
@@ -355,10 +355,13 @@ namespace kml
 		 * @param [in] directory Where to place samples' file.  If it doesn't exist, it'll be created by rank 0 only.
 		 * @param [in] fileName File name such that the full path is 'directory/fileName'.
 		 * @param [in,out] file File object.
+		 * @param [in] append Whether we want to append to an existing file.  If file exists and append=true, we
+		 * 			   don't add the header.  If append=true but file doesn't exist, then we add the header.  If
+		 * 			   append=false, we (re)create the file with a header.
 		 * @throws runtime_error if directory can't be accessed or file can't be opened.
 		 */
 		void prepareSamplesFile( const mpi_environment_t& mpi, const std::string& directory,
-								 const std::string& fileName, std::ofstream& file );
+								 const std::string& fileName, std::ofstream& file, const bool& append=false );
 
 		/**
 		 * Save buffered samples to a file.
@@ -388,7 +391,8 @@ namespace kml
 		 * 			   individually AND to prevent changing the sign of hk and ihk.  This is useful to create data
 		 * 			   sets for offline evaluation that contain all learning data set columns but with hk, ihk,
 		 * 			   h2kg, and ih2kg preserving their original signs.
-		 * @param [in] nonSaddleMinIH2KG Lower bound on interpolated ih2kg to classify sample as a non-saddle.
+		 * @param [in] nonSaddleMinIH2KG Lower bound on interpolated ih2kg to classify sample as a non-saddle if
+		 * 			   using negMeanKNormalize=2.
 		 * @return Number of samples collected from all processes.
 		 * @throws invalid_argument if user chooses an invalid option for negative-curvature normalization.
 		 */

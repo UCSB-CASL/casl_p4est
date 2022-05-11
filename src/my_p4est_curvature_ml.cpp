@@ -540,7 +540,7 @@ void kml::utils::normalizeToNegativeCurvature( std::vector<double>& stencil, con
 
 
 void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::string& directory,
-									 const std::string& fileName, std::ofstream& file )
+									 const std::string& fileName, std::ofstream& file, const bool& append )
 {
 	std::string errorPrefix = "[CASL_ERROR] kml::utils::prepareSamplesFile: ";
 	std::string fullFileName = directory + "/" + fileName;
@@ -553,19 +553,43 @@ void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::st
 		const int NUM_COLUMNS = K_INPUT_SIZE_LEARN;					// We need to include the true curvatures too.
 		std::string COLUMN_NAMES[NUM_COLUMNS];						// Headers follow the xy[z] truth table of 3-state
 		kml::utils::generateColumnHeaders( COLUMN_NAMES, true );	// variables: phi + normal + hk + ihk + hkg + ihkg.
-		file.open( fullFileName, std::ofstream::trunc );
+
+		bool addHeader = false;
+		if( append )
+		{
+			if( file_exists( fullFileName ) )
+				file.open( fullFileName, std::ofstream::app );
+			else
+			{
+				file.open( fullFileName, std::ofstream::trunc );
+				addHeader = true;
+			}
+		}
+		else
+		{
+			file.open( fullFileName, std::ofstream::trunc );
+			addHeader = true;
+		}
+
 		if( !file.is_open() )
 			throw std::runtime_error( errorPrefix + "Output file " + fullFileName + " couldn't be opened!" );
 
-		std::ostringstream headerStream;					// Write column headers: enforcing strings by adding quotes.
-		for( int i = 0; i < NUM_COLUMNS - 1; i++ )
-			headerStream << "\"" << COLUMN_NAMES[i] << "\",";
-		headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
-		file << headerStream.str() << std::endl;
+		if( addHeader )
+		{
+			std::ostringstream headerStream;				// Write column headers: enforcing strings by adding quotes.
+			for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+				headerStream << "\"" << COLUMN_NAMES[i] << "\",";
+			headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
+			file << headerStream.str() << std::endl;
+		}
 		file.precision( 8 );								// Write data to preserve single precision.
+
+		if( addHeader )
+			CHKERRXX( PetscPrintf( mpi.comm(), "Rank %d successfully created samples file '%s'\n", mpi.rank(), fullFileName.c_str() ) );
+		else
+			CHKERRXX( PetscPrintf( mpi.comm(), "Rank %d successfully reopened samples file '%s' for appending\n", mpi.rank(), fullFileName.c_str() ) );
 	}
 
-	CHKERRXX( PetscPrintf( mpi.comm(), "Rank %d successfully created samples file '%s'\n", mpi.rank(), fullFileName.c_str() ) );
 	SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );				// Wait here until rank 0 is done.
 }
 
