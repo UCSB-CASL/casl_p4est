@@ -26,7 +26,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
- * Updated: May 8, 2022.
+ * Updated: May 14, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -243,9 +243,9 @@ int main ( int argc, char* argv[] )
 		std::vector<std::vector<double>> samples;
 		double trackedMaxErrors[P4EST_DIM];
 		int nNumericalSaddles;
-		pLS->collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMaxErrors, trackedMinHK, trackedMaxHK, samples,
-							 nNumericalSaddles, exactFlag, sampledFlag, hkError, ihk, h2kgError, ih2kg, phiError,
-							 SQR(samRadius), SQR(samRadius), nonSaddleMinIH2KG() );
+		pLS->SignedDistanceLevelSet::collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, trackedMaxErrors, trackedMinHK,
+													 trackedMaxHK, samples, nNumericalSaddles, exactFlag, sampledFlag, hkError, ihk,
+													 h2kgError, ih2kg, phiError, SQR(samRadius), SQR(samRadius), nonSaddleMinIH2KG() );
 		pLS->clearCache();
 		pLS->toggleCache( false );
 		delete pLS;
