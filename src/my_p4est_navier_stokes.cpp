@@ -10,6 +10,8 @@
 #include <p8est_extended.h>
 #include <p8est_algorithms.h>
 #include "my_p8est_navier_stokes.h"
+#include "my_p4est_navier_stokes.h"
+
 #else
 #include <src/my_p4est_poisson_cells.h>
 #include <src/my_p4est_poisson_faces.h>
@@ -464,6 +466,8 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
 
   delete faces_n;
   delete ngbd_c;
+
+  _nodalRunningStatisticsMap.clear();
 
   my_p4est_brick_destroy(conn, brick);
 }
@@ -4157,3 +4161,212 @@ int my_p4est_navier_stokes_t::get_dxyz_uvw_ratios( const u_char& direction, std:
 	SC_CHECK_MPI( MPI_Bcast( &allRankTotalSamples, 1, MPI_INT, 0, p4est_n->mpicomm ) );				// Acts as an MPI_Barrier, too.
 	return allRankTotalSamples;
 }
+
+#ifdef P4_TO_P8
+
+void my_p4est_navier_stokes_t::init_nodal_running_statistics()
+{
+	_nodalRunningStatisticsMap.clear();
+	_nodalRunningStatisticsMap.reserve( nodes_n->num_owned_indeps );	// Here, we work only with local nodes.
+
+	int initialized = 0;
+	foreach_local_node( n, nodes_n )
+	{
+		double xyz[P4EST_DIM];
+		node_xyz_fr_n( n, p4est_n, nodes_n, xyz );						// Determine first the key for nodal entry: "i,j,k", where i = x/dx,
+		std::string discreteCoords = get_discrete_coords( xyz );		// j = y/dy, and k = z/dz.
+		auto record = _nodalRunningStatisticsMap.find( discreteCoords );
+		if( record != _nodalRunningStatisticsMap.end() )
+			throw std::runtime_error( "my_p4est_navier_stokes_t::init_nodal_running_statistics: Unexpected key collision!" );
+		_nodalRunningStatisticsMap[discreteCoords] = RunningStatistics{0, 0, 0, 0, 0, 0, 0, 0};
+		initialized++;
+	}
+
+	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &initialized, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Initialized running statistics for %i nodes across the forest.\n", initialized ) );
+}
+
+void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
+{
+	const std::string errorPrefix = "my_p4est_navier_stokes_t::accumulate_nodal_running_statistics: ";
+	if( _nodalRunningStatisticsMap.empty() )
+		throw std::runtime_error( errorPrefix + "The statistic hash map cannot be empty!" );
+
+	const double *velReadPtr[P4EST_DIM];
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+		CHKERRXX( VecGetArrayRead( vnp1_nodes[dir], &velReadPtr[dir]) );
+
+	const double *vortReadPtr;
+	CHKERRXX( VecGetArrayRead( vorticity, &vortReadPtr ) );
+
+	Vec nodalPressure;
+	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &nodalPressure ) );
+	compute_pressure_at_nodes( &nodalPressure );
+
+	const double *nodalPressureReadPtr;
+	CHKERRXX( VecGetArrayRead( nodalPressure, &nodalPressureReadPtr ) );
+
+	int updated = 0;
+	foreach_local_node( n, nodes_n )	// Update only local nodes.
+	{
+		double xyz[P4EST_DIM];
+		node_xyz_fr_n( n, p4est_n, nodes_n, xyz );
+		std::string discreteCoords = get_discrete_coords( xyz );
+		auto record = _nodalRunningStatisticsMap.find( discreteCoords );
+		if( record == _nodalRunningStatisticsMap.end() )
+		{
+			std::stringstream errorMsg;
+			errorMsg << "Couldn't find node with coords " << discreteCoords << " in hash map of rank " << p4est_n->mpirank << "!";
+			throw std::runtime_error( errorPrefix + errorMsg.str() );
+		}
+		record->second.u += velReadPtr[0][n];
+		record->second.v += velReadPtr[1][n];
+		record->second.w += velReadPtr[2][n];
+		record->second.uv += velReadPtr[0][n] * velReadPtr[1][n];
+		record->second.uw += velReadPtr[0][n] * velReadPtr[2][n];
+		record->second.vw += velReadPtr[1][n] * velReadPtr[2][n];
+		record->second.pressure += nodalPressureReadPtr[n];
+		record->second.vorticity += vortReadPtr[n];
+
+		updated++;
+	}
+
+	// Clean up.
+	CHKERRXX( VecRestoreArrayRead( nodalPressure, &nodalPressureReadPtr ) );
+	CHKERRXX( VecDestroy( nodalPressure ) );
+	CHKERRXX( VecRestoreArrayRead( vorticity, &vortReadPtr ) );
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+		CHKERRXX( VecRestoreArrayRead( vnp1_nodes[dir], &velReadPtr[dir] ) );
+
+	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &updated, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Updated running statistics for %i nodes across the forest.\n", updated ) );
+}
+
+void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages( const u_int& steps, const u_int& iter,
+																				   const std::string& path )
+{
+	const int N_FIELDS = 11;
+
+	const std::string errorPrefix = "my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages: ";
+	if( _nodalRunningStatisticsMap.empty() )
+		throw std::runtime_error( errorPrefix + "The statistic hash map cannot be empty!" );
+	if( steps <= 0 )
+		throw std::invalid_argument( errorPrefix + "Number steps can't be zero!" );
+
+	///////////// First, compute averages only local nodes and copy stats to arrays we'll transfer to root rank for exportation ////////////
+
+	double *fields[N_FIELDS] = {nullptr};
+	for( auto& field : fields )
+		field = new double[nodes_n->num_owned_indeps];
+	int idx = 0;
+	foreach_local_node( n, nodes_n )
+	{
+		double xyz[P4EST_DIM];
+		node_xyz_fr_n( n, p4est_n, nodes_n, xyz );
+		std::string discreteCoords = get_discrete_coords( xyz );
+		auto record = _nodalRunningStatisticsMap.find( discreteCoords );
+		if( record == _nodalRunningStatisticsMap.end() )
+		{
+			for( auto& field : fields )
+				delete [] field;
+			std::ostringstream errorMsg;
+			errorMsg << "Couldn't find node with coords " << discreteCoords << " in hash map of rank " << p4est_n->mpirank << "!";
+			throw std::runtime_error( errorPrefix + errorMsg.str() );
+		}
+
+		int i = 0;
+		for( const double& dim : xyz )					// Copy first the xyz coordinates (not the normalized, though).
+			fields[i++][idx] = dim;
+		fields[i++][idx] = record->second.u / steps;
+		fields[i++][idx] = record->second.v / steps;
+		fields[i++][idx] = record->second.w / steps;
+		fields[i++][idx] = record->second.uv / steps;
+		fields[i++][idx] = record->second.uw / steps;
+		fields[i++][idx] = record->second.vw / steps;
+		fields[i++][idx] = record->second.pressure / steps;
+		fields[i  ][idx] = record->second.vorticity / steps;
+
+		idx++;
+	}
+
+	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &idx, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Computed average running statistics for %i nodes and %i steps across the forest.\n", idx, steps ) );
+
+	/////////////////////////////////////////// Next, send local data to rank 0 for exportation ////////////////////////////////////////////
+
+	int *totalRowsPerRank = nullptr;
+	int *displacements = nullptr;			// Indicates where to place rank i data relative to beginning of recvbuf.
+	if( p4est_n->mpirank == 0 )
+	{
+		totalRowsPerRank = new int[p4est_n->mpisize];
+		displacements = new int[p4est_n->mpisize];
+	}
+	SC_CHECK_MPI( MPI_Gather( &(nodes_n->num_owned_indeps), 1, MPI_INT, totalRowsPerRank, 1, MPI_INT, 0, p4est_n->mpicomm ) );
+
+	// Then, find where to place incoming rank data.
+	double *everyoneFields[N_FIELDS] = {nullptr};
+	if( p4est_n->mpirank == 0 )
+	{
+		int beginning = 0;
+		for( int i = 0; i < p4est_n->mpisize; i++ )
+		{
+			displacements[i] = beginning;
+			beginning += totalRowsPerRank[i];
+		}
+
+		if( beginning != idx )	// idx (i.e., total nodes across forest) should be the same as the last value taken by beginning.
+			throw std::runtime_error( errorPrefix + "Mismatch between beginning and idx!" );
+
+		for( auto& field : everyoneFields )
+			field = new double[beginning];
+	}
+
+	// Gather fields.
+	for( int i = 0; i < N_FIELDS; i++ )
+		SC_CHECK_MPI( MPI_Gatherv( &fields[i][0], nodes_n->num_owned_indeps, MPI_DOUBLE, 				// Send buffer data.
+								   &everyoneFields[i][0], totalRowsPerRank, displacements, MPI_DOUBLE, 	// Receive buffer data.
+								   0, p4est_n->mpicomm ) );
+
+	//////////////////////////////////////////////// Finally, save everyone's data to a file ///////////////////////////////////////////////
+
+	int totalSaved = 0;
+	std::string fullFileName = path + "/average_running_statistics_" + std::to_string( iter ) + ".csv";
+	if( p4est_n->mpirank == 0 )
+	{
+		std::ofstream file;
+		file.open( fullFileName, std::ofstream::trunc );
+		if( !file.is_open() )
+			throw std::runtime_error( errorPrefix + "Output file " + fullFileName + " couldn't be opened!" );
+
+		file << R"("x","y","z","u","v","w","uv","uw","vw","pressure","vorticiy")" << std::endl;			// The header.
+		file.precision( 15 );
+
+		for( int i = 0; i < idx; i++ )
+		{
+			int f;
+			for( f = 0; f < N_FIELDS - 1; f++ )
+				file << everyoneFields[f][i] << ",";
+			file << everyoneFields[f][i] << std::endl;
+		}
+
+		file.close();
+		totalSaved = idx;
+	}
+	SC_CHECK_MPI( MPI_Bcast( &totalSaved, 1, MPI_INT, 0, p4est_n->mpicomm ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Saved average running statistics in %s.\n", fullFileName.c_str() ) );
+
+	// Cleaning up.
+	if( p4est_n->mpirank == 0 )
+	{
+		delete [] displacements;
+		delete [] totalRowsPerRank;
+
+		for( auto& field : everyoneFields )
+			delete [] field;
+	}
+
+	for( auto& field : fields )
+		delete [] field;
+}
+
+#endif

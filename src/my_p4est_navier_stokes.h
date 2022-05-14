@@ -187,7 +187,22 @@ protected:
   CF_DIM *external_forces_per_unit_mass[P4EST_DIM];
   Vec external_force_per_unit_volume;
   Vec second_derivatives_external_force_per_unit_volume[P4EST_DIM];
-  public:bool boussinesq_approx=false;
+
+#ifdef P4_TO_P8
+  // These are data structs we need to compute running averages instead of exporting VTK.  The latter need a lot of space, especially if we
+  // need to collect data very often and for a long period of time.
+  struct RunningStatistics {	// These are local nodal statistics collected for some period of time, preferrably around the steady-state.
+	  double u, v, w;			// Velocity components.
+	  double uv, uw, vw;		// Products of velocity components to compute Reynold's stresses later.
+	  double vorticity;
+	  double pressure;
+  };
+
+  std::unordered_map<std::string, RunningStatistics> _nodalRunningStatisticsMap;
+#endif
+
+public:
+  bool boussinesq_approx=false;
 
   my_p4est_interpolation_nodes_t *interp_phi, *interp_grad_phi;
 
@@ -931,6 +946,57 @@ public:
   Vec const* get_node_velocities_n() const    { return vn_nodes;    }
   Vec const* get_node_velocities_np1() const  { return vnp1_nodes;  }
   Vec get_phi() const { return phi; }
+
+#ifdef P4_TO_P8
+  /**
+   * Retrieve the discrete coordinates of a grid point.  These are expressed as ratios of each component and their corresponding min cell
+   * size.  This function is to be used with the map of nodal running statistics.
+   * @param [in] xyz Grid point coordinates.
+   * @return "a,b,c", where a = x/dx, b = y/dy, and c = z/dz.
+   */
+  std::string get_discrete_coords( const double xyz[P4_TO_P8] )
+  {
+	  return std::to_string( (int)round(xyz[0] / dxyz_min[0]) ) + "," +
+	  		 std::to_string( (int)round(xyz[1] / dxyz_min[1]) ) + "," +
+			 std::to_string( (int)round(xyz[2] / dxyz_min[2]) );
+  }
+
+  /**
+   * Empty nodal running statistics map.
+   */
+  void clear_running_statistics_map()
+  {
+	  _nodalRunningStatisticsMap.clear();
+  }
+
+  /**
+   * Allocate a map of running statistics for each node.  This functionality makes sense only if the grid doesn't change during the period
+   * on which you're interested in collecting stats.
+   * @throws runtime_error if two grid points map to the same key.
+   */
+  void init_nodal_running_statistics();
+
+  /**
+   * Accumulate velocity (u,v,w), velocity component products (uv, uw, vw), pressure, and vorticity from the local nodes into the stats
+   * structures and hashmap.
+   * @throws runtime_error if running stats hash map is empty or if the grid changed and we couldn't find some coordinates in the map.
+   */
+  void accumulate_nodal_running_statistics();
+
+  /**
+   * Compute the average of the running statistics over the local nodes.  Then, export these averages alongside nodal coordinates in a file
+   * average_running_statistics_#.csv with format:
+   *                        "x", "y", "z", "u", "v", "w", "uv", "uw", "vw", "pressure", "vorticity"
+   * where # is the iteration number at which we saved data.
+   * @param [in] steps Number of steps over which we accumulated running stats.
+   * @param [in] iter Iteration number to be appended to exported file.
+   * @param [in] path Folder where to save the data file (by default, the build directory).
+   * @throws invalid_argument if steps = 0.
+   * @throws runtime_error if running stats hash map is empty, or if the grid changed and we couldn't locate some coordinates in the map, or
+   * 		 if collecting data from all ranks fails, or if we couldn't save data to a file.
+   */
+  void compute_and_save_nodal_running_statistics_averages( const u_int& steps, const u_int& iter, const std::string& path="." );
+#endif
 };
 
 

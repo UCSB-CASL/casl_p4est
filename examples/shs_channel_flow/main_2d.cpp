@@ -4,7 +4,7 @@
  * run the program with the -help flag to see the available options
  *
  * Author: Raphael Egan, with updates by Luis Ángel.
- * Updated: May 10, 2022.
+ * Updated: May 13, 2022.
  */
 
 // System
@@ -203,6 +203,12 @@ struct simulation_setup
   double ratios_dt;
   const bool save_drag;
   const bool do_accuracy_check;
+  const bool do_running_stats;
+  double running_stats_dt;
+  int running_stats_num_steps;	// How many steps has the user requested to account for the running stats?
+  int running_stats_cur_count;	// Counts for how many steps we have accumulated stats.
+  int running_stats_step;		// Helps us determine when it's time to update running stats.
+  bool running_stats_done;
   const bool save_state;
   double dt_save_data;
   const unsigned int n_states;
@@ -238,6 +244,7 @@ struct simulation_setup
     save_timing(cmd.contains("timing")),
     save_drag(cmd.contains("save_drag")),
     do_accuracy_check(cmd.contains("accuracy_check") && cmd.contains("restart")),
+	do_running_stats(cmd.contains("running_stats") && cmd.contains("restart") && !cmd.contains("accuracy_check")),
     save_state(cmd.contains("save_state_dt")),
     n_states(cmd.get<unsigned int>("save_nstates", default_save_nstates)),
     save_profiles(cmd.contains("save_mean_profiles")),
@@ -271,6 +278,23 @@ struct simulation_setup
 	  if( ratios_dt <= 0 )
 		throw std::invalid_argument( "simulation_setup::simulation_setup(): the value of ratios_dt must be strictly positive." );
 	}
+
+	if( do_running_stats && P4EST_DIM != 3 )	// NOLINT.
+	  throw std::invalid_argument( "simulation_setup::simulation_setup(): running statistics are only available for 3D!" );
+	running_stats_dt = -1;
+	running_stats_num_steps = -1;
+	running_stats_step = -1;
+	running_stats_cur_count = 0;
+	if( do_running_stats )	// We can't collect running stats and do accuracy check at the same time (so those are mutually exclusive).
+	{
+	  running_stats_dt = cmd.get<double>( "running_stats_dt", -1.0 );
+	  if( running_stats_dt <= 0 )
+		throw std::invalid_argument( "simulation_setup::simulation_setup(): the value of running_stats_dt must be strictly positive." );
+	  running_stats_num_steps = cmd.get<int>( "running_stats_num_steps", -1 );
+	  if( running_stats_num_steps <= 0 )
+		throw std::invalid_argument( "simulation_setup::simulation_setup(): the value of running_stats_num_steps must be strictly positive" );
+	}
+	running_stats_done = false;
 
     dt_save_data = -1.0;
     if (save_state)
@@ -335,7 +359,7 @@ struct simulation_setup
 
   bool done() const
   {
-    return tn + 0.01*dt > tstart + duration || accuracy_check_done;
+    return tn + 0.01*dt > tstart + duration || accuracy_check_done || running_stats_done;
   }
 
   int running_export_vtk() const  { return (int) floor(tn/vtk_dt); }
@@ -345,6 +369,10 @@ struct simulation_setup
   int running_export_ratios() const { return (int) floor(tn/ratios_dt); }
   void update_export_ratios()		{ export_ratios = running_export_ratios(); }
   bool time_to_save_ratios() const	{ return (save_ratios && running_export_ratios() != export_ratios); }
+
+  int running_step_running_stats() const  { return (int) floor(tn/running_stats_dt); }
+  void update_step_running_stats() 		  { running_stats_step = running_step_running_stats(); }
+  bool time_to_save_running_stats() const { return (do_running_stats && running_step_running_stats() != running_stats_step); }
 
   double max_tolerated_velocity(const mass_flow_controller_t* controller, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], const my_p4est_shs_channel_t& channel) const
   {
@@ -375,6 +403,12 @@ struct simulation_setup
 	{
 	  dt = ratios_dt;	// So that we don't miss requested ratios data.
 	  ns->set_dt(dt);
+	}
+
+	if( do_running_stats && dt > running_stats_dt )
+	{
+	  dt = running_stats_dt;	// So that we don't miss accumulating running stats.
+	  ns->set_dt( dt );
 	}
 
     return ns->update_from_tn_to_tnp1(nullptr, (iter%steps_grid_update != 0), false);
@@ -1097,11 +1131,26 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   if (fix_restarted_grid)
     ns->refine_coarsen_grid_after_restart(&channel, false);
 
+  // Bug! The following two functions make use of setup.tn, but tn is not yet initialized!  I'll assign temporarily tstart to tn just in case.
+  double tmp1 = setup.tn; setup.tn = setup.tstart;
   if(setup.save_vtk)
     setup.update_export_vtk(); // so that we don't overwrite visualization files that were possibly already exported...
 
   if( setup.save_ratios )
 	setup.update_export_ratios(); 	// Similarly, we don't want to overwrite ratios files already exported.
+
+#ifdef P4_TO_P8
+  if( setup.do_running_stats )		// To perform running statistics, we're asking for enough simulation time to collect them.
+  {
+	if( setup.duration <= setup.running_stats_dt )
+	  throw std::runtime_error( "load_solver_from_state: requested duration is not enough to collect running statistics!" );
+	ns->init_nodal_running_statistics();
+	setup.running_stats_cur_count = 0;
+	setup.update_step_running_stats();
+  }
+#endif
+
+  setup.tn = tmp1;
 
   PetscErrorCode ierr = PetscPrintf(ns->get_mpicomm(), "Simulation restarted from state saved in %s\n", (cmd.get<std::string>("restart")).c_str()); CHKERRXX(ierr);
 }
@@ -1564,6 +1613,9 @@ int main (int argc, char* argv[])
   cmd.add_option("minimal_vtk",			"don't include lambada-2, Q, phi, and leaf level in the vtk exportations (requires save_vtk to be provided)");
   cmd.add_option("save_ratios",			"activates exportation of ratios dx/u, dy/v[, dz/w]");
   cmd.add_option("ratios_dt",			"export ratios files every ratios_dt time lapse (REQUIRED if save_ratios is activated)");
+  cmd.add_option("running_stats", 		"collect average nodal running statistics, including velocity (u,v,w), component products (uv,uw,vw), pressure, and vorticity.\n\tThis option is only available for 3D and on restart, if the grid won't change, and if accuracy check is not requested." );
+  cmd.add_option("running_stats_dt", 	"accumulate nodal running statistics every running_stats_dt time lapse (REQUIRED if running_stats is activated)");
+  cmd.add_option("running_stats_num_steps", "collect average nodal running statistics for as many as running_stats_num_steps or until the requested simulation's duration is attained (REQUIRED if running_stats is activated)");
   cmd.add_option("save_drag",           "activates exportation of the total drag, non-dimensionalized by 2.0*rho*U_b^2*length (*width) (--> estimate of (Re_tau/Re_b)^2 at steady state)");
   cmd.add_option("save_state_dt",       "if present, this activates the 'save-state' feature. \n\tThe solver state is saved every save_state_dt time steps in backup_ subfolders.");
   cmd.add_option("save_nstates",        "determines how many solver states must be memorized in backup_ folders, default is " + std::to_string(default_save_nstates));
@@ -1707,12 +1759,37 @@ int main (int argc, char* argv[])
 	  gather_and_dump_ratio_files( setup.ratios_path + "/", setup.export_ratios, *ns );
 	}
 
+#ifdef P4_TO_P8
+	if( setup.time_to_save_running_stats() )
+	{
+		setup.update_step_running_stats();
+		ns->accumulate_nodal_running_statistics();
+		setup.running_stats_cur_count++;
+		CHKERRXX( PetscPrintf(mpi.comm(), "--> Completed %d/%d...\n", setup.running_stats_cur_count, setup.running_stats_num_steps ) );
+		if( setup.running_stats_cur_count >= setup.running_stats_num_steps )
+		{
+		  ns->compute_and_save_nodal_running_statistics_averages( setup.running_stats_cur_count, setup.iter, setup.export_dir );
+		  ns->clear_running_statistics_map();
+		  setup.running_stats_done = true;
+		}
+	}
+#endif
+
     if (setup.do_accuracy_check)
       check_accuracy_of_solution(ns, channel, setup, external_acceleration, flow_controller);
 
     setup.iter++;
   }
 
+#ifdef P4_TO_P8
+  if( setup.do_running_stats && !setup.running_stats_done )
+  {
+	CHKERRXX( PetscPrintf( mpi.comm(), "--> Didn't complete expected number of steps for running stats, but we'll compute averages now...\n" ) );
+	ns->compute_and_save_nodal_running_statistics_averages( setup.running_stats_cur_count, setup.iter, setup.export_dir );
+	ns->clear_running_statistics_map();
+	setup.running_stats_done = true;
+  }
+#endif
 
   if(setup.save_timing)
     setup.print_averaged_timings(mpi);
