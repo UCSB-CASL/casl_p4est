@@ -24,6 +24,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 11, 2022.
+ * Updated: May 15, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -59,7 +60,7 @@ int main ( int argc, char* argv[] )
 																	       "numerical non-saddle samples (default: -7e-6)" );
 	param_t<double>               minHK( pl, 0.004, "minHK"			   	 , "Min dimensionless mean curvature for numerical non-saddle "
 																		   "samples (i.e., ih2kg >= nonSaddleMinIH2KG) (default: 0.004)" );
-	param_t<double>             maxHKLB( pl, 1./15, "maxHKLB"			 , "Max abs dimensionless mean curvature lower bound (default: 1/15)" );
+	param_t<double>             maxHKLB( pl, 2./15, "maxHKLB"			 , "Max abs dimensionless mean curvature lower bound (default: 2/15)" );
 	param_t<double>               maxHK( pl,  2./3, "maxHK"			 	 , "Max abs dimensionless mean curvature (default: 2/3)" );
 	param_t<u_char>               maxRL( pl,     6, "maxRL"		 	 	 , "Max level of refinement per unit-cube octree (default: 6)" );
 	param_t<int>            reinitIters( pl,    10, "reinitIters"	 	 , "Number of iterations for reinitialization (default: 10)" );
@@ -71,24 +72,24 @@ int main ( int argc, char* argv[] )
 																	   	   " (default: 10)" );
 	param_t<u_int>          randomState( pl,    11, "randomState"	 	 , "Seed for random perturbations of canonical frame (default: 11)" );
 	param_t<std::string>         outDir( pl,   ".", "outDir"		 	 , "Path where files will be written to (default: build folder)" );
-	param_t<size_t>       bufferMinSize( pl,   3e4, "bufferMinSize"	 	 , "Buffer minimum overflow size to trigger histogram-based "
-																	   	   "subsampling and storage (default: 30K)" );
+	param_t<size_t>       bufferMinSize( pl,   1e5, "bufferMinSize"	 	 , "Buffer minimum overflow size to trigger histogram-based "
+																	   	   "subsampling and storage (default: 100K)" );
 	param_t<double>     easeOffMaxIH2KG( pl,  1e-2, "easeOffMaxIH2KG"	 , "Easing-off upper bound for |ih2kg| for subsampling saddle "
 																		   "samples (default: 1e-2)" );
 	param_t<double> easeOffProbMaxIH2KG( pl,   1.0, "easeOffProbMaxIH2KG", "Easing-off prob for |ih2kg| upper bound for subsampling saddle "
 																		   "samples (default: 1.0)" );
 	param_t<double> easeOffProbMinIH2KG( pl,     0, "easeOffProbMinIH2KG", "Easing-off prob for |ih2kg| lower bound for subsampling saddle "
 																		   "samples (default: 0)" );
-	param_t<float>       histMedianFrac( pl,  2./3, "histMedianFrac"	 , "Post-histogram subsampling median fraction (default: 2/3)" );
-	param_t<float>          histMinFold( pl,  1.25, "histMinFold"		 , "Post-histogram subsampling min count fold (default: 1.25)" );
+	param_t<float>       histMedianFrac( pl,  1./3, "histMedianFrac"	 , "Post-histogram subsampling median fraction (default: 1/3)" );
+	param_t<float>          histMinFold( pl,   1.5, "histMinFold"		 , "Post-histogram subsampling min count fold (default: 1.5)" );
 	param_t<u_short>          nHistBins( pl,   100, "nHistBins"		 	 , "Max number of bins in |hk*| histogram (default: 100)" );
 	param_t<u_short>      numMaxHKSteps( pl,   150, "numMaxHKSteps" 	 , "Number of steps to vary target max |hk| (default: 150)" );
-	param_t<u_short>        numABRatios( pl,     6, "numABRatios"		 , "Min number of random a/b (for r>0) or b/a (for r<0) ratios in "
-																	   	   "[1, 10] or [-10, -1) for each max |hk| value (default: 6)" );
+	param_t<u_short>        numABRatios( pl,    12, "numABRatios"		 , "Min number of random a/b (for r>0) or b/a (for r<0) ratios in "
+																	   	   "[1, 10] or [-10, -1) for each max |hk| value (default: 12)" );
 	param_t<u_short>      startMaxHKIdx( pl,     0, "startMaxHKIdx"		 , "Start index for max |hk| (helpful for restarting) (default: 0)" );
 	param_t<u_short>    startABRatioIdx( pl,     0, "startABRatioIdx"	 , "Start index for a:b ratio (helpful for restarting) (default: 0)" );
-	param_t<u_short>       numRotations( pl,    10, "numRotations"	 	 , "Number of rotations around random axes and by random angles for"
-																	   	   " each ratio (default: 10)" );
+	param_t<u_short>       numRotations( pl,    30, "numRotations"	 	 , "Min number of rotations around random axes and by random angles"
+																	   	   " for each a:b ratio (default: 30)" );
 	param_t<bool>        useNegCurvNorm( pl,  true, "useNegCurvNorm"	 , "Whether to apply negative-mean-curvature normalization for non-"
 																	       "saddle samples (default: true)" );
 	param_t<double>         randomNoise( pl,  1e-4, "randomNoise"		 , "How much random noise to add to phi(x) as [+/-]h*randomNoise.  "
@@ -188,7 +189,7 @@ int main ( int argc, char* argv[] )
 		{
 			const double maxHKVal = linspaceMaxHK[hkIdx];
 			std::vector<double> ratios;
-			int numRatios = (int)round( numABRatios() * (1 + hkIdx / (double)(numMaxHKSteps() - 1)) );
+			int numRatios = (int)round( numABRatios() * (1 + 2 * hkIdx / (double)(numMaxHKSteps() - 1)) );
 			randomizeRatios( mpi, minABRatio(), maxABRatio(), numRatios, ratios, gen );
 
 			int rIdx = 0;
@@ -221,7 +222,8 @@ int main ( int argc, char* argv[] )
 				double maxHKError = 0, maxIH2KGError = 0;			// Tracking the maximum error and number of samples collectively shared
 				size_t loggedSamples[SAMPLE_TYPES] = {0, 0};		// across processes for this (max |hk|, ratio) pair.
 
-				for( int nRot = 0; nRot < numRotations(); nRot++ )	// Perform as many as numRotations affine transformations.
+				const int NUM_ROTS = (int)round( numRotations() * (1 + 2 * hkIdx / (double)(numMaxHKSteps() - 1)) );
+				for( int nRot = 0; nRot < NUM_ROTS; nRot++ )		// Perform as many as numRotations affine transformations.
 				{
 					//////////////////////////////////////// Defining the transformation parameters ////////////////////////////////////////
 
@@ -314,7 +316,7 @@ int main ( int argc, char* argv[] )
 					double minHKInBatch[SAMPLE_TYPES], maxHKInBatch[SAMPLE_TYPES];	// 0 for non-saddles, 1 for saddles.
 					maxErrors = pLS->collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, minHKInBatch, maxHKInBatch,
 													 genProb, samples[0], minHK(), samples[1], easeOffMaxIH2KG(), easeOffProbMaxIH2KG(),
-													 easeOffProbMinIH2KG(), exactFlag, SQR( samRadius ), nonSaddleMinIH2KG() );
+													 easeOffProbMinIH2KG(), exactFlag, maxHKVal, SQR( samRadius ), nonSaddleMinIH2KG() );
 
 					maxHKError = MAX( maxHKError, maxErrors.first );
 					maxIH2KGError = MAX( maxIH2KGError, maxErrors.second );
