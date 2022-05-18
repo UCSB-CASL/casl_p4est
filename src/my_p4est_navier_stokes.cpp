@@ -306,6 +306,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
     external_forces_per_unit_mass[dir]    = NULL;
     vstar[dir] = NULL;
     vnp1[dir] = NULL;
+	vorticity_components[dir] = nullptr;	// Allocate these only as needed, during running-stats collection.
 
     vnm1_nodes[dir] = NULL;
     vn_nodes  [dir] = NULL;
@@ -375,6 +376,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi,
     vstar[dir] = NULL;
     vnp1[dir] = NULL;
     vnp1_nodes[dir] = NULL;
+	vorticity_components[dir] = nullptr;	// Allocate these only as needed, during running-stats collection.
 
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &face_is_well_defined[dir], dir); CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(face_is_well_defined[dir], &vec_loc); CHKERRXX(ierr);
@@ -435,6 +437,7 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
     if(vnm1_nodes[dir] != NULL) { ierr = VecDestroy(vnm1_nodes[dir]);                         CHKERRXX(ierr); }
     if(vn_nodes[dir] != NULL)   { ierr = VecDestroy(vn_nodes[dir]);                           CHKERRXX(ierr); }
     if(vnp1_nodes[dir] != NULL) { ierr = VecDestroy(vnp1_nodes[dir]);                         CHKERRXX(ierr); }
+	if(vorticity_components[dir] != nullptr) { CHKERRXX( VecDestroy( vorticity_components[dir]) ); vorticity_components[dir] = nullptr; }
     if(face_is_well_defined[dir] != NULL)
                                 { ierr = VecDestroy(face_is_well_defined[dir]);               CHKERRXX(ierr); }
     for (unsigned char dd = 0; dd < P4EST_DIM; ++dd) {
@@ -617,6 +620,12 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes_, Vec *vn_nodes_, 
       ierr = VecDestroy(this->norm_grad_u); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &norm_grad_u); CHKERRXX(ierr);
   }
+  for( auto& comp : vorticity_components )
+  {
+	if( comp != nullptr )
+	  CHKERRXX( VecDestroy( comp ) );	// Don't recreate these components.
+	comp = nullptr;
+  }
 }
 
 void my_p4est_navier_stokes_t::set_velocities(CF_DIM **vnm1, CF_DIM **vn, const bool set_max_L2_norm_u)
@@ -699,6 +708,12 @@ void my_p4est_navier_stokes_t::set_velocities(CF_DIM **vnm1, CF_DIM **vn, const 
       ierr = VecDestroy(this->norm_grad_u); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &norm_grad_u); CHKERRXX(ierr);
   }
+  for( auto& comp : vorticity_components )
+  {
+	if( comp != nullptr )
+	  CHKERRXX( VecDestroy( comp ));	// Don't recreate these components.
+	comp = nullptr;
+  }
 }
 
 void my_p4est_navier_stokes_t::set_vstar(Vec *vstar)
@@ -756,6 +771,13 @@ void my_p4est_navier_stokes_t::compute_vorticity()
   if(norm_grad_u != NULL){
     ierr = VecGetArray(norm_grad_u, &norm_grad_u_p); CHKERRXX(ierr); }
 
+  double *vorticity_components_p[P4EST_DIM] = {DIM( nullptr, nullptr, nullptr )};
+  if( ANDD( vorticity_components[0] != nullptr, vorticity_components[1] != nullptr, vorticity_components[2] != nullptr ) )
+  {
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	  CHKERRXX( VecGetArray( vorticity_components[dir], &vorticity_components_p[dir] ) );
+  }
+
   double** grad_v_loc = new double*[P4EST_DIM];
   for(u_char dim = 0; dim < P4EST_DIM; dim++)
     grad_v_loc[dim] = new double [P4EST_DIM];
@@ -770,6 +792,13 @@ void my_p4est_navier_stokes_t::compute_vorticity()
     double vx = grad_v_loc[2][1] - grad_v_loc[1][2];
     double vy = grad_v_loc[0][2] - grad_v_loc[2][0];
     vorticity_p[n] = sqrt(vx*vx + vy*vy + vz*vz);
+
+	if( ANDD( vorticity_components_p[0], vorticity_components_p[1], vorticity_components_p[2] ) )	// Save vorticity components if needed.
+	{
+	  vorticity_components_p[0][n] = vx;
+	  vorticity_components_p[1][n] = vy;
+	  vorticity_components_p[2][n] = vz;
+	}
 #else
     vorticity_p[n] = vz;
 #endif
@@ -783,6 +812,12 @@ void my_p4est_navier_stokes_t::compute_vorticity()
   if(norm_grad_u_p != NULL){
     ierr = VecGhostUpdateBegin(norm_grad_u, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
 
+  if( ANDD( vorticity_components_p[0], vorticity_components_p[1], vorticity_components_p[2] ) )
+  {
+	for( auto& vorticity_component : vorticity_components )
+	  CHKERRXX( VecGhostUpdateBegin( vorticity_component, INSERT_VALUES, SCATTER_FORWARD ) );
+  }
+
   for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd_n->get_local_node(i);
@@ -793,6 +828,13 @@ void my_p4est_navier_stokes_t::compute_vorticity()
     double vx = grad_v_loc[2][1] - grad_v_loc[1][2];
     double vy = grad_v_loc[0][2] - grad_v_loc[2][0];
     vorticity_p[n] = sqrt(vx*vx + vy*vy + vz*vz);
+
+	if( ANDD( vorticity_components_p[0], vorticity_components_p[1], vorticity_components_p[2] ) )	// Save vorticity components if needed.
+	{
+	  vorticity_components_p[0][n] = vx;
+	  vorticity_components_p[1][n] = vy;
+	  vorticity_components_p[2][n] = vz;
+	}
 #else
     vorticity_p[n] = vz;
 #endif
@@ -807,6 +849,15 @@ void my_p4est_navier_stokes_t::compute_vorticity()
   if(norm_grad_u != NULL){
     ierr = VecGhostUpdateEnd(norm_grad_u, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecRestoreArray(norm_grad_u, &norm_grad_u_p); CHKERRXX(ierr);
+  }
+
+  if( ANDD( vorticity_components_p[0], vorticity_components_p[1], vorticity_components_p[2] ) )
+  {
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+	  CHKERRXX( VecGhostUpdateEnd( vorticity_components[dir], INSERT_VALUES, SCATTER_FORWARD ));
+	  CHKERRXX( VecRestoreArray( vorticity_components[dir], &vorticity_components_p[dir] ) );
+	}
   }
 
   for(unsigned char dir = 0; dir < P4EST_DIM; dir++) {
@@ -1704,6 +1755,9 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
   bool iterative_grid_update_converged = false;
   if(!keep_grid_as_such)
   {
+	if( ANDD( vorticity_components[0], vorticity_components[1], vorticity_components[2] ) )	// You can't update the grid if you're tracking running stats!
+	  throw std::runtime_error( "my_p4est_navier_stokes_t::update_from_tn_to_tnp1: We don't support running stats while modifying the grid" );
+
     splitting_criteria_t *data = (splitting_criteria_t*)p4est_n->user_pointer;
     splitting_criteria_vorticity_t criteria(data->min_lvl, data->max_lvl, data->lip, uniform_band, vorticity_threshold_split_cell, max_L2_norm_u, smoke_thresh, norm_grad_u_threshold_split_cell);
     /* construct a new forest */
@@ -3572,6 +3626,8 @@ unsigned long int my_p4est_navier_stokes_t::memory_estimate() const
 
   // petsc node vectors at time n: phi, grad_phi, vn_nodes[P4EST_DIM], vnp1_nodes[P4EST_DIM], vorticity, smoke
   memory_used += (1 + 3*P4EST_DIM + 1 + (smoke != NULL ? 1:0))*(nodes_n->indep_nodes.elem_count)*sizeof (PetscScalar);
+  if( ANDD( vorticity_components[0], vorticity_components[1], vorticity_components[2] ) )
+	memory_used += P4EST_DIM * (nodes_n->indep_nodes.elem_count) * sizeof( PetscScalar );
   // petsc node vectors at time nm1: vnm1_nodes[P4EST_DIM],
   memory_used += P4EST_DIM*(nodes_nm1->indep_nodes.elem_count)*sizeof (PetscScalar);
   // petsc cell vectors at time n: hodge, pressure
@@ -4169,6 +4225,9 @@ void my_p4est_navier_stokes_t::init_nodal_running_statistics()
 	_nodalRunningStatisticsMap.clear();
 	_nodalRunningStatisticsMap.reserve( nodes_n->num_owned_indeps );	// Here, we work only with local nodes.
 
+	for( auto& vorticityComponent : vorticity_components )				// This is the only point where we should create vorticity components.
+		CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &vorticityComponent ) );
+
 	int initialized = 0;
 	foreach_local_node( n, nodes_n )
 	{
@@ -4178,7 +4237,7 @@ void my_p4est_navier_stokes_t::init_nodal_running_statistics()
 		auto record = _nodalRunningStatisticsMap.find( discreteCoords );
 		if( record != _nodalRunningStatisticsMap.end() )
 			throw std::runtime_error( "my_p4est_navier_stokes_t::init_nodal_running_statistics: Unexpected key collision!" );
-		_nodalRunningStatisticsMap[discreteCoords] = RunningStatistics{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+		_nodalRunningStatisticsMap[discreteCoords] = RunningStatistics{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 		initialized++;
 	}
 
@@ -4192,12 +4251,16 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
 	if( _nodalRunningStatisticsMap.empty() )
 		throw std::runtime_error( errorPrefix + "The statistic hash map cannot be empty!" );
 
+	if( !ANDD( vorticity_components[0], vorticity_components[1], vorticity_components[2] ) )
+		throw std::runtime_error( errorPrefix + "The vorticity components can't be null!" );
+
 	const double *velReadPtr[P4EST_DIM];
 	for( int dir = 0; dir < P4EST_DIM; dir++ )
 		CHKERRXX( VecGetArrayRead( vnp1_nodes[dir], &velReadPtr[dir]) );
 
-	const double *vortReadPtr;
-	CHKERRXX( VecGetArrayRead( vorticity, &vortReadPtr ) );
+	const double *vortReadPtr[P4EST_DIM];
+	for( int i = 0; i < P4EST_DIM; i++ )
+		CHKERRXX( VecGetArrayRead( vorticity_components[i], &vortReadPtr[i] ) );
 
 	Vec nodalPressure;
 	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &nodalPressure ) );
@@ -4229,7 +4292,9 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
 		record->second.uw += velReadPtr[0][n] * velReadPtr[2][n];
 		record->second.vw += velReadPtr[1][n] * velReadPtr[2][n];
 		record->second.pressure += nodalPressureReadPtr[n];
-		record->second.vorticity += vortReadPtr[n];
+		record->second.vort_u += vortReadPtr[0][n];
+		record->second.vort_v += vortReadPtr[1][n];
+		record->second.vort_w += vortReadPtr[2][n];
 
 		updated++;
 	}
@@ -4237,9 +4302,11 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
 	// Clean up.
 	CHKERRXX( VecRestoreArrayRead( nodalPressure, &nodalPressureReadPtr ) );
 	CHKERRXX( VecDestroy( nodalPressure ) );
-	CHKERRXX( VecRestoreArrayRead( vorticity, &vortReadPtr ) );
 	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+		CHKERRXX( VecRestoreArrayRead( vorticity_components[dir], &vortReadPtr[dir] ) );
 		CHKERRXX( VecRestoreArrayRead( vnp1_nodes[dir], &velReadPtr[dir] ) );
+	}
 
 	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &updated, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
 	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Updated running statistics for %i nodes across the forest.\n", updated ) );
@@ -4248,11 +4315,13 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
 void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages( const u_int& steps, const u_int& iter,
 																				   const std::string& path )
 {
-	const int N_FIELDS = 14;
+	const int N_FIELDS = 16;
 
 	const std::string errorPrefix = "my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages: ";
 	if( _nodalRunningStatisticsMap.empty() )
-		throw std::runtime_error( errorPrefix + "The statistic hash map cannot be empty!" );
+		throw std::runtime_error( errorPrefix + "The statistics hash map cannot be empty!" );
+	if( !ANDD( vorticity_components[0], vorticity_components[1], vorticity_components[2] ) )
+		throw std::runtime_error( errorPrefix + "The vorticity components can't be null!" );
 	if( steps <= 0 )
 		throw std::invalid_argument( errorPrefix + "Number steps can't be zero!" );
 
@@ -4290,7 +4359,9 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 		fields[i++][idx] = record->second.uw / steps;
 		fields[i++][idx] = record->second.vw / steps;
 		fields[i++][idx] = record->second.pressure / steps;
-		fields[i  ][idx] = record->second.vorticity / steps;
+		fields[i++][idx] = record->second.vort_u / steps;
+		fields[i++][idx] = record->second.vort_v / steps;
+		fields[i  ][idx] = record->second.vort_w / steps;
 
 		idx++;
 	}
@@ -4344,7 +4415,7 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 		if( !file.is_open() )
 			throw std::runtime_error( errorPrefix + "Output file " + fullFileName + " couldn't be opened!" );
 
-		file << R"("x","y","z","u","v","w","uu","vv","ww","uv","uw","vw","pressure","vorticity")" << std::endl;		// The header.
+		file << R"("x","y","z","u","v","w","uu","vv","ww","uv","uw","vw","pressure","vort_u","vort_v","vort_w")" << std::endl;	// The header.
 		file.precision( 15 );
 
 		for( int i = 0; i < idx; i++ )
@@ -4373,6 +4444,12 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 
 	for( auto& field : fields )
 		delete [] field;
+
+	for( auto& vorticityComponent : vorticity_components )
+	{
+		CHKERRXX( VecDestroy( vorticityComponent ) );
+		vorticityComponent = nullptr;
+	}
 }
 
 #endif
