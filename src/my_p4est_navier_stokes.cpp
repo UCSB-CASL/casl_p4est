@@ -4220,7 +4220,7 @@ int my_p4est_navier_stokes_t::get_dxyz_uvw_ratios( const u_char& direction, std:
 
 #ifdef P4_TO_P8
 
-void my_p4est_navier_stokes_t::init_nodal_running_statistics()
+void my_p4est_navier_stokes_t::init_nodal_running_statistics( const double& initialTime )
 {
 	_nodalRunningStatisticsMap.clear();
 	_nodalRunningStatisticsMap.reserve( nodes_n->num_owned_indeps );	// Here, we work only with local nodes.
@@ -4241,11 +4241,14 @@ void my_p4est_navier_stokes_t::init_nodal_running_statistics()
 		initialized++;
 	}
 
+	_runningStatisticsStartTime = initialTime;
+	_runningStatisticsLastTime = _runningStatisticsStartTime;
+
 	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &initialized, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
-	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Initialized running statistics for %i nodes across the forest.\n", initialized ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Initialized running statistics for %i nodes across the forest at tn = %.5e\n", initialized, _runningStatisticsStartTime ) );
 }
 
-void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
+void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics( const double& currentTime )
 {
 	const std::string errorPrefix = "my_p4est_navier_stokes_t::accumulate_nodal_running_statistics: ";
 	if( _nodalRunningStatisticsMap.empty() )
@@ -4269,6 +4272,8 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
 	const double *nodalPressureReadPtr;
 	CHKERRXX( VecGetArrayRead( nodalPressure, &nodalPressureReadPtr ) );
 
+	double deltaT = currentTime - _runningStatisticsLastTime;
+
 	int updated = 0;
 	foreach_local_node( n, nodes_n )	// Update only local nodes.
 	{
@@ -4282,19 +4287,19 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
 			errorMsg << "Couldn't find node with coords " << discreteCoords << " in hash map of rank " << p4est_n->mpirank << "!";
 			throw std::runtime_error( errorPrefix + errorMsg.str() );
 		}
-		record->second.u += velReadPtr[0][n];
-		record->second.v += velReadPtr[1][n];
-		record->second.w += velReadPtr[2][n];
-		record->second.uu += SQR( velReadPtr[0][n] );
-		record->second.vv += SQR( velReadPtr[1][n] );
-		record->second.ww += SQR( velReadPtr[2][n] );
-		record->second.uv += velReadPtr[0][n] * velReadPtr[1][n];
-		record->second.uw += velReadPtr[0][n] * velReadPtr[2][n];
-		record->second.vw += velReadPtr[1][n] * velReadPtr[2][n];
-		record->second.pressure += nodalPressureReadPtr[n];
-		record->second.vort_u += vortReadPtr[0][n];
-		record->second.vort_v += vortReadPtr[1][n];
-		record->second.vort_w += vortReadPtr[2][n];
+		record->second.u += velReadPtr[0][n] * deltaT;
+		record->second.v += velReadPtr[1][n] * deltaT;
+		record->second.w += velReadPtr[2][n] * deltaT;
+		record->second.uu += SQR( velReadPtr[0][n] ) * deltaT;
+		record->second.vv += SQR( velReadPtr[1][n] ) * deltaT;
+		record->second.ww += SQR( velReadPtr[2][n] ) * deltaT;
+		record->second.uv += velReadPtr[0][n] * velReadPtr[1][n] * deltaT;
+		record->second.uw += velReadPtr[0][n] * velReadPtr[2][n] * deltaT;
+		record->second.vw += velReadPtr[1][n] * velReadPtr[2][n] * deltaT;
+		record->second.pressure += nodalPressureReadPtr[n] * deltaT;
+		record->second.vort_u += vortReadPtr[0][n] * deltaT;
+		record->second.vort_v += vortReadPtr[1][n] * deltaT;
+		record->second.vort_w += vortReadPtr[2][n] * deltaT;
 
 		updated++;
 	}
@@ -4308,22 +4313,24 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
 		CHKERRXX( VecRestoreArrayRead( vnp1_nodes[dir], &velReadPtr[dir] ) );
 	}
 
+	_runningStatisticsLastTime = currentTime;
+
 	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &updated, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
-	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Updated running statistics for %i nodes across the forest.\n", updated ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Updated running statistics for %i nodes across the forest with delta_t = %.5e.\n", updated, deltaT ) );
 }
 
-void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages( const u_int& steps, const u_int& iter,
-																				   const std::string& path )
+void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages( const u_int& iter, const std::string& path )
 {
 	const int N_FIELDS = 16;
+	const double T = _runningStatisticsLastTime - _runningStatisticsStartTime;
 
 	const std::string errorPrefix = "my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages: ";
 	if( _nodalRunningStatisticsMap.empty() )
 		throw std::runtime_error( errorPrefix + "The statistics hash map cannot be empty!" );
 	if( !ANDD( vorticity_components[0], vorticity_components[1], vorticity_components[2] ) )
 		throw std::runtime_error( errorPrefix + "The vorticity components can't be null!" );
-	if( steps <= 0 )
-		throw std::invalid_argument( errorPrefix + "Number steps can't be zero!" );
+	if( ABS( T ) < PETSC_MACHINE_EPSILON )
+		throw std::runtime_error( errorPrefix + "We can't compute average running stats because initial and last time are the same!"  );
 
 	///////////// First, compute averages only local nodes and copy stats to arrays we'll transfer to root rank for exportation ////////////
 
@@ -4349,25 +4356,26 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 		int i = 0;
 		for( const double& dim : xyz )					// Copy first the xyz coordinates (not the normalized, though).
 			fields[i++][idx] = dim;
-		fields[i++][idx] = record->second.u / steps;
-		fields[i++][idx] = record->second.v / steps;
-		fields[i++][idx] = record->second.w / steps;
-		fields[i++][idx] = record->second.uu / steps;
-		fields[i++][idx] = record->second.vv / steps;
-		fields[i++][idx] = record->second.ww / steps;
-		fields[i++][idx] = record->second.uv / steps;
-		fields[i++][idx] = record->second.uw / steps;
-		fields[i++][idx] = record->second.vw / steps;
-		fields[i++][idx] = record->second.pressure / steps;
-		fields[i++][idx] = record->second.vort_u / steps;
-		fields[i++][idx] = record->second.vort_v / steps;
-		fields[i  ][idx] = record->second.vort_w / steps;
+		fields[i++][idx] = record->second.u / T;
+		fields[i++][idx] = record->second.v / T;
+		fields[i++][idx] = record->second.w / T;
+		fields[i++][idx] = record->second.uu / T;
+		fields[i++][idx] = record->second.vv / T;
+		fields[i++][idx] = record->second.ww / T;
+		fields[i++][idx] = record->second.uv / T;
+		fields[i++][idx] = record->second.uw / T;
+		fields[i++][idx] = record->second.vw / T;
+		fields[i++][idx] = record->second.pressure / T;
+		fields[i++][idx] = record->second.vort_u / T;
+		fields[i++][idx] = record->second.vort_v / T;
+		fields[i  ][idx] = record->second.vort_w / T;
 
 		idx++;
 	}
 
 	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &idx, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
-	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Computed average running statistics for %i nodes and %i steps across the forest.\n", idx, steps ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Computed average running statistics for %i nodes for a time interval of %.5e across the forest.\n", T, idx ) );
+	_runningStatisticsStartTime = _runningStatisticsLastTime = 0;
 
 	/////////////////////////////////////////// Next, send local data to rank 0 for exportation ////////////////////////////////////////////
 
