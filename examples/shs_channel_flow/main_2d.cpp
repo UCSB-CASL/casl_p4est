@@ -4,7 +4,7 @@
  * run the program with the -help flag to see the available options
  *
  * Author: Raphael Egan, with updates by Luis Ángel.
- * Updated: May 13, 2022.
+ * Updated: May 18, 2022.
  */
 
 // System

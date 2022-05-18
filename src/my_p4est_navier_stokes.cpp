@@ -4178,7 +4178,7 @@ void my_p4est_navier_stokes_t::init_nodal_running_statistics()
 		auto record = _nodalRunningStatisticsMap.find( discreteCoords );
 		if( record != _nodalRunningStatisticsMap.end() )
 			throw std::runtime_error( "my_p4est_navier_stokes_t::init_nodal_running_statistics: Unexpected key collision!" );
-		_nodalRunningStatisticsMap[discreteCoords] = RunningStatistics{0, 0, 0, 0, 0, 0, 0, 0};
+		_nodalRunningStatisticsMap[discreteCoords] = RunningStatistics{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 		initialized++;
 	}
 
@@ -4222,6 +4222,9 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
 		record->second.u += velReadPtr[0][n];
 		record->second.v += velReadPtr[1][n];
 		record->second.w += velReadPtr[2][n];
+		record->second.uu += SQR( velReadPtr[0][n] );
+		record->second.vv += SQR( velReadPtr[1][n] );
+		record->second.ww += SQR( velReadPtr[2][n] );
 		record->second.uv += velReadPtr[0][n] * velReadPtr[1][n];
 		record->second.uw += velReadPtr[0][n] * velReadPtr[2][n];
 		record->second.vw += velReadPtr[1][n] * velReadPtr[2][n];
@@ -4245,7 +4248,7 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
 void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages( const u_int& steps, const u_int& iter,
 																				   const std::string& path )
 {
-	const int N_FIELDS = 11;
+	const int N_FIELDS = 14;
 
 	const std::string errorPrefix = "my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages: ";
 	if( _nodalRunningStatisticsMap.empty() )
@@ -4280,6 +4283,9 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 		fields[i++][idx] = record->second.u / steps;
 		fields[i++][idx] = record->second.v / steps;
 		fields[i++][idx] = record->second.w / steps;
+		fields[i++][idx] = record->second.uu / steps;
+		fields[i++][idx] = record->second.vv / steps;
+		fields[i++][idx] = record->second.ww / steps;
 		fields[i++][idx] = record->second.uv / steps;
 		fields[i++][idx] = record->second.uw / steps;
 		fields[i++][idx] = record->second.vw / steps;
@@ -4338,7 +4344,7 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 		if( !file.is_open() )
 			throw std::runtime_error( errorPrefix + "Output file " + fullFileName + " couldn't be opened!" );
 
-		file << R"("x","y","z","u","v","w","uv","uw","vw","pressure","vorticiy")" << std::endl;			// The header.
+		file << R"("x","y","z","u","v","w","uu","vv","ww","uv","uw","vw","pressure","vorticity")" << std::endl;		// The header.
 		file.precision( 15 );
 
 		for( int i = 0; i < idx; i++ )

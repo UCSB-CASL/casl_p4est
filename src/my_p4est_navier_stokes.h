@@ -189,11 +189,11 @@ protected:
   Vec second_derivatives_external_force_per_unit_volume[P4EST_DIM];
 
 #ifdef P4_TO_P8
-  // These are data structs we need to compute running averages instead of exporting VTK.  The latter need a lot of space, especially if we
-  // need to collect data very often and for a long period of time.
+  // These are data structs we need to compute running averages.  Hadn't we done this, we'd need a lot of space storing VTKs periodically
+  // to collect data for a long period of time.
   struct RunningStatistics {	// These are local nodal statistics collected for some period of time, preferrably around the steady-state.
-	  double u, v, w;			// Velocity components.
-	  double uv, uw, vw;		// Products of velocity components to compute Reynold's stresses later.
+	  double u, v, w;					// Velocity components.
+	  double uu, vv, ww, uv, uw, vw;	// Products of velocity components to compute Reynold's stresses later.
 	  double vorticity;
 	  double pressure;
   };
@@ -977,8 +977,8 @@ public:
   void init_nodal_running_statistics();
 
   /**
-   * Accumulate velocity (u,v,w), velocity component products (uv, uw, vw), pressure, and vorticity from the local nodes into the stats
-   * structures and hashmap.
+   * Accumulate velocity (u,v,w), velocity component products (uu, vv, ww, uv, uw, vw), pressure, and vorticity magnitude from the local
+   * nodes into the stats structures and hashmap.
    * @throws runtime_error if running stats hash map is empty or if the grid changed and we couldn't find some coordinates in the map.
    */
   void accumulate_nodal_running_statistics();
@@ -986,7 +986,7 @@ public:
   /**
    * Compute the average of the running statistics over the local nodes.  Then, export these averages alongside nodal coordinates in a file
    * average_running_statistics_#.csv with format:
-   *                        "x", "y", "z", "u", "v", "w", "uv", "uw", "vw", "pressure", "vorticity"
+   *                        "x", "y", "z", "u", "v", "w", "uu", "vv", "ww", "uv", "uw", "vw", "pressure", "vorticity"
    * where # is the iteration number at which we saved data.
    * @param [in] steps Number of steps over which we accumulated running stats.
    * @param [in] iter Iteration number to be appended to exported file.
