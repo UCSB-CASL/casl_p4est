@@ -306,6 +306,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
     external_forces_per_unit_mass[dir]    = NULL;
     vstar[dir] = NULL;
     vnp1[dir] = NULL;
+	vorticity_components[dir] = nullptr;	// Allocate these only as needed, during running-stats collection.
 
     vnm1_nodes[dir] = NULL;
     vn_nodes  [dir] = NULL;
@@ -375,6 +376,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi,
     vstar[dir] = NULL;
     vnp1[dir] = NULL;
     vnp1_nodes[dir] = NULL;
+	vorticity_components[dir] = nullptr;	// Allocate these only as needed, during running-stats collection.
 
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &face_is_well_defined[dir], dir); CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(face_is_well_defined[dir], &vec_loc); CHKERRXX(ierr);
@@ -435,6 +437,7 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
     if(vnm1_nodes[dir] != NULL) { ierr = VecDestroy(vnm1_nodes[dir]);                         CHKERRXX(ierr); }
     if(vn_nodes[dir] != NULL)   { ierr = VecDestroy(vn_nodes[dir]);                           CHKERRXX(ierr); }
     if(vnp1_nodes[dir] != NULL) { ierr = VecDestroy(vnp1_nodes[dir]);                         CHKERRXX(ierr); }
+	if(vorticity_components[dir] != nullptr) { CHKERRXX( VecDestroy( vorticity_components[dir]) ); vorticity_components[dir] = nullptr; }
     if(face_is_well_defined[dir] != NULL)
                                 { ierr = VecDestroy(face_is_well_defined[dir]);               CHKERRXX(ierr); }
     for (unsigned char dd = 0; dd < P4EST_DIM; ++dd) {
@@ -617,6 +620,12 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes_, Vec *vn_nodes_, 
       ierr = VecDestroy(this->norm_grad_u); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &norm_grad_u); CHKERRXX(ierr);
   }
+  for( auto& comp : vorticity_components )
+  {
+	if( comp != nullptr )
+	  CHKERRXX( VecDestroy( comp ) );	// Don't recreate these components.
+	comp = nullptr;
+  }
 }
 
 void my_p4est_navier_stokes_t::set_velocities(CF_DIM **vnm1, CF_DIM **vn, const bool set_max_L2_norm_u)
@@ -699,6 +708,12 @@ void my_p4est_navier_stokes_t::set_velocities(CF_DIM **vnm1, CF_DIM **vn, const 
       ierr = VecDestroy(this->norm_grad_u); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &norm_grad_u); CHKERRXX(ierr);
   }
+  for( auto& comp : vorticity_components )
+  {
+	if( comp != nullptr )
+	  CHKERRXX( VecDestroy( comp ));	// Don't recreate these components.
+	comp = nullptr;
+  }
 }
 
 void my_p4est_navier_stokes_t::set_vstar(Vec *vstar)
@@ -756,6 +771,13 @@ void my_p4est_navier_stokes_t::compute_vorticity()
   if(norm_grad_u != NULL){
     ierr = VecGetArray(norm_grad_u, &norm_grad_u_p); CHKERRXX(ierr); }
 
+  double *vorticity_components_p[P4EST_DIM] = {DIM( nullptr, nullptr, nullptr )};
+  if( ANDD( vorticity_components[0] != nullptr, vorticity_components[1] != nullptr, vorticity_components[2] != nullptr ) )
+  {
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	  CHKERRXX( VecGetArray( vorticity_components[dir], &vorticity_components_p[dir] ) );
+  }
+
   double** grad_v_loc = new double*[P4EST_DIM];
   for(u_char dim = 0; dim < P4EST_DIM; dim++)
     grad_v_loc[dim] = new double [P4EST_DIM];
@@ -770,6 +792,13 @@ void my_p4est_navier_stokes_t::compute_vorticity()
     double vx = grad_v_loc[2][1] - grad_v_loc[1][2];
     double vy = grad_v_loc[0][2] - grad_v_loc[2][0];
     vorticity_p[n] = sqrt(vx*vx + vy*vy + vz*vz);
+
+	if( ANDD( vorticity_components_p[0], vorticity_components_p[1], vorticity_components_p[2] ) )	// Save vorticity components if needed.
+	{
+	  vorticity_components_p[0][n] = vx;
+	  vorticity_components_p[1][n] = vy;
+	  vorticity_components_p[2][n] = vz;
+	}
 #else
     vorticity_p[n] = vz;
 #endif
@@ -783,6 +812,12 @@ void my_p4est_navier_stokes_t::compute_vorticity()
   if(norm_grad_u_p != NULL){
     ierr = VecGhostUpdateBegin(norm_grad_u, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
 
+  if( ANDD( vorticity_components_p[0], vorticity_components_p[1], vorticity_components_p[2] ) )
+  {
+	for( auto& vorticity_component : vorticity_components )
+	  CHKERRXX( VecGhostUpdateBegin( vorticity_component, INSERT_VALUES, SCATTER_FORWARD ) );
+  }
+
   for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd_n->get_local_node(i);
@@ -793,6 +828,13 @@ void my_p4est_navier_stokes_t::compute_vorticity()
     double vx = grad_v_loc[2][1] - grad_v_loc[1][2];
     double vy = grad_v_loc[0][2] - grad_v_loc[2][0];
     vorticity_p[n] = sqrt(vx*vx + vy*vy + vz*vz);
+
+	if( ANDD( vorticity_components_p[0], vorticity_components_p[1], vorticity_components_p[2] ) )	// Save vorticity components if needed.
+	{
+	  vorticity_components_p[0][n] = vx;
+	  vorticity_components_p[1][n] = vy;
+	  vorticity_components_p[2][n] = vz;
+	}
 #else
     vorticity_p[n] = vz;
 #endif
@@ -807,6 +849,15 @@ void my_p4est_navier_stokes_t::compute_vorticity()
   if(norm_grad_u != NULL){
     ierr = VecGhostUpdateEnd(norm_grad_u, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecRestoreArray(norm_grad_u, &norm_grad_u_p); CHKERRXX(ierr);
+  }
+
+  if( ANDD( vorticity_components_p[0], vorticity_components_p[1], vorticity_components_p[2] ) )
+  {
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+	  CHKERRXX( VecGhostUpdateEnd( vorticity_components[dir], INSERT_VALUES, SCATTER_FORWARD ));
+	  CHKERRXX( VecRestoreArray( vorticity_components[dir], &vorticity_components_p[dir] ) );
+	}
   }
 
   for(unsigned char dir = 0; dir < P4EST_DIM; dir++) {
@@ -1704,6 +1755,9 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
   bool iterative_grid_update_converged = false;
   if(!keep_grid_as_such)
   {
+	if( ANDD( vorticity_components[0], vorticity_components[1], vorticity_components[2] ) )	// You can't update the grid if you're tracking running stats!
+	  throw std::runtime_error( "my_p4est_navier_stokes_t::update_from_tn_to_tnp1: We don't support running stats while modifying the grid" );
+
     splitting_criteria_t *data = (splitting_criteria_t*)p4est_n->user_pointer;
     splitting_criteria_vorticity_t criteria(data->min_lvl, data->max_lvl, data->lip, uniform_band, vorticity_threshold_split_cell, max_L2_norm_u, smoke_thresh, norm_grad_u_threshold_split_cell);
     /* construct a new forest */
@@ -3572,6 +3626,8 @@ unsigned long int my_p4est_navier_stokes_t::memory_estimate() const
 
   // petsc node vectors at time n: phi, grad_phi, vn_nodes[P4EST_DIM], vnp1_nodes[P4EST_DIM], vorticity, smoke
   memory_used += (1 + 3*P4EST_DIM + 1 + (smoke != NULL ? 1:0))*(nodes_n->indep_nodes.elem_count)*sizeof (PetscScalar);
+  if( ANDD( vorticity_components[0], vorticity_components[1], vorticity_components[2] ) )
+	memory_used += P4EST_DIM * (nodes_n->indep_nodes.elem_count) * sizeof( PetscScalar );
   // petsc node vectors at time nm1: vnm1_nodes[P4EST_DIM],
   memory_used += P4EST_DIM*(nodes_nm1->indep_nodes.elem_count)*sizeof (PetscScalar);
   // petsc cell vectors at time n: hodge, pressure
@@ -4164,10 +4220,13 @@ int my_p4est_navier_stokes_t::get_dxyz_uvw_ratios( const u_char& direction, std:
 
 #ifdef P4_TO_P8
 
-void my_p4est_navier_stokes_t::init_nodal_running_statistics()
+void my_p4est_navier_stokes_t::init_nodal_running_statistics( const double& initialTime )
 {
 	_nodalRunningStatisticsMap.clear();
 	_nodalRunningStatisticsMap.reserve( nodes_n->num_owned_indeps );	// Here, we work only with local nodes.
+
+	for( auto& vorticityComponent : vorticity_components )				// This is the only point where we should create vorticity components.
+		CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &vorticityComponent ) );
 
 	int initialized = 0;
 	foreach_local_node( n, nodes_n )
@@ -4178,26 +4237,33 @@ void my_p4est_navier_stokes_t::init_nodal_running_statistics()
 		auto record = _nodalRunningStatisticsMap.find( discreteCoords );
 		if( record != _nodalRunningStatisticsMap.end() )
 			throw std::runtime_error( "my_p4est_navier_stokes_t::init_nodal_running_statistics: Unexpected key collision!" );
-		_nodalRunningStatisticsMap[discreteCoords] = RunningStatistics{0, 0, 0, 0, 0, 0, 0, 0};
+		_nodalRunningStatisticsMap[discreteCoords] = RunningStatistics{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 		initialized++;
 	}
 
+	_runningStatisticsStartTime = initialTime;
+	_runningStatisticsLastTime = _runningStatisticsStartTime;
+
 	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &initialized, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
-	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Initialized running statistics for %i nodes across the forest.\n", initialized ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Initialized running statistics for %i nodes across the forest at tn = %.5e\n", initialized, _runningStatisticsStartTime ) );
 }
 
-void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
+void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics( const double& currentTime )
 {
 	const std::string errorPrefix = "my_p4est_navier_stokes_t::accumulate_nodal_running_statistics: ";
 	if( _nodalRunningStatisticsMap.empty() )
 		throw std::runtime_error( errorPrefix + "The statistic hash map cannot be empty!" );
 
+	if( !ANDD( vorticity_components[0], vorticity_components[1], vorticity_components[2] ) )
+		throw std::runtime_error( errorPrefix + "The vorticity components can't be null!" );
+
 	const double *velReadPtr[P4EST_DIM];
 	for( int dir = 0; dir < P4EST_DIM; dir++ )
 		CHKERRXX( VecGetArrayRead( vnp1_nodes[dir], &velReadPtr[dir]) );
 
-	const double *vortReadPtr;
-	CHKERRXX( VecGetArrayRead( vorticity, &vortReadPtr ) );
+	const double *vortReadPtr[P4EST_DIM];
+	for( int i = 0; i < P4EST_DIM; i++ )
+		CHKERRXX( VecGetArrayRead( vorticity_components[i], &vortReadPtr[i] ) );
 
 	Vec nodalPressure;
 	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &nodalPressure ) );
@@ -4205,6 +4271,8 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
 
 	const double *nodalPressureReadPtr;
 	CHKERRXX( VecGetArrayRead( nodalPressure, &nodalPressureReadPtr ) );
+
+	double deltaT = currentTime - _runningStatisticsLastTime;
 
 	int updated = 0;
 	foreach_local_node( n, nodes_n )	// Update only local nodes.
@@ -4219,14 +4287,19 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
 			errorMsg << "Couldn't find node with coords " << discreteCoords << " in hash map of rank " << p4est_n->mpirank << "!";
 			throw std::runtime_error( errorPrefix + errorMsg.str() );
 		}
-		record->second.u += velReadPtr[0][n];
-		record->second.v += velReadPtr[1][n];
-		record->second.w += velReadPtr[2][n];
-		record->second.uv += velReadPtr[0][n] * velReadPtr[1][n];
-		record->second.uw += velReadPtr[0][n] * velReadPtr[2][n];
-		record->second.vw += velReadPtr[1][n] * velReadPtr[2][n];
-		record->second.pressure += nodalPressureReadPtr[n];
-		record->second.vorticity += vortReadPtr[n];
+		record->second.u += velReadPtr[0][n] * deltaT;
+		record->second.v += velReadPtr[1][n] * deltaT;
+		record->second.w += velReadPtr[2][n] * deltaT;
+		record->second.uu += SQR( velReadPtr[0][n] ) * deltaT;
+		record->second.vv += SQR( velReadPtr[1][n] ) * deltaT;
+		record->second.ww += SQR( velReadPtr[2][n] ) * deltaT;
+		record->second.uv += velReadPtr[0][n] * velReadPtr[1][n] * deltaT;
+		record->second.uw += velReadPtr[0][n] * velReadPtr[2][n] * deltaT;
+		record->second.vw += velReadPtr[1][n] * velReadPtr[2][n] * deltaT;
+		record->second.pressure += nodalPressureReadPtr[n] * deltaT;
+		record->second.vort_u += vortReadPtr[0][n] * deltaT;
+		record->second.vort_v += vortReadPtr[1][n] * deltaT;
+		record->second.vort_w += vortReadPtr[2][n] * deltaT;
 
 		updated++;
 	}
@@ -4234,26 +4307,62 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics()
 	// Clean up.
 	CHKERRXX( VecRestoreArrayRead( nodalPressure, &nodalPressureReadPtr ) );
 	CHKERRXX( VecDestroy( nodalPressure ) );
-	CHKERRXX( VecRestoreArrayRead( vorticity, &vortReadPtr ) );
 	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+		CHKERRXX( VecRestoreArrayRead( vorticity_components[dir], &vortReadPtr[dir] ) );
 		CHKERRXX( VecRestoreArrayRead( vnp1_nodes[dir], &velReadPtr[dir] ) );
+	}
+
+	_runningStatisticsLastTime = currentTime;
 
 	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &updated, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
-	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Updated running statistics for %i nodes across the forest.\n", updated ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Updated running statistics for %i nodes across the forest with delta_t = %.5e.\n", updated, deltaT ) );
 }
 
-void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages( const u_int& steps, const u_int& iter,
-																				   const std::string& path )
+void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages( const u_int& iter, const std::string& vtkPath, const std::string& csvPath )
 {
-	const int N_FIELDS = 11;
+	const int N_FIELDS = 16;
+	const double T = _runningStatisticsLastTime - _runningStatisticsStartTime;
 
 	const std::string errorPrefix = "my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages: ";
 	if( _nodalRunningStatisticsMap.empty() )
-		throw std::runtime_error( errorPrefix + "The statistic hash map cannot be empty!" );
-	if( steps <= 0 )
-		throw std::invalid_argument( errorPrefix + "Number steps can't be zero!" );
+		throw std::runtime_error( errorPrefix + "The statistics hash map cannot be empty!" );
+	if( !ANDD( vorticity_components[0], vorticity_components[1], vorticity_components[2] ) )
+		throw std::runtime_error( errorPrefix + "The vorticity components can't be null!" );
+	if( ABS( T ) < PETSC_MACHINE_EPSILON )
+		throw std::runtime_error( errorPrefix + "We can't compute average running stats because initial and last time are the same!"  );
 
-	///////////// First, compute averages only local nodes and copy stats to arrays we'll transfer to root rank for exportation ////////////
+	//////////// First, compute averages only on local nodes and copy stats to arrays we'll transfer to root rank for exporting ////////////
+
+	// We also need to allocate as many average vectors as fields we want to export to create the VTK.
+	Vec avgVel[P4EST_DIM], ReStressUU, ReStressVV, ReStressWW, ReStressUV, ReStressUW, ReStressVW, avgPressure, avgVort[P4EST_DIM];
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+		CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &avgVel[dir] ) );
+		CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &avgVort[dir] ) );
+	}
+	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &ReStressUU ) );
+	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &ReStressVV ) );
+	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &ReStressWW ) );
+	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &ReStressUV ) );
+	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &ReStressUW ) );
+	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &ReStressVW ) );
+	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &avgPressure ) );
+
+	double *avgVelPtr[P4EST_DIM], *ReStressUUPtr, *ReStressVVPtr, *ReStressWWPtr, *ReStressUVPtr, *ReStressUWPtr, *ReStressVWPtr;
+	double *avgPressurePtr, *avgVortPtr[P4EST_DIM];
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+		CHKERRXX( VecGetArray( avgVel[dir], &avgVelPtr[dir] ) );
+		CHKERRXX( VecGetArray( avgVort[dir], &avgVortPtr[dir] ) );
+	}
+	CHKERRXX( VecGetArray( ReStressUU, &ReStressUUPtr ) );
+	CHKERRXX( VecGetArray( ReStressVV, &ReStressVVPtr ) );
+	CHKERRXX( VecGetArray( ReStressWW, &ReStressWWPtr ) );
+	CHKERRXX( VecGetArray( ReStressUV, &ReStressUVPtr ) );
+	CHKERRXX( VecGetArray( ReStressUW, &ReStressUWPtr ) );
+	CHKERRXX( VecGetArray( ReStressVW, &ReStressVWPtr ) );
+	CHKERRXX( VecGetArray( avgPressure, &avgPressurePtr ) );
 
 	double *fields[N_FIELDS] = {nullptr};
 	for( auto& field : fields )
@@ -4277,22 +4386,120 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 		int i = 0;
 		for( const double& dim : xyz )					// Copy first the xyz coordinates (not the normalized, though).
 			fields[i++][idx] = dim;
-		fields[i++][idx] = record->second.u / steps;
-		fields[i++][idx] = record->second.v / steps;
-		fields[i++][idx] = record->second.w / steps;
-		fields[i++][idx] = record->second.uv / steps;
-		fields[i++][idx] = record->second.uw / steps;
-		fields[i++][idx] = record->second.vw / steps;
-		fields[i++][idx] = record->second.pressure / steps;
-		fields[i  ][idx] = record->second.vorticity / steps;
+		fields[i++][idx] = record->second.u / T;		// 3 (idx in field).
+		fields[i++][idx] = record->second.v / T;		// 4
+		fields[i++][idx] = record->second.w / T;		// 5
+		fields[i++][idx] = record->second.uu / T;		// 6
+		fields[i++][idx] = record->second.vv / T;		// 7
+		fields[i++][idx] = record->second.ww / T;		// 8
+		fields[i++][idx] = record->second.uv / T;		// 9
+		fields[i++][idx] = record->second.uw / T;		// 10
+		fields[i++][idx] = record->second.vw / T;		// 11
+		fields[i++][idx] = record->second.pressure / T;	// 12
+		fields[i++][idx] = record->second.vort_u / T;	// 13
+		fields[i++][idx] = record->second.vort_v / T;	// 14
+		fields[i  ][idx] = record->second.vort_w / T;	// 15
+
+		// Populate auxiliary visualization vectors.
+		avgVelPtr[0][n]   = fields[ 3][idx];									// Velocity components.
+		avgVelPtr[1][n]   = fields[ 4][idx];
+		avgVelPtr[2][n]   = fields[ 5][idx];
+		ReStressUUPtr[n]  = fields[ 6][idx] - fields[3][idx] * fields[3][idx];	// Reynolds stresses.
+		ReStressVVPtr[n]  = fields[ 7][idx] - fields[4][idx] * fields[4][idx];
+		ReStressWWPtr[n]  = fields[ 8][idx] - fields[5][idx] * fields[5][idx];
+		ReStressUVPtr[n]  = fields[ 9][idx] - fields[3][idx] * fields[4][idx];
+		ReStressUWPtr[n]  = fields[10][idx] - fields[3][idx] * fields[5][idx];
+		ReStressVWPtr[n]  = fields[11][idx] - fields[4][idx] * fields[5][idx];
+		avgPressurePtr[n] = fields[12][idx];									// Pressure.
+		avgVortPtr[0][n]  = fields[13][idx];									// Vorticity components.
+		avgVortPtr[1][n]  = fields[14][idx];
+		avgVortPtr[2][n]  = fields[15][idx];
 
 		idx++;
 	}
 
-	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &idx, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
-	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Computed average running statistics for %i nodes and %i steps across the forest.\n", idx, steps ) );
+	// Send layer information across.
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+		CHKERRXX( VecGhostUpdateBegin( avgVel[dir], INSERT_VALUES, SCATTER_FORWARD ) );
+		CHKERRXX( VecGhostUpdateEnd( avgVel[dir], INSERT_VALUES, SCATTER_FORWARD ) );
+		CHKERRXX( VecGhostUpdateBegin( avgVort[dir], INSERT_VALUES, SCATTER_FORWARD ) );
+		CHKERRXX( VecGhostUpdateEnd( avgVort[dir], INSERT_VALUES, SCATTER_FORWARD ) );
+	}
+	CHKERRXX( VecGhostUpdateBegin( ReStressUU, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( ReStressUU, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateBegin( ReStressVV, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( ReStressVV, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateBegin( ReStressWW, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( ReStressWW, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateBegin( ReStressUV, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( ReStressUV, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateBegin( ReStressUW, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( ReStressUW, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateBegin( ReStressVW, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( ReStressVW, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateBegin( avgPressure, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( avgPressure, INSERT_VALUES, SCATTER_FORWARD ) );
 
-	/////////////////////////////////////////// Next, send local data to rank 0 for exportation ////////////////////////////////////////////
+	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &idx, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Computed average running statistics for %i nodes for a time interval of %.5e across the forest.\n", T, idx ) );
+	_runningStatisticsStartTime = _runningStatisticsLastTime = 0;
+
+	////////////////////////////////////////////////////// Now save VTK with averages //////////////////////////////////////////////////////
+
+	if( create_directory( vtkPath, p4est_n->mpirank, p4est_n->mpicomm ) )
+		throw std::runtime_error( errorPrefix + "Couldn't open or create directory " + vtkPath + " to save average stats VTK!" );
+
+	std::string fullVTKFileName = vtkPath + "/avg_running_stats_" + std::to_string( iter );
+	my_p4est_vtk_write_all_general( p4est_n, nodes_n, ghost_n,
+									P4EST_TRUE, P4EST_TRUE,
+									7, /* number of VTK_NODE_SCALAR */
+									2, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+									0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+									0, /* number of VTK_CELL_SCALAR */
+									0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+									0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+									fullVTKFileName.c_str(),
+									VTK_NODE_SCALAR, "Re_stress_uu", ReStressUUPtr,
+									VTK_NODE_SCALAR, "Re_stress_vv", ReStressVVPtr,
+									VTK_NODE_SCALAR, "Re_stress_ww", ReStressWWPtr,
+									VTK_NODE_SCALAR, "Re_stress_uv", ReStressUVPtr,
+									VTK_NODE_SCALAR, "Re_stress_uw", ReStressUWPtr,
+									VTK_NODE_SCALAR, "Re_stress_vw", ReStressVWPtr,
+									VTK_NODE_SCALAR, "pressure", avgPressurePtr,
+									VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", avgVelPtr[0], avgVelPtr[1], avgVelPtr[2],
+									VTK_NODE_VECTOR_BY_COMPONENTS, "vorticity", avgVortPtr[0], avgVortPtr[1], avgVortPtr[2] );
+
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Saved visual average running statistics in %s.\n", fullVTKFileName.c_str() ) );
+
+	// Clean up visualization vars.
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+		CHKERRXX( VecRestoreArray( avgVel[dir], &avgVelPtr[dir] ) );
+		CHKERRXX( VecRestoreArray( avgVort[dir], &avgVortPtr[dir] ) );
+	}
+	CHKERRXX( VecRestoreArray( ReStressUU, &ReStressUUPtr ) );
+	CHKERRXX( VecRestoreArray( ReStressVV, &ReStressVVPtr ) );
+	CHKERRXX( VecRestoreArray( ReStressWW, &ReStressWWPtr ) );
+	CHKERRXX( VecRestoreArray( ReStressUV, &ReStressUVPtr ) );
+	CHKERRXX( VecRestoreArray( ReStressUW, &ReStressUWPtr ) );
+	CHKERRXX( VecRestoreArray( ReStressVW, &ReStressVWPtr ) );
+	CHKERRXX( VecRestoreArray( avgPressure, &avgPressurePtr ) );
+
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+		CHKERRXX( VecDestroy( avgVel[dir] ) );
+		CHKERRXX( VecDestroy( avgVort[dir] ) );
+	}
+	CHKERRXX( VecDestroy( ReStressUU ) );
+	CHKERRXX( VecDestroy( ReStressVV ) );
+	CHKERRXX( VecDestroy( ReStressWW ) );
+	CHKERRXX( VecDestroy( ReStressUV ) );
+	CHKERRXX( VecDestroy( ReStressUW ) );
+	CHKERRXX( VecDestroy( ReStressVW ) );
+	CHKERRXX( VecDestroy( avgPressure ) );
+
+	/////////////////////////////////////////// Next, send local data to rank 0 for csv export /////////////////////////////////////////////
 
 	int *totalRowsPerRank = nullptr;
 	int *displacements = nullptr;			// Indicates where to place rank i data relative to beginning of recvbuf.
@@ -4329,16 +4536,19 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 
 	//////////////////////////////////////////////// Finally, save everyone's data to a file ///////////////////////////////////////////////
 
+	if( create_directory( csvPath, p4est_n->mpirank, p4est_n->mpicomm ) )
+		throw std::runtime_error( errorPrefix + "Couldn't open or create directory " + csvPath + " to save average stats csv!" );
+
 	int totalSaved = 0;
-	std::string fullFileName = path + "/average_running_statistics_" + std::to_string( iter ) + ".csv";
+	std::string fullCSVFileName = csvPath + "/avg_running_stats_" + std::to_string( iter ) + ".csv";
 	if( p4est_n->mpirank == 0 )
 	{
 		std::ofstream file;
-		file.open( fullFileName, std::ofstream::trunc );
+		file.open( fullCSVFileName, std::ofstream::trunc );
 		if( !file.is_open() )
-			throw std::runtime_error( errorPrefix + "Output file " + fullFileName + " couldn't be opened!" );
+			throw std::runtime_error( errorPrefix + "Output file " + fullCSVFileName + " couldn't be opened!" );
 
-		file << R"("x","y","z","u","v","w","uv","uw","vw","pressure","vorticiy")" << std::endl;			// The header.
+		file << R"("x","y","z","u","v","w","uu","vv","ww","uv","uw","vw","pressure","vort_u","vort_v","vort_w")" << std::endl;	// The header.
 		file.precision( 15 );
 
 		for( int i = 0; i < idx; i++ )
@@ -4353,7 +4563,7 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 		totalSaved = idx;
 	}
 	SC_CHECK_MPI( MPI_Bcast( &totalSaved, 1, MPI_INT, 0, p4est_n->mpicomm ) );
-	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Saved average running statistics in %s.\n", fullFileName.c_str() ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Saved average running statistics in %s.\n", fullCSVFileName.c_str() ) );
 
 	// Cleaning up.
 	if( p4est_n->mpirank == 0 )
@@ -4367,6 +4577,12 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 
 	for( auto& field : fields )
 		delete [] field;
+
+	for( auto& vorticityComponent : vorticity_components )
+	{
+		CHKERRXX( VecDestroy( vorticityComponent ) );
+		vorticityComponent = nullptr;
+	}
 }
 
 #endif
