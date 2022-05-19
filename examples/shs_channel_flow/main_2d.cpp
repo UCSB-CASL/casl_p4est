@@ -1613,7 +1613,7 @@ int main (int argc, char* argv[])
   cmd.add_option("minimal_vtk",			"don't include lambada-2, Q, phi, and leaf level in the vtk exportations (requires save_vtk to be provided)");
   cmd.add_option("save_ratios",			"activates exportation of ratios dx/u, dy/v[, dz/w]");
   cmd.add_option("ratios_dt",			"export ratios files every ratios_dt time lapse (REQUIRED if save_ratios is activated)");
-  cmd.add_option("running_stats", 		"collect average nodal running statistics, including velocity (u,v,w), component products (uv,uw,vw), pressure, and vorticity.\n\tThis option is only available for 3D and on restart, if the grid won't change, and if accuracy check is not requested." );
+  cmd.add_option("running_stats", 		"collect average nodal running statistics, including velocity (u,v,w), component products (uu,vv,ww,uv,uw,vw), pressure, and vorticity components. Export also results to VTK.\n\tThis option is only available for 3D and on restart, if the grid won't change, and if accuracy check is not requested." );
   cmd.add_option("running_stats_dt", 	"accumulate nodal running statistics every running_stats_dt time lapse (REQUIRED if running_stats is activated)");
   cmd.add_option("running_stats_num_steps", "collect average nodal running statistics for as many as running_stats_num_steps or until the requested simulation's duration is attained (REQUIRED if running_stats is activated)");
   cmd.add_option("save_drag",           "activates exportation of the total drag, non-dimensionalized by 2.0*rho*U_b^2*length (*width) (--> estimate of (Re_tau/Re_b)^2 at steady state)");
@@ -1765,10 +1765,10 @@ int main (int argc, char* argv[])
 		setup.update_step_running_stats();
 		ns->accumulate_nodal_running_statistics( setup.tn );
 		setup.running_stats_cur_count++;
-		CHKERRXX( PetscPrintf(mpi.comm(), "--> Completed %d/%d...\n", setup.running_stats_cur_count, setup.running_stats_num_steps ) );
+		CHKERRXX( PetscPrintf(mpi.comm(), "--> Completed running stats step %d/%d...\n", setup.running_stats_cur_count, setup.running_stats_num_steps ) );
 		if( setup.running_stats_cur_count >= setup.running_stats_num_steps )
 		{
-		  ns->compute_and_save_nodal_running_statistics_averages( setup.iter, setup.export_dir );
+		  ns->compute_and_save_nodal_running_statistics_averages( setup.iter, setup.export_dir + "/vtu", setup.export_dir );
 		  ns->clear_running_statistics_map();
 		  setup.running_stats_done = true;
 		}
@@ -1785,7 +1785,7 @@ int main (int argc, char* argv[])
   if( setup.do_running_stats && !setup.running_stats_done )
   {
 	CHKERRXX( PetscPrintf( mpi.comm(), "--> Didn't complete expected number of steps for running stats, but we'll compute averages now...\n" ) );
-	ns->compute_and_save_nodal_running_statistics_averages( setup.iter, setup.export_dir );
+	ns->compute_and_save_nodal_running_statistics_averages( setup.iter, setup.export_dir + "/vtu", setup.export_dir );
 	ns->clear_running_statistics_map();
 	setup.running_stats_done = true;
   }

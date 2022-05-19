@@ -994,14 +994,15 @@ public:
    * Compute the average of the running statistics over the local nodes.  Then, export these averages alongside nodal coordinates in a file
    * average_running_statistics_#.csv with format:
    *                        "x", "y", "z", "u", "v", "w", "uu", "vv", "ww", "uv", "uw", "vw", "pressure", "vort_u", "vort_v", "vort_w"
-   * where # is the iteration number at which we saved data.
+   * where # is the iteration number at which we saved data.  Similarly, export these variables to VTK files to ease visualization.
    * @param [in] iter Iteration number to be appended to exported file.
-   * @param [in] path Folder where to save the data file (by default, the build directory).
+   * @param [in] vtkPath Folder where to save the VTK export for visualization (by default, the build directory).
+   * @param [in] csvPath Folder where to save the csv data file (by default, the build directory).
    * @throws runtime_error if running stats hash map is empty, or if the grid changed and we couldn't locate some coordinates in the map, or
    * 		 if collecting data from all ranks fails, or if we couldn't save data to a file, or if the vorticity components are not computed,
-   * 		 or if the time span over which we desire the average is near 0.
+   * 		 or if the time span over which we desire the average is near 0, or if we can't create or open target directories.
    */
-  void compute_and_save_nodal_running_statistics_averages( const u_int& iter, const std::string& path="." );
+  void compute_and_save_nodal_running_statistics_averages( const u_int& iter, const std::string& vtkPath=".", const std::string& csvPath="." );
 #endif
 };
 
