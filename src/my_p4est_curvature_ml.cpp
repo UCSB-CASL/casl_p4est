@@ -432,12 +432,34 @@ void kml::utils::rotateStencil90y( double *stencil, const int& dir )
 	for( int i = num_neighbors_cube; i < 2 * num_neighbors_cube; i++ )
 		_rotate90( stencil[i], stencil[i + 2*num_neighbors_cube] );
 }
+
+void kml::utils::reflectStencil_z0( double stencil[] )
+{
+	// First swap all features from one vertex to another.
+	for( int i = 0; i < 1 + P4EST_DIM; i++ )
+	{
+		int offset = num_neighbors_cube * i;
+		std::swap( stencil[ 2 + offset], stencil[ 0 + offset] );
+		std::swap( stencil[ 5 + offset], stencil[ 3 + offset] );
+		std::swap( stencil[ 8 + offset], stencil[ 6 + offset] );
+		std::swap( stencil[11 + offset], stencil[ 9 + offset] );
+		std::swap( stencil[14 + offset], stencil[12 + offset] );
+		std::swap( stencil[17 + offset], stencil[15 + offset] );
+		std::swap( stencil[20 + offset], stencil[18 + offset] );
+		std::swap( stencil[23 + offset], stencil[21 + offset] );
+		std::swap( stencil[26 + offset], stencil[24 + offset] );
+	}
+
+	// Then, negate the z-component of normal vectors.
+	for( int i = 0; i < num_neighbors_cube; i++ )
+		stencil[3*num_neighbors_cube + i] *= -1;
+}
 #endif
 
 
 void kml::utils::reflectStencil_yEqx( double stencil[] )
 {
-	// First the swap all features from one vertex to another.
+	// First swap all features from one vertex to another.
 	for( int i = 0; i < 1 + P4EST_DIM; i++ )
 	{
 		int offset = num_neighbors_cube * i;
@@ -603,7 +625,8 @@ int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::
 
 	// Let's reduce precision from 64b to 32b and normalize phi by h; Tensorflow trains on single precision anyways.
 	// So, why bother to keep samples in double?
-	const int RANK_TOTAL_SAMPLES = (int)samples.size() * 2;
+	const int N_SAM_PER_POINT = P4EST_DIM * (P4EST_DIM - 1);				// 6 in 3d, 2 in 2d.
+	const int RANK_TOTAL_SAMPLES = (int)samples.size() * N_SAM_PER_POINT;
 	auto D = new FDEEP_FLOAT_TYPE [RANK_TOTAL_SAMPLES * K_INPUT_SIZE_LEARN];	// Let's put everying in a long array.
 
 //#pragma omp parallel for default( none ) num_threads( 4 ) shared( samples, h, D ) schedule(static, 500)
@@ -625,7 +648,7 @@ int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::
 #endif
 
 #ifdef P4_TO_P8
-		rotateStencilToFirstOctant( samples[i] );								// Reorientation.
+		rotateStencilToFirstOctant( samples[i] );								// Reorientation (first sample: p).
 #else
 		rotateStencilToFirstQuadrant( samples[i] );								// Reorientation.
 #endif
@@ -634,15 +657,36 @@ int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::
 		for( size_t j : Scaler::PHI_COLS )
 			samples[i][j] /= h;
 
-		// First copy: reoriented data packet.
+		// Reoriented data packet.
 		for( size_t j = 0; j < K_INPUT_SIZE_LEARN; j++ )
-			D[i*2*(K_INPUT_SIZE_LEARN) + j] = (FDEEP_FLOAT_TYPE)samples[i][j];
+			D[(i*N_SAM_PER_POINT + 0)*(K_INPUT_SIZE_LEARN) + j] = (FDEEP_FLOAT_TYPE)samples[i][j];
 
-		reflectStencil_yEqx( samples[i] );										// Reflect about plane y - x = 0.
-
-		// Second copy: reflected data packet.
+		// Augmented data packet.
+		std::vector<double> rsample( samples[i] );								// We need this copy for reflection (second sample: p').
+		reflectStencil_yEqx( rsample );											// Reflect about plane y - x = 0.
 		for( size_t j = 0; j < K_INPUT_SIZE_LEARN; j++ )
-			D[(i*2 + 1)*(K_INPUT_SIZE_LEARN) + j] = (FDEEP_FLOAT_TYPE)samples[i][j];
+			D[(i*N_SAM_PER_POINT + 1)*(K_INPUT_SIZE_LEARN) + j] = (FDEEP_FLOAT_TYPE)rsample[j];
+
+#ifdef P4_TO_P8
+		// In 3d, we have 4 additional augmentation forms.
+		reflectStencil_z0( samples[i] );
+		rotateStencil90y( samples[i].data(), -1 );
+		for( size_t j = 0; j < K_INPUT_SIZE_LEARN; j++ )						// Third sample (p_z).
+			D[(i*N_SAM_PER_POINT + 2)*(K_INPUT_SIZE_LEARN) + j] = (FDEEP_FLOAT_TYPE)samples[i][j];
+
+		reflectStencil_yEqx( samples[i] );
+		for( size_t j = 0; j < K_INPUT_SIZE_LEARN; j++ )						// Fourth sample ([p_z]').
+			D[(i*N_SAM_PER_POINT + 3)*(K_INPUT_SIZE_LEARN) + j] = (FDEEP_FLOAT_TYPE)samples[i][j];
+
+		reflectStencil_z0( rsample );
+		rotateStencil90y( rsample.data(), -1 );
+		for( size_t j = 0; j < K_INPUT_SIZE_LEARN; j++ )						// Fifth sample (p'_z).
+			D[(i*N_SAM_PER_POINT + 4)*(K_INPUT_SIZE_LEARN) + j] = (FDEEP_FLOAT_TYPE)rsample[j];
+
+		reflectStencil_yEqx( rsample );
+		for( size_t j = 0; j < K_INPUT_SIZE_LEARN; j++ )						// Sixth sample ([p'_z]').
+			D[(i*N_SAM_PER_POINT + 5)*(K_INPUT_SIZE_LEARN) + j] = (FDEEP_FLOAT_TYPE)rsample[j];
+#endif
 	}
 
 	// First, rank 0 gathers the number of effective samples processed by each rank (including itself).

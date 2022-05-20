@@ -9,8 +9,8 @@
  * the mean curvature error increases as |ihk| -> infty (i.e., h times the mean curvature at Gamma).  On the other hand, saddle samples are
  * not that consistent, and, because of them, we can't always simplify the problem by normalizing to the negative mean curvature spectrum
  * (as in the 2d case).  However, we can still reorient all stencils so that the gradient at the center node has all its components non-
- * negative.  Similarly, we can perform sample augmentation by reflecting stencils about the x-y = 0 plane (which preserves mean and
- * Gaussian curvature).  Finally, histogram subsampling helps keep well-balanced data sets (regarding mean |hk*|) as much as possible.
+ * negative.  Similarly, we can perform sample augmentation while preserving mean and Gaussian curvature.  Finally, histogram subsampling
+ * helps keep well-balanced data sets (regarding mean |hk*|) as much as possible.
  *
  * Files written are of the form "#/non_saddle_sinusoid_$.csv" and "#/saddle_sinusoid_$.csv", where # is the unit-cube max level of
  * refinement and $ is the sinusoidal amplitude index (i.e., 0, 1,... NUM_A-1, with NUM_A being the number of distinct amplitudes).
@@ -21,7 +21,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 26, 2022.
- * Updated: May 8, 2022.
+ * Updated: May 20, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 

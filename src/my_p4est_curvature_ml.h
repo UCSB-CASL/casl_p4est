@@ -52,7 +52,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: May 11, 2022.
+ * Updated: May 20, 2022.
  */
 namespace kml
 {
@@ -302,6 +302,18 @@ namespace kml
 		 * @param [in] dir Rotation direction: > 0 for counterclockwise, <= 0 for clockwise.
 		 */
 		void rotateStencil90y( double stencil[], const int& dir=1 );
+
+		/**
+		 * Reflect feature stencil about z = 0 (i.e., the xy-plane).
+		 * @note Useful for data augmentation assuming that we have already used reorientation to first octant of the
+		 * local coordinate system with origin at the center of it stencil.  Exploits curvature reflection invariance.
+		 * @param [in,out] stencil Feature array in standard order (e.g., mmm, m0m, mpm,..., ppm, pp0, ppp).
+		 */
+		void reflectStencil_z0( double stencil[] );
+		inline void reflectStencil_z0( std::vector<double>& stencil )
+		{
+			reflectStencil_z0( stencil.data() );
+		}
 #endif
 
 		/**
@@ -378,7 +390,7 @@ namespace kml
 
 		/**
 		 * Transform samples with (optional) negative-mean-curvature and phi-by-h normalization, followed by
-		 * reorientation and reflection.  Then, place these samples in a cumulative array.
+		 * reorientation and augmentation(s) (5 in 3D, 1 in 2D).  Then, place these samples into a cumulative array.
 		 * @note 1: Only rank 0 accumulates processed samples, but all processes receive the total number of them.
 		 * @note 2: Use this function only to construct learning or offline-evaluation data sets since we include
 		 * 			true (i.e., target) dimensionless curvature(s).

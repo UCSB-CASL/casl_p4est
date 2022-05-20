@@ -251,7 +251,7 @@ int main ( int argc, char* argv[] )
 		delete pLS;
 
 		// Accumulate samples in the buffer; normalize phi by h, apply negative-mean-curvature normalization to non-saddle samples only if
-		// requested, but always reorient data packets.  Also, augment samples by reflecting about plane y - x = 0.
+		// requested, but always reorient data packets.  Also, produce 6 samples per point via rotation and reflections.
 		int bufferSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, h, useNegCurvNorm()? 2 : 0, nonSaddleMinIH2KG() );
 		int nSamples = saveSamples( mpi, buffer, bufferSize, file );
 

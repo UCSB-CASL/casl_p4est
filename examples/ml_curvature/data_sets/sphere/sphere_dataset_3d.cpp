@@ -17,7 +17,7 @@
  *
  * Developer: Luis Ángel.
  * Created: March 31, 2022.
- * Updated: May 10, 2022.
+ * Updated: May 20, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -67,8 +67,8 @@ int main ( int argc, char* argv[] )
 	param_t<u_short>       reinitIters( pl,    10, "reinitIters"			, "Number of iterations for reinitialization (default: 10)" );
 	param_t<u_int>          numSpheres( pl,   2e5, "numSpheres"				, "Number of spheres (with distinct radii) to evaluate "
 																			  "(default: 200K)" );
-	param_t<u_int> numSamplesPerSphere( pl,     5, "numSamplesPerSphere"	, "Number of samples to collect randomly for each sphere "
-																			  "(default: 5)" );
+	param_t<u_int> numSamplesPerSphere( pl,    10, "numSamplesPerSphere"	, "Number of samples to collect randomly for each sphere "
+																			  "(default: 10)" );
 	param_t<std::string>        outDir( pl,   ".", "outDir"					, "Where to write data set (default: build folder)" );
 	param_t<bool> useSignedDistanceFun( pl,  true, "useSignedDistanceFun"	, "If true, use phi(x)=|x-x0| - r; otherwise, use "
 																			  "phi(x)=|x-x0|^2 - r^2 (default: true)" );
