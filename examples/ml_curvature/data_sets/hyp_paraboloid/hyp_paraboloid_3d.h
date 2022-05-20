@@ -3,7 +3,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
- * Updated: May 15, 2022.
+ * Updated: May 20, 2022.
  */
 
 #ifndef ML_CURVATURE_HYP_PARABOLOID_3D_H
@@ -394,6 +394,7 @@ public:
 	 * @param [in] easeOffProbMinIH2KG Probability associated with min value (i.e., nonSaddleMinIH2KG) for ease-off distribution according to ih2kg.
 	 * @param [in] filter Vector with 1s for nodes we are allowed to sample from and anything else for non-sampling nodes.
 	 * @param [in] maxHK Current achievable max |hk| for further subsampling.
+	 * @param [in] hkWindowWidth How much to look behind currently expected max |hk| (for subsampling).
 	 * @param [in] samR2 Overriding sampling sphere radius^2 on canonical space (to be used instead of limiting circle used for triangulation).
 	 * @param [in] nonSaddleMinIH2KG Min numerical dimensionless Gaussian curvature (at Gamma) for numerical non-saddle points.
 	 * @return Maximum errors in dimensionless mean and Gaussian curvatures (reduced across processes).
@@ -407,7 +408,8 @@ public:
 											 std::vector<std::vector<double>>& nonSaddleSamples, const double& minHK, 			// Non-saddle params.
 											 std::vector<std::vector<double>>& saddleSamples, const double& easeOffMaxIH2KG, 	// Saddle params.
 											 const double& easeOffProbMaxIH2KG, const double& easeOffProbMinIH2KG,
-											 Vec filter, const double& maxHK, double samR2=NAN, const double& nonSaddleMinIH2KG=-7e-6 ) const
+											 Vec filter, const double& maxHK, const double &hkWindowWidth, double samR2=NAN,
+											 const double& nonSaddleMinIH2KG=-7e-6 ) const
 	{
 		std::string errorPrefix = _errorPrefix + "collectSamples: ";
 		if( !_useCache || _cache.empty() || _canonicalCoordsCache.empty() )
@@ -528,13 +530,18 @@ public:
 					if( pDistribution( genP ) > prob )
 						continue;								// Use an easing-off prob to keep samples.
 
-					prob = kml::utils::easingOffProbability( ABS( hk ), 0, 0.0025, abs(maxHK)/2, 1 );
+					if( ABS( hk ) < maxHK - 2*hkWindowWidth )	// Skip samples with curvatures far away from target max hk.
+						continue;
+
+					double hkLB = MAX( maxHK - 2*hkWindowWidth, 0.0 );
+					double hkUB = MAX( maxHK - hkWindowWidth, 0.0 );
+					prob = kml::utils::easingOffProbability( ABS( hk ), hkLB, 0.0025, hkUB, 1 );
 					if( pDistribution( genP ) > prob )
 						continue;
                     
-                    prob = kml::utils::easingOffProbability( ABS(hk - ihkVal), 0, 0.005, 0.1, 1 );
-                    if( pDistribution( genP ) > prob )
-                        continue;
+//					prob = kml::utils::easingOffProbability( ABS(hk - ihkVal), 0, 0.005, 0.1, 1 );
+//					if( pDistribution( genP ) > prob )
+//						continue;
 
 					isNonSaddle = false;
 				}

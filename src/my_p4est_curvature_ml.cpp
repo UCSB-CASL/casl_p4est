@@ -865,19 +865,19 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 				counts[idx]++;
 			}
 
-			// Find the median.
-			std::sort( counts.begin(), counts.end() );
-			int mIdx = floor( nbins / 2.0 );
-			auto median = (nbins % 2 == 0)? (FDEEP_FLOAT_TYPE)ceil( (counts[mIdx] + counts[mIdx - 1]) / 2.0 ) : (FDEEP_FLOAT_TYPE)counts[mIdx];
-
 			// Find the smallest non-zero bin count.
+			std::sort( counts.begin(), counts.end() );
 			int minCount = 0;
 			int b = 0;
 			while( b < nbins && (minCount = counts[b]) == 0 )
 				b++;
 
-			if( minCount == 0 )
-				throw std::runtime_error( errorPrefix + "Min count is zero?!" );
+			// Find the median (for non-zero-count bins).
+			int mIdx = floor( (nbins - b) / 2.0 + b );
+			auto median = ((nbins - b) % 2 == 0)? (FDEEP_FLOAT_TYPE)ceil( (counts[mIdx] + counts[mIdx - 1]) / 2.0 ) : (FDEEP_FLOAT_TYPE)counts[mIdx];
+
+			if( minCount == 0 || median == 0 )
+				throw std::runtime_error( errorPrefix + "Min count is zero?! Median is zero?!" );
 
 			// Probabilistic subsampling by shuffling the indices within overpopulated bins.  Then, writing samples to file.
 			int cap = (int)MAX( ceil( frac * median ), minFold * (FDEEP_FLOAT_TYPE)minCount );

@@ -10,8 +10,8 @@
  * Theoretically, the hyperbolic paraboloid Gaussian curvature is always negative (never 0).  Thus, its data set contains samples only
  * saddle regions (i.e., h2kg < 0).  If requested, we can apply negative-mean-curvature normalization selectively for each numerical
  * non-saddle sample (say we found some point for which ih2kg >= nonSaddleMinIH2KG).  In any case, every sample is reoriented by rotating
- * the stencil so that the gradient at the center node has all its components non-negative.  Finally, we reflect the data packet about the
- * y-x = 0 plane, and we produce two samples for each interface point.  At inference time, both outputs are averaged to improve accuracy.
+ * the stencil so that the gradient at the center node has all its components non-negative.  Finally, reflection- and rotation-based
+ * augmentation to produce 6 samples for each interface point.  At inference time, these outputs are averaged to improve accuracy.
  *
  * To inject variations, we vary the ratio between a and b.  The ratio a/b or b/a is r.  We change r between 1 and 10 and are careful to
  * avoid hitting an r that yields hk maxima whose critical points are less than 1.5h apart; we consider those values for r as under-resolved
@@ -24,7 +24,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 11, 2022.
- * Updated: May 15, 2022.
+ * Updated: May 20, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -84,8 +84,8 @@ int main ( int argc, char* argv[] )
 	param_t<float>          histMinFold( pl,   1.5, "histMinFold"		 , "Post-histogram subsampling min count fold (default: 1.5)" );
 	param_t<u_short>          nHistBins( pl,   100, "nHistBins"		 	 , "Max number of bins in |hk*| histogram (default: 100)" );
 	param_t<u_short>      numMaxHKSteps( pl,   150, "numMaxHKSteps" 	 , "Number of steps to vary target max |hk| (default: 150)" );
-	param_t<u_short>        numABRatios( pl,    12, "numABRatios"		 , "Min number of random a/b (for r>0) or b/a (for r<0) ratios in "
-																	   	   "[1, 10] or [-10, -1) for each max |hk| value (default: 12)" );
+	param_t<u_short>        numABRatios( pl,    24, "numABRatios"		 , "Min number of random a/b (for r>0) or b/a (for r<0) ratios in "
+																	   	   "[1, 10] or [-10, -1) for each max |hk| value (default: 24)" );
 	param_t<u_short>      startMaxHKIdx( pl,     0, "startMaxHKIdx"		 , "Start index for max |hk| (helpful for restarting) (default: 0)" );
 	param_t<u_short>    startABRatioIdx( pl,     0, "startABRatioIdx"	 , "Start index for a:b ratio (helpful for restarting) (default: 0)" );
 	param_t<u_short>       numRotations( pl,    30, "numRotations"	 	 , "Min number of rotations around random axes and by random angles"
@@ -316,7 +316,8 @@ int main ( int argc, char* argv[] )
 					double minHKInBatch[SAMPLE_TYPES], maxHKInBatch[SAMPLE_TYPES];	// 0 for non-saddles, 1 for saddles.
 					maxErrors = pLS->collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, minHKInBatch, maxHKInBatch,
 													 genProb, samples[0], minHK(), samples[1], easeOffMaxIH2KG(), easeOffProbMaxIH2KG(),
-													 easeOffProbMinIH2KG(), exactFlag, maxHKVal, SQR( samRadius ), nonSaddleMinIH2KG() );
+													 easeOffProbMinIH2KG(), exactFlag, maxHKVal, maxHKVal / 10.0, SQR( samRadius ),
+													 nonSaddleMinIH2KG() );
 
 					maxHKError = MAX( maxHKError, maxErrors.first );
 					maxIH2KGError = MAX( maxIH2KGError, maxErrors.second );
