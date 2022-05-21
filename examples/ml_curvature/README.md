@@ -40,6 +40,14 @@ cmake ..
 make && sudo make install
 cd ../..
 
+# Installing OpenBLAS depends on the machine: if you have Intel's MKL, use that one.
+wget https://github.com/xianyi/OpenBLAS/releases/download/v0.3.20/OpenBLAS-0.3.20.tar.gz
+tar xvf OpenBLAS-0.3.20.tar.gz
+cd OpenBLAS-0.3.20
+mkdir -p build && cd build
+cmake ..
+make && make install
+
 # To install dlib, particularly on Stampede2, we must do it on a non-sudo location.  The above libraries would require this too.
 wget http://dlib.net/files/dlib-19.23.tar.bz2
 tar xvf dlib-19.23.tar.bz2
