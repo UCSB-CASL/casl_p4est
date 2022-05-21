@@ -72,26 +72,27 @@ message( "** Boost   : " ${BOOST_DIR} )
 
 if( ENABLE_ML MATCHES 1 )		# Set this CMake variable as -DENABLE_ML=1.
 
-	set( OpenBLAS_DIR / ) 	# OpenBLAS.
-	set( DLIB_DIR / )					# dlib.
-	set( JSON_DIR / )					# json: only headers.  You can also add `nlohmann_json::nlohmann_json`
-												# to LIBS list if you use `find_package( nlohmann_json CONFIG REQUIRED )`.
-	set( FDEEP_DIR / )					# frugally-deep: only headers.
+	set( OpenBLAS_DIR /home/youngmin/local ) 		# OpenBLAS.
+	set( DLIB_DIR /home/youngmin/local )			# dlib.
+	set( JSON_DIR /home/youngmin/local )			# json: only headers.  You can also add `nlohmann_json::nlohmann_json`
+								# to LIBS list if you use `find_package( nlohmann_json CONFIG REQUIRED )`.
+	set( FDEEP_DIR /home/youngmin/local )			# frugally-deep: only headers.
 
 	# Append to lists.
 	list( APPEND INC_DIRS					# Include directories.
-			${OpenBLAS_DIR}/include
+			${OpenBLAS_DIR}/include/openblas
 			${DLIB_DIR}/include
-			${JSON_DIR}/include				# nlohmann's json and frugally-deep are header-only libraries.
+			${JSON_DIR}/include			# nlohmann's json and frugally-deep are header-only libraries.
 			${FDEEP_DIR}/include )
 
 	list( APPEND LIB_DIRS					# Library directories.
 			${OpenBLAS_DIR}/lib
 			${DLIB_DIR}/lib )
 
-	list( APPEND LIBS						# Libraries.
+	list( APPEND LIBS					# Libraries.
 			openblas
-			dlib )
+			dlib
+		        gfortran )
 
 	message( "" )
 	message( "---------------- Machine-learning libraries ----------------" )
