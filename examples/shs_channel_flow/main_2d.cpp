@@ -4,7 +4,7 @@
  * run the program with the -help flag to see the available options
  *
  * Author: Raphael Egan, with updates by Luis Ángel.
- * Updated: May 18, 2022.
+ * Updated: May 22, 2022.
  */
 
 // System
@@ -1613,7 +1613,7 @@ int main (int argc, char* argv[])
   cmd.add_option("minimal_vtk",			"don't include lambada-2, Q, phi, and leaf level in the vtk exportations (requires save_vtk to be provided)");
   cmd.add_option("save_ratios",			"activates exportation of ratios dx/u, dy/v[, dz/w]");
   cmd.add_option("ratios_dt",			"export ratios files every ratios_dt time lapse (REQUIRED if save_ratios is activated)");
-  cmd.add_option("running_stats", 		"collect average nodal running statistics, including velocity (u,v,w), component products (uu,vv,ww,uv,uw,vw), pressure, and vorticity components. Export also results to VTK.\n\tThis option is only available for 3D and on restart, if the grid won't change, and if accuracy check is not requested." );
+  cmd.add_option("running_stats", 		"collect average nodal running statistics, including velocity (u,v,w), component products (uu,vv,ww,uv,uw,vw), pressure, pressure variance, and vorticity components. Export also results to VTK.\n\tThis option is only available for 3D and on restart, if the grid won't change, and if accuracy check is not requested." );
   cmd.add_option("running_stats_dt", 	"accumulate nodal running statistics every running_stats_dt time lapse (REQUIRED if running_stats is activated)");
   cmd.add_option("running_stats_num_steps", "collect average nodal running statistics for as many as running_stats_num_steps or until the requested simulation's duration is attained (REQUIRED if running_stats is activated)");
   cmd.add_option("save_drag",           "activates exportation of the total drag, non-dimensionalized by 2.0*rho*U_b^2*length (*width) (--> estimate of (Re_tau/Re_b)^2 at steady state)");
