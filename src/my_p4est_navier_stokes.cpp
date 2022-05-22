@@ -4237,7 +4237,7 @@ void my_p4est_navier_stokes_t::init_nodal_running_statistics( const double& init
 		auto record = _nodalRunningStatisticsMap.find( discreteCoords );
 		if( record != _nodalRunningStatisticsMap.end() )
 			throw std::runtime_error( "my_p4est_navier_stokes_t::init_nodal_running_statistics: Unexpected key collision!" );
-		_nodalRunningStatisticsMap[discreteCoords] = RunningStatistics{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+		_nodalRunningStatisticsMap[discreteCoords] = RunningStatistics{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 		initialized++;
 	}
 
@@ -4297,6 +4297,7 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics( const double
 		record->second.uw += velReadPtr[0][n] * velReadPtr[2][n] * deltaT;
 		record->second.vw += velReadPtr[1][n] * velReadPtr[2][n] * deltaT;
 		record->second.pressure += nodalPressureReadPtr[n] * deltaT;
+		record->second.pressure2 += SQR( nodalPressureReadPtr[n] ) * deltaT;
 		record->second.vort_u += vortReadPtr[0][n] * deltaT;
 		record->second.vort_v += vortReadPtr[1][n] * deltaT;
 		record->second.vort_w += vortReadPtr[2][n] * deltaT;
@@ -4321,7 +4322,7 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics( const double
 
 void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages( const u_int& iter, const std::string& vtkPath, const std::string& csvPath )
 {
-	const int N_FIELDS = 16;
+	const int N_FIELDS = 17;
 	const double T = _runningStatisticsLastTime - _runningStatisticsStartTime;
 
 	const std::string errorPrefix = "my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages: ";
@@ -4335,7 +4336,7 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 	//////////// First, compute averages only on local nodes and copy stats to arrays we'll transfer to root rank for exporting ////////////
 
 	// We also need to allocate as many average vectors as fields we want to export to create the VTK.
-	Vec avgVel[P4EST_DIM], ReStressUU, ReStressVV, ReStressWW, ReStressUV, ReStressUW, ReStressVW, avgPressure, avgVort[P4EST_DIM];
+	Vec avgVel[P4EST_DIM], ReStressUU, ReStressVV, ReStressWW, ReStressUV, ReStressUW, ReStressVW, avgPressure, avgVort[P4EST_DIM], pressureVar;
 	for( int dir = 0; dir < P4EST_DIM; dir++ )
 	{
 		CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &avgVel[dir] ) );
@@ -4348,9 +4349,10 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &ReStressUW ) );
 	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &ReStressVW ) );
 	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &avgPressure ) );
+	CHKERRXX( VecCreateGhostNodes( p4est_n, nodes_n, &pressureVar ) );
 
 	double *avgVelPtr[P4EST_DIM], *ReStressUUPtr, *ReStressVVPtr, *ReStressWWPtr, *ReStressUVPtr, *ReStressUWPtr, *ReStressVWPtr;
-	double *avgPressurePtr, *avgVortPtr[P4EST_DIM];
+	double *avgPressurePtr, *pressureVarPtr, *avgVortPtr[P4EST_DIM];
 	for( int dir = 0; dir < P4EST_DIM; dir++ )
 	{
 		CHKERRXX( VecGetArray( avgVel[dir], &avgVelPtr[dir] ) );
@@ -4363,6 +4365,7 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 	CHKERRXX( VecGetArray( ReStressUW, &ReStressUWPtr ) );
 	CHKERRXX( VecGetArray( ReStressVW, &ReStressVWPtr ) );
 	CHKERRXX( VecGetArray( avgPressure, &avgPressurePtr ) );
+	CHKERRXX( VecGetArray( pressureVar, &pressureVarPtr ) );
 
 	double *fields[N_FIELDS] = {nullptr};
 	for( auto& field : fields )
@@ -4384,36 +4387,38 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 		}
 
 		int i = 0;
-		for( const double& dim : xyz )					// Copy first the xyz coordinates (not the normalized, though).
+		for( const double& dim : xyz )						// Copy first the xyz coordinates (not the normalized, though).
 			fields[i++][idx] = dim;
-		fields[i++][idx] = record->second.u / T;		// 3 (idx in field).
-		fields[i++][idx] = record->second.v / T;		// 4
-		fields[i++][idx] = record->second.w / T;		// 5
-		fields[i++][idx] = record->second.uu / T;		// 6
-		fields[i++][idx] = record->second.vv / T;		// 7
-		fields[i++][idx] = record->second.ww / T;		// 8
-		fields[i++][idx] = record->second.uv / T;		// 9
-		fields[i++][idx] = record->second.uw / T;		// 10
-		fields[i++][idx] = record->second.vw / T;		// 11
-		fields[i++][idx] = record->second.pressure / T;	// 12
-		fields[i++][idx] = record->second.vort_u / T;	// 13
-		fields[i++][idx] = record->second.vort_v / T;	// 14
-		fields[i  ][idx] = record->second.vort_w / T;	// 15
+		fields[i++][idx] = record->second.u / T;			// 3 (idx in field).
+		fields[i++][idx] = record->second.v / T;			// 4
+		fields[i++][idx] = record->second.w / T;			// 5
+		fields[i++][idx] = record->second.uu / T;			// 6
+		fields[i++][idx] = record->second.vv / T;			// 7
+		fields[i++][idx] = record->second.ww / T;			// 8
+		fields[i++][idx] = record->second.uv / T;			// 9
+		fields[i++][idx] = record->second.uw / T;			// 10
+		fields[i++][idx] = record->second.vw / T;			// 11
+		fields[i++][idx] = record->second.pressure / T;		// 12
+		fields[i++][idx] = record->second.vort_u / T;		// 13
+		fields[i++][idx] = record->second.vort_v / T;		// 14
+		fields[i++][idx] = record->second.vort_w / T;		// 15
+		fields[i  ][idx] = record->second.pressure2 / T;	// 16
 
 		// Populate auxiliary visualization vectors.
-		avgVelPtr[0][n]   = fields[ 3][idx];									// Velocity components.
+		avgVelPtr[0][n]   = fields[ 3][idx];										// Velocity components.
 		avgVelPtr[1][n]   = fields[ 4][idx];
 		avgVelPtr[2][n]   = fields[ 5][idx];
-		ReStressUUPtr[n]  = fields[ 6][idx] - fields[3][idx] * fields[3][idx];	// Reynolds stresses.
+		ReStressUUPtr[n]  = fields[ 6][idx] - fields[3][idx] * fields[3][idx];		// Reynolds stresses.
 		ReStressVVPtr[n]  = fields[ 7][idx] - fields[4][idx] * fields[4][idx];
 		ReStressWWPtr[n]  = fields[ 8][idx] - fields[5][idx] * fields[5][idx];
 		ReStressUVPtr[n]  = fields[ 9][idx] - fields[3][idx] * fields[4][idx];
 		ReStressUWPtr[n]  = fields[10][idx] - fields[3][idx] * fields[5][idx];
 		ReStressVWPtr[n]  = fields[11][idx] - fields[4][idx] * fields[5][idx];
-		avgPressurePtr[n] = fields[12][idx];									// Pressure.
-		avgVortPtr[0][n]  = fields[13][idx];									// Vorticity components.
+		avgPressurePtr[n] = fields[12][idx];										// Pressure.
+		avgVortPtr[0][n]  = fields[13][idx];										// Vorticity components.
 		avgVortPtr[1][n]  = fields[14][idx];
 		avgVortPtr[2][n]  = fields[15][idx];
+		pressureVarPtr[n] = fields[16][idx] - fields[12][idx] * fields[12][idx];	// Pressure variance.
 
 		idx++;
 	}
@@ -4440,6 +4445,8 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 	CHKERRXX( VecGhostUpdateEnd( ReStressVW, INSERT_VALUES, SCATTER_FORWARD ) );
 	CHKERRXX( VecGhostUpdateBegin( avgPressure, INSERT_VALUES, SCATTER_FORWARD ) );
 	CHKERRXX( VecGhostUpdateEnd( avgPressure, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateBegin( pressureVar, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( pressureVar, INSERT_VALUES, SCATTER_FORWARD ) );
 
 	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &idx, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
 	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Computed average running statistics for %i nodes for a time interval of %.5e across the forest.\n", T, idx ) );
@@ -4453,7 +4460,7 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 	std::string fullVTKFileName = vtkPath + "/avg_running_stats_" + std::to_string( iter );
 	my_p4est_vtk_write_all_general( p4est_n, nodes_n, ghost_n,
 									P4EST_TRUE, P4EST_TRUE,
-									7, /* number of VTK_NODE_SCALAR */
+									8, /* number of VTK_NODE_SCALAR */
 									2, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
 									0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
 									0, /* number of VTK_CELL_SCALAR */
@@ -4467,6 +4474,7 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 									VTK_NODE_SCALAR, "Re_stress_uw", ReStressUWPtr,
 									VTK_NODE_SCALAR, "Re_stress_vw", ReStressVWPtr,
 									VTK_NODE_SCALAR, "pressure", avgPressurePtr,
+									VTK_NODE_SCALAR, "pressure_var", pressureVarPtr,
 									VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", avgVelPtr[0], avgVelPtr[1], avgVelPtr[2],
 									VTK_NODE_VECTOR_BY_COMPONENTS, "vorticity", avgVortPtr[0], avgVortPtr[1], avgVortPtr[2] );
 
@@ -4485,6 +4493,7 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 	CHKERRXX( VecRestoreArray( ReStressUW, &ReStressUWPtr ) );
 	CHKERRXX( VecRestoreArray( ReStressVW, &ReStressVWPtr ) );
 	CHKERRXX( VecRestoreArray( avgPressure, &avgPressurePtr ) );
+	CHKERRXX( VecRestoreArray( pressureVar, &pressureVarPtr ) );
 
 	for( int dir = 0; dir < P4EST_DIM; dir++ )
 	{
@@ -4498,6 +4507,7 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 	CHKERRXX( VecDestroy( ReStressUW ) );
 	CHKERRXX( VecDestroy( ReStressVW ) );
 	CHKERRXX( VecDestroy( avgPressure ) );
+	CHKERRXX( VecDestroy( pressureVar ) );
 
 	/////////////////////////////////////////// Next, send local data to rank 0 for csv export /////////////////////////////////////////////
 
@@ -4548,7 +4558,7 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 		if( !file.is_open() )
 			throw std::runtime_error( errorPrefix + "Output file " + fullCSVFileName + " couldn't be opened!" );
 
-		file << R"("x","y","z","u","v","w","uu","vv","ww","uv","uw","vw","pressure","vort_u","vort_v","vort_w")" << std::endl;	// The header.
+		file << R"("x","y","z","u","v","w","uu","vv","ww","uv","uw","vw","pressure","vort_u","vort_v","vort_w","pressure_2")" << std::endl;	// The header.
 		file.precision( 15 );
 
 		for( int i = 0; i < idx; i++ )
