@@ -11,9 +11,9 @@
  * Theoretically, the Gaussian curvature can be positive and negative.  Thus, this data set can be used to test the neural network ability
  * on saddle samples.  In any case, if a point belongs to a non-saddle region (i.e., ih2kg>=C), it'll be negative-mean-curvature normalized
  * by taking the sign of ihk ONLY if requested.  On the other hand, if the point belongs to a (numerical) saddle region, its sample will
- * never be negative-mean-curvature-normalized.  In any case, we apply sample reorientation by rotating the stencil so that the (possibly
- * updated) gradient has all its components non-negative.  Finally, we reflect the data packet about the y-x = 0 plane, and thus we produce
- * two samples for each interface point.  At inference time, both outputs are averaged to improve accuracy.
+ * never be negative-mean-curvature-normalized.  In any case, we extract six samples per interface node by applying a sequence of
+ * reorientations and reflections.  These make the center node' gradient components non-negative.  At inference  time, all six outputs are
+ * averaged to improve accuracy.
  *
  * Negative-mean-curvature normalization, when applicable, depends on the sign of the linearly interpolated mean ihk at the interface.  As
  * for the Gaussian curvature, we normalize it by scaling it with h^2 ---which leads to the true h2kg and the linearly interpolated ih2kg
@@ -21,7 +21,7 @@
  *
  * The sample file is of the form "#/gaussian/$/iter%_data.csv", and the params file is "#/gaussian/$/iter%_params.csv", where # is the
  * unit-octree max level of refinement, $ is the experiment id, and % is the number of redistancing steps.  The data file contains as many
- * rows as twice the number of collected samples with all data-packet info.  The params file stores the values for "a", "su^2", and "sv^2"
+ * rows as 6 times the number of interface nodes with all data-packet info.  The params file stores the values for "a", "su^2", and "sv^2"
  * and the maximum (true) "hk" at the peak.  In addition, we export VTK data for visualization and validation.
  *
  * @note Here and across related files to machine-learning computation of mean curvature use the geometrical definition of mean curvature;
@@ -29,7 +29,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: May 8, 2022.
+ * Updated: May 23, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -315,7 +315,7 @@ int main ( int argc, char* argv[] )
 		p4est_destroy( p4est );
 		my_p4est_brick_destroy( connectivity, &brick );
 
-		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples (incl. standard and reflected) with the following stats:\n", nSamples ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples (incl. the six permutations) with the following stats:\n", nSamples ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of saddle points   = %i\n", nNumericalSaddles ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked mean |hk*| in the range of [%.6g, %.6g]\n", trackedMinHK, trackedMaxHK ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max hk error      = %.6g\n", trackedMaxErrors[0] ) );

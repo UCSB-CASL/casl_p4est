@@ -1,5 +1,5 @@
 /**
- * Generate samples from a hyperbolic paraboloid surface for *offline inference* (i.e., using Python).  The canonical surface is a Monge
+ * Generate samples from a hyperbolic paraboloidal surface for *offline inference* (i.e., using Python).  The canonical surface is a Monge
  * patch represented by
  *
  *                                                    Q(u,v) = a*u^2 - b*v^2,
@@ -10,13 +10,13 @@
  *
  * Theoretically, the hyperbolic paraboloid Gaussian curvature is always negative (never 0).  Thus, its data set contains samples only
  * saddle regions (i.e., h2kg < 0).  If requested, we can apply negative-mean-curvature normalization selectively for each numerical
- * non-saddle sample (say we found some point for which ih2kg >= nonSaddleMinIH2KG).  In any case, every sample is reoriented by rotating
- * the stencil so that the gradient at the center node has all its components non-negative.  Finally, we reflect the data packet about the
- * y-x = 0 plane, and we produce two samples for each interface point.  At inference time, both outputs are averaged to improve accuracy.
+ * non-saddle sample (say we found some point for which ih2kg >= nonSaddleMinIH2KG).  In any case, we extract six samples per interface node
+ * by applying a sequence of reorientations and reflections.  These make the center node's gradient components non-negative.  At inference
+ * time, all six outputs are averaged to improve accuracy.
  *
  * The sample file is of the form "#/hyp_paraboloid/$/iter%_data.csv", and the params file is "#/hyp_paraboloid/$/iter%_params.csv", where
  * # is the unit-octree max level of refinement, $ is the experiment id, and % is the number of redistancing steps.  The data file contains
- * as many rows as twice the number of collected samples with all data-packet info.  The params file stores the values for "a", "b", and
+ * as many rows as 6 times the number of interface nodes with all data-packet info.  The params file stores the values for "a", "b", and
  * "hk", where "hk" is the true maximum dimensionless mean curvature.  The latter can occur at two places if 1 <= r < 3, and a=rb or b=ra.
  * If the user picks an r factor that yields maxima whose critical points are less than 1.5h apart, we abort the program as curvature
  * becomes "under-resolved".  In addition, we export VTK data for visualization and validation.
@@ -26,7 +26,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
- * Updated: May 14, 2022.
+ * Updated: May 23, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -308,7 +308,7 @@ int main ( int argc, char* argv[] )
 		p4est_destroy( p4est );
 		my_p4est_brick_destroy( connectivity, &brick );
 
-		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples (incl. standard and reflected) with the following stats:\n", nSamples ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples (incl. the six permutations) with the following stats:\n", nSamples ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of saddle points   = %i (or %i samples)\n", nNumericalSaddles, 2 * nNumericalSaddles ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked mean |hk*| in the range of [%.6g, %.6g]\n", trackedMinHK, trackedMaxHK ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max hk error      = %.6g\n", trackedMaxErrors[0] ) );

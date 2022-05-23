@@ -3,7 +3,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
- * Updated: May 20, 2022.
+ * Updated: May 23, 2022.
  */
 
 #ifndef ML_CURVATURE_HYP_PARABOLOID_3D_H
@@ -530,18 +530,22 @@ public:
 					if( pDistribution( genP ) > prob )
 						continue;								// Use an easing-off prob to keep samples.
 
-					if( ABS( hk ) < maxHK - 2*hkWindowWidth )	// Skip samples with curvatures far away from target max hk.
-						continue;
+//					if( ABS( hk ) < maxHK - 2*hkWindowWidth )	// Skip samples with curvatures far away from target max hk.
+//						continue;
 
-					double hkLB = MAX( maxHK - 2*hkWindowWidth, 0.0 );
-					double hkUB = MAX( maxHK - hkWindowWidth, 0.0 );
-					prob = kml::utils::easingOffProbability( ABS( hk ), hkLB, 0.0025, hkUB, 1 );
+					prob = kml::utils::easingOffProbability( ABS( hk ), 0, 0.0025, abs(maxHK)/2, 1 );	// This was added on May 15 from tests in txt.
 					if( pDistribution( genP ) > prob )
 						continue;
-                    
-//					prob = kml::utils::easingOffProbability( ABS(hk - ihkVal), 0, 0.005, 0.1, 1 );
+
+//					double hkLB = MAX( maxHK - 2*hkWindowWidth, 0.0 );
+//					double hkUB = MAX( maxHK - hkWindowWidth, 0.0 );
+//					prob = kml::utils::easingOffProbability( ABS( hk ), hkLB, 0.0025, hkUB, 1 );
 //					if( pDistribution( genP ) > prob )
 //						continue;
+                    
+					prob = kml::utils::easingOffProbability( ABS(hk - ihkVal), 0, 0.005, 0.1, 1 );		// This was added on May 15 from tests in txt with 0, 0.005, 0.1, 1.
+					if( pDistribution( genP ) > prob )
+						continue;
 
 					isNonSaddle = false;
 				}

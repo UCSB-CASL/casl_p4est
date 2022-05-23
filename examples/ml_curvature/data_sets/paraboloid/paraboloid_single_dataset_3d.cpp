@@ -10,13 +10,12 @@
  *
  * Theoretically, the paraboloid mean curvature is always positive.  Thus, its data set contains samples only from non-saddle regions (i.e.,
  * ih2kg > C).  If requested, we can apply negative-mean-curvature normalization selectively for each numerical non-saddle sample.  In any
- * case, every sample is reoriented by rotating the stencil so that the gradient at the center node has all its components non-negative.
- * Finally, we reflect the data packet about the y-x = 0 plane, and we produce two samples for each interface point.  At inference time,
- * both outputs are averaged to improve accuracy.
+ * case, we extract six samples per interface node by applying a sequence of reorientations and reflections.  These make the center node's
+ * gradient components non-negative.  At inference time, all six outputs are averaged to improve accuracy.
  *
  * The sample file is of the form "#/paraboloid/$/iter%_data.csv", and the params file is "#/paraboloid/$/iter%_params.csv", where # is the
  * unit-octree max level of refinement, $ is the experiment id, and % is the number of redistancing steps.  The data file contains as many
- * rows as twice the number of collected samples with all data-packet info.  The params file stores the values for "a", "b", "c", and "hk",
+ * rows as 6 times the number of interface nodes with all data-packet info.  The params file stores the values for "a", "b", "c", and "hk",
  * where "c" is the user-defined paraboloid height, and "hk" is the true dimensionless mean curvature at the peak.  In addition, we export
  * VTK data for visualization and validation.
  *
@@ -25,7 +24,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 27, 2022.
- * Updated: May 8, 2022.
+ * Updated: May 23, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -313,7 +312,7 @@ int main ( int argc, char* argv[] )
 		p4est_destroy( p4est );
 		my_p4est_brick_destroy( connectivity, &brick );
 
-		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples (incl. standard and reflected) with the following stats:\n", nSamples ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples (incl. the six permutations) with the following stats:\n", nSamples ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of saddle points   = %i\n", nNumericalSaddles ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked mean |hk*| in the range of [%.6g, %.6g]\n", trackedMinHK, trackedMaxHK ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max hk error      = %.6g\n", trackedMaxErrors[0] ) );

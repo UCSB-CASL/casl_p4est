@@ -24,7 +24,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 11, 2022.
- * Updated: May 20, 2022.
+ * Updated: May 23, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -72,8 +72,8 @@ int main ( int argc, char* argv[] )
 																	   	   " (default: 10)" );
 	param_t<u_int>          randomState( pl,    11, "randomState"	 	 , "Seed for random perturbations of canonical frame (default: 11)" );
 	param_t<std::string>         outDir( pl,   ".", "outDir"		 	 , "Path where files will be written to (default: build folder)" );
-	param_t<size_t>       bufferMinSize( pl,   1e5, "bufferMinSize"	 	 , "Buffer minimum overflow size to trigger histogram-based "
-																	   	   "subsampling and storage (default: 100K)" );
+	param_t<size_t>       bufferMinSize( pl, 3.0e5, "bufferMinSize"	 	 , "Buffer minimum overflow size to trigger histogram-based "
+																	   	   "subsampling and storage (default: 300K)" );
 	param_t<double>     easeOffMaxIH2KG( pl,  1e-2, "easeOffMaxIH2KG"	 , "Easing-off upper bound for |ih2kg| for subsampling saddle "
 																		   "samples (default: 1e-2)" );
 	param_t<double> easeOffProbMaxIH2KG( pl,   1.0, "easeOffProbMaxIH2KG", "Easing-off prob for |ih2kg| upper bound for subsampling saddle "
@@ -84,8 +84,8 @@ int main ( int argc, char* argv[] )
 	param_t<float>          histMinFold( pl,   1.5, "histMinFold"		 , "Post-histogram subsampling min count fold (default: 1.5)" );
 	param_t<u_short>          nHistBins( pl,   100, "nHistBins"		 	 , "Max number of bins in |hk*| histogram (default: 100)" );
 	param_t<u_short>      numMaxHKSteps( pl,   150, "numMaxHKSteps" 	 , "Number of steps to vary target max |hk| (default: 150)" );
-	param_t<u_short>        numABRatios( pl,    24, "numABRatios"		 , "Min number of random a/b (for r>0) or b/a (for r<0) ratios in "
-																	   	   "[1, 10] or [-10, -1) for each max |hk| value (default: 24)" );
+	param_t<u_short>        numABRatios( pl,    12, "numABRatios"		 , "Min number of random a/b (for r>0) or b/a (for r<0) ratios in "
+																	   	   "[1, 10] or [-10, -1) for each max |hk| value (default: 12)" );
 	param_t<u_short>      startMaxHKIdx( pl,     0, "startMaxHKIdx"		 , "Start index for max |hk| (helpful for restarting) (default: 0)" );
 	param_t<u_short>    startABRatioIdx( pl,     0, "startABRatioIdx"	 , "Start index for a:b ratio (helpful for restarting) (default: 0)" );
 	param_t<u_short>       numRotations( pl,    30, "numRotations"	 	 , "Min number of rotations around random axes and by random angles"
@@ -316,7 +316,7 @@ int main ( int argc, char* argv[] )
 					double minHKInBatch[SAMPLE_TYPES], maxHKInBatch[SAMPLE_TYPES];	// 0 for non-saddles, 1 for saddles.
 					maxErrors = pLS->collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max, minHKInBatch, maxHKInBatch,
 													 genProb, samples[0], minHK(), samples[1], easeOffMaxIH2KG(), easeOffProbMaxIH2KG(),
-													 easeOffProbMinIH2KG(), exactFlag, maxHKVal, maxHKVal / 10.0, SQR( samRadius ),
+													 easeOffProbMinIH2KG(), exactFlag, maxHKVal, maxHK() / 10.0, SQR( samRadius ),
 													 nonSaddleMinIH2KG() );
 
 					maxHKError = MAX( maxHKError, maxErrors.first );

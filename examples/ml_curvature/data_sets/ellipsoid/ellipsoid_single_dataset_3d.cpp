@@ -7,11 +7,11 @@
  * query points in terms of the canonical frame, which can be affected by a rigid transformation (i.e., translation and rotation).
  *
  * Theoretically, the Gaussian curvature should be positive everywhere on the surface, but because of numerical inaccuracies, we can get
- * negative Gaussian curvature samples.  In any case, if a point belongs to non-saddle region (i.e., ih2kg > C), it'll be negative-mean-
+ * negative Gaussian curvature samples.  In any case, if a point belongs to non-saddle region (i.e., ih2kg >= C), it'll be negative-mean-
  * curvature normalized by taking the sign of ihk ONLY if requested.  On the other hand, if the point belongs to a (numerical) saddle
- * region, its sample won't be negative-mean-curvature normalized.  Then, we apply sample reorientation by rotating the stencil so that the
- * (possibly updated) gradient has all its components non-negative.  Finally, we reflect the sample about the y - x = 0 plane, and thus we
- * produce two samples for each point next to Gamma.  At inference time, both outputs are averaged to improve accuracy.
+ * region, its sample won't be negative-mean-curvature normalized.  Here, we extract six samples per interface node by applying a sequence
+ * of reorientations and reflections.  These make the center node' gradient components non-negative.  At inference time, all six outputs are
+ * averaged to improve accuracy.
  *
  * Negative-mean-curvature normalization depends on the sign of the linearly interpolated mean ihk at the interface.  As for the Gaussian
  * curvature, we normalize it by scaling it with h^2 ---which leads to the true h2kg and the linearly interpolated ih2kg values in the
@@ -19,15 +19,15 @@
  *
  * The sample file is of the form "#/ellipsoid/$/iter%_data.csv", and the params file is "#/ellipsoid/$/iter%_params.csv", where # is the
  * unit-octree max level of refinement, $ is the experiment id, and % is the number of redistancing steps.  The data file contains as many
- * rows as twice the number of collected samples with all data-packet info.  The params file stores the values for "a", "b", and "c" and its
- * corresponding max hk values.  In addition, we export VTK data for visualization.
+ * rows as six times the number of interface points with all data-packet info.  The params file stores the values for "a", "b", and "c" and
+ * its corresponding max hk values.  In addition, we export VTK data for visualization.
  *
  * @note Here and across related files to machine-learning computation of mean curvature use the geometrical definition of mean curvature;
  * that is, H = 0.5(k1 + k2), where k1 and k2 are principal curvatures.
  *
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: May 8, 2022.
+ * Updated: May 23, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -304,7 +304,7 @@ int main ( int argc, char* argv[] )
 		p4est_destroy( p4est );
 		my_p4est_brick_destroy( connectivity, &brick );
 
-		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples (incl. standard and reflected) with the following stats:\n", nSamples ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   Collected and saved %i samples (incl. the six permutations) with the following stats:\n", nSamples ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of saddle points   = %i\n", nNumericalSaddles ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked mean |hk*| in the range of [%.6g, %.6g]\n", trackedMinHK, trackedMaxHK ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Tracked max hk error      = %.6g\n", trackedMaxErrors[0] ) );
