@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: May 7, 2022.
+ * Updated: May 23, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
@@ -896,6 +896,50 @@ public:
 			CHKERRXX( VecDestroy( component ) );
 
 		return std::make_pair( trackedMaxHKError, trackedMaxH2KGError );
+	}
+
+	/**
+	 * Set up the domain based on sinusoid shape parameters to ensure a good portion of the periodic surface resides inside Omega.
+	 * @param [in] sinusoid Configured sinusoid function.
+	 * @param [in] N_WAVES Desired number of full cycles for any direction.
+	 * @param [in] h Mesh size.
+	 * @param [in] MAX_A Maximum amplitude.  It's used to avoid unecessarily big domains by limiting the sampling radius.
+	 * @param [in] MAX_RL Maximum level of refinement per unit octant (i.e., h = 2^{-MAX_RL}).
+	 * @param [out] samRadius Sampling radius on the uv plane that resides fully within the domain.
+	 * @param [out] octreeMaxRL Effective individual octree maximum level of refinement to achieve the desired h.
+	 * @param [out] uvLim Limiting radius for triangulating sinusoid.
+	 * @param [out] halfUV Number of h units (symmetrically) in the u and v direction to define the uv domain.
+	 * @param [out] n_xyz Number of octrees in each direction with maximum level of refinement octreeMaxRL.
+	 * @param [out] xyz_min Omega minimum dimensions.
+	 * @param [out] xyz_max Omega maximum dimensions.
+	 */
+	static void setupDomain( const Sinusoid& sinusoid, const double& N_WAVES, const double& h, const double& MAX_A, const u_char& MAX_RL,
+							 double& samRadius, u_char& octreeMaxRL, double& uvLim, size_t& halfUV, int n_xyz[P4EST_DIM],
+							 double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] )
+	{
+		samRadius = N_WAVES * 2.0 * M_PI * MAX( 1/sinusoid.wu(), 1/sinusoid.wv() );	// Choose the sampling radius based on longer distance that contains N_WAVES full cycles.
+		samRadius = MAX( samRadius, sinusoid.A() );					// Prevent the case of a very thin surface: we still want to sample the tips.
+		samRadius = 6 * h + MIN( 1.5 * MAX_A, samRadius );			// Then, bound that radius with the largest amplitude.  Add enough padding (for uv plane).
+
+		const double CUBE_SIDE_LEN = 2 * samRadius;					// We want a cubic domain with an effective, yet small size.
+		const u_char OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 5 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
+		const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
+		octreeMaxRL = MAX_RL - OCTREE_RL_FOR_LEN;					// Effective max refinement level to achieve desired h.
+		const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );		// Number of trees in each dimension.
+		const double D_CUBE_SIDE_LEN = N_TREES * OCTREE_LEN;		// Adjusted domain cube len as a multiple of h and octree len.
+		const double HALF_D_CUBE_SIDE_LEN = D_CUBE_SIDE_LEN / 2;
+
+		const double D_CUBE_DIAG_LEN = sqrt( 3 ) * D_CUBE_SIDE_LEN;	// Use this diag to determine triangulated surface.
+		uvLim = D_CUBE_DIAG_LEN / 2 + h;							// Notice the padding to account for the random shift in [-h/2,+h/2]^3.
+		halfUV = ceil( uvLim / h );									// Half UV domain in h units.
+
+		// Defining a symmetric cubic domain whose dimensions are multiples of h.
+		for( int i = 0; i < P4EST_DIM; i++ )
+		{
+			n_xyz[i] = N_TREES;
+			xyz_min[i] = -HALF_D_CUBE_SIDE_LEN;
+			xyz_max[i] = +HALF_D_CUBE_SIDE_LEN;
+		}
 	}
 };
 

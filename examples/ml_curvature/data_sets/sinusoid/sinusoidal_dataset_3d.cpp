@@ -9,8 +9,8 @@
  * the mean curvature error increases as |ihk| -> infty (i.e., h times the mean curvature at Gamma).  On the other hand, saddle samples are
  * not that consistent, and, because of them, we can't always simplify the problem by normalizing to the negative mean curvature spectrum
  * (as in the 2d case).  However, we can still reorient all stencils so that the gradient at the center node has all its components non-
- * negative.  Similarly, we can perform sample augmentation while preserving mean and Gaussian curvature.  Finally, histogram subsampling
- * helps keep well-balanced data sets (regarding mean |hk*|) as much as possible.
+ * negative.  In this fashion, we can extract six samples per interface node by augmentation while preserving mean and Gaussian curvature.
+ * Finally, histogram subsampling helps keep well-balanced data sets (regarding mean |hk*|) as much as possible.
  *
  * Files written are of the form "#/non_saddle_sinusoid_$.csv" and "#/saddle_sinusoid_$.csv", where # is the unit-cube max level of
  * refinement and $ is the sinusoidal amplitude index (i.e., 0, 1,... NUM_A-1, with NUM_A being the number of distinct amplitudes).
@@ -21,7 +21,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 26, 2022.
- * Updated: May 20, 2022.
+ * Updated: May 23, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -44,10 +44,6 @@
 
 
 void printLogHeader( const mpi_environment_t& mpi );
-
-void setupDomain( const Sinusoid& sinusoid, const double& N_WAVES, const double& h, const double& MAX_A, const u_char& MAX_RL,
-				  double& samRadius, u_char& octreeMaxRL, double& uvLim, size_t& halfUV, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
-				  double xyz_max[P4EST_DIM] );
 
 
 int main ( int argc, char* argv[] )
@@ -226,7 +222,8 @@ int main ( int argc, char* argv[] )
 					double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];		// min and max coords.
 					int periodic[P4EST_DIM] = {0, 0, 0};				// Non-periodic domain.
 
-					setupDomain( sinusoid, numFullWaves(), h, MAX_A, maxRL(), samRadius, octMaxRL, uvLim, halfUV, n_xyz, xyz_min, xyz_max );
+					SinusoidalLevelSet::setupDomain( sinusoid, numFullWaves(), h, MAX_A, maxRL(), samRadius, octMaxRL, uvLim, halfUV, n_xyz,
+													 xyz_min, xyz_max );
 
 					double rotAxes[P4EST_DIM][P4EST_DIM] = {{1,0,0}, {0,1,0}, {0,0,1}};					// Orthornal random basis vectors.
 					if( mpi.rank() == 0 )
@@ -330,7 +327,7 @@ int main ( int argc, char* argv[] )
 							maxErrors = sLS.collectSamples( p4est, nodes, ngbd, phi, octMaxRL, xyz_min, xyz_max,
 															minHKInBatch, maxHKInBatch, genProb, nonSaddleMinIH2KG(),
 															samples[0], HK_MAX_LO, easeOffProbMaxHK(), minHK(), easeOffProbMinHK(),	// Non-saddle params.
-															samples[1], 1e-2, easeOffProbMaxIH2KG(), 0, easeOffProbMinIH2KG(),		// Saddle params.
+															samples[1], 5e-2, easeOffProbMaxIH2KG(), 0, easeOffProbMinIH2KG(),		// Saddle params.
 															sampledFlag, NAN, exactFlag );
 
 							maxHKError = MAX( maxHKError, maxErrors.first );
@@ -415,48 +412,4 @@ void printLogHeader( const mpi_environment_t& mpi )
 {
 	CHKERRXX( PetscPrintf( mpi.comm(), "_____________________________________________________________________________________________________________________\n") );
 	CHKERRXX( PetscPrintf( mpi.comm(), "[Step  ] \tAmplitude \t(ss) Start_MaxHK \t(tt) End_MaxHK \tAxis \tMaxHK_Error \tNum_Samples\t(%%_Done) \tTime\n" ) );
-}
-
-/**
- * Set up the domain based on sinusoid shape parameters to ensure a good portion of the periodic surface resides inside Omega.
- * @param [in] sinusoid Configured sinusoid function.
- * @param [in] N_WAVES Desired number of full cycles for any direction.
- * @param [in] h Mesh size.
- * @param [in] MAX_A Maximum amplitude.  It's used to avoid unecessarily big domains by limiting the sampling radius.
- * @param [in] MAX_RL Maximum level of refinement per unit octant (i.e., h = 2^{-MAX_RL}).
- * @param [out] samRadius Sampling radius on the uv plane that resides fully within the domain.
- * @param [out] octreeMaxRL Effective individual octree maximum level of refinement to achieve the desired h.
- * @param [out] uvLim Limiting radius for triangulating sinusoid.
- * @param [out] halfUV Number of h units (symmetrically) in the u and v direction to define the uv domain.
- * @param [out] n_xyz Number of octrees in each direction with maximum level of refinement octreeMaxRL.
- * @param [out] xyz_min Omega minimum dimensions.
- * @param [out] xyz_max Omega maximum dimensions.
- */
-void setupDomain( const Sinusoid& sinusoid, const double& N_WAVES, const double& h, const double& MAX_A, const u_char& MAX_RL,
-				  double& samRadius, u_char& octreeMaxRL, double& uvLim, size_t& halfUV, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
-				  double xyz_max[P4EST_DIM] )
-{
-	samRadius = N_WAVES * 2.0 * M_PI * MAX( 1/sinusoid.wu(), 1/sinusoid.wv() );	// Choose the sampling radius based on longer distance that contains N_WAVES full cycles.
-	samRadius = MAX( samRadius, sinusoid.A() );					// Prevent the case of a very thin surface: we still want to sample the tips.
-	samRadius = 6 * h + MIN( 1.5 * MAX_A, samRadius );			// Then, bound that radius with the largest amplitude.  Add enough padding (for uv plane).
-
-	const double CUBE_SIDE_LEN = 2 * samRadius;					// We want a cubic domain with an effective, yet small size.
-	const u_char OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 5 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
-	const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
-	octreeMaxRL = MAX_RL - OCTREE_RL_FOR_LEN;					// Effective max refinement level to achieve desired h.
-	const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );		// Number of trees in each dimension.
-	const double D_CUBE_SIDE_LEN = N_TREES * OCTREE_LEN;		// Adjusted domain cube len as a multiple of h and octree len.
-	const double HALF_D_CUBE_SIDE_LEN = D_CUBE_SIDE_LEN / 2;
-
-	const double D_CUBE_DIAG_LEN = sqrt( 3 ) * D_CUBE_SIDE_LEN;	// Use this diag to determine triangulated surface.
-	uvLim = D_CUBE_DIAG_LEN / 2 + h;							// Notice the padding to account for the random shift in [-h/2,+h/2]^3.
-	halfUV = ceil( uvLim / h );									// Half UV domain in h units.
-
-	// Defining a symmetric cubic domain whose dimensions are multiples of h.
-	for( int i = 0; i < P4EST_DIM; i++ )
-	{
-		n_xyz[i] = N_TREES;
-		xyz_min[i] = -HALF_D_CUBE_SIDE_LEN;
-		xyz_max[i] = +HALF_D_CUBE_SIDE_LEN;
-	}
 }
