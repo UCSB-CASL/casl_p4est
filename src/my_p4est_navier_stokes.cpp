@@ -470,7 +470,9 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
   delete faces_n;
   delete ngbd_c;
 
+#ifdef P4_TO_P8
   _nodalRunningStatisticsMap.clear();
+#endif
 
   my_p4est_brick_destroy(conn, brick);
 }

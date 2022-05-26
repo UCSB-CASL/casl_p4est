@@ -88,39 +88,6 @@ kml::PCAScaler::PCAScaler( const std::string& paramsFileName, const bool& printL
 }
 
 
-void kml::PCAScaler::transform( double samples[][K_INPUT_SIZE], const int &nSamples ) const
-{
-	// To transform in Python: ((Y-pcaw.mean_)@pcaw.components_.T)/np.sqrt(pcaw.explained_variance_)
-	for( int i = 0; i < nSamples; i++ )
-	{
-		// First, copy sample and subtract the mean.
-		double sample[K_INPUT_SIZE];
-		for( int j = 0; j < K_INPUT_SIZE; j++ )
-			sample[j] = samples[i][j] - _means[j];
-
-		// Second, project onto principal components.
-		auto *projected = new double[_nComponents];
-		for( int c = 0; c < _nComponents; c++ )
-		{
-			projected[c] = 0;
-			for( int j = 0; j < K_INPUT_SIZE; j++ )
-				projected[c] += sample[j] * _components[c][j];
-		}
-
-		// Third, divide by explained standard deviation while writing to output array if using whitening.
-		for( int j = 0; j < K_INPUT_SIZE; j++ )
-		{
-			if( j < _nComponents )
-				samples[i][j] = (_whiten? projected[j] / _stds[j] : projected[j]);
-			else
-				samples[i][j] = 0;			// Fill missing slots (i.e., belonging to no component) with zeros.
-		}
-
-		delete [] projected;
-	}
-}
-
-
 unsigned long kml::PCAScaler::getNComponents() const
 {
 	return _nComponents;
@@ -164,16 +131,6 @@ void kml::StandardScaler::_loadParams( const std::string& inName, const json& pa
 	}
 	else
 		throw std::runtime_error( errorPrefix + inName + " parameter is missing!" );
-}
-
-
-void kml::StandardScaler::transform( double samples[][K_INPUT_SIZE], const int& nSamples ) const
-{
-	for( int i = 0; i < nSamples; i++ )
-	{
-		for( int j = 0; j < K_INPUT_SIZE; j++ )
-			samples[i][j] = (samples[i][j] - _mean[j]) / _std[j];
-	}
 }
 
 
@@ -229,24 +186,12 @@ kml::NeuralNetwork::NeuralNetwork( const std::string& folder, const double& h, c
 }
 
 
-void kml::NeuralNetwork::predict( double inputs[][K_INPUT_SIZE], double outputs[], const int& nSamples, const bool& hNormalize ) const
+void kml::NeuralNetwork::predict( FDEEP_FLOAT_TYPE inputs[][K_INPUT_SIZE], FDEEP_FLOAT_TYPE outputs[], const int& nSamples ) const
 {
-	// Normalize phi values by h (if needed) and leave mean hk as a negative value.
-	for( int i = 0; i < nSamples; i++ )
-	{
-		if( hNormalize )
-		{
-			for( const int& j : Scaler::PHI_COLS )
-				inputs[i][j] /= _h;
-		}
-
-		inputs[i][K_INPUT_SIZE - (P4EST_DIM - 1)] = -ABS( inputs[i][K_INPUT_SIZE - (P4EST_DIM - 1)] );
-	}
-
-	// Second part of inputs is the numerical dimensionless mean curvature.  Note we cast to float type (not double).
+	// Second part of inputs is the numerical dimensionless mean curvature.
 	auto *inputsPt2 = new FDEEP_FLOAT_TYPE[nSamples];
 	for( int i = 0; i < nSamples; i++ )
-		inputsPt2[i] = static_cast<FDEEP_FLOAT_TYPE>( inputs[i][K_INPUT_SIZE - (P4EST_DIM - 1)] );
+		inputsPt2[i] = inputs[i][K_INPUT_SIZE - (P4EST_DIM - 1)];
 
 	// First, preprocess inputs in part 1 (still doubles).
 	// TODO: In 3d, the inputs will be in single precision but the scalers in double: must cast floats to doubles, transform, and cast back.
@@ -259,7 +204,7 @@ void kml::NeuralNetwork::predict( double inputs[][K_INPUT_SIZE], double outputs[
 	for( int j = 0; j < _inputSize; j++ )
 	{
 		for( int i = 0; i < nSamples; i++ )
-			inputs1b[j * nSamples + i] = FDEEP_FLOAT_TYPE( inputs[i][j] );
+			inputs1b[j * nSamples + i] = inputs[i][j];
 	}
 	for( int i = 0; i < nSamples; i++ )
 		inputs1b[_inputSize * nSamples + i] = 1;		// The last row of nSamples 1's.
@@ -273,7 +218,7 @@ void kml::NeuralNetwork::predict( double inputs[][K_INPUT_SIZE], double outputs[
 		O.emplace_back( N_OUTPUTS, 1 );		// Adding the one for the bias too.
 	}
 
-	// Inference: composite evaluation using OpenBlas single general matrix multiplication.
+	// Inference: composite evaluation using OpenBLAS single general matrix multiplication.
 	for( int i = 0; i < N_LAYERS; i++ )
 	{
 		const FDEEP_FLOAT_TYPE *input = inputs1b;
@@ -561,6 +506,7 @@ void kml::utils::normalizeToNegativeCurvature( std::vector<double>& stencil, con
 }
 
 
+#ifdef P4_TO_P8
 void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::string& directory,
 									 const std::string& fileName, std::ofstream& file, const bool& append )
 {
@@ -906,6 +852,7 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 	SC_CHECK_MPI( MPI_Bcast( &savedSamples, 1, MPI_INT, 0, mpi.comm() ) );	// Acts as an MPI_Barrier, too.
 	return savedSamples;
 }
+#endif
 
 
 double kml::utils::easingOffProbability( double x, const double& lowVal, const double& lowProb, const double& upVal,
@@ -958,6 +905,7 @@ void kml::utils::uniformRandomSpace( const mpi_environment_t& mpi, const double&
 }
 
 
+#ifdef P4_TO_P8
 bool kml::utils::saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>> buffer[SAMPLE_TYPES],
 							  int bufferSize[SAMPLE_TYPES], std::ofstream file[SAMPLE_TYPES], double trackedMinHK[SAMPLE_TYPES],
 							  double trackedMaxHK[SAMPLE_TYPES], const double& hkDist, const std::string fileName[SAMPLE_TYPES],
@@ -996,6 +944,7 @@ bool kml::utils::saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_
 
 	return wroteSamples;
 }
+#endif
 
 
 ////////////////////////////////////////////////////// Curvature ///////////////////////////////////////////////////////
@@ -1114,21 +1063,21 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& s
 	// Build inputs array to evaluate neural network.
 	const int N_INPUTS_PER_SAMPLE = 2;
 	const int N_INPUTS = outIdx * N_INPUTS_PER_SAMPLE;
-	auto inputs = new double[N_INPUTS][K_INPUT_SIZE];
-	auto *outputs = new double[N_INPUTS];
+	auto inputs = new FDEEP_FLOAT_TYPE[N_INPUTS][K_INPUT_SIZE];
+	auto *outputs = new FDEEP_FLOAT_TYPE[N_INPUTS];
 	for( int i = 0; i < outIdx; i++ )
 	{
 		int idx = i * N_INPUTS_PER_SAMPLE;
 		for( int j = 0; j < K_INPUT_SIZE; j++ )			// We'll give it two takes: original.
-			inputs[idx + 0][j] = negSamples[i][j];
+			inputs[idx + 0][j] = static_cast<FDEEP_FLOAT_TYPE>( negSamples[i][j] );
 
 		utils::reflectStencil_yEqx( negSamples[i] );	// And reflected about x - y = 0 plane.
 		for( int j = 0; j < K_INPUT_SIZE; j++ )
-			inputs[idx + 1][j] = negSamples[i][j];
+			inputs[idx + 1][j] = static_cast<FDEEP_FLOAT_TYPE>( negSamples[i][j] );
 	}
 
 	// Execute inference on batch: ihk in original samples preserves its sign (to be used below).
-	_nnet->predict( inputs, outputs, N_INPUTS, false );
+	_nnet->predict( inputs, outputs, N_INPUTS );
 
 	// Collect outputs.
 	for( int i = 0; i < outIdx; i++ )

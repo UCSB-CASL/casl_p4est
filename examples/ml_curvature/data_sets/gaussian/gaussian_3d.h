@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a Gaussian surface embedded in 3d.
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: April 25, 2022.
+ * Updated: May 25, 2022.
  */
 
 #ifndef ML_CURVATURE_GAUSSIAN_3D_H
@@ -441,5 +441,89 @@ public:
 					  const double& ru2, const double& rv2, const size_t& btKLeaf=40, const u_short& addToL=0 )
 					  : SignedDistanceLevelSet( mpi, trans, rotAxis, rotAngle, ku, kv, L, gaussian, ru2, rv2, btKLeaf, addToL ) {}
 };
+
+/**
+ * Set up domain and create a Gaussian level-set function.
+ * @param [in] mpi MPI environment object.
+ * @param [in] gaussian Gaussian function in canonical space.
+ * @param [in] h Mesh size.
+ * @param [in] origin Gaussian's local frame origin with respect to world coordinates.
+ * @param [in] rotAngle Gaussian's local frame angle of rotation about a unit axis.
+ * @param [in] rotAxis The unit axis to rotate the frame about.
+ * @param [in] maxRL Maximum level of refinement for the whole domain.
+ * @param [out] octMaxRL Effective maximum refinement for each octree to achieve desired h.
+ * @param [out] n_xyz Number of octrees in each direction.
+ * @param [out] xyz_min Mininum coordinates of computational domain.
+ * @param [out] xyz_max Maximum coordinates of computational domain.
+ * @return Dynamically allocated Gaussian level-set object.  You must delete it in caller function.
+ */
+GaussianLevelSet *setupDomain( const mpi_environment_t& mpi, const Gaussian& gaussian, const double& h, const double origin[P4EST_DIM],
+							   const double& rotAngle, const double rotAxis[P4EST_DIM], const u_char& maxRL, u_char& octMaxRL,
+							   int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] )
+{
+	// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only within this region.
+	const double U_ZERO = gaussian.findKappaZero( h, dir::x );
+	const double V_ZERO = gaussian.findKappaZero( h, dir::y );
+	const double ULIM = U_ZERO + gaussian.su();		// Limiting ellipse semi-axes for triangulation.
+	const double VLIM = V_ZERO + gaussian.sv();
+	const double QTOP = gaussian.a() + 4 * h;		// Adding some padding so that we can sample points correctly at the tip.
+	double qAtULim = gaussian( ULIM, 0 );			// Let's find the lowest Q.
+	double qAtVLim = gaussian( 0, VLIM );
+	const double QBOT = MIN( qAtULim, qAtVLim ) - 4 * h;
+	const size_t HALF_U_H = ceil(ULIM / h);			// Half u axis in h units.
+	const size_t HALF_V_H = ceil(VLIM / h);			// Half v axis in h units.
+
+	const double QCylCCoords[8][P4EST_DIM] = {		// Cylinder in canonical coords containing the Gaussian surface.
+		{-ULIM, 0, QTOP}, {+ULIM, 0, QTOP}, 		// Top coords (the four points lying on the same QTOP found above).
+		{0, -VLIM, QTOP}, {0, +VLIM, QTOP},
+		{-ULIM, 0, QBOT}, {+ULIM, 0, QBOT},			// Base coords (the four points lying on the same QBOT found above).
+		{0, -VLIM, QBOT}, {0, +VLIM, QBOT}
+	};
+
+	// Defining the transformed Gaussian level-set function.  This also discretizes the surface using a balltree to speed up queries
+	// during grid refinment.
+	auto *gLS = new GaussianLevelSet( &mpi, Point3( origin ), Point3( rotAxis ), rotAngle, HALF_U_H, HALF_V_H, maxRL, &gaussian, SQR(ULIM), SQR(VLIM), 5 );
+
+	// Finding the world coords of (canonical) cylinder containing Q(u,v).
+	double minQCylWCoords[P4EST_DIM] = {+DBL_MAX, +DBL_MAX, +DBL_MAX};	// Min and max cylinder world coords.
+	double maxQCylWCoords[P4EST_DIM] = {-DBL_MAX, -DBL_MAX, -DBL_MAX};
+	for( const auto& cylCPoint : QCylCCoords )
+	{
+		Point3 cylWPoint = gLS->toWorldCoordinates( cylCPoint[0], cylCPoint[1], cylCPoint[2] );
+		for( int i = 0; i < P4EST_DIM; i++ )
+		{
+			minQCylWCoords[i] = MIN( minQCylWCoords[i], cylWPoint.xyz( i ) );
+			maxQCylWCoords[i] = MAX( maxQCylWCoords[i], cylWPoint.xyz( i ) );
+		}
+	}
+
+	// Use the x,y,z ranges to find the domain's length in each direction.
+	double QCylWRange[P4EST_DIM];
+	double WCentroid[P4EST_DIM];
+	for( int i = 0; i < P4EST_DIM; i++ )
+	{
+		QCylWRange[i] = maxQCylWCoords[i] - minQCylWCoords[i];
+		WCentroid[i] = (minQCylWCoords[i] + maxQCylWCoords[i]) / 2;	// Raw centroid.
+		WCentroid[i] = round( WCentroid[i] / h ) * h;				// Centroid as a multiple of h.
+	}
+
+	const double CUBE_SIDE_LEN = MAX( QCylWRange[0], MAX( QCylWRange[1], QCylWRange[2] ) );
+	const unsigned char OCTREE_RL_FOR_LEN = MAX( 0, maxRL - 5 );	// Defines the log2 of octree's len (i.e., octree's len is a power of two).
+	const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
+	octMaxRL = maxRL - OCTREE_RL_FOR_LEN;							// Effective max refinement level to achieve desired h.
+	const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );			// Number of trees in each dimension.
+	const double D_CUBE_SIDE_LEN = N_TREES * OCTREE_LEN;			// Adjusted domain cube len as a multiple of *both* h and octree len.
+	const double HALF_D_CUBE_SIDE_LEN = D_CUBE_SIDE_LEN / 2;
+
+	// Defining a symmetric cubic domain whose dimensions are multiples of h and contain Gaussian and its limiting ellipse.
+	for( int i = 0; i < P4EST_DIM; i++ )
+	{
+		n_xyz[i] = N_TREES;
+		xyz_min[i] = WCentroid[i] - HALF_D_CUBE_SIDE_LEN;
+		xyz_max[i] = WCentroid[i] + HALF_D_CUBE_SIDE_LEN;
+	}
+
+	return gLS;
+}
 
 #endif //ML_CURVATURE_GAUSSIAN_3D_H

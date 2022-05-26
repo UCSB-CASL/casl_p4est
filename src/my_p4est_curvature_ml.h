@@ -52,7 +52,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: May 20, 2022.
+ * Updated: May 25, 2022.
  */
 namespace kml
 {
@@ -94,13 +94,6 @@ namespace kml
 #else
 		static const int PHI_COLS[K_INPUT_PHI_SIZE];
 #endif
-
-		/**
-		 * Transform input data in place.
-		 * @param [in,out] samples Data to transform.
-		 * @param [in] nSamples Number of samples.
-		 */
-		virtual void transform( double samples[][K_INPUT_SIZE], const int& nSamples ) const = 0;
 	};
 
 	//////////////////////////////////////////////////// PCAScaler /////////////////////////////////////////////////////
@@ -137,7 +130,38 @@ namespace kml
 		 * @param [in,out] samples Data to transform. Upon transformation, only the first _nComponents elements are valid.
 		 * @param [in] nSamples Number of samples.
 		 */
-		void transform( double samples[][K_INPUT_SIZE], const int& nSamples ) const override;
+		template<typename T=double>
+		void transform( T samples[][K_INPUT_SIZE], const int& nSamples ) const
+		{
+			// To transform in Python: (((Y.astype(float64)-pcaw.mean_)@pcaw.components_.T)/np.sqrt(pcaw.explained_variance_)).astype(float32)
+			for( int i = 0; i < nSamples; i++ )
+			{
+				// First, copy sample (as float64) and subtract the mean.
+				double sample[K_INPUT_SIZE];
+				for( int j = 0; j < K_INPUT_SIZE; j++ )
+					sample[j] = (double)samples[i][j] - _means[j];
+
+				// Second, project onto principal components.
+				auto *projected = new double[_nComponents];
+				for( int c = 0; c < _nComponents; c++ )
+				{
+					projected[c] = 0;
+					for( int j = 0; j < K_INPUT_SIZE; j++ )
+						projected[c] += sample[j] * _components[c][j];
+				}
+
+				// Third, divide by explained standard deviation while writing to output array if using whitening.
+				for( int j = 0; j < K_INPUT_SIZE; j++ )
+				{
+					if( j < _nComponents )
+						samples[i][j] = (T)(_whiten? projected[j] / _stds[j] : projected[j]);
+					else
+						samples[i][j] = 0;			// Fill missing slots (i.e., belonging to no component) with zeros.
+				}
+
+				delete [] projected;
+			}
+		}
 
 		/**
 		 * Retrieve the number of components.
@@ -184,7 +208,16 @@ namespace kml
 		 * @param [in,out] samples Data to transform.
 		 * @param [in] nSamples Number of samples.
 		 */
-		void transform( double samples[][K_INPUT_SIZE], const int& nSamples ) const override;
+		template<typename T=double>
+		void transform( T samples[][K_INPUT_SIZE], const int& nSamples ) const
+		{
+			// In python: To transform: ((Y.astype(float64)-mean)/scale).astype(float32).
+			for( int i = 0; i < nSamples; i++ )
+			{
+				for( int j = 0; j < K_INPUT_SIZE; j++ )
+					samples[i][j] = (T)(((double)samples[i][j] - _mean[j]) / _std[j]);
+			}
+		}
 	};
 
 
@@ -218,7 +251,7 @@ namespace kml
 		std::vector<std::vector<int>> _sizes;	// Matrix size tuples (m, k).  m = layer size, k = input size, (n = number of samples).
 		std::vector<std::vector<FDEEP_FLOAT_TYPE>> W;	// Weight matrices flattened.  Matrices are given in row-major order.
 
-		const double _h;						// Mesh size.
+		const double _h;						// Mesh size (used only for validation).
 		unsigned long _inputSize;				// Expected input size (excludes bias).
 
 		/**
@@ -245,9 +278,8 @@ namespace kml
 		 * @param [in,out] inputs Array of sample inputs with raw data (they'll be transformed).
 		 * @param [out] outputs Array of predicted dimensionless mean curvature values
 		 * @param [in] nSamples Batch size.
-		 * @param [in] hNormalize Whether to normalize phi values by mesh size h.
 		 */
-		void predict( double inputs[][K_INPUT_SIZE], double outputs[], const int& nSamples, const bool& hNormalize=true ) const;
+		void predict( FDEEP_FLOAT_TYPE inputs[][K_INPUT_SIZE], FDEEP_FLOAT_TYPE outputs[], const int& nSamples ) const;
 
 		/**
 		 * Retrieve mesh size.
@@ -360,6 +392,7 @@ namespace kml
 		 */
 		void normalizeToNegativeCurvature( std::vector<double>& stencil, const double& refHK, const bool& learning=false );
 
+#ifdef P4_TO_P8
 		/**
 		 * Prepare sampling file by opening, writing the header, and setting its precision to 32-bit floating-point
 		 * numbers.
@@ -455,6 +488,7 @@ namespace kml
 										  std::ofstream& file, FDEEP_FLOAT_TYPE minHK=NAN, FDEEP_FLOAT_TYPE maxHK=NAN,
 										  const unsigned short& nbins=100, const FDEEP_FLOAT_TYPE& frac=1,
 										  const FDEEP_FLOAT_TYPE& minFold=2, const bool& useAbsValues=true );
+#endif
 
 		/**
 		 * Compute an easing-off probability value based on a sinusoidal distribution in the domain [-pi/2, +pi/2].
@@ -488,6 +522,7 @@ namespace kml
 								 std::vector<double>& values, std::mt19937& gen, const bool& includeLeftEndPoint=true,
 								 const bool& includeRightEndPoint=true );
 
+#ifdef P4_TO_P8
 		/**
 		 * Save buffered non-saddle and saddle samples to separate files using a histogram-based subsampling strategy if it's time or if the
 		 * user forces the process (i.e., if corresponding buffer has overflowed the user-defined min size or we have finished but there are
@@ -514,6 +549,7 @@ namespace kml
 						  const double& hkDist, const std::string fileName[SAMPLE_TYPES], const size_t& bufferMinSize,
 						  const u_short& nHistBins, const float& histMedianFrac, const float& histMinFold, const bool& force,
 						  const bool& useAbsValues=true );
+#endif
 	}
 
 

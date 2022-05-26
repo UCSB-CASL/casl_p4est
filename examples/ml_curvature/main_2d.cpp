@@ -7,7 +7,7 @@
  *
  * Developer: Luis Ángel.
  * Created: January 4, 2021.
- * Updated: March 3, 2022.
+ * Updated: May 25, 2022.
  */
 
 #ifdef _OPENMP
@@ -106,13 +106,13 @@ int main ( int argc, char* argv[] )
 		///////////////// First, checking that we can load the neural network and scalers appropriately ////////////////
 
 		const int N_SAMPLES = 2;
-		double samples[N_SAMPLES][K_INPUT_SIZE] = {
+		FDEEP_FLOAT_TYPE samples[N_SAMPLES][K_INPUT_SIZE] = {
 			{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 0.9, 0.9, -0.8},
 			{0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, -0.1}
 		};
-		double outputs[N_SAMPLES];
+		FDEEP_FLOAT_TYPE outputs[N_SAMPLES];
 		kml::NeuralNetwork nnet( ROOT, H, false );
-		nnet.predict( samples, outputs, N_SAMPLES, false );		// If there's an error, it'll be thrown here.
+		nnet.predict( samples, outputs, N_SAMPLES );		// If there's an error, it'll be thrown here.
 
 		//////////////////////////////////// Test the sample star-shaped interface /////////////////////////////////////
 
@@ -210,9 +210,9 @@ int main ( int argc, char* argv[] )
 				auto got = validationMap.find( key );
 				if( got != validationMap.end() )
 				{
-					auto offlineHK = (FDEEP_FLOAT_TYPE)got->second[2];							// Validation hybrid hk.
+					auto offlineHK = (FDEEP_FLOAT_TYPE)got->second[2];		// Validation hybrid hk.
 					auto onlineHK = (FDEEP_FLOAT_TYPE)hybHKReadPtr[n];
-					if( ABS( onlineHK - offlineHK ) < FLOAT_32_EPS )							// A match?
+					if( ABS( onlineHK - offlineHK ) < FLOAT_32_EPS * 1.75 )	// A match? TODO: Added a little more tolerance because I modified the scaling process to work with float32
 					{
 						matchingNodes++;
 						validationMap.erase( got );	// If everything goes well, the validation map should end up empty.
