@@ -3,7 +3,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
- * Updated: May 23, 2022.
+ * Updated: May 26, 2022.
  */
 
 #ifndef ML_CURVATURE_HYP_PARABOLOID_3D_H
@@ -525,7 +525,7 @@ public:
 				}
 				else
 				{
-					double prob = kml::utils::easingOffProbability( ABS( ih2kgVal ), nonSaddleMinIH2KG, easeOffProbMinIH2KG,
+					double prob = kml::utils::easingOffProbability( ABS( ih2kgVal ), ABS( nonSaddleMinIH2KG ), easeOffProbMinIH2KG,		// I had nonSaddleMinIH2KG, without the abs!
 																	easeOffMaxIH2KG, easeOffProbMaxIH2KG );
 					if( pDistribution( genP ) > prob )
 						continue;								// Use an easing-off prob to keep samples.

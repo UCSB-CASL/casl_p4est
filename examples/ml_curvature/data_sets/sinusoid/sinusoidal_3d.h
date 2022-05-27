@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: May 23, 2022.
+ * Updated: May 26, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
@@ -732,7 +732,7 @@ public:
 					}
 					else
 					{
-						double prob = kml::utils::easingOffProbability( ABS( hk ), easingOffMaxHK, easingOffProbMaxHK, 2./3, 0.75 );	// TODO: Set these as parameters.
+						double prob = kml::utils::easingOffProbability( ABS( hk ), easingOffMaxHK, easingOffProbMaxHK, 2./3, 0.6 );	// TODO: Set these as parameters.
 						if( pDistribution( genP ) > prob )		// Use an easing-off prob to keep samples in [easingOffMaxHK, 2/3].
 							continue;
 					}

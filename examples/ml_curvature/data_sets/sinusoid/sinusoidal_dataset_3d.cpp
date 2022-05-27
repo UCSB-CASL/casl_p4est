@@ -21,7 +21,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 26, 2022.
- * Updated: May 23, 2022.
+ * Updated: May 26, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -58,10 +58,10 @@ int main ( int argc, char* argv[] )
 	param_t<double>               maxHK( pl,  2./3, "maxHK"				 , "Max dimensionless mean curvature (default: 2/3)" );
 	param_t<u_char>               maxRL( pl,     6, "maxRL"				 , "Max level of refinement per unit-cube octree (default: 6)" );
 	param_t<u_short>        reinitIters( pl,    10, "reinitIters"		 , "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>    easeOffProbMaxHK( pl,  0.25, "easeOffProbMaxHK"	 , "Easing-off prob for |hk*| upper bound for subsampling numerical"
-																		   " non-saddle samples (default: 0.25)" );
-	param_t<double>    easeOffProbMinHK( pl, 0.005, "easeOffProbMinHK"	 , "Easing-off prob for |hk*| lower bound for subsampling numerical"
-																		   "numerical non-saddle points (default: 0.005)" );
+	param_t<double>    easeOffProbMaxHK( pl,   0.2, "easeOffProbMaxHK"	 , "Easing-off prob for |hk*| upper bound for subsampling numerical"
+																		   " non-saddle samples (default: 0.2)" );
+	param_t<double>    easeOffProbMinHK( pl,0.0025, "easeOffProbMinHK"	 , "Easing-off prob for |hk*| lower bound for subsampling numerical"
+																		   "numerical non-saddle points (default: 0.0025)" );
 	param_t<double> easeOffProbMaxIH2KG( pl, 0.075, "easeOffProbMaxIH2KG", "Easing-off prob for |ih2kg| upper bound for subsampling saddle "
 																		   "samples (default: 0.075)" );
 	param_t<double> easeOffProbMinIH2KG( pl,0.0025, "easeOffProbMinIH2KG", "Easing-off prob for |ih2kg| lower bound for subsampling saddle "
@@ -71,8 +71,8 @@ int main ( int argc, char* argv[] )
 	param_t<float>          histMinFold( pl,   1.5, "histMinFold"		 , "Post-histogram subsampling min count fold (default: 1.5)" );
 	param_t<u_short>          nHistBins( pl,   100, "nHistBins"			 , "Number of bins in |hk*| histogram (default: 100)" );
 	param_t<std::string>         outDir( pl,   ".", "outDir"			 , "Path where to write data files (default: build folder)" );
-	param_t<size_t>       bufferMinSize( pl,   3e5, "bufferMinSize"		 , "Buffer minimum overflow size to trigger histogram-based "
-																		   "subsampling and storage (default: 300K)" );
+	param_t<size_t>       bufferMinSize( pl, 1.5e6, "bufferMinSize"		 , "Buffer minimum overflow size to trigger histogram-based "
+																		   "subsampling and storage (default: 1.5M)" );
 	param_t<u_short>      numHKMaxSteps( pl,     7, "numHKMaxSteps" 	 , "Number of steps to vary target max hk (default: 7)" );
 	param_t<u_short>          numThetas( pl,    10, "numThetas"			 , "Number of angular steps from -pi/2 to +pi/2 (inclusive) "
 																		   "(default: 10)" );
