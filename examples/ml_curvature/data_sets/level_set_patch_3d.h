@@ -4,7 +4,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 25, 2022.
- * Updated: May 7, 2022.
+ * Updated: May 27, 2022.
  */
 
 #ifndef ML_CURVATURE_LEVEL_SET_PATCH_3D_H
@@ -409,6 +409,7 @@ public:
 	 * @param [in] ru2 Override limiting ellipse u semiaxis squared just for sampling.
 	 * @param [in] rv2 Override limiting ellipse v semiaxis squared just for sampling.
 	 * @param [in] nonSaddleMinIH2KG Min numerical dimensionless Gaussian curvature (at Gamma) for numerical non-saddle samples.
+	 * @param [in] trueHK Optional vector with true dimensionless mean curvature computed at Gamma for sampled nodes.
 	 * @return Maximum error in dimensionless curvature (reduced across processes).
 	 * @throws invalid_argument exception if phi or exactFlag vector is null, or if overriding ru2 and rv2 are non positive or larger than _ru2 and _rv2.
 	 * @throws runtime_error if the cache is disabled or empty, or if a candidate interface point is not in the cache.
@@ -418,7 +419,7 @@ public:
 						 double trackedMaxErrors[P4EST_DIM], double& trackedMinHK, double& trackedMaxHK,
 						 std::vector<std::vector<double>>& samples, int& nNumericalSaddles, const Vec& exactFlag, Vec sampledFlag=nullptr,
 						 Vec hkError=nullptr, Vec ihk=nullptr, Vec h2kgError=nullptr, Vec ih2kg=nullptr, Vec phiError=nullptr,
-						 double ru2=NAN, double rv2=NAN, const double& nonSaddleMinIH2KG=-7e-6 ) const
+						 double ru2=NAN, double rv2=NAN, const double& nonSaddleMinIH2KG=-7e-6, Vec trueHK=nullptr ) const
 	{
 		std::string errorPrefix = _errorPrefix + "collectSamples: ";
 		nNumericalSaddles = 0;
@@ -503,7 +504,7 @@ public:
 		}
 
 		// Reset the Gaussian ih2kg vector if given.
-		double *ih2kgPtr;
+		double *ih2kgPtr = nullptr;
 		if( ih2kg )
 		{
 			CHKERRXX( VecGetArray( ih2kg, &ih2kgPtr ) );
@@ -512,12 +513,21 @@ public:
 		}
 
 		// Reset the phi error vector if given.
-		double *phiErrorPtr;
+		double *phiErrorPtr = nullptr;
 		if( phiError )
 		{
 			CHKERRXX( VecGetArray( phiError, &phiErrorPtr ) );
 			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 				phiErrorPtr[n] = 0;
+		}
+
+		// Reset the true mean hk vector if given.
+		double *trueHKPtr = nullptr;
+		if( trueHK )
+		{
+			CHKERRXX( VecGetArray( trueHK, &trueHKPtr ) );
+			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+				trueHKPtr[n] = 0;
 		}
 
 		// Prepare mean and Gaussian curvature interpolation.
@@ -640,6 +650,8 @@ public:
 				double errorPhi = ABS( phiReadPtr[n] - d );
 				if( phiError )									// What about the phi error for sampled nodes?
 					phiErrorPtr[n] = errorPhi;
+				if( trueHK )
+					trueHKPtr[n] = (*sample)[K_INPUT_SIZE_LEARN - 4];
 
 				trackedMaxPhiError = MAX( trackedMaxPhiError, errorPhi );
 				trackedMaxHKError = MAX( trackedMaxHKError, errorHK );
@@ -724,6 +736,15 @@ public:
 			// Synchronize phi error among processes.
 			CHKERRXX( VecGhostUpdateBegin( phiError, INSERT_VALUES, SCATTER_FORWARD ) );
 			CHKERRXX( VecGhostUpdateEnd( phiError, INSERT_VALUES, SCATTER_FORWARD ) );
+		}
+
+		if( trueHK )
+		{
+			CHKERRXX( VecRestoreArray( trueHK, &trueHKPtr ) );
+
+			// Synchronize true hk among processes.
+			CHKERRXX( VecGhostUpdateBegin( trueHK, INSERT_VALUES, SCATTER_FORWARD ) );
+			CHKERRXX( VecGhostUpdateEnd( trueHK, INSERT_VALUES, SCATTER_FORWARD ) );
 		}
 
 		// Clean up.

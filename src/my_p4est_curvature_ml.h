@@ -54,7 +54,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: May 26, 2022.
+ * Updated: May 27, 2022.
  */
 namespace kml
 {
@@ -585,7 +585,7 @@ namespace kml
 		 * @param [in] kappaMG Numerical mean and Gaussian curvatures at the nodes (which we use for linear interpolation at Gamma).
 		 * @param [out] samples Array of vectors of samples for valid nodes next to Gamma (two vectors in 3D and one vector in 2D).
 		 * @param [out] indices Array of center nodal indices for collected samples (a one-to-one mapping).
-		 * @param [in] filter Optional filter with 1s for nodes we want to consider for inference (or all points if filter is not given).
+		 * @param [in] filter Optional filter with 0s for nodes we want to skip from computation.
 		 */
 		void _collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec kappaMG[SAMPLE_TYPES],
 							  std::vector<std::vector<double>> samples[SAMPLE_TYPES], std::vector<p4est_locidx_t> indices[SAMPLE_TYPES],
@@ -643,7 +643,8 @@ namespace kml
 		 * @param [in] dimensionless Whether to scale mean curvature by h and Gaussian curvature by h^2.
 		 * @param [in] watch Optional timer.  If given, it will time numerical and hybrid mean curvature computations.  Timer must be ready
 		 * 			   (i.e., called its start() method) before calling this function.
-		 * @param [in] filter Optional vector of 1's for nodes where we'd like to compute mean curvature next to Gamma with hybrid approach.
+		 * @param [in] filter Optional vector with 0s for nodes where we'd like to skip from computing mean curvature next to Gamma with
+		 * 			   hybrid approach.
 		 * @return A pair with <numerical, hybrid> timings in seconds if watch parameter is not nullptr, otherwise, the
 		 *         values are set to -1.
 		 * @throws invalid_argument if any required vector is null.

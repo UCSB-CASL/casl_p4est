@@ -1012,7 +1012,7 @@ void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec
 
 	for( auto n : ngIndices )
 	{
-		if( filterReadPtr && filterReadPtr[n] != 1 )
+		if( filterReadPtr && filterReadPtr[n] <= 0 )
 			continue;
 
 		std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D, 27 values in 3D.
