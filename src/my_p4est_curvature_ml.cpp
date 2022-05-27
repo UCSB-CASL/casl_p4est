@@ -193,13 +193,11 @@ void kml::NeuralNetwork::predict( FDEEP_FLOAT_TYPE inputs[][K_INPUT_SIZE], FDEEP
 	for( int i = 0; i < nSamples; i++ )
 		inputsPt2[i] = inputs[i][K_INPUT_SIZE - (P4EST_DIM - 1)];
 
-	// First, preprocess inputs in part 1 (still doubles).
-	// TODO: In 3d, the inputs will be in single precision but the scalers in double: must cast floats to doubles, transform, and cast back.
+	// First, preprocess inputs in part 1 (these transform function cast to float64 and float32 back and forth to replicate training).
 	_stdScaler.transform( inputs, nSamples );
 	_pcaScaler.transform( inputs, nSamples );
 
-	// Next, adding bias entry to transformed inputs1 and rearrange them so that each column is a sample (rather than a
-	// row), and we agree to the expected float type (not double).
+	// Next, adding bias entry to transformed inputs1 and rearrange them so that each column is a sample (rather than row).
 	auto *inputs1b = new FDEEP_FLOAT_TYPE[(_inputSize + 1) * nSamples];
 	for( int j = 0; j < _inputSize; j++ )
 	{
@@ -209,8 +207,8 @@ void kml::NeuralNetwork::predict( FDEEP_FLOAT_TYPE inputs[][K_INPUT_SIZE], FDEEP
 	for( int i = 0; i < nSamples; i++ )
 		inputs1b[_inputSize * nSamples + i] = 1;		// The last row of nSamples 1's.
 
-	// Allocate layer outputs.  Intermediate layers have an additional row of nSamples 1's for the bias.  The last
-	// (output) doesn't have any row of 1's.
+	// Allocate layer outputs.  Intermediate layers have an additional row of nSamples 1's for the bias.  The last (output) doesn't have any
+	// row of 1's.
 	std::vector<std::vector<FDEEP_FLOAT_TYPE>> O;
 	for( int i = 0; i < N_LAYERS; i++ )
 	{
@@ -947,8 +945,9 @@ bool kml::utils::saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_
 #endif
 
 
-////////////////////////////////////////////////////// Curvature ///////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////// Hybrid mean curvature //////////////////////////////////////////////////////////
 
+#ifndef P4_TO_P8
 kml::Curvature::Curvature( const NeuralNetwork *nnet, const double& h, const double& loMinHK, const double& upMinHK )
 						   : _h( h ), LO_MIN_HK( loMinHK ), UP_MIN_HK( upMinHK ), _nnet( nnet )
 {
@@ -958,10 +957,24 @@ kml::Curvature::Curvature( const NeuralNetwork *nnet, const double& h, const dou
 	if( loMinHK >= upMinHK || loMinHK < 0 )
 		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::Constructor: minHK lower- and upper-bound must be positive!" );
 }
+#else
+kml::Curvature::Curvature( const NeuralNetwork *nnetNS, const NeuralNetwork *nnetSD, const double& h, const double& loMinHK,
+						   const double& upMinHK, const double& nonSaddleMinIH2KG )
+						   : _h( h ), LO_MIN_HK( loMinHK ), UP_MIN_HK( upMinHK ), _nonSaddleMinIH2KG( nonSaddleMinIH2KG ),
+						   _nnet( nnetNS ), _nnet_sd( nnetSD )
+{
+	if( ABS( _h - _nnet->getH() ) > EPS || ABS( _h - _nnet_sd->getH() ) > EPS )
+		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::Constructor: Neural networks and current spacing are incompatible!" );
+
+	if( loMinHK >= upMinHK || loMinHK < 0 )
+		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::Constructor: minHK lower- and upper-bound for non-saddles must be positive!" );
+}
+#endif
 
 
-void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec numMeanK,
-									  std::vector<std::vector<double>>& samples, std::vector<p4est_locidx_t>& indices ) const
+void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec kappaMG[SAMPLE_TYPES],
+									  std::vector<std::vector<double>> samples[SAMPLE_TYPES],
+									  std::vector<p4est_locidx_t> indices[SAMPLE_TYPES], Vec filter ) const
 {
 	// Data accessors.
 	const p4est_nodes_t *nodes = ngbd.get_nodes();
@@ -976,157 +989,257 @@ void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec
 	for( int dim = 0; dim < P4EST_DIM; dim++ )
 		CHKERRXX( VecGetArrayRead( normal[dim], &normalReadPtr[dim] ) );
 
-	// We'll interpolate numerical hk at the interface linearly: prepare structure.
+	const double *filterReadPtr = nullptr;
+	if( filter )
+		CHKERRXX( VecGetArrayRead( filter, &filterReadPtr ) );
+
+	// We'll interpolate numerical mean (and Gaussian) curvature(s) at the interface linearly.
 	my_p4est_interpolation_nodes_t interp( &ngbd );
-	interp.set_input( numMeanK, interpolation_method::linear );
+	interp.set_input( kappaMG, interpolation_method::linear, SAMPLE_TYPES );	// Again, overusing SAMPLE_TYPES because it's 2 in 3D and 1 in 2D.
 
 	// Collect samples: one per valid (i.e., with full h-uniform stencil) locally owned node next to Gamma.
 	NodesAlongInterface nodesAlongInterface( p4est, nodes, &ngbd, (char)maxRL );
 	std::vector<p4est_locidx_t> ngIndices;
 	nodesAlongInterface.getIndices( &phi, ngIndices );
 
-	samples.clear();
-	indices.clear();
-	samples.reserve( nodes->num_owned_indeps );
-	indices.reserve( nodes->num_owned_indeps );
-	double xyz[P4EST_DIM];
-	const double ONE_OVER_H = 1. / _h;
+	for( int i = 0; i < SAMPLE_TYPES; i++ )
+	{
+		samples[i].clear();
+		indices[i].clear();
+		samples[i].reserve( nodes->num_owned_indeps );
+		indices[i].reserve( nodes->num_owned_indeps );
+	}
 
 	for( auto n : ngIndices )
 	{
+		if( filterReadPtr && filterReadPtr[n] != 1 )
+			continue;
+
 		std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D, 27 values in 3D.
-		std::vector<double> sample;
-		sample.reserve( K_INPUT_SIZE );
 		try
 		{
 			if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 			{
-				for( auto s : stencil )								// First, add the the phi-values.
-					sample.push_back( phiReadPtr[s] * ONE_OVER_H );	// H-normalized phi values.
+				std::vector<double> *sample;					// Points to new sample[, whether is non-saddle or saddle type].
 
-				for( auto& dim : normalReadPtr)						// Now, the normal unit vectors' components.
+				// Classify sample based on ih2kg (in 3D) in two ways:
+				// If the Gaussian curvature is < nonSaddleMinIH2KG at Gamma, this is a saddle-region point.
+				// If the Gaussian curvature is >= nonSaddleMinIH2KG at Gamma, this is not a saddle-region point.
+				double xyz[P4EST_DIM];
+				node_xyz_fr_n( n, p4est, nodes, xyz );
+				for( int c = 0; c < P4EST_DIM; c++ )			// Find the location where to (linearly) interpolate curvature(s).
+					xyz[c] -= phiReadPtr[n] * normalReadPtr[c][n];
+
+				double kappaMGValues[SAMPLE_TYPES];
+				interp( xyz, kappaMGValues, SAMPLE_TYPES );		// Get linearly interpolated curvature[s in one shot].
+				double ihkVal = _h * kappaMGValues[0];
+#ifdef P4_TO_P8
+				double ih2kgVal = SQR( _h ) * kappaMGValues[1];
+				if( ih2kgVal >= _nonSaddleMinIH2KG )			// Non-saddle sample?
 				{
-					for( auto s: stencil )							// First u, then v [, then w].
-						sample.push_back( dim[s] );
+#endif
+					samples[0].emplace_back();
+					sample = &samples[0].back();
+					indices[0].push_back( n );					// Keep track of which locally owned nodes we are looking at.
+#ifdef P4_TO_P8
+				}
+				else											// Saddle sample?
+				{
+					samples[1].emplace_back();
+					sample = &samples[1].back();
+					indices[1].push_back( n );
+				}
+#endif
+				sample->reserve( K_INPUT_SIZE );				// phi + normals + ihk [+ ih2kg] = 28 [110].
+
+				for( const auto& idx : stencil )				// First, (h-normalized) phi values.
+					sample->push_back( phiReadPtr[idx] / _h  );
+
+				for( const auto &component : normalReadPtr)		// Next, normal components (First x group, then y[, then z]).
+				{
+					for( const auto& idx: stencil )
+						sample->push_back( component[idx] );
 				}
 
-				node_xyz_fr_n( n, p4est, nodes, xyz );				// Finally, the interpolated numerical hk on Gamma.
-				for( int dim = 0; dim < P4EST_DIM; dim++ )
-					xyz[dim] -= normalReadPtr[dim][n] * phiReadPtr[n];
-				sample.push_back( interp( xyz ) * _h );
-
-				samples.push_back( sample );
-				indices.push_back( n );		// Keep track of which locally owned nodes we are looking at.
+				sample->push_back( ihkVal );
+#ifdef P4_TO_P8
+				sample->push_back( ih2kgVal );
+#endif
 			}
 		}
 		catch( std::exception &e ) {}
 	}
 
 	// Cleaning up.
+	interp.clear();
 	for( int dim = 0; dim < P4EST_DIM; dim++ )
 		CHKERRXX( VecRestoreArrayRead( normal[dim], &normalReadPtr[dim] )  );
 	CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
+
+	if( filter )
+		CHKERRXX( VecRestoreArrayRead( filter, &filterReadPtr ) );
 }
 
 
-void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& samples, std::vector<double>& hybMeanHK ) const
+void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>> samples[SAMPLE_TYPES],
+									   std::vector<double> hybMeanHK[SAMPLE_TYPES] ) const
 {
-	hybMeanHK.clear();
-	hybMeanHK.resize( samples.size() );
-
-	// Since we receive samples with phi h-normalization, let's put them into negative-mean-curvature form and reorient them.
-	int outIdx = 0;			// To avoid unnecessary neural evaluations, skip samples for which mean |ihk| < LO_MIN_HK.
-	std::vector<int> outIdxToSampleIdx;
-	outIdxToSampleIdx.reserve( samples.size() );
-	std::vector<std::vector<double>> negSamples;
-	negSamples.reserve( samples.size() );
-	for( int i = 0; i < samples.size(); i++ )
+	for( int s = 0; s < SAMPLE_TYPES; s++ )
 	{
-		if( ABS( samples[i][K_INPUT_SIZE - (P4EST_DIM - 1)] ) < LO_MIN_HK )		// Skip well resolved stencils; use the numerical mean kappa estimation.
-		{
-			hybMeanHK[i] = samples[i][K_INPUT_SIZE - (P4EST_DIM - 1)];
-			continue;
-		}
+		hybMeanHK[s].clear();
+		hybMeanHK[s].resize( samples[s].size() );
+	}
 
-		negSamples.emplace_back( std::vector<double>( samples[i] ) );
-		utils::normalizeToNegativeCurvature( negSamples.back(), negSamples.back()[K_INPUT_SIZE - (P4EST_DIM - 1)] );
+	// Since we receive samples with phi h-normalization, let's apply negative-mean-curvature (for non-saddles) and generate the P4EST_DIM!
+	// standard-forms for the center gradient with all its components non-negative.
+	for( int s = 0; s < SAMPLE_TYPES; s++ )
+	{
+		if( samples[s].empty() )
+			continue;
+
+		int outIdx = 0;			// To avoid unnecessary neural evaluations, skip (non-saddle) samples for which mean |ihk| < LO_MIN_HK.
+		std::vector<int> outIdxToSampleIdx;
+		outIdxToSampleIdx.reserve( samples[s].size() );
+		std::vector<std::vector<double>> stdSamples;		// Samples in their first standard form (i.e., reoriented to first quadrant [octant]).
+		stdSamples.reserve( samples[s].size() );
+		for( int i = 0; i < samples[s].size(); i++ )
+		{
+			if( s == 0 && ABS( samples[s][i][K_INPUT_SIZE - (P4EST_DIM - 1)] ) < LO_MIN_HK )	// Skip well resolved (non-saddle) stencils; use the numerical mean kappa estimation.
+			{
+				hybMeanHK[s][i] = samples[s][i][K_INPUT_SIZE - (P4EST_DIM - 1)];
+				continue;
+			}
+
+			stdSamples.emplace_back( std::vector<double>( samples[s][i] ) );
+			if( s == 0 )		// Apply negative-mean-curvature normalization for non-saddle samples (or to every sample in 2d).
+				utils::normalizeToNegativeCurvature( stdSamples.back(), stdSamples.back()[K_INPUT_SIZE - (P4EST_DIM - 1)] );
 
 #ifdef P4_TO_P8
-		utils::rotateStencilToFirstOctant( negSamples.back() );
+			utils::rotateStencilToFirstOctant( stdSamples.back() );		// Reoriented data packet.
 #else
-		utils::rotateStencilToFirstQuadrant( negSamples.back() );
+			utils::rotateStencilToFirstQuadrant( stdSamples.back() );	// Reoriented data packet.
 #endif
-		outIdxToSampleIdx.push_back( i );
-		outIdx++;
-	}
-
-	// Build inputs array to evaluate neural network.
-	const int N_INPUTS_PER_SAMPLE = 2;
-	const int N_INPUTS = outIdx * N_INPUTS_PER_SAMPLE;
-	auto inputs = new FDEEP_FLOAT_TYPE[N_INPUTS][K_INPUT_SIZE];
-	auto *outputs = new FDEEP_FLOAT_TYPE[N_INPUTS];
-	for( int i = 0; i < outIdx; i++ )
-	{
-		int idx = i * N_INPUTS_PER_SAMPLE;
-		for( int j = 0; j < K_INPUT_SIZE; j++ )			// We'll give it two takes: original.
-			inputs[idx + 0][j] = static_cast<FDEEP_FLOAT_TYPE>( negSamples[i][j] );
-
-		utils::reflectStencil_yEqx( negSamples[i] );	// And reflected about x - y = 0 plane.
-		for( int j = 0; j < K_INPUT_SIZE; j++ )
-			inputs[idx + 1][j] = static_cast<FDEEP_FLOAT_TYPE>( negSamples[i][j] );
-	}
-
-	// Execute inference on batch: ihk in original samples preserves its sign (to be used below).
-	_nnet->predict( inputs, outputs, N_INPUTS );
-
-	// Collect outputs.
-	for( int i = 0; i < outIdx; i++ )
-	{
-		int idx = i * N_INPUTS_PER_SAMPLE;
-		double hk = (outputs[idx + 0] + outputs[idx + 1]) / 2.0;	// Average predictions produces a better one.
-
-		// Blend with numerical mean ihk within the range of [0.004, 0.007] (using ihk as the indicator).
-		double ihk = samples[outIdxToSampleIdx[i]][K_INPUT_SIZE - (P4EST_DIM - 1)];
-		if( ABS( ihk ) <= UP_MIN_HK )
-		{
-			double lam = (UP_MIN_HK - ABS( ihk )) / (UP_MIN_HK - LO_MIN_HK);
-			hk = (1 - lam) * hk + lam * -ABS( ihk );
+			outIdxToSampleIdx.push_back( i );
+			outIdx++;
 		}
 
-		// Fix sign according to (untouched) mean curvature.
-		hybMeanHK[outIdxToSampleIdx[i]] = SIGN( ihk ) * ABS( hk );
-	}
+		// Build inputs array to evaluate neural network.
+		const int N_SAM_PER_POINT = P4EST_DIM * (P4EST_DIM - 1);
+		const int N_INPUTS = outIdx * N_SAM_PER_POINT;
+		auto inputs = new FDEEP_FLOAT_TYPE[N_INPUTS][K_INPUT_SIZE];
+		auto *outputs = new FDEEP_FLOAT_TYPE[N_INPUTS];
 
-	// Clean up.
-	delete [] inputs;
-	delete [] outputs;
+		for( int i = 0; i < outIdx; i++ )
+		{
+			int idx = i * N_SAM_PER_POINT;
+			for( int j = 0; j < K_INPUT_SIZE; j++ )			// First standard form.
+				inputs[idx + 0][j] = static_cast<FDEEP_FLOAT_TYPE>( stdSamples[i][j] );
+
+#ifdef P4_TO_P8
+			std::vector<double> rsample( stdSamples[i] );	// We need this copy for reflection and beyond in 3d.
+#else
+			std::vector<double>& rsample = stdSamples[i];
+#endif
+			utils::reflectStencil_yEqx( rsample );			// Second standard form: sample reflected about the plane x - y = 0.
+			for( int j = 0; j < K_INPUT_SIZE; j++ )
+				inputs[idx + 1][j] = static_cast<FDEEP_FLOAT_TYPE>( rsample[j] );
+
+#ifdef P4_TO_P8
+			// In 3d, we have 4 additional augmentation forms.
+			utils::reflectStencil_z0( stdSamples[i] );
+			utils::rotateStencil90y( stdSamples[i].data(), -1 );
+			for( int j = 0; j < K_INPUT_SIZE; j++ )			// Third sample (p_z).
+				inputs[idx + 2][j] = static_cast<FDEEP_FLOAT_TYPE>( stdSamples[i][j] );
+
+			utils::reflectStencil_yEqx( stdSamples[i] );
+			for( size_t j = 0; j < K_INPUT_SIZE; j++ )		// Fourth sample ([p_z]').
+				inputs[idx + 3][j] = static_cast<FDEEP_FLOAT_TYPE>( stdSamples[i][j] );
+
+			utils::reflectStencil_z0( rsample );
+			utils::rotateStencil90y( rsample.data(), -1 );
+			for( size_t j = 0; j < K_INPUT_SIZE; j++ )		// Fifth sample (p'_z).
+				inputs[idx + 4][j] = static_cast<FDEEP_FLOAT_TYPE>( rsample[j] );
+
+			utils::reflectStencil_yEqx( rsample );
+			for( size_t j = 0; j < K_INPUT_SIZE; j++ )		// Sixth sample ([p'_z]').
+				inputs[idx + 5][j] = static_cast<FDEEP_FLOAT_TYPE>( rsample[j] );
+#endif
+		}
+
+		// Execute inference on batch: ihk in original samples array preserves its sign (to be used below for non-saddles and 2d).
+		_nnet->predict( inputs, outputs, N_INPUTS );
+
+		// Collect outputs.
+		for( int i = 0; i < outIdx; i++ )
+		{
+			int idx = i * N_SAM_PER_POINT;
+			double hk = 0;
+			for( int j = 0; j < N_SAM_PER_POINT; j++ )		// Enforce symmetry by building consensus on several inferences..
+				hk += outputs[idx + j];
+			hk /= N_SAM_PER_POINT;
+
+			if( s == 0)		// Blend with numerical mean ihk within the range of [0.004, 0.007] (using ihk as the indicator).
+			{
+				double ihk = samples[s][outIdxToSampleIdx[i]][K_INPUT_SIZE - (P4EST_DIM - 1)];
+				if( ABS( ihk ) <= UP_MIN_HK )
+				{
+					double lam = (UP_MIN_HK - ABS( ihk )) / (UP_MIN_HK - LO_MIN_HK);
+					hk = (1 - lam) * hk + lam * -ABS( ihk );
+				}
+				hybMeanHK[s][outIdxToSampleIdx[i]] = SIGN( ihk ) * ABS( hk );	// Fix sign according to (untouched) mean curvature.
+			}
+			else
+			{
+				hybMeanHK[s][outIdxToSampleIdx[i]] = hk;
+			}
+		}
+
+		// Clean up.
+		delete [] inputs;
+		delete [] outputs;
+	}
 }
 
 
-std::pair<double, double> kml::Curvature::compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM],
-												   Vec numMeanK, Vec hybMeanK, Vec hybFlag, const bool& dimensionless,
-												   parStopWatch *watch ) const
+std::pair<double, double> kml::Curvature::compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec meanK,
+												   Vec hybMeanK, Vec hybFlag, const bool& dimensionless, parStopWatch *watch,
+												   Vec filter ) const
 {
-	if( !phi || !normal || !numMeanK || !hybMeanK || !hybFlag )
-		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::compute: One of the provided vectors is null!" );
+	if( !phi || !normal || !meanK || !hybMeanK || !hybFlag )
+		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::compute: One of the required vectors is null!" );
 
 	// Data accessors.
 	const p4est_nodes_t *nodes = ngbd.get_nodes();
 
-	// We start by computing the unit normals and numerical mean curvature (as a byproduct of calling this function).
-	// TODO: Need to retrain 2d k_ecnets using compute_mean_curvature( ngbd, normal, numCurvature ) for compatibility with 3D.
+	// We start by computing the unit normals and numerical curvatures (as a byproduct of calling this function).
 	double startTime = watch? watch->get_duration_current() : 0;
+#ifdef P4_TO_P8
+	const p4est_t *p4est = ngbd.get_p4est();
+	Vec kappaG, k12[2];
+	CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaG ) );		// Let's allocate vectors for Gaussian and principal curvatures.
+	for( auto& k : k12 )
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &k ) );
+	compute_normals_and_curvatures( ngbd, phi, normal, meanK, kappaG, k12 );
+	for( auto& k : k12 )
+		CHKERRXX( VecDestroy( k ) );
+#else
+	// TODO: Need to retrain 2d k_ecnets using compute_mean_curvature( ngbd, normal, numCurvature ) for compatibility with 3D.
 	compute_normals( ngbd, phi, normal );
-	compute_mean_curvature( ngbd, phi, normal, numMeanK );
+	compute_mean_curvature( ngbd, phi, normal, meanK );		// Should use without phi.
+#endif
 	double totalNumericalTime = watch? watch->get_duration_current() - startTime : -1;
 
 	// Collect samples.
-	std::vector<std::vector<double>> samples;
-	std::vector<p4est_locidx_t> indices;
-	_collectSamples( ngbd, phi, normal, numMeanK, samples, indices );
+	std::vector<std::vector<double>> samples[SAMPLE_TYPES];
+	std::vector<p4est_locidx_t> indices[SAMPLE_TYPES];
+	Vec kappaMG[SAMPLE_TYPES] = {meanK ONLY3D(COMMA kappaG)};	// I'm abusing SAMPLE_TYPES here, but it does the trick for 2D vs 3D.
+	_collectSamples( ngbd, phi, normal, kappaMG, samples, indices, filter );
+#ifdef P4_TO_P8
+	CHKERRXX( VecDestroy( kappaG ) );
+#endif
 
 	// Compute hybrid (dimensionless) mean curvature.
-	std::vector<double> hybMeanHK;
+	std::vector<double> hybMeanHK[SAMPLE_TYPES];
 	_computeHybridHK( samples, hybMeanHK );
 
 	// Copy solution to parallel vectors.
@@ -1134,14 +1247,21 @@ std::pair<double, double> kml::Curvature::compute( const my_p4est_node_neighbors
 	CHKERRXX( VecGetArray( hybFlag, &hybFlagPtr ) );
 	CHKERRXX( VecGetArray( hybMeanK, &hybMeanKPtr ) );
 
-	for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )		// Initialization.
+	for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// Initialization.
 		hybMeanKPtr[n] = hybFlagPtr[n] = 0;
 
-	for( int i = 0; i < indices.size(); i++ )	// Go through the nodes where we computed the hybrid solution.
+	for( int s = 0; s < SAMPLE_TYPES; s++ )
 	{
-		p4est_locidx_t idx = indices[i];
-		hybMeanKPtr[idx] = dimensionless? hybMeanHK[i] : hybMeanHK[i] / _h;
-		hybFlagPtr[idx] = 1;					// Signal that node idx contains mean kappa "at" the interface.
+		for( int i = 0; i < indices[s].size(); i++ )	// Go through the nodes where we computed the hybrid solution.
+		{
+			p4est_locidx_t idx = indices[s][i];
+			hybMeanKPtr[idx] = dimensionless? hybMeanHK[s][i] : hybMeanHK[s][i] / _h;
+			hybFlagPtr[idx] = 1;						// Signal that node idx contains mean kappa "at" the interface.
+		}
+
+		samples[s].clear();
+		indices[s].clear();
+		hybMeanHK[s].clear();
 	}
 
 	// Cleaning up.

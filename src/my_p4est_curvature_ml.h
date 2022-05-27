@@ -21,6 +21,8 @@
 #define K_INPUT_NORMAL_SIZE		18
 #define K_INPUT_HK_SIZE			 1
 
+#define SAMPLE_TYPES 	1			// In 2D, just one type of samples.
+
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_nodes_along_interface.h>
@@ -52,7 +54,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: May 25, 2022.
+ * Updated: May 26, 2022.
  */
 namespace kml
 {
@@ -553,7 +555,7 @@ namespace kml
 	}
 
 
-	////////////////////////////////////////////////// Curvature //////////////////////////////////////////////////
+	///////////////////////////////////////////////////////// Hybrid mean curvature ////////////////////////////////////////////////////////
 
 	/**
  	 * Mean curvature computation using machine learning and neural networks.
@@ -564,33 +566,42 @@ namespace kml
 		const double _h;					// Smallest (square-)cell width.
 		const double LO_MIN_HK;				// Lower- and upper-bound for minimum mean |hk| where we blend numerical
 		const double UP_MIN_HK;				// with neural estimation for better results.
-		const NeuralNetwork * const _nnet;	// Error-correcting neural network.
+		const NeuralNetwork * const _nnet;	// Error-correcting neural network (for non-saddles in 3D, unique in 2D).
+
+#ifdef P4_TO_P8
+		const NeuralNetwork * const _nnet_sd;	// Error-correcting neural network for saddles.
+		const double _nonSaddleMinIH2KG;		// Lower-bound on ih2kg for non-saddle samples.
+#endif
 
 		/**
-		 * Collect samples for locally owned nodes with full h-uniform stencil next to Gamma.  Samples include phi
-		 * values, normal unit vector components, plus the linearly interpolated dimensionless (mean) curvature and
-		 * Gaussian curvature at the interface.
-		 * @note No negative-curvature normalization and reorientation are performed here.  Those will be considered as
-		 * a preprocessing step in the function that invokes the neural inference.
+		 * Collect samples for locally owned nodes with full h-uniform stencil next to Gamma.  Samples include phi values, normal unit
+		 * vector components, plus the linearly interpolated dimensionless (mean) curvature [and Gaussian curvature in 3D] at the interface.
+		 * @note No negative-curvature normalization nor reorientation are performed here.  Those will be considered as a preprocessing step
+		 * in the function that invokes the neural inference.
+		 * @note Only h-normalization is applied to phi values.
 		 * @param [in] ngbd Node neighborhood struct.
 		 * @param [in] phi Reinitialized level-set values.
 		 * @param [in] normal Nodal unit normal vectors.
-		 * @param [in] numMeanK Numerical mean curvature (which we use for linear interpolation at Gamma).
-		 * @param [out] samples Vector of samples for valid nodes next to Gamma.
-		 * @param [out] indices Center nodal indices for collected samples (a one-to-one mapping).
+		 * @param [in] kappaMG Numerical mean and Gaussian curvatures at the nodes (which we use for linear interpolation at Gamma).
+		 * @param [out] samples Array of vectors of samples for valid nodes next to Gamma (two vectors in 3D and one vector in 2D).
+		 * @param [out] indices Array of center nodal indices for collected samples (a one-to-one mapping).
+		 * @param [in] filter Optional filter with 1s for nodes we want to consider for inference (or all points if filter is not given).
 		 */
-		void _collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec numMeanK,
-							  std::vector<std::vector<double>>& samples, std::vector<p4est_locidx_t>& indices ) const;
+		void _collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec kappaMG[SAMPLE_TYPES],
+							  std::vector<std::vector<double>> samples[SAMPLE_TYPES], std::vector<p4est_locidx_t> indices[SAMPLE_TYPES],
+							  Vec filter=nullptr ) const;
 
 		/**
-		 * Compute the hybrid dimensionless mean curvature from the provided samples by using the neural network and the
-		 * numerically interpolated dimensionless curvature(s) at the interface.
-		 * @param [in] samples Vector of samples for locally owned valid nodes next to Gamma.
-		 * @param [out] hybMeanHK Output dimensionless mean curvature computed with hybrid approach.
+		 * Compute the hybrid dimensionless mean curvature from the provided samples by using the neural network and the numerically
+		 * interpolated dimensionless curvature(s) at the interface.
+		 * @param [in] samples Array of vector of samples for locally owned (possibly filtered) valid nodes next to Gamma.
+		 * @param [out] hybMeanHK Array of output vectors with dimensionless mean curvature computed using the hybrid approach.
 		 */
-		void _computeHybridHK( const std::vector<std::vector<double>>& samples, std::vector<double>& hybMeanHK ) const;
+		void _computeHybridHK( const std::vector<std::vector<double>> samples[SAMPLE_TYPES],
+							   std::vector<double> hybMeanHK[SAMPLE_TYPES] ) const;
 
 	public:
+#ifndef P4_TO_P8
 		/**
 		 * Constructor.
 		 * @note The loMinHK constant must be at least the MIN_HK used for training.
@@ -601,32 +612,44 @@ namespace kml
 		 * 		  numerical estimation (e.g., 0.007).
 		 */
 		Curvature( const NeuralNetwork *nnet, const double& h, const double& loMinHK=0.004, const double& upMinHK=0.007 );
+#else
+		/**
+		 * Constructor.
+		 * @note The loMinHK value must be at least the MIN_HK used for training.
+		 * @note The nonSaddleMinIH2KG value must match what you used for training.
+		 * @param [in] nnetNS Neural network for non-saddle samples.
+		 * @param [in] nnetSD Neural network for saddle samples.
+		 * @param [in] h Mesh size.
+		 * @param [in] loMinHK Lower bound for dimensionless mean curvature for non-saddle samples.
+		 * @param [in] upMinHK Upper bound for blending numerical with neurally corrected estimation for non-saddle samples.
+		 * @param [in] nonSaddleMinIH2KG Minimum ih2kg value to consider a sample from a non-saddle region.
+		 */
+		Curvature( const NeuralNetwork *nnetNS, const NeuralNetwork *nnetSD, const double& h, const double& loMinHK=0.004,
+				   const double& upMinHK=0.007, const double& nonSaddleMinIH2KG=-7e-6 );
+#endif
 
 		/**
-		 * Compute mean curvature.  There are two output modes in this function.  First, it computes the unit normals
-		 * and the numerical mean curvature and place the results in the normal and numMeanK vectors.
-		 * Then, it computes the mean curvature for grid points next to the interface using the hybrid approach.  The
-		 * resulting approximation is placed in the hybMeanK vector and corresponds to the mean curvature *at* the
-		 * normal projection of those nodes onto Gamma.
-		 * The ancillary output hybFlag vector is populated with 1s where we used the hybrid approach and 0s everywhere
-		 * else.
-		 * TODO: Need to adjust to using compute_mean_curvature( ngbd, normal, numCurvature ) for compatibility with 3D.
+		 * Compute mean curvature defined as 0.5(k1 + k2), where k1 and k2 are the principal curvatures.  There are two output modes in this
+		 * function.  First, it computes the unit normals and the numerical mean curvature and place the results in their corresponding
+		 * vectors.  Then, it computes the mean curvature for grid points next to the interface using the hybrid approach.  The resulting
+		 * approximation is placed in the hybMeanK vector and corresponds to the mean curvature *at* the normal projection of those nodes
+		 * onto Gamma.  The ancillary output hybFlag vector is populated with 1s where we used the hybrid approach and 0s everywhere else.
 		 * @param [in] ngbd Node neighborhood structure.
 		 * @param [in] phi Nodal level-set values (assuming we have already reinitialized them).
 		 * @param [out] normal Nodal unit normal vectors.
-		 * @param [out] numMeanK Numerical mean curvature computed at all the nodes.
+		 * @param [out] meanK Numerical mean curvature computed at all the nodes.
 		 * @param [out] hybMeanK Hybrid mean curvature computed at the normal projection of nodes next to Gamma.
 		 * @param [out] hybFlag Indicator vector with 1s where we used the hybrid approach and 0s everywhere else.
-		 * @param [in] dimensionless Whether to scale curvature by h.
-		 * @param [in] watch Optional timer.  If given, we will time numerical and hybrid curvature computations.  Timer
-		 *        must be ready (i.e., called its start() method) before calling this function.
+		 * @param [in] dimensionless Whether to scale mean curvature by h and Gaussian curvature by h^2.
+		 * @param [in] watch Optional timer.  If given, it will time numerical and hybrid mean curvature computations.  Timer must be ready
+		 * 			   (i.e., called its start() method) before calling this function.
+		 * @param [in] filter Optional vector of 1's for nodes where we'd like to compute mean curvature next to Gamma with hybrid approach.
 		 * @return A pair with <numerical, hybrid> timings in seconds if watch parameter is not nullptr, otherwise, the
 		 *         values are set to -1.
-		 * @throws invalid_argument if any vector is nullptr.
+		 * @throws invalid_argument if any required vector is null.
 		 */
-		std::pair<double, double> compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM],
-										   Vec numMeanK, Vec hybMeanK, Vec hybFlag, const bool& dimensionless=false,
-										   parStopWatch *watch=nullptr ) const;
+		std::pair<double, double> compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec meanK, Vec hybMeanK,
+										   Vec hybFlag, const bool& dimensionless=false, parStopWatch *watch=nullptr, Vec filter=nullptr ) const;
 	};
 }
 
