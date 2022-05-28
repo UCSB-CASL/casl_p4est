@@ -1167,7 +1167,12 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>> sa
 		}
 
 		// Execute inference on batch: ihk in original samples array preserves its sign (to be used below for non-saddles and 2d).
-		_nnet->predict( inputs, outputs, N_INPUTS );
+		if( s == 0 )
+			_nnet->predict( inputs, outputs, N_INPUTS );
+#ifdef P4_TO_P8
+		else
+			_nnet_sd->predict( inputs, outputs, N_INPUTS );
+#endif
 
 		// Collect outputs.
 		for( int i = 0; i < outIdx; i++ )
