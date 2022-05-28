@@ -317,4 +317,94 @@ public:
 };
 
 
+/**
+ * Set up domain and create a paboloid level-set function.
+ * @param [in] mpi MPI environment object.
+ * @param [in] paraboloid Paraboloid function in canonical space.
+ * @param [in] h Mesh size.
+ * @param [in] origin Paraboloid's local frame origin with respect to world coordinates.
+ * @param [in] rotAngle Paraboloid's local frame angle of rotation about a unit axis.
+ * @param [in] rotAxis The unit axis to rotate the frame about.
+ * @param [in] maxRL Maximum level of refinement for the whole domain.
+ * @param [out] octMaxRL Effective maximum refinement for each octree to achieve desired h.
+ * @param [in] c User-defined height to be contained inside the cubic domain.
+ * @param [out] n_xyz Number of octrees in each direction.
+ * @param [out] xyz_min Mininum coordinates of computational domain.
+ * @param [out] xyz_max Maximum coordinates of computational domain.
+ * @param [out] ru2 Semi-axis length on the u-direction for sampling (and reaching up to desired Q(u,v) = c).
+ * @param [out] rv2 Semi-axis length on the v-direction for sampling (and reaching up to desired Q(u,v) = c).
+ * @return Dynamically allocated paraboloid level-set object.  You must delete it in caller function.
+ */
+ParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const Paraboloid& paraboloid, const double& h,
+								 const double origin[P4EST_DIM], const double& rotAngle, const double rotAxis[P4EST_DIM],
+								 const u_char& maxRL, u_char& octMaxRL, const double& c, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
+								 double xyz_max[P4EST_DIM], double& ru2, double& rv2 )
+{
+	// First, determine region on the uv plane that contains paraboloid up to Q(u,v) = c.
+	ru2 = c / paraboloid.a();
+	rv2 = c / paraboloid.b();
+	const double U_C = sqrt( ru2 );
+	const double V_C = sqrt( rv2 );
+	const double QTOP = c + 4 * h;					// Adding some padding at top and bottom.
+	const double QBOT = -4 * h;
+	const double QCylCCoords[8][P4EST_DIM] = {		// Cylinder in canonical coords containing the desired paraboloid surface.
+		{-U_C, 0, QTOP}, {+U_C, 0, QTOP}, 			// Top coords (the four points lying on the same QTOP found above).
+		{0, -V_C, QTOP}, {0, +V_C, QTOP},
+		{-U_C, 0, QBOT}, {+U_C, 0, QBOT},			// Base coords (the four points lying on the same QBOT found above).
+		{0, -V_C, QBOT}, {0, +V_C, QBOT}
+	};
+
+	// Finding the world coords of (canonical) cylinder containing Q(u,v).
+	geom::AffineTransformedSpace ats( Point3( origin ), Point3( rotAxis ), rotAngle );
+	double minQCylWCoords[P4EST_DIM] = {+DBL_MAX, +DBL_MAX, +DBL_MAX};	// Min and max cylinder world coords.
+	double maxQCylWCoords[P4EST_DIM] = {-DBL_MAX, -DBL_MAX, -DBL_MAX};
+	for( const auto& cylCPoint : QCylCCoords )
+	{
+		Point3 cylWPoint = ats.toWorldCoordinates( cylCPoint[0], cylCPoint[1], cylCPoint[2] );
+		for( int i = 0; i < P4EST_DIM; i++ )
+		{
+			minQCylWCoords[i] = MIN( minQCylWCoords[i], cylWPoint.xyz( i ) );
+			maxQCylWCoords[i] = MAX( maxQCylWCoords[i], cylWPoint.xyz( i ) );
+		}
+	}
+
+	// Use the cylinder x, y, z ranges to find the domain's length in each direction.
+	double QCylWRange[P4EST_DIM];
+	double WCentroid[P4EST_DIM];
+	for( int i = 0; i < P4EST_DIM; i++ )
+	{
+		QCylWRange[i] = maxQCylWCoords[i] - minQCylWCoords[i];
+		WCentroid[i] = (minQCylWCoords[i] + maxQCylWCoords[i]) / 2;	// Raw centroid.
+		WCentroid[i] = round( WCentroid[i] / h ) * h;				// Centroid as a multiple of h.
+	}
+
+	const double CUBE_SIDE_LEN = MAX( QCylWRange[0], MAX( QCylWRange[1], QCylWRange[2] ) );
+	const unsigned char OCTREE_RL_FOR_LEN = MAX( 0, maxRL - 5 );	// Defines the log2 of octree's len (i.e., octree's len is a power of two).
+	const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
+	octMaxRL = maxRL - OCTREE_RL_FOR_LEN;							// Effective max refinement level to achieve desired h.
+	const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );			// Number of trees in each dimension.
+	const double D_CUBE_SIDE_LEN = N_TREES * OCTREE_LEN;			// Adjusted domain cube len as a multiple of *both* h and octree len.
+	const double HALF_D_CUBE_SIDE_LEN = D_CUBE_SIDE_LEN / 2;
+
+	// Defining a symmetric cubic domain whose dimensions are multiples of h and contain paraboloid and its limiting ellipse.
+	for( int i = 0; i < P4EST_DIM; i++ )
+	{
+		n_xyz[i] = N_TREES;
+		xyz_min[i] = WCentroid[i] - HALF_D_CUBE_SIDE_LEN;
+		xyz_max[i] = WCentroid[i] + HALF_D_CUBE_SIDE_LEN;
+	}
+
+	// Now that we know the domain, define the limiting ellipse to triangulate the paraboloid.
+	const double D = D_CUBE_SIDE_LEN * sqrt( 3 );					// To do this, use the circumscribing sphere with this diameter.
+	const double ULIM = sqrt( D / paraboloid.a() );					// Limiting ellipse semi-axes for triangulation.
+	const double VLIM = sqrt( D / paraboloid.b() );
+	const size_t HALF_U_H = ceil( ULIM / h );						// Half axes in h units.
+	const size_t HALF_V_H = ceil( VLIM / h );
+
+	// Defining transformed paraboloid level-set function.  This also discretizes the surface using a balltree to speed up queries during
+	// grid refinment.
+	return new ParaboloidLevelSet( &mpi, Point3(origin), Point3(rotAxis), rotAngle, HALF_U_H, HALF_V_H, maxRL, &paraboloid, SQR(ULIM), SQR(VLIM), 5 );
+}
+
+
 #endif //ML_CURVATURE_PARABOLOID_3D_H
