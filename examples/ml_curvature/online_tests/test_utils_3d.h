@@ -31,8 +31,8 @@ namespace test_utils
 	 * @param [in] reinitIters Number of iterations for redistancing.
 	 * @param [in,out] sdLS The surface as a discretized level-set function.
 	 * @param [in] nonSaddleMinIH2KG Min ih2kg to identify a sample as a non-saddle sample.
-	 * @param [in] ru2 Limiting ellipse semi-axis on the u-direction for sampling.
-	 * @param [in] rv2 Limiting ellipse semi-axis on the v-direction for sampling.
+	 * @param [in] ru2 Overriding limiting ellipse semi-axis on the u-direction just for sampling.
+	 * @param [in] rv2 Overriding limiting ellipse semi-axis on the v-direction just for sampling.
 	 * @param [in] nnetNS Non-saddle neural network.
 	 * @param [in] nnetSD Saddle neural network.
 	 * @param [in,out] genNoise Noise random generating engine.
