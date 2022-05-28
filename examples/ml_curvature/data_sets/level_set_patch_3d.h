@@ -443,16 +443,14 @@ public:
 		std::vector<p4est_locidx_t> indices;
 		nodesAlongInterface.getIndices( &phi, indices );
 
-		// Compute normal vectors and mean/Gaussian/principal curvatures.
-		Vec normals[P4EST_DIM],	kappaMG[2], kappa12[2];
+		// Compute normal vectors and mean/Gaussian curvatures.
+		Vec normals[P4EST_DIM],	kappaMG[2];
 		for( auto& component : normals )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &component ) );
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaMG[0] ) );	// This is mean curvature, and
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaMG[1] ) );	// this is Gaussian curvature.
-		for( auto& pk : kappa12 )
-			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &pk ) );
 
-		compute_normals_and_curvatures( *ngbd, phi, normals, kappaMG[0], kappaMG[1], kappa12 );
+		compute_normals_and_curvatures( *ngbd, phi, normals, kappaMG[0], kappaMG[1] );
 
 		const double *phiReadPtr;								// We need access to phi to project points onto Gamma.
 		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
@@ -753,8 +751,6 @@ public:
 		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( exactFlag, &exactFlagReadPtr ) );
 
-		for( auto& pk : kappa12 )
-			CHKERRXX( VecDestroy( pk ) );
 		CHKERRXX( VecDestroy( kappaMG[0] ) );
 		CHKERRXX( VecDestroy( kappaMG[1] ) );
 		for( auto& component : normals )
@@ -806,6 +802,122 @@ int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>&
 	SC_CHECK_MPI( MPI_Bcast( &savedSamples, 1, MPI_INT, 0, mpi.comm() ) );
 
 	return savedSamples;
+}
+
+/**
+ * Emulate what we do with hybrid method just to time how much it'll take to the numerical baseline and collect error metrics.
+ * @param [in] mpi MPI environment.
+ * @param [in] ngbd Neighbors struct.
+ * @param [in] h Mesh size.
+ * @param [in] phi Level-set values.
+ * @param [in] trueHK Vector of true hk at the interface for sampled nodes.
+ * @param [in] filter Marks with != 0 those nodes we will compute kappa at Gamma.
+ * @param [out] maxAbsError Maximum absolute error in hk reduced across processes.
+ * @param [out] meanAbsError Mean absolute error in hk reduced across processes.
+ * @param [out] nGridPoints How many points we evaluated (reduced across processes) -- mainly to validate.
+ * @return time in seconds.
+ */
+double numericalBaselineComputation( const mpi_environment_t& mpi, const my_p4est_node_neighbors_t& ngbd, const double& h, Vec phi,
+									 Vec trueHK, parStopWatch *watch, Vec filter, double& maxAbsError, double &meanAbsError,
+									 int& nGridPoints )
+{
+	double startTime = watch->get_duration_current();
+
+	// Data accessors.
+	const p4est_nodes_t *nodes = ngbd.get_nodes();
+	const p4est_t *p4est = ngbd.get_p4est();
+	const auto *splittingCriteria = (splitting_criteria_t*) p4est->user_pointer;
+	const int maxRL = splittingCriteria->max_lvl;
+
+	Vec kappa, normal[P4EST_DIM], hKappaAtGamma;
+	CHKERRXX( VecDuplicate( phi, &kappa ) );		// Numerical mean curvature at the nodes...
+	CHKERRXX( VecDuplicate( phi, &hKappaAtGamma ) );	// and at Gamma for select nodes.
+	for( auto& dim : normal )
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
+
+	compute_normals( ngbd, phi, normal );
+	compute_mean_curvature( ngbd, normal, kappa );
+
+	const double *phiReadPtr;
+	CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
+
+	const double *normalReadPtr[P4EST_DIM];
+	for( int dim = 0; dim < P4EST_DIM; dim++ )
+		CHKERRXX( VecGetArrayRead( normal[dim], &normalReadPtr[dim] ) );
+
+	const double *filterReadPtr = nullptr;
+	CHKERRXX( VecGetArrayRead( filter, &filterReadPtr ) );
+
+	const double *trueHKReadPtr;
+	CHKERRXX( VecGetArrayRead( trueHK, &trueHKReadPtr ) );
+
+	double* hKappaAtGammaPtr;
+	CHKERRXX( VecGetArray( hKappaAtGamma, &hKappaAtGammaPtr ) );
+
+	// We'll interpolate numerical mean curvature at the interface linearly.
+	my_p4est_interpolation_nodes_t interp( &ngbd );
+	interp.set_input( kappa, interpolation_method::linear );
+
+	// Go through flagged nodes next to Gamma.
+	NodesAlongInterface nodesAlongInterface( p4est, nodes, &ngbd, (char)maxRL );
+	std::vector<p4est_locidx_t> ngIndices;
+	nodesAlongInterface.getIndices( &phi, ngIndices );
+	nGridPoints = 0;
+	maxAbsError = 0;
+	meanAbsError = 0;
+	for( auto n : ngIndices )
+	{
+		if( filterReadPtr && filterReadPtr[n] <= 0 )
+			continue;
+
+		std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D, 27 values in 3D.
+		try
+		{
+			if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
+			{
+				double xyz[P4EST_DIM];
+				node_xyz_fr_n( n, p4est, nodes, xyz );
+				for( int c = 0; c < P4EST_DIM; c++ )				// Find the location where to (linearly) interpolate curvature.
+					xyz[c] -= phiReadPtr[n] * normalReadPtr[c][n];
+
+				hKappaAtGammaPtr[n] = 0.5 * h * interp( xyz );		// Get linearly interpolated curvature (and take half of it).
+				double error = ABS( trueHKReadPtr[n] - hKappaAtGammaPtr[n] );
+				maxAbsError = MAX( error, maxAbsError );
+				meanAbsError += error;
+				nGridPoints++;
+
+			}
+		}
+		catch( std::exception &e ) {}
+	}
+
+	// Let's synchronize the curvature at Gamma.
+	CHKERRXX( VecGhostUpdateBegin( hKappaAtGamma, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( hKappaAtGamma, INSERT_VALUES, SCATTER_FORWARD ) );
+
+	// Cleaning up.
+	interp.clear();
+	for( int dim = 0; dim < P4EST_DIM; dim++ )
+		CHKERRXX( VecRestoreArrayRead( normal[dim], &normalReadPtr[dim] )  );
+	CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
+	CHKERRXX( VecRestoreArray( hKappaAtGamma, &hKappaAtGammaPtr ) );
+	CHKERRXX( VecRestoreArrayRead( filter, &filterReadPtr ) );
+	CHKERRXX( VecRestoreArrayRead( trueHK, &trueHKReadPtr ) );
+
+	CHKERRXX( VecDestroy( kappa ) );
+	CHKERRXX( VecDestroy( hKappaAtGamma ) );
+	for( auto& dim : normal )
+		CHKERRXX( VecDestroy( dim ) );
+
+	double endTime = watch->get_duration_current();
+
+	// Let's collect error metrics (these don't count in the timing metric).
+	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &nGridPoints, 1, MPI_INT, MPI_SUM, mpi.comm() ) );
+	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &maxAbsError, 1, MPI_DOUBLE, MPI_MAX, mpi.comm() ) );
+	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &meanAbsError, 1, MPI_DOUBLE, MPI_SUM, mpi.comm() ) );
+	meanAbsError /= nGridPoints;
+
+	return endTime - startTime;
 }
 
 #endif //ML_CURVATURE_LEVEL_SET_PATCH_3D_H

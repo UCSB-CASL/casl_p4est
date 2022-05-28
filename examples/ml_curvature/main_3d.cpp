@@ -16,7 +16,7 @@
  *
  * Negative-mean-curvature normalization, when applicable, depends on the sign of the linearly interpolated mean ihk at the interface.
  *
- * We export VTK data for visualization and validation.
+ * We export VTK data for visualization and compute mean and maximum absolute errors for validation on nodes next to Gamma.
  *
  * @note Here and across related files to machine-learning computation of mean curvature use the geometrical definition of mean curvature;
  * that is, H = 0.5(k1 + k2), where k1 and k2 are principal curvatures.
@@ -101,13 +101,13 @@ int main ( int argc, char* argv[] )
 		////////////////////////// First, checking that we can load the neural networks and scalers appropriately //////////////////////////
 
 		const std::string ROOT = nnetsDir() + "/3d/" + std::to_string( maxRL() );
-
-		// Check first the scalers.
+#ifdef DEBUG
 		const int N_TEST_SAMPLES = 1;
 		FDEEP_FLOAT_TYPE testSamples[N_TEST_SAMPLES][K_INPUT_SIZE];		// Notice: using singles instead of doubles.
 		for( int i = 0; i < K_INPUT_SIZE; i++ )
 			testSamples[0][i] = (FDEEP_FLOAT_TYPE)i / 100;
 
+		// Check first the scalers.
 		kml::StandardScaler standardScaler( ROOT + "/non-saddle/k_std_scaler.json", false );
 		standardScaler.transform( testSamples, N_TEST_SAMPLES );
 		CHKERRXX( PetscPrintf( mpi.comm(), "\nStd-scaled data as float32:\n" ) );
@@ -135,16 +135,17 @@ int main ( int argc, char* argv[] )
 					std::cout << std::endl;
 			}
 		}
-
-		// Now, non-saddle neural network.
+#endif
+		// Load non-saddle neural network.
+		kml::NeuralNetwork nnetNS( ROOT + "/non-saddle", h, false );
+#ifdef DEBUG
 		for( int i = 0; i < K_INPUT_SIZE; i++ )
 			testSamples[0][i] = (FDEEP_FLOAT_TYPE)i / 100;				// Back to the initial test data.
 		FDEEP_FLOAT_TYPE outputs[N_TEST_SAMPLES];
-		kml::NeuralNetwork nnetNS( ROOT + "/non-saddle", h, false );
 		nnetNS.predict( testSamples, outputs, N_TEST_SAMPLES );			// If there's an error, it'll be thrown here.
-		CHKERRXX( PetscPrintf( mpi.comm(), "\nTest prediction: %.7f", outputs[0] ) );
-
-		// Let's load the saddle neural network.
+		CHKERRXX( PetscPrintf( mpi.comm(), "\nTest prediction: %.7f\n", outputs[0] ) );
+#endif
+		// Let's load the saddle neural network, too.
 		kml::NeuralNetwork nnetSD( ROOT + "/saddle", h, false );
 
 		///////////////////////////////////////////////////// Defining shape parameters ////////////////////////////////////////////////////
@@ -252,8 +253,13 @@ int main ( int argc, char* argv[] )
 		if( randomNoise() > 0 )
 			addRandomNoiseToLSFunction( phi, nodes, genNoise, randomNoiseDist );
 
+		// Reinitialization.
+		double reinitStartTime = watch.get_duration_current();
+		CHKERRXX( PetscPrintf( mpi.comm(), "* Reinitializing...  " ) );
 		my_p4est_level_set_t ls( ngbd );
 		ls.reinitialize_2nd_order( phi, reinitIters() );
+		double reinitTime = watch.get_duration_current() - reinitStartTime;
+		CHKERRXX( PetscPrintf( mpi.comm(), "done after %.6f secs.\n", reinitTime ) );
 
 		Vec sampledFlag, trueHK, hkError;	// These vectors distinguish sampled nodes along the interface and store the true hk on Gamma and its error.
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
@@ -272,6 +278,17 @@ int main ( int argc, char* argv[] )
 		samples.clear();
 		delete gLS;
 
+		// Collecting error stats and performance metrics from numerical baseline curvature computation.
+		double numTime, numMaxAbsError, numMeanAbsError;
+		int numGridPoints;
+		CHKERRXX( PetscPrintf( mpi.comm(), "* Evaluating numerical baseline...  " ) );
+		numTime = numericalBaselineComputation( mpi, *ngbd, h, phi, trueHK, &watch, sampledFlag, numMaxAbsError, numMeanAbsError, numGridPoints );
+		CHKERRXX( PetscPrintf( mpi.comm(), "done with the following stats:\n" ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Time (in secs)            = %.6f\n", numTime + reinitTime ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of grid points     = %i\n", numGridPoints ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Mean absolute error       = %.6e\n", numMeanAbsError ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Maximum absolute error    = %.6e\n", numMaxAbsError ) );
+
 		// Hybrid curvature vectors.
 		Vec numCurvature, hybHK, hybFlag, normal[P4EST_DIM];
 		CHKERRXX( VecDuplicate( phi, &numCurvature ) );	// Numerical mean curvature at the nodes.
@@ -281,6 +298,7 @@ int main ( int argc, char* argv[] )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
 
 		// Compute hybrid (dimensionless) mean curvature.
+		CHKERRXX( PetscPrintf( mpi.comm(), "* Computing hybrid mean curvature... " ) );
 		kml::Curvature mlCurvature( &nnetNS, &nnetSD, h, 0.004, 0.007, nonSaddleMinIH2KG() );
 		std::pair<double, double> durations = mlCurvature.compute( *ngbd, phi, normal, numCurvature, hybHK, hybFlag, true, &watch, sampledFlag );
 
@@ -294,9 +312,10 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecGetArrayRead( hybHK, &hybHKReadPtr ) );
 		CHKERRXX( VecGetArrayRead( trueHK, &trueHKReadPtr ) );
 		CHKERRXX( VecGetArrayRead( sampledFlag, &sampledFlagReadPtr ) );
+		CHKERRXX( VecGetArrayRead( hybFlag, &hybFlagReadPtr ) );
 		foreach_local_node( n, nodes )
 		{
-			if( hybHKReadPtr[n] == 1 )
+			if( hybFlagReadPtr[n] == 1 )
 			{
 				if( sampledFlagReadPtr[n] != 0 )		// Filter did work.
 				{
@@ -322,6 +341,12 @@ int main ( int argc, char* argv[] )
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &maxAbsError, 1, MPI_DOUBLE, MPI_MAX, mpi.comm() ) );
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &meanAbsError, 1, MPI_DOUBLE, MPI_SUM, mpi.comm() ) );
 		meanAbsError /= nHybNodes;
+
+		CHKERRXX( PetscPrintf( mpi.comm(), "done with the following stats:\n" ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Time (in secs)            = %.6f\n", durations.second + reinitTime ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of grid points     = %i (%i saddles)\n", nHybNodes, nNumericalSaddles ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Mean absolute error       = %.6e\n", meanAbsError ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "   - Maximum absolute error    = %.6e\n", maxAbsError ) );
 
 		// Export visual data.
 		const double *phiReadPtr;
@@ -364,13 +389,6 @@ int main ( int argc, char* argv[] )
 		p4est_destroy( p4est );
 		my_p4est_brick_destroy( connectivity, &brick );
 
-		// TODO: To be fair with the numerical method, time only mean curvature and normals (not mean, Gaussian, and normals, as reported by hybrid method).
-		CHKERRXX( PetscPrintf( mpi.comm(), "   Computed hybrid mean curvature for %i grid points with the following stats:\n", nHybNodes ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of saddle points   = %i\n", nNumericalSaddles ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Maximum absolute error    = %.8f\n", maxAbsError ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Mean absolute error       = %.8f\n", meanAbsError ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Numerical timing (secs)   = %.6f\n", durations.first ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Hybrid timing (secs)      = %.6f\n", durations.second ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "<< Done after %.2f secs.\n", watch.get_duration_current() ) );
 		watch.stop();
 	}

@@ -1031,7 +1031,7 @@ void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec
 					xyz[c] -= phiReadPtr[n] * normalReadPtr[c][n];
 
 				double kappaMGValues[SAMPLE_TYPES];
-				interp( xyz, kappaMGValues, SAMPLE_TYPES );		// Get linearly interpolated curvature[s in one shot].
+				interp( xyz, kappaMGValues );					// Get linearly interpolated curvature[s in one shot].
 				double ihkVal = _h * kappaMGValues[0];
 #ifdef P4_TO_P8
 				double ih2kgVal = SQR( _h ) * kappaMGValues[1];
@@ -1173,18 +1173,18 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>> sa
 		for( int i = 0; i < outIdx; i++ )
 		{
 			int idx = i * N_SAM_PER_POINT;
-			double hk = 0;
-			for( int j = 0; j < N_SAM_PER_POINT; j++ )		// Enforce symmetry by building consensus on several inferences..
+			FDEEP_FLOAT_TYPE hk = 0;
+			for( int j = 0; j < N_SAM_PER_POINT; j++ )		// Enforce symmetry by building consensus on several inferences.
 				hk += outputs[idx + j];
 			hk /= N_SAM_PER_POINT;
 
-			if( s == 0)		// Blend with numerical mean ihk within the range of [0.004, 0.007] (using ihk as the indicator).
+			if( s == 0)	// Blend with numerical mean ihk within the range of [0.004, 0.007] (using ihk as the indicator) for non-saddles.
 			{
 				double ihk = samples[s][outIdxToSampleIdx[i]][K_INPUT_SIZE - (P4EST_DIM - 1)];
 				if( ABS( ihk ) <= UP_MIN_HK )
 				{
 					double lam = (UP_MIN_HK - ABS( ihk )) / (UP_MIN_HK - LO_MIN_HK);
-					hk = (1 - lam) * hk + lam * -ABS( ihk );
+					hk = (FDEEP_FLOAT_TYPE)((1 - lam) * hk + lam * -ABS( ihk ));	// Yes! It's -ABS(ihk) because neural hk thinks it's negative!
 				}
 				hybMeanHK[s][outIdxToSampleIdx[i]] = SIGN( ihk ) * ABS( hk );	// Fix sign according to (untouched) mean curvature.
 			}
@@ -1215,13 +1215,9 @@ std::pair<double, double> kml::Curvature::compute( const my_p4est_node_neighbors
 	double startTime = watch? watch->get_duration_current() : 0;
 #ifdef P4_TO_P8
 	const p4est_t *p4est = ngbd.get_p4est();
-	Vec kappaG, k12[2];
+	Vec kappaG;
 	CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaG ) );		// Let's allocate vectors for Gaussian and principal curvatures.
-	for( auto& k : k12 )
-		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &k ) );
-	compute_normals_and_curvatures( ngbd, phi, normal, meanK, kappaG, k12 );
-	for( auto& k : k12 )
-		CHKERRXX( VecDestroy( k ) );
+	compute_normals_and_curvatures( ngbd, phi, normal, meanK, kappaG );
 #else
 	// TODO: Need to retrain 2d k_ecnets using compute_mean_curvature( ngbd, normal, numCurvature ) for compatibility with 3D.
 	compute_normals( ngbd, phi, normal );

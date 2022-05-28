@@ -2826,8 +2826,8 @@ void compute_gaussian_curvature( const my_p4est_node_neighbors_t &ngbd, const Ve
 								 const Vec phi_xxyyzz[P4EST_DIM], Vec kappaG );
 
 /**
- * Compute unit normal vectors and the mean, Gaussian, and principal curvatures for all grid nodes.  To compute the mean
- * curvature, we use div(n), where n is a unit normal (i.e., the most robust approach).
+ * Compute unit normal vectors and the mean, Gaussian, and (optional) principal curvatures for all grid nodes.  To
+ * compute the mean curvature, we use div(n), where n is a unit normal (i.e., the most robust approach).
  * @note kappaM is defined as 1/(DIM-1)*(k1 + k2), which in 2D reduces to just k1 (i.e., the principal curvature).  That
  * is, kappaM = 0.5(k1 + k2) and kappaG = k1*k2 are the geometrical mean and Gaussian curvatures, and k1 and k2 are the
  * principal curvatures.
@@ -2837,11 +2837,11 @@ void compute_gaussian_curvature( const my_p4est_node_neighbors_t &ngbd, const Ve
  * @param [out] normals Unit normal vectors, component by component.
  * @param [out] kappaM Mean curvature.
  * @param [out] kappaG Gaussian curvature.
- * @param [out] kappa12 Principal curvatures (with NAN values if they couldn't be computed).
- * @throws invalid_argument exception if any of the input/output vectors are null.
+ * @param [out] kappa12 (Optional) Principal curvatures (with NAN values if they couldn't be computed).
+ * @throws invalid_argument exception if any of the mandatory input/output vectors are null.
  */
 void compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, const Vec& phi, Vec normals[P4EST_DIM],
-									 Vec kappaM, Vec kappaG, Vec kappa12[2] );
+									 Vec kappaM, Vec kappaG, Vec *kappa12=nullptr );
 #endif
 
 void save_vector(const char *filename, const std::vector<double> &data, std::ios_base::openmode mode = std::ios_base::out, char delim = ',');
