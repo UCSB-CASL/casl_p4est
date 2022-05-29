@@ -7,11 +7,11 @@
  * below Q(u,v).  We simplify calculations by expressing query points in terms of the canonical frame, which can be affected by rigid-body
  * transformations (i.e., a translation and rotation).
  *
- * Theoretically, the hyperbolic paraboloid Gaussian curvature is always negative (never 0).  Thus, its data set contains samples only
- * saddle regions (i.e., h2kg < 0).  If requested, we can apply negative-mean-curvature normalization selectively for each numerical
- * non-saddle sample (say we found some point for which ih2kg >= nonSaddleMinIH2KG).  In any case, we extract six samples per interface node
- * by applying a sequence of reorientations and reflections.  These make the center node's gradient components non-negative.  At inference
- * time, all six outputs are averaged to improve accuracy.
+ * Theoretically, the hyperbolic paraboloid Gaussian curvature is always negative (never 0).  Thus, its data set contains samples only from
+ * saddle regions (i.e., h2kg < 0).  However, we can apply negative-mean-curvature normalization selectively for each numerical non-saddle
+ * sample (say we found some point for which ih2kg >= nonSaddleMinIH2KG).  In any case, we extract six samples per interface node by
+ * applying a sequence of reorientations and reflections.  These make the center node's gradient components non-negative.  At inference time
+ * all six outputs are averaged to improve accuracy.
  *
  * The desired maximum |hk| can occur at two places if the parameter 1 <= r < 3, and a=rb or b=ra.  If the user picks an r factor that
  * yields maxima whose critical points are less than 1.5h apart, we abort the program as curvature becomes "under-resolved".

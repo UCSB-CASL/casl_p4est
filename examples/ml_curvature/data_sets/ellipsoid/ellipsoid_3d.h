@@ -2,7 +2,7 @@
  * A collection of classes and functions related to an ellipsoid.
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: May 7, 2022.
+ * Updated: May 28, 2022.
  */
 
 #ifndef ML_CURVATURE_ELLIPSOID_3D_H
@@ -413,6 +413,7 @@ public:
 	 * @param [out] ih2kg Vector to hold linearly interpolated Gaussian h^2*k for sampled nodes.
 	 * @param [out] phiError Vector to hold phi error for sampled nodes.
 	 * @param [in] nonSaddleMinIH2KG Min numerical dimensionless Gaussian curvature (at Gamma) for numerical non-saddle samples.
+	 * @param [in] trueHK Optional vector with true dimensionless mean curvature computed at Gamma for sampled nodes.
 	 * @throws invalid_argument exception if phi vector is null.
 	 * 		   runtime_error if the cache is disabled or empty, or if a query point is not found in the cache.
 	 */
@@ -421,7 +422,7 @@ public:
 						 double trackedMaxErrors[P4EST_DIM], double& trackedMinHK, double& trackedMaxHK,
 						 std::vector<std::vector<double>>& samples, int& nNumericalSaddles, Vec sampledFlag=nullptr, Vec hkError=nullptr,
 						 Vec ihk=nullptr, Vec h2kgError=nullptr, Vec ih2kg=nullptr, Vec phiError=nullptr,
-						 const double& nonSaddleMinIH2KG=-7e-6 ) const
+						 const double& nonSaddleMinIH2KG=-7e-6, Vec trueHK=nullptr ) const
 	{
 		std::string errorPrefix = _errorPrefix + "collectSamples: ";
 		nNumericalSaddles = 0;
@@ -437,16 +438,14 @@ public:
 		std::vector<p4est_locidx_t> indices;
 		nodesAlongInterface.getIndices( &phi, indices );
 
-		// Compute normal vectors and mean/Gaussian/principal curvatures.
-		Vec normals[P4EST_DIM],	kappaMG[2], kappa12[2];
+		// Compute normal vectors and mean/Gaussian curvatures.
+		Vec normals[P4EST_DIM],	kappaMG[2];
 		for( auto& component : normals )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &component ) );
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaMG[0] ) );	// This is mean curvature, and
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaMG[1] ) );	// this is Gaussian curvature.
-		for( auto& pk : kappa12 )
-			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &pk ) );
 
-		compute_normals_and_curvatures( *ngbd, phi, normals, kappaMG[0], kappaMG[1], kappa12 );
+		compute_normals_and_curvatures( *ngbd, phi, normals, kappaMG[0], kappaMG[1] );
 
 		const double *phiReadPtr;								// We need access to phi to project points onto Gamma.
 		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
@@ -510,6 +509,15 @@ public:
 			CHKERRXX( VecGetArray( phiError, &phiErrorPtr ) );
 			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 				phiErrorPtr[n] = 0;
+		}
+
+		// Reset the true mean hk vector if given.
+		double *trueHKPtr = nullptr;
+		if( trueHK )
+		{
+			CHKERRXX( VecGetArray( trueHK, &trueHKPtr ) );
+			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+				trueHKPtr[n] = 0;
 		}
 
 		// Prepare mean and Gaussian curvature interpolation.
@@ -633,6 +641,8 @@ public:
 				double errorPhi = ABS( phiReadPtr[n] - d );
 				if( phiError )									// What about the phi error for sampled nodes?
 					phiErrorPtr[n] = errorPhi;
+				if( trueHK )
+					trueHKPtr[n] = (*sample)[K_INPUT_SIZE_LEARN - 4];
 
 				trackedMaxPhiError = MAX( trackedMaxPhiError, errorPhi );
 				trackedMaxHKError = MAX( trackedMaxHKError, errorHK );
@@ -715,13 +725,20 @@ public:
 			CHKERRXX( VecGhostUpdateEnd( phiError, INSERT_VALUES, SCATTER_FORWARD ) );
 		}
 
+		if( trueHK )
+		{
+			CHKERRXX( VecRestoreArray( trueHK, &trueHKPtr ) );
+
+			// Synchronize true hk among processes.
+			CHKERRXX( VecGhostUpdateBegin( trueHK, INSERT_VALUES, SCATTER_FORWARD ) );
+			CHKERRXX( VecGhostUpdateEnd( trueHK, INSERT_VALUES, SCATTER_FORWARD ) );
+		}
+
 		// Clean up.
 		for( int i = 0; i < P4EST_DIM; i++ )
 			CHKERRXX( VecRestoreArrayRead( normals[i], &normalsReadPtr[i] ) );
 		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 
-		for( auto& pk : kappa12 )
-			CHKERRXX( VecDestroy( pk ) );
 		CHKERRXX( VecDestroy( kappaMG[0] ) );
 		CHKERRXX( VecDestroy( kappaMG[1] ) );
 		for( auto& component : normals )
@@ -758,5 +775,54 @@ public:
 		_cache.reserve( n );
 	}
 };
+
+
+/**
+ * Set up the dimensions of the domain.
+ * @param [in] mpi MPI environment.
+ * @param [in] center Ellipsoid's center.
+ * @param [in] a X-semiaxis.
+ * @param [in] b Y-semiaxis.
+ * @param [in] c Z-semiaxis.
+ * @param [in] h Mesh size.
+ * @param [in] MAX_RL Maximum level of refinement per unit octree (i.e., h = 2^{-MAX_RL}).
+ * @param [out] octMaxRL Effective individual octree maximum level of refinement to achieve the desired h.
+ * @param [out] n_xyz Number of octrees in each direction with maximum level of refinement octreeMaxRL.
+ * @param [out] xyz_min Omega minimum dimensions.
+ * @param [out] xyz_max Omega maximum dimensions.
+ */
+void setupDomain( const mpi_environment_t& mpi, const double center[P4EST_DIM], const double& a, const double& b, const double& c,
+				  const double& h, const u_char& MAX_RL, u_char& octMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
+				  double xyz_max[P4EST_DIM] )
+{
+	if( mpi.rank() == 0 )
+	{
+		double COmega[P4EST_DIM];
+		for( int i = 0; i < P4EST_DIM; i++ )						// Define the nearest discrete point (multiple of h) to ellipsoid's center.
+			COmega[i] = round( center[i] / h ) * h;
+
+		double samRadius = 6 * h + MAX( a, b, c );					// At least we want this distance around COmega.
+		const double CUBE_SIDE_LEN = 2 * samRadius;					// We want a cubic domain with an effective, yet small size.
+		const u_char OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 5 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
+		const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
+		octMaxRL = MAX_RL - OCTREE_RL_FOR_LEN;						// Effective max refinement level to achieve desired h.
+		const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );		// Number of trees in each dimension.
+		const double D_CUBE_SIDE_LEN = N_TREES * OCTREE_LEN;		// Adjusted domain cube len as a multiple of h and octree len.
+		const double HALF_D_CUBE_SIDE_LEN = D_CUBE_SIDE_LEN / 2;
+
+		// Defining a symmetric cubic domain whose dimensions are multiples of h.
+		for( int i = 0; i < P4EST_DIM; i++ )
+		{
+			n_xyz[i] = N_TREES;
+			xyz_min[i] = COmega[i] - HALF_D_CUBE_SIDE_LEN;
+			xyz_max[i] = COmega[i] + HALF_D_CUBE_SIDE_LEN;
+		}
+	}
+
+	SC_CHECK_MPI( MPI_Bcast( &octMaxRL, 1, MPI_UNSIGNED_CHAR, 0, mpi.comm() ) );
+	SC_CHECK_MPI( MPI_Bcast( n_xyz, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );
+	SC_CHECK_MPI( MPI_Bcast( xyz_min, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );
+	SC_CHECK_MPI( MPI_Bcast( xyz_max, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );
+}
 
 #endif // ML_CURVATURE_ELLIPSOID_3D_H

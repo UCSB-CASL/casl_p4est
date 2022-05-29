@@ -27,7 +27,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: May 23, 2022.
+ * Updated: May 28, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -46,10 +46,6 @@
 
 void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, const std::string& fileName,
 					  const double& a, const double& b, const double& c, const double& hka, const double& hkb, const double& hkc );
-
-void setupDomain( const mpi_environment_t& mpi, const double center[P4EST_DIM], const double& a, const double& b, const double& c,
-				  const double& h, const u_char& MAX_RL, u_char& octMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
-				  double xyz_max[P4EST_DIM] );
 
 
 int main ( int argc, char* argv[] )
@@ -358,52 +354,4 @@ void writeParamsFile( const mpi_environment_t& mpi, const std::string& path, con
 
 	CHKERRXX( PetscPrintf( mpi.comm(), "Rank %d successfully created params file '%s'\n", mpi.rank(), fullFileName.c_str() ) );
 	SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );				// Wait here until rank 0 is done.
-}
-
-/**
- * Set up the dimensions of the domain.
- * @param [in] mpi MPI environment.
- * @param [in] center Ellipsoid's center.
- * @param [in] a X-semiaxis.
- * @param [in] b Y-semiaxis.
- * @param [in] c Z-semiaxis.
- * @param [in] h Mesh size.
- * @param [in] MAX_RL Maximum level of refinement per unit octree (i.e., h = 2^{-MAX_RL}).
- * @param [out] octMaxRL Effective individual octree maximum level of refinement to achieve the desired h.
- * @param [out] n_xyz Number of octrees in each direction with maximum level of refinement octreeMaxRL.
- * @param [out] xyz_min Omega minimum dimensions.
- * @param [out] xyz_max Omega maximum dimensions.
- */
-void setupDomain( const mpi_environment_t& mpi, const double center[P4EST_DIM], const double& a, const double& b, const double& c,
-				  const double& h, const u_char& MAX_RL, u_char& octMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
-				  double xyz_max[P4EST_DIM] )
-{
-	if( mpi.rank() == 0 )
-	{
-		double COmega[P4EST_DIM];
-		for( int i = 0; i < P4EST_DIM; i++ )						// Define the nearest discrete point (multiple of h) to ellipsoid's center.
-			COmega[i] = round( center[i] / h ) * h;
-
-		double samRadius = 6 * h + MAX( a, b, c );					// At least we want this distance around COmega.
-		const double CUBE_SIDE_LEN = 2 * samRadius;					// We want a cubic domain with an effective, yet small size.
-		const u_char OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 5 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
-		const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
-		octMaxRL = MAX_RL - OCTREE_RL_FOR_LEN;						// Effective max refinement level to achieve desired h.
-		const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );		// Number of trees in each dimension.
-		const double D_CUBE_SIDE_LEN = N_TREES * OCTREE_LEN;		// Adjusted domain cube len as a multiple of h and octree len.
-		const double HALF_D_CUBE_SIDE_LEN = D_CUBE_SIDE_LEN / 2;
-
-		// Defining a symmetric cubic domain whose dimensions are multiples of h.
-		for( int i = 0; i < P4EST_DIM; i++ )
-		{
-			n_xyz[i] = N_TREES;
-			xyz_min[i] = COmega[i] - HALF_D_CUBE_SIDE_LEN;
-			xyz_max[i] = COmega[i] + HALF_D_CUBE_SIDE_LEN;
-		}
-	}
-
-	SC_CHECK_MPI( MPI_Bcast( &octMaxRL, 1, MPI_UNSIGNED_CHAR, 0, mpi.comm() ) );
-	SC_CHECK_MPI( MPI_Bcast( n_xyz, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );
-	SC_CHECK_MPI( MPI_Bcast( xyz_min, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );
-	SC_CHECK_MPI( MPI_Bcast( xyz_max, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );
 }
