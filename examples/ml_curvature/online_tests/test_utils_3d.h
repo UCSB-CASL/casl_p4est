@@ -3,7 +3,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 27, 2022.
- * Updated: May 28, 2022.
+ * Updated: May 29, 2022.
  */
 
 #ifndef ML_CURVATURE_TEST_UTILS_H
@@ -212,6 +212,7 @@ namespace test_utils
 
 		// Create the ghost (cell) and node structures.
 		ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
+		my_p4est_ghost_expand( p4est, ghost );
 		nodes = my_p4est_nodes_new( p4est, ghost );
 
 		// Initialize the neighbor nodes structure.

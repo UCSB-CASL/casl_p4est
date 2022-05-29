@@ -27,7 +27,7 @@
 #include <vector>
 #include <dlib/optimization.h>
 
-/////////////////////////////////////////////// Distance from P to Gaussian as a model class ///////////////////////////////////////////////
+//////////////////////////////////////////// Distance from P to a Monge patch as a model class /////////////////////////////////////////////
 
 /**
  * A function model for the distance function to a Monge function.  To be used with find_min_trust_region() from dlib.
@@ -266,7 +266,7 @@ public:
 	}
 
 	/**
-	 * Compute exact signed distance to Gaussian using Newton's method and trust region in dlib for points whose projections fall within the
+	 * Compute exact signed distance to surface using Newton's method and trust region in dlib for points whose projections fall within the
 	 * limiting ellipse enlarged in the u and v directions.
 	 * @param [in] x Query x-coordinate.
 	 * @param [in] y Query y-coordinate.
@@ -315,9 +315,9 @@ public:
 	}
 
 	/**
-	 * Evaluate Gaussian level-set function and compute "exact" signed distances for points whose projections lie within an enlarged
-	 * limiting ellipse in the canonical coordinate system.  We select these points by checking if their linear-reconstruction distance is
-	 * less than numMinDiag * h*sqrt(3) (i.e., within a shell around Gamma).
+	 * Evaluate exact-signed level-set function for points whose projections lie within an enlarged limiting ellipse in the canonical
+	 * coordinate system.  We select these points by checking if their linear-reconstruction distance is less than numMinDiag * h*sqrt(3)
+	 * (i.e., within a shell around Gamma).
 	 * @param [in] p4est Pointer to p4est data structure.
 	 * @param [in] nodes Pointer to nodes structure.
 	 * @param [out] phi Parallel PETSc vector where to place (linearly approximated) level-set values and exact distances.
@@ -580,7 +580,7 @@ public:
 						throw std::runtime_error( "Caught invalid point for " + std::to_string( n ) + "!" );
 				}
 
-				// Valid candidate grid node.  Get its exact distance to Gaussian and true curvatures at closest point.
+				// Valid candidate grid node.  Get its exact distance to the surface and true curvatures at closest point.
 				Point3 nearestPoint = record->second.second;
 				double d = record->second.first;
 				double hk = _h * _mongeFunction->meanCurvature( nearestPoint.x, nearestPoint.y );

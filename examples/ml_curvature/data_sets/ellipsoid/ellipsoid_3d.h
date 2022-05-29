@@ -2,7 +2,7 @@
  * A collection of classes and functions related to an ellipsoid.
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: May 28, 2022.
+ * Updated: May 29, 2022.
  */
 
 #ifndef ML_CURVATURE_ELLIPSOID_3D_H
@@ -392,6 +392,32 @@ public:
 	}
 
 	/**
+	 * Evaluate the non-exact signed-distance level-set function using the implicit surface.
+	 * @param [in] p4est Pointer to p4est data structure.
+	 * @param [in] nodes Pointer to nodes structure.
+	 * @param [out] phi Nodal level-set values.
+	 * @throws invalid_argument if phi vector is null.
+	 */
+	void evaluateNS( const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi )
+	{
+		if( !phi )
+			throw std::invalid_argument( _errorPrefix + "evaluateNS: Phi vector can't be null!" );
+
+		double *phiPtr;
+		CHKERRXX( VecGetArray( phi, &phiPtr ) );
+
+		foreach_node( n, nodes )
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( n, p4est, nodes, xyz );
+			Point3 p = toCanonicalCoordinates( xyz );
+			phiPtr[n] = (*_ellipsoid)( p );
+		}
+
+		CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
+	}
+
+	/**
 	 * Collect samples for valid grid points next to the interface
 	 * @note Samples are not normalized in any way: not negative-mean-curvature nor gradient-reoriented to first octant.
 	 * @param [in] p4est P4est data structure.
@@ -545,6 +571,8 @@ public:
 				invalidNodes++;
 				continue;
 			}
+			std::string currentPoint = std::to_string( n ) + ":" + std::to_string( _mpi->rank() ) +
+								": [" + std::to_string( xyz[0] ) + ", " + std::to_string( xyz[1] ) + ", " + std::to_string( xyz[2] ) + "] ";
 
 			std::vector<p4est_locidx_t> stencil;
 			try
@@ -650,10 +678,13 @@ public:
 			}
 			catch( std::runtime_error &rt )
 			{
-#ifdef DEBUG
-				std::cerr << rt.what() << std::endl;
-#endif
+				std::cerr << currentPoint << rt.what() << std::endl;
 				invalidNodes++;
+			}
+			catch( std::exception &e )
+			{
+				std::cerr << currentPoint << e.what() << std::endl;
+				throw std::runtime_error( e.what() );
 			}
 		}
 

@@ -21,7 +21,7 @@
  * that is, H = 0.5(k1 + k2), where k1 and k2 are principal curvatures.
  *
  * Developer: Luis Ángel.
- * Created: May 28, 2022.
+ * Created: May 29, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 #include <src/my_p8est_utils.h>
@@ -39,6 +39,8 @@ int main ( int argc, char* argv[] )
 	param_list_t pl;
 	param_t<double> nonSaddleMinIH2KG( pl, -7e-6, "nonSaddleMinIH2KG", "Min numerical dimensionless Gaussian curvature (at Gamma) for "
 																	   "numerical non-saddle samples (default: -7e-6)" );
+	param_t<bool>   useExactSignedLSF( pl,  true, "useExactSignedLSF", "Whether to use an exact signed level-set function to populate the "
+																	   "nodal phi vector (default: true" );
 	param_t<u_char>             maxRL( pl,     6, "maxRL"			 , "Maximum level of refinement per unit-cube octree (default: 6)" );
 	param_t<u_short>      reinitIters( pl,    10, "reinitIters"		 , "Number of iterations for reinitialization (default: 10)" );
 	param_t<double>             maxHK( pl,  2./3, "maxHK"			 , "Expected maximum dimensionless mean curvature (default: 2/3)" );
@@ -155,6 +157,7 @@ int main ( int argc, char* argv[] )
 
 		// Create the ghost (cell) and node structures.
 		ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
+		my_p4est_ghost_expand( p4est, ghost );
 		nodes = my_p4est_nodes_new( p4est, ghost );
 
 		// Initialize the neighbor nodes structure.
@@ -172,7 +175,10 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phi ) );
 
 		// Evaluate level-set function, reinitialize it, and add noise if requested.
-		sample_cf_on_nodes( p4est, nodes, levelSet, phi );
+		sample_cf_on_nodes( p4est, nodes, levelSet, phi );	// This computes exact-signed distances and populates nearest points (needed to know true hk).
+		if( !useExactSignedLSF() )
+			levelSet.evaluateNS( p4est, nodes, phi );		// This overwrites exact signed distances found before.
+
 		if( randomNoise() > 0 )
 			addRandomNoiseToLSFunction( phi, nodes, genNoise, randomNoiseDist );
 
