@@ -38,8 +38,8 @@ namespace test_utils
 	 * @param [in] trueHK Target hk for sampled interface nodes.
 	 * @param [in] nonSaddleMinIH2KG Min ih2kg for non-saddle samples.
 	 * @param [in] nNumericalSaddles Number of interface points that we recognized as saddles from the surface's collectSamples method.
-	 * @param [in] nnetNS Neural network for non-saddle samples.
-	 * @param [in] nnetSD Neural network for saddle samples.
+	 * @param [in] nnetNS Neural network for non-saddle samples (if null, don't perform neural evaluation).
+	 * @param [in] nnetSD Neural network for saddle samples (if null, don't perform neural evaluation).
 	 * @param [in] reinitTime How long it took to reinitialize the level-set values.
 	 * @param [in] exportVTK Whether to export to VTK.
 	 * @param [in] surfaceName If exporting to VTK, use this prefix.
@@ -60,97 +60,100 @@ namespace test_utils
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Mean absolute error       = %.6e\n", numMeanAbsError ) );
 		CHKERRXX( PetscPrintf( mpi.comm(), "   - Maximum absolute error    = %.6e\n", numMaxAbsError ) );
 
-		// Hybrid curvature vectors.
-		Vec numCurvature, hybHK, hybFlag, normal[P4EST_DIM], hkError;
-		CHKERRXX( VecDuplicate( phi, &numCurvature ) );	// Numerical mean curvature at the nodes.
-		CHKERRXX( VecDuplicate( phi, &hybHK ) );		// Hybrid curvature at normal projections of interface nodes (masked with sampledFlag).
-		CHKERRXX( VecDuplicate( phi, &hybFlag ) );		// Where we used the hybrid approach (should match sampledFlag).
-		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &hkError ) );
-		for( auto& dim : normal )
-			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
-
 		// Compute hybrid (dimensionless) mean curvature.
-		CHKERRXX( PetscPrintf( mpi.comm(), "* Computing hybrid mean curvature... " ) );
-		kml::Curvature mlCurvature( nnetNS, nnetSD, h, 0.004, 0.007, nonSaddleMinIH2KG );
-		std::pair<double, double> durations = mlCurvature.compute( *ngbd, phi, normal, numCurvature, hybHK, hybFlag, true, &watch, sampledFlag );
-
-		// Compute statistics.
-		int nHybNodes = 0;								// In how many nodes did we use the hybrid approach?
-		double maxAbsError = 0;
-		double meanAbsError = 0;
-		double *hkErrorPtr;
-		CHKERRXX( VecGetArray( hkError, &hkErrorPtr ) );
-		const double *hybHKReadPtr, *trueHKReadPtr, *sampledFlagReadPtr, *hybFlagReadPtr;
-		CHKERRXX( VecGetArrayRead( hybHK, &hybHKReadPtr ) );
-		CHKERRXX( VecGetArrayRead( trueHK, &trueHKReadPtr ) );
-		CHKERRXX( VecGetArrayRead( sampledFlag, &sampledFlagReadPtr ) );
-		CHKERRXX( VecGetArrayRead( hybFlag, &hybFlagReadPtr ) );
-		foreach_local_node( n, nodes )
+		if( nnetNS && nnetSD )
 		{
-			if( hybFlagReadPtr[n] == 1 )
+			// Hybrid curvature vectors.
+			Vec numCurvature, hybHK, hybFlag, normal[P4EST_DIM], hkError;
+			CHKERRXX( VecDuplicate( phi, &numCurvature ) );	// Numerical mean curvature at the nodes.
+			CHKERRXX( VecDuplicate( phi, &hybHK ) );		// Hybrid curvature at normal projections of interface nodes (masked with sampledFlag).
+			CHKERRXX( VecDuplicate( phi, &hybFlag ) );		// Where we used the hybrid approach (should match sampledFlag).
+			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &hkError ) );
+			for( auto& dim : normal )
+				CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
+
+			CHKERRXX( PetscPrintf( mpi.comm(), "* Computing hybrid mean curvature... " ) );
+			kml::Curvature mlCurvature( nnetNS, nnetSD, h, 0.004, 0.007, nonSaddleMinIH2KG );
+			std::pair<double, double> durations = mlCurvature.compute( *ngbd, phi, normal, numCurvature, hybHK, hybFlag, true, &watch, sampledFlag );
+
+			// Compute statistics.
+			int nHybNodes = 0;								// In how many nodes did we use the hybrid approach?
+			double maxAbsError = 0;
+			double meanAbsError = 0;
+			double *hkErrorPtr;
+			CHKERRXX( VecGetArray( hkError, &hkErrorPtr ) );
+			const double *hybHKReadPtr, *trueHKReadPtr, *sampledFlagReadPtr, *hybFlagReadPtr;
+			CHKERRXX( VecGetArrayRead( hybHK, &hybHKReadPtr ) );
+			CHKERRXX( VecGetArrayRead( trueHK, &trueHKReadPtr ) );
+			CHKERRXX( VecGetArrayRead( sampledFlag, &sampledFlagReadPtr ) );
+			CHKERRXX( VecGetArrayRead( hybFlag, &hybFlagReadPtr ) );
+			foreach_local_node( n, nodes )
 			{
-				if( sampledFlagReadPtr[n] != 0 )		// Filter did work.
+				if( hybFlagReadPtr[n] == 1 )
 				{
-					hkErrorPtr[n] = ABS( trueHKReadPtr[n] - hybHKReadPtr[n] );
-					meanAbsError += hkErrorPtr[n];
-					maxAbsError = MAX( maxAbsError, hkErrorPtr[n] );
-					nHybNodes++;
+					if( sampledFlagReadPtr[n] != 0 )		// Filter did work.
+					{
+						hkErrorPtr[n] = ABS( trueHKReadPtr[n] - hybHKReadPtr[n] );
+						meanAbsError += hkErrorPtr[n];
+						maxAbsError = MAX( maxAbsError, hkErrorPtr[n] );
+						nHybNodes++;
+					}
+					else
+						std::cerr << "Error!!! Did you just compute the hybrid curvature for non-sampled node " << n << "?!" << std::endl;
 				}
 				else
-					std::cerr << "Error!!! Did you just compute the hybrid curvature for non-sampled node " << n << "?!" << std::endl;
+				{
+					if( sampledFlagReadPtr[n] != 0 )
+						std::cerr << "Error!!! Node " << n << " was supposed to be considered for hybrid computation!" << std::endl;
+				}
 			}
-			else
+
+			// Reduce stats across processes.
+			CHKERRXX( VecGhostUpdateBegin( hkError, INSERT_VALUES, SCATTER_FORWARD ) );
+			CHKERRXX( VecGhostUpdateEnd( hkError, INSERT_VALUES, SCATTER_FORWARD ) );
+			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &nHybNodes, 1, MPI_INT, MPI_SUM, mpi.comm() ) );
+			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &maxAbsError, 1, MPI_DOUBLE, MPI_MAX, mpi.comm() ) );
+			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &meanAbsError, 1, MPI_DOUBLE, MPI_SUM, mpi.comm() ) );
+			meanAbsError /= nHybNodes;
+
+			CHKERRXX( PetscPrintf( mpi.comm(), "done with the following stats:\n" ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "   - Time (in secs)            = %.6f\n", durations.second + reinitTime ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of grid points     = %i (%i saddles)\n", nHybNodes, nNumericalSaddles ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "   - Mean absolute error       = %.6e\n", meanAbsError ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "   - Maximum absolute error    = %.6e\n", maxAbsError ) );
+
+			// Export visual data.
+			if( exportVTK )
 			{
-				if( sampledFlagReadPtr[n] != 0 )
-					std::cerr << "Error!!! Node " << n << " was supposed to be considered for hybrid computation!" << std::endl;
+				const double *phiReadPtr;
+				CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ));
+				std::ostringstream oss;
+				oss << surfaceName << "_online_test_lvl" << maxRL;
+				my_p4est_vtk_write_all( p4est, nodes, ghost,
+										P4EST_TRUE, P4EST_TRUE,
+										5, 0, oss.str().c_str(),
+										VTK_POINT_DATA, "phi", phiReadPtr,
+										VTK_POINT_DATA, "hybHK", hybHKReadPtr,
+										VTK_POINT_DATA, "trueHK", trueHKReadPtr,
+										VTK_POINT_DATA, "hybFlag", hybFlagReadPtr,
+										VTK_POINT_DATA, "hkError", hkErrorPtr );
+				CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ));
 			}
+
+			CHKERRXX( VecRestoreArrayRead( hybHK, &hybHKReadPtr ) );
+			CHKERRXX( VecRestoreArrayRead( trueHK, &trueHKReadPtr ) );
+			CHKERRXX( VecRestoreArray( hkError, &hkErrorPtr ) );
+			CHKERRXX( VecRestoreArrayRead( sampledFlag, &sampledFlagReadPtr ) );
+			CHKERRXX( VecRestoreArrayRead( hybFlag, &hybFlagReadPtr ) );
+
+			// Clean up.
+			CHKERRXX( VecDestroy( numCurvature ) );
+			CHKERRXX( VecDestroy( hybHK ) );
+			CHKERRXX( VecDestroy( hybFlag ) );
+			for( auto& dim : normal )
+				CHKERRXX( VecDestroy( dim ) );
+			CHKERRXX( VecDestroy( hkError ) );
 		}
-
-		// Reduce stats across processes.
-		CHKERRXX( VecGhostUpdateBegin( hkError, INSERT_VALUES, SCATTER_FORWARD ) );
-		CHKERRXX( VecGhostUpdateEnd( hkError, INSERT_VALUES, SCATTER_FORWARD ) );
-		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &nHybNodes, 1, MPI_INT, MPI_SUM, mpi.comm() ) );
-		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &maxAbsError, 1, MPI_DOUBLE, MPI_MAX, mpi.comm() ) );
-		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &meanAbsError, 1, MPI_DOUBLE, MPI_SUM, mpi.comm() ) );
-		meanAbsError /= nHybNodes;
-
-		CHKERRXX( PetscPrintf( mpi.comm(), "done with the following stats:\n" ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Time (in secs)            = %.6f\n", durations.second + reinitTime ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of grid points     = %i (%i saddles)\n", nHybNodes, nNumericalSaddles ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Mean absolute error       = %.6e\n", meanAbsError ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Maximum absolute error    = %.6e\n", maxAbsError ) );
-
-		// Export visual data.
-		if( exportVTK )
-		{
-			const double *phiReadPtr;
-			CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ));
-			std::ostringstream oss;
-			oss << surfaceName << "_online_test_lvl" << maxRL;
-			my_p4est_vtk_write_all( p4est, nodes, ghost,
-									P4EST_TRUE, P4EST_TRUE,
-									5, 0, oss.str().c_str(),
-									VTK_POINT_DATA, "phi", phiReadPtr,
-									VTK_POINT_DATA, "hybHK", hybHKReadPtr,
-									VTK_POINT_DATA, "trueHK", trueHKReadPtr,
-									VTK_POINT_DATA, "hybFlag", hybFlagReadPtr,
-									VTK_POINT_DATA, "hkError", hkErrorPtr );
-			CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ));
-		}
-
-		CHKERRXX( VecRestoreArrayRead( hybHK, &hybHKReadPtr ) );
-		CHKERRXX( VecRestoreArrayRead( trueHK, &trueHKReadPtr ) );
-		CHKERRXX( VecRestoreArray( hkError, &hkErrorPtr ) );
-		CHKERRXX( VecRestoreArrayRead( sampledFlag, &sampledFlagReadPtr ) );
-		CHKERRXX( VecRestoreArrayRead( hybFlag, &hybFlagReadPtr ) );
-
-		// Clean up.
-		CHKERRXX( VecDestroy( numCurvature ) );
-		CHKERRXX( VecDestroy( hybHK ) );
-		CHKERRXX( VecDestroy( hybFlag ) );
-		for( auto& dim : normal )
-			CHKERRXX( VecDestroy( dim ) );
-		CHKERRXX( VecDestroy( hkError ) );
 	}
 
 
