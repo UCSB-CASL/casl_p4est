@@ -357,7 +357,7 @@ public:
 	 * @throws runtime_error if not using cache, if point wasn't located in cache, or if estimated exact distance
 	 * 		   deviates by more than 0.15h from linear estimation.
 	 */
-	double computeExactSignedDistance( double x, double y, double z, unsigned char& updated ) const override
+	double computeExactSignedDistance( double x, double y, double z, u_short& updated ) const override
 	{
 		std::string errorPrefix = "[CASL_ERROR] SinusoidalLevelSet::computeExactSignedDistance: ";
 		if( _useCache )		// Assume that the coordinates normalized by h yield integers!
@@ -461,7 +461,7 @@ public:
 		std::vector<p4est_locidx_t> nodesForExactDist;
 		nodesForExactDist.reserve( nodes->num_owned_indeps );
 
-		auto sdist = [this]( const double xyz[P4EST_DIM], unsigned char& updated ){
+		auto sdist = [this]( const double xyz[P4EST_DIM], u_short& updated ){
 			return (*this).geom::DiscretizedLevelSet::computeExactSignedDistance( xyz, updated );
 		};
 
@@ -484,7 +484,7 @@ public:
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( n, p4est, nodes, xyz );
 
-			unsigned char updated;
+			u_short updated;
 			phiPtr[n] = sdist( xyz, updated );				// Also modifies the cache.
 			exactFlagPtr[n] = updated;
 		}
