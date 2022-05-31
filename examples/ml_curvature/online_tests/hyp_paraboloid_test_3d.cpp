@@ -25,6 +25,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 27, 2022.
+ * Updated: May 31, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 #include <src/my_p8est_utils.h>
@@ -44,7 +45,7 @@ int main ( int argc, char* argv[] )
 																	   "numerical non-saddle samples (default: -7e-6)" );
 	param_t<double>             maxHK( pl,  0.35, "maxHK"		 	 , "Desired max (absolute) dimensionless mean curvature at the critical"
 																	   " points.  Must be in the interval of [1/15, 2/3] (default: 0.35)" );
-	param_t<u_char>             maxRL( pl,     6, "maxRL"		 	 , "Max level of refinement per unit-cube octree (default: 6)" );
+	param_t<u_short>            maxRL( pl,     6, "maxRL"		 	 , "Max level of refinement per unit-cube octree (default: 6)" );
 	param_t<int>          reinitIters( pl,    10, "reinitIters"	 	 , "Number of iterations for reinitialization (default: 10)" );
 	param_t<u_short>    minSamRadiusH( pl,    16, "minSamRadiusH"	 , "Min sampling radius in h units on the uv plane.  Must be in the "
 																	   "range of [16, 32] (default 16)" );
@@ -118,7 +119,7 @@ int main ( int argc, char* argv[] )
 								 "h = %g (level %i)\n", A, B, maxHK(), h, maxRL() );
 
 		// Domain information.
-		u_char octMaxRL;
+		u_short octMaxRL;
 		int n_xyz[P4EST_DIM];
 		double xyz_min[P4EST_DIM];
 		double xyz_max[P4EST_DIM];

@@ -2,7 +2,7 @@
  * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
  * Developer: Luis Ángel.
  * Created: April 30, 2020.
- * Updated: April 25, 2022.
+ * Updated: May 31, 2022.
  */
 
 #ifndef CASL_GEOMETRY_H
@@ -1375,15 +1375,15 @@ namespace geom
 		 * @param [out] updated Status flag set to 1 if exact-distance computation succeeded, 2 otherwise.
 		 * @return Shortest signed distance.
 		 */
-		virtual double computeExactSignedDistance( double x, double y, double z, unsigned char& updated ) const = 0;
+		virtual double computeExactSignedDistance( double x, double y, double z, u_short& updated ) const = 0;
 
 		/**
-		 * @see DiscretizedLevelSet::computeExactSignedDistance( double x, double y, double z, unsigned char& updated ).
+		 * @see DiscretizedLevelSet::computeExactSignedDistance( double x, double y, double z, u_short& updated ).
 		 * @param [in] xyz Query point in world coordinates.
 		 * @param [out] updated Status flag set to 1 if exact-distance computation succeeded, 2 otherwise.
 		 * @return Shortest signed distance.
 		 */
-		double computeExactSignedDistance( const double xyz[P4EST_DIM], unsigned char& updated ) const
+		double computeExactSignedDistance( const double xyz[P4EST_DIM], u_short& updated ) const
 		{
 			return computeExactSignedDistance( xyz[0], xyz[1], xyz[2], updated );
 		}

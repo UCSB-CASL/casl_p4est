@@ -21,7 +21,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 26, 2022.
- * Updated: May 26, 2022.
+ * Updated: May 31, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -56,7 +56,7 @@ int main ( int argc, char* argv[] )
 																		   "samples (i.e., where ih2kg >= nonSaddleMinIH2KG) "
 																		   "(default: 0.004)" );
 	param_t<double>               maxHK( pl,  2./3, "maxHK"				 , "Max dimensionless mean curvature (default: 2/3)" );
-	param_t<u_char>               maxRL( pl,     6, "maxRL"				 , "Max level of refinement per unit-cube octree (default: 6)" );
+	param_t<u_short>              maxRL( pl,     6, "maxRL"				 , "Max level of refinement per unit-cube octree (default: 6)" );
 	param_t<u_short>        reinitIters( pl,    10, "reinitIters"		 , "Number of iterations for reinitialization (default: 10)" );
 	param_t<double>    easeOffProbMaxHK( pl,   0.2, "easeOffProbMaxHK"	 , "Easing-off prob for |hk*| upper bound for subsampling numerical"
 																		   " non-saddle samples (default: 0.2)" );
@@ -215,7 +215,7 @@ int main ( int argc, char* argv[] )
 					///////////////////////////////// Setting up domain for current sinusoid configuration /////////////////////////////////
 
 					double samRadius;									// Sampling radius on uv plane.
-					u_char octMaxRL;									// Effective max ref lvl to achieve desired h.
+					u_short octMaxRL;									// Effective max ref lvl to achieve desired h.
 					double uvLim;										// Limiting radius for triangulation.
 					size_t halfUV;										// Half UV domain in h units.
 					int n_xyz[P4EST_DIM];								// Number of trees in each direction and domain

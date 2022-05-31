@@ -3,7 +3,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 27, 2022.
- * Updated: May 29, 2022.
+ * Updated: May 31, 2022.
  */
 
 #ifndef ML_CURVATURE_TEST_UTILS_H
@@ -178,7 +178,7 @@ namespace test_utils
 	 * @param [in] exportVTK Whether to export results to VTK for visualization.
 	 * @param [in] surfaceName If exporting VTK, prefix file with this name.
 	 */
-	void evaluatePerformance( const mpi_environment_t& mpi, const double& h, const int& maxRL, const u_char& octMaxRL,
+	void evaluatePerformance( const mpi_environment_t& mpi, const double& h, const int& maxRL, const u_short& octMaxRL,
 							  const int n_xyz[P4EST_DIM], const double xyz_min[P4EST_DIM], const double xyz_max[P4EST_DIM],
 							  const int& reinitIters, SignedDistanceLevelSet *sdLS, const double& nonSaddleMinIH2KG,
 							  const double& ru2, const double& rv2, const kml::NeuralNetwork *nnetNS, const kml::NeuralNetwork *nnetSD,

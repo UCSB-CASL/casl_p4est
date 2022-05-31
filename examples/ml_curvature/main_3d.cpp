@@ -22,7 +22,7 @@
  * that is, H = 0.5(k1 + k2), where k1 and k2 are principal curvatures.
  *
  * Developer: Luis Ángel.
- * Created: May 27, 2022.
+ * Created: May 31, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 #include <src/my_p8est_utils.h>
@@ -42,7 +42,7 @@ int main ( int argc, char* argv[] )
 																	   "numerical non-saddle samples (default: -7e-6)" );
 	param_t<double>             maxHK( pl,   0.6, "maxHK"			 , "Desired max (absolute) dimensionless mean curvature at the peak. "
 																	   "Must be in the open interval of (1/3, 2/3) (default: 0.6)" );
-	param_t<u_char>             maxRL( pl,     6, "maxRL"			 , "Maximum level of refinement per unit-cube octree (default: 6)" );
+	param_t<u_short>            maxRL( pl,     6, "maxRL"			 , "Maximum level of refinement per unit-cube octree (default: 6)" );
 	param_t<int>          reinitIters( pl,    10, "reinitIters"		 , "Number of iterations for reinitialization (default: 10)" );
 	param_t<double>                 a( pl,   1.0, "a"				 , "Gaussian height (i.e., Q(0,0)) in the range of [16h, 64h] "
 																	   "(default 1)" );
@@ -160,7 +160,7 @@ int main ( int argc, char* argv[] )
 								 "|hk| = %g, and h = %g (level %i)\n", a(), SU2, SV2, maxHK(), h, maxRL() );
 
 		// Domain information.
-		u_char octMaxRL;
+		u_short octMaxRL;
 		int n_xyz[P4EST_DIM];
 		double xyz_min[P4EST_DIM];
 		double xyz_max[P4EST_DIM];

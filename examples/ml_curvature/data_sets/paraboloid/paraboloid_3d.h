@@ -3,7 +3,7 @@
  *
  * Developer: Luis Ángel.
  * Created: November 20, 2021.
- * Updated: April 25, 2022.
+ * Updated: April 31, 2022.
  */
 
 #ifndef ML_CURVATURE_PARABOLOID_3D_H
@@ -337,7 +337,7 @@ public:
  */
 ParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const Paraboloid& paraboloid, const double& h,
 								 const double origin[P4EST_DIM], const double& rotAngle, const double rotAxis[P4EST_DIM],
-								 const u_char& maxRL, u_char& octMaxRL, const double& c, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
+								 const u_short& maxRL, u_short& octMaxRL, const double& c, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
 								 double xyz_max[P4EST_DIM], double& ru2, double& rv2 )
 {
 	// First, determine region on the uv plane that contains paraboloid up to Q(u,v) = c.

@@ -2,7 +2,7 @@
  * A collection of classes and functions related to an ellipsoid.
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: May 29, 2022.
+ * Updated: May 31, 2022.
  */
 
 #ifndef ML_CURVATURE_ELLIPSOID_3D_H
@@ -444,7 +444,7 @@ public:
 	 * 		   runtime_error if the cache is disabled or empty, or if a query point is not found in the cache.
 	 */
 	void collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
-						 const u_char& octMaxRL, const double xyzMin[P4EST_DIM], const double xyzMax[P4EST_DIM],
+						 const u_short& octMaxRL, const double xyzMin[P4EST_DIM], const double xyzMax[P4EST_DIM],
 						 double trackedMaxErrors[P4EST_DIM], double& trackedMinHK, double& trackedMaxHK,
 						 std::vector<std::vector<double>>& samples, int& nNumericalSaddles, Vec sampledFlag=nullptr, Vec hkError=nullptr,
 						 Vec ihk=nullptr, Vec h2kgError=nullptr, Vec ih2kg=nullptr, Vec phiError=nullptr,
@@ -823,7 +823,7 @@ public:
  * @param [out] xyz_max Omega maximum dimensions.
  */
 void setupDomain( const mpi_environment_t& mpi, const double center[P4EST_DIM], const double& a, const double& b, const double& c,
-				  const double& h, const u_char& MAX_RL, u_char& octMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
+				  const double& h, const u_short& MAX_RL, u_short& octMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM],
 				  double xyz_max[P4EST_DIM] )
 {
 	if( mpi.rank() == 0 )
@@ -834,7 +834,7 @@ void setupDomain( const mpi_environment_t& mpi, const double center[P4EST_DIM], 
 
 		double samRadius = 6 * h + MAX( a, b, c );					// At least we want this distance around COmega.
 		const double CUBE_SIDE_LEN = 2 * samRadius;					// We want a cubic domain with an effective, yet small size.
-		const u_char OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 5 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
+		const u_short OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 5 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
 		const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
 		octMaxRL = MAX_RL - OCTREE_RL_FOR_LEN;						// Effective max refinement level to achieve desired h.
 		const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );		// Number of trees in each dimension.

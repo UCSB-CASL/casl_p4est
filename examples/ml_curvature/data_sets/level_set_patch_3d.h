@@ -4,7 +4,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 25, 2022.
- * Updated: May 27, 2022.
+ * Updated: May 31, 2022.
  */
 
 #ifndef ML_CURVATURE_LEVEL_SET_PATCH_3D_H
@@ -275,7 +275,7 @@ public:
 	 * @return Shortest distance.
 	 * @throws runtime_error if not using cache, if point wasn't located in cache, or if exact signed distance computation fails.
 	 */
-	double computeExactSignedDistance( double x, double y, double z, unsigned char& updated ) const override
+	double computeExactSignedDistance( double x, double y, double z, u_short& updated ) const override
 	{
 		const std::string errorPrefix = _errorPrefix + "computeExactSignedDistance: ";
 		if( _useCache )		// Use this only if you know that the coordinates normalized by h yield integers!
@@ -339,7 +339,7 @@ public:
 		std::vector<p4est_locidx_t> nodesForExactDist;
 		nodesForExactDist.reserve( nodes->num_owned_indeps );
 
-		auto gdist = [this]( const double xyz[P4EST_DIM], u_char& updated ){
+		auto gdist = [this]( const double xyz[P4EST_DIM], u_short& updated ){
 			return (*this).geom::DiscretizedLevelSet::computeExactSignedDistance( xyz, updated );
 		};
 
@@ -363,7 +363,7 @@ public:
 			node_xyz_fr_n( n, p4est, nodes, xyz );
 			try
 			{
-				u_char updated;									// 1 if exact dist was computed for node within limiting ellipse.
+				u_short updated;								// 1 if exact dist was computed for node within limiting ellipse.
 				phiPtr[n] = gdist( xyz, updated );				// Also modifies the cache.
 				exactFlagPtr[n] = updated;
 			}
@@ -415,7 +415,7 @@ public:
 	 * @throws runtime_error if the cache is disabled or empty, or if a candidate interface point is not in the cache.
 	 */
 	void collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
-						 const u_char& octMaxRL, const double xyzMin[P4EST_DIM], const double xyzMax[P4EST_DIM],
+						 const u_short& octMaxRL, const double xyzMin[P4EST_DIM], const double xyzMax[P4EST_DIM],
 						 double trackedMaxErrors[P4EST_DIM], double& trackedMinHK, double& trackedMaxHK,
 						 std::vector<std::vector<double>>& samples, int& nNumericalSaddles, const Vec& exactFlag, Vec sampledFlag=nullptr,
 						 Vec hkError=nullptr, Vec ihk=nullptr, Vec h2kgError=nullptr, Vec ih2kg=nullptr, Vec phiError=nullptr,

@@ -9,7 +9,7 @@
  *
  * Developer: Luis Ángel.
  * Created: March 3, 2022.
- * Updated: March 6, 2022.
+ * Updated: May 31, 2022.
  */
 
 #include <src/my_p4est_to_p8est.h>
@@ -99,9 +99,9 @@ int main( int argc, char** argv )
 
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<u_char>        minRL( pl,     1, "minRL"		, "Minimum level of refinement (default: 1)" );
-	param_t<u_char>        maxRL( pl,     6, "maxRL"		, "Maximum level of refinement (default: 6)" );
-	param_t<u_char>          nsp( pl,     3, "nsp"			, "Number of splits (default: 3)" );
+	param_t<u_short>       minRL( pl,     1, "minRL"		, "Minimum level of refinement (default: 1)" );
+	param_t<u_short>       maxRL( pl,     6, "maxRL"		, "Maximum level of refinement (default: 6)" );
+	param_t<u_short>         nsp( pl,     3, "nsp"			, "Number of splits (default: 3)" );
 	param_t<u_short> reinitIters( pl,    10, "reinitIters"	, "Number of iterations for reinitialization (default: 10)" );
 	param_t<bool>            vtk( pl, false, "vtk"			, "Activate visualization exports (default: 0)" );
 

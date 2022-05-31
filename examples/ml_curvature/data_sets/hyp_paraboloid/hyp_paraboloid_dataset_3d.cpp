@@ -24,7 +24,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 11, 2022.
- * Updated: May 23, 2022.
+ * Updated: May 31, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -62,7 +62,7 @@ int main ( int argc, char* argv[] )
 																		   "samples (i.e., ih2kg >= nonSaddleMinIH2KG) (default: 0.004)" );
 	param_t<double>             maxHKLB( pl, 2./15, "maxHKLB"			 , "Max abs dimensionless mean curvature lower bound (default: 2/15)" );
 	param_t<double>               maxHK( pl,  2./3, "maxHK"			 	 , "Max abs dimensionless mean curvature (default: 2/3)" );
-	param_t<u_char>               maxRL( pl,     6, "maxRL"		 	 	 , "Max level of refinement per unit-cube octree (default: 6)" );
+	param_t<u_short>              maxRL( pl,     6, "maxRL"		 	 	 , "Max level of refinement per unit-cube octree (default: 6)" );
 	param_t<int>            reinitIters( pl,    10, "reinitIters"	 	 , "Number of iterations for reinitialization (default: 10)" );
 	param_t<u_short>      minSamRadiusH( pl,    16, "minSamRadiusH"	 	 , "Min sampling radius in h units on the uv plane.  Must be in the"
 																	   	   " range of [16, 32] (default 16)" );
@@ -249,7 +249,7 @@ int main ( int argc, char* argv[] )
 
 					///////////////////////////////// Setting up domain for current surface configuration //////////////////////////////////
 
-					u_char octMaxRL;
+					u_short octMaxRL;
 					int n_xyz[P4EST_DIM];
 					double xyz_min[P4EST_DIM];
 					double xyz_max[P4EST_DIM];

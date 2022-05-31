@@ -6,7 +6,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 8, 2022.
- * updated: April 10, 2022.
+ * updated: May 31, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -31,14 +31,14 @@
 
 
 void collectSamples( const double& radius, const double& h, const mpi_environment_t& mpi, const p4est_t *p4est, const p4est_nodes_t *nodes,
-					 const my_p4est_node_neighbors_t *ngbd, const Vec& phi, const u_char& octreeMaxRL, const double xyzMin[P4EST_DIM],
+					 const my_p4est_node_neighbors_t *ngbd, const Vec& phi, const u_short& octreeMaxRL, const double xyzMin[P4EST_DIM],
 					 const double xyzMax[P4EST_DIM], std::vector<std::vector<double>>& samples, Vec& sampledFlag, Vec& ihk, Vec& hkError );
 
 int saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>& buffer, int& bufferSize, std::ofstream& file,
 				 double& trackedMaxHKError, double& trackedMaxH2KGError );
 
-void setupDomain( const mpi_environment_t& mpi, const double C[P4EST_DIM], const double& R, const double& h, const u_char& MAX_RL,
-				  std::mt19937& gen, u_char& octreeMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] );
+void setupDomain( const mpi_environment_t& mpi, const double C[P4EST_DIM], const double& R, const double& h, const u_short& MAX_RL,
+				  std::mt19937& gen, u_short& octreeMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] );
 
 class AnotherNsdSphere : public CF_DIM
 {
@@ -59,7 +59,7 @@ int main ( int argc, char* argv[] )
 	// Setting up parameters from command line.
 	param_list_t pl;
 	param_t<double>        		radius( pl, 10000, "radius"					, "Sphere radius (default: 10K)" );
-	param_t<u_char>              maxRL( pl,     6, "maxRL"					, "Maximum level of refinement per unit-square quadtree (default: 6)" );
+	param_t<u_short>             maxRL( pl,     6, "maxRL"					, "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<u_short>       reinitIters( pl,    10, "reinitIters"			, "Number of iterations for reinitialization (default: 10)" );
 	param_t<std::string>        outDir( pl,   ".", "outDir"					, "Path where files will be written to (default: build folder)" );
 	param_t<bool> useSignedDistanceFun( pl,  true, "useSignedDistanceFun"	, "If true, use phi(x)=|x-x0| - r; otherwise, use phi(x)=|x-x0|^2 - r^2 (default: true)" );
@@ -114,7 +114,7 @@ int main ( int argc, char* argv[] )
 
 		// Domain information.  To avoid discretizing the whole sphere (too expensive!), find a random region on the sphere and set a 3d
 		// window around it.
-		u_char octreeMaxRL;
+		u_short octreeMaxRL;
 		int n_xyz[P4EST_DIM];
 		double xyz_min[P4EST_DIM];
 		double xyz_max[P4EST_DIM];
@@ -287,8 +287,8 @@ int main ( int argc, char* argv[] )
  * @param [out] xyz_min Omega minimum dimensions.
  * @param [out] xyz_max Omega maximum dimensions.
  */
-void setupDomain( const mpi_environment_t& mpi, const double C[P4EST_DIM], const double& R, const double& h, const u_char& MAX_RL,
-				  std::mt19937& gen, u_char& octreeMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] )
+void setupDomain( const mpi_environment_t& mpi, const double C[P4EST_DIM], const double& R, const double& h, const u_short& MAX_RL,
+				  std::mt19937& gen, u_short& octreeMaxRL, int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] )
 {
 	if( mpi.rank() == 0 )
 	{
@@ -307,7 +307,7 @@ void setupDomain( const mpi_environment_t& mpi, const double C[P4EST_DIM], const
 
 		double samRadius = 16 * h;									// At least we want this distance around COmega.
 		const double CUBE_SIDE_LEN = 2 * samRadius;					// We want a cubic domain with an effective, yet small size.
-		const u_char OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 3 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
+		const u_short OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 3 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
 		const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
 		octreeMaxRL = MAX_RL - OCTREE_RL_FOR_LEN;					// Effective max refinement level to achieve desired h.
 		const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );		// Number of trees in each dimension.
@@ -349,7 +349,7 @@ void setupDomain( const mpi_environment_t& mpi, const double C[P4EST_DIM], const
  * @throws invalid_argument if phi, sampledFlag, ihk, or ihkError are not given.
  */
 void collectSamples( const double& radius, const double& h, const mpi_environment_t& mpi, const p4est_t *p4est, const p4est_nodes_t *nodes,
-					 const my_p4est_node_neighbors_t *ngbd, const Vec& phi, const u_char& octreeMaxRL, const double xyzMin[P4EST_DIM],
+					 const my_p4est_node_neighbors_t *ngbd, const Vec& phi, const u_short& octreeMaxRL, const double xyzMin[P4EST_DIM],
 					 const double xyzMax[P4EST_DIM], std::vector<std::vector<double>>& samples, Vec& sampledFlag, Vec& ihk, Vec& hkError )
 {
 	std::string errorPrefix = "collectSamples: ";

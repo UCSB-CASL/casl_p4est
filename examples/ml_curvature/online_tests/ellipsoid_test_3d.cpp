@@ -22,6 +22,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 29, 2022.
+ * Updated: May 31, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 #include <src/my_p8est_utils.h>
@@ -41,7 +42,7 @@ int main ( int argc, char* argv[] )
 																	   "numerical non-saddle samples (default: -7e-6)" );
 	param_t<bool>   useExactSignedLSF( pl,  true, "useExactSignedLSF", "Whether to use an exact signed level-set function to populate the "
 																	   "nodal phi vector (default: true" );
-	param_t<u_char>             maxRL( pl,     6, "maxRL"			 , "Maximum level of refinement per unit-cube octree (default: 6)" );
+	param_t<u_short>            maxRL( pl,     6, "maxRL"			 , "Maximum level of refinement per unit-cube octree (default: 6)" );
 	param_t<u_short>      reinitIters( pl,    10, "reinitIters"		 , "Number of iterations for reinitialization (default: 10)" );
 	param_t<double>             maxHK( pl,  2./3, "maxHK"			 , "Expected maximum dimensionless mean curvature (default: 2/3)" );
 	param_t<double>                 a( pl,  1.65, "a"				 , "Ellipsoid's x-semiaxis (default: 4)" );
@@ -120,7 +121,7 @@ int main ( int argc, char* argv[] )
 		watch.start();
 
 		// Domain information.
-		u_char octMaxRL;
+		u_short octMaxRL;
 		int n_xyz[P4EST_DIM];
 		double xyz_min[P4EST_DIM];
 		double xyz_max[P4EST_DIM];

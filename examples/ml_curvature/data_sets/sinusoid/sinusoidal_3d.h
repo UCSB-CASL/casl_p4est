@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: May 26, 2022.
+ * Updated: May 31, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
@@ -913,8 +913,8 @@ public:
 	 * @param [out] xyz_min Omega minimum dimensions.
 	 * @param [out] xyz_max Omega maximum dimensions.
 	 */
-	static void setupDomain( const Sinusoid& sinusoid, const double& N_WAVES, const double& h, const double& MAX_A, const u_char& MAX_RL,
-							 double& samRadius, u_char& octreeMaxRL, double& uvLim, size_t& halfUV, int n_xyz[P4EST_DIM],
+	static void setupDomain( const Sinusoid& sinusoid, const double& N_WAVES, const double& h, const double& MAX_A, const u_short& MAX_RL,
+							 double& samRadius, u_short& octreeMaxRL, double& uvLim, size_t& halfUV, int n_xyz[P4EST_DIM],
 							 double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] )
 	{
 		samRadius = N_WAVES * 2.0 * M_PI * MAX( 1/sinusoid.wu(), 1/sinusoid.wv() );	// Choose the sampling radius based on longer distance that contains N_WAVES full cycles.
@@ -922,7 +922,7 @@ public:
 		samRadius = 6 * h + MIN( 1.5 * MAX_A, samRadius );			// Then, bound that radius with the largest amplitude.  Add enough padding (for uv plane).
 
 		const double CUBE_SIDE_LEN = 2 * samRadius;					// We want a cubic domain with an effective, yet small size.
-		const u_char OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 5 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
+		const u_short OCTREE_RL_FOR_LEN = MAX( 0, MAX_RL - 5 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
 		const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
 		octreeMaxRL = MAX_RL - OCTREE_RL_FOR_LEN;					// Effective max refinement level to achieve desired h.
 		const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );		// Number of trees in each dimension.

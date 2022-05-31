@@ -6,7 +6,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: May 23, 2022.
+ * Updated: May 31, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -92,7 +92,7 @@ int main ( int argc, char* argv[] )
 		///////////////////////////////// 2) Finding the limits for both triangulation and physical domain /////////////////////////////////
 
 		double samRadius;									// Sampling radius on uv plane.
-		u_char octMaxRL;									// Effective max ref lvl to achieve desired h.
+		u_short octMaxRL;									// Effective max ref lvl to achieve desired h.
 		double uvLim;										// Limiting radius for triangulation.
 		size_t halfUV;										// Half UV domain in h units.
 		int n_xyz[P4EST_DIM];								// Number of trees in each direction and domain

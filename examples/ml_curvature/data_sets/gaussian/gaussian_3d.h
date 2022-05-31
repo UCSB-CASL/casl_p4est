@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a Gaussian surface embedded in 3d.
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: May 25, 2022.
+ * Updated: May 31, 2022.
  */
 
 #ifndef ML_CURVATURE_GAUSSIAN_3D_H
@@ -214,7 +214,7 @@ public:
 	 * @throws invalid_argument if dir is not 0 or 1.
 	 * 		   runtime_error if bracketing or Newton-Raphson's method fails to find the root.
 	 */
-	double findKappaZero( const double& h, const u_char& dir ) const
+	double findKappaZero( const double& h, const u_short& dir ) const
 	{
 		using namespace boost::math::tools;
 		const std::string errorPrefix = "[CASL_ERROR] findKappaZero: ";
@@ -458,7 +458,7 @@ public:
  * @return Dynamically allocated Gaussian level-set object.  You must delete it in caller function.
  */
 GaussianLevelSet *setupDomain( const mpi_environment_t& mpi, const Gaussian& gaussian, const double& h, const double origin[P4EST_DIM],
-							   const double& rotAngle, const double rotAxis[P4EST_DIM], const u_char& maxRL, u_char& octMaxRL,
+							   const double& rotAngle, const double rotAxis[P4EST_DIM], const u_short& maxRL, u_short& octMaxRL,
 							   int n_xyz[P4EST_DIM], double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] )
 {
 	// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only within this region.

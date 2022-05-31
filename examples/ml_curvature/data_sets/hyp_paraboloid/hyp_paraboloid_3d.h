@@ -3,7 +3,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 4, 2022.
- * Updated: May 26, 2022.
+ * Updated: May 31, 2022.
  */
 
 #ifndef ML_CURVATURE_HYP_PARABOLOID_3D_H
@@ -667,7 +667,7 @@ public:
  */
 HypParaboloidLevelSet *setupDomain( const mpi_environment_t& mpi, const HypParaboloid& hypParaboloid, const double& h,
 									const double origin[P4EST_DIM], const double& rotAngle, const double rotAxis[P4EST_DIM],
-									const u_char& maxRL, u_char& octMaxRL, const double& samRadius, int n_xyz[P4EST_DIM],
+									const u_short& maxRL, u_short& octMaxRL, const double& samRadius, int n_xyz[P4EST_DIM],
 									double xyz_min[P4EST_DIM], double xyz_max[P4EST_DIM] )
 {
 	double uvLim;
