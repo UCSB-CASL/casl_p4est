@@ -14,6 +14,7 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_save_load.h>
 #include <src/my_p4est_semi_lagrangian.h>
+#include <src/my_p4est_stefan_with_fluids.h>
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_utils.h>
 #endif
