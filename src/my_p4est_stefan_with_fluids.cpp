@@ -416,11 +416,6 @@ void my_p4est_stefan_with_fluids_t::initialize_fields(){
     if(print_checkpoints) PetscPrintf(mpi->comm(),"Doing initial field extension  ... \n");
     extend_relevant_fields();
 
-    // Initialize multicomponent conc fields in case of multialloy: 
-    if(solve_multicomponent){
-      initialize_fields_multicomponent();
-    }
-
     // Compute vinterface:
     if(print_checkpoints) PetscPrintf(mpi->comm(),"Computing initial velocity ... \n");
     v_interface.create(p4est_np1, nodes_np1);
@@ -462,38 +457,6 @@ void my_p4est_stefan_with_fluids_t::initialize_fields(){
 } // end of "initialize_fields()"
 
 
-void my_p4est_stefan_with_fluids_t::initialize_fields_multicomponent(){
-
-  if(print_checkpoints) PetscPrintf(mpi->comm(), "Initializaing the concentration fields for the multicomponent case \n");
-
-  // Check and make sure we are doing what we think we are doing:
-  if(num_conc_fields == 0){
-      throw std::runtime_error("my_p4est_stefan_with_fluids::initialize_fields_multicomponent:" 
-      "The number of components is currently set to zero. Please set to a nonzero value. \n");
-  }
-  // Initialize fields:
-  // -----------------------
-  bool init_nm1 = solve_navier_stokes && advection_sl_order == 2;
-  Cl_n.create(p4est_np1, nodes_np1);
-
-  if(init_nm1){
-    Cl_nm1.create(p4est_np1, nodes_np1);
-  }
-
-  for(int i=0; i<num_conc_fields; i++){
-    sample_cf_on_nodes(p4est_np1, nodes_np1, *initial_conc_n[i], Cl_n.vec[i]);
-
-    if(init_nm1){
-      sample_cf_on_nodes(p4est_np1, nodes_np1, *initial_conc_nm1[i], Cl_nm1.vec[i]);
-    }
-  }
-  initial_conc_n.clear();
-  if(init_nm1){ 
-    initial_conc_nm1.clear();
-  }
-} // end of "initialize_fields_multicomponenet"
-
-
 void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(){
 
   // Set everything to NULL at first:
@@ -516,12 +479,6 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
 
   }
   vorticity.vec=NULL;
-
-  if(solve_multicomponent){
-    for(int i=0; i<num_conc_fields; i++){
-      Cl_n.vec[i] = NULL;
-    }
-  }
 
   // Get the load directory:
   const char* load_path = getenv("LOAD_STATE_PATH");
@@ -781,15 +738,6 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
     }
   }
 
-  if(solve_multicomponent){
-    Cl_n.destroy();
-    if(advection_sl_order == 2){
-      Cl_nm1.destroy();
-    }
-
-    // TO-DO MULTICOMP:add other relevant destructions once we know what they are!
-  }
-
   if(solve_navier_stokes){
     v_n.destroy();
     v_nm1.destroy();
@@ -813,7 +761,7 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
 // -------------------------------------------------------
 // Functions related to scalar temp/conc problem: ( in order of their usage in the main step)
 // -------------------------------------------------------
-void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
+void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bool do_multicomponent_fields=false, int num_conc_fields=0){
   // -------------------
   // A note on notation:
   // -------------------
@@ -827,13 +775,78 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
   // Thus, while T_n is sampled on the grid np1, it is indeed still the field at time n, simply transferred to the grid used to solve for the np1 fields.
 
 
+  // NOTE FOR THE MULTICOMPONENT CASE:
+  // This function assumes that the user has already provided 
+  // --> The fields:
+  //         -Cl_n, Cl_nm1, Cl_n_backtrace, Cl_nm1_backtrace to the solver as vec_and_ptr_array_t objects sampled on the 
+  // grids p4est_np1 and p4est_n respectively. 
+  // --> The grids/grid objects:
+  //         - p4est_np1, nodes_np1, ngbd_np1, ngbd_n  
+  // This function will not create nor destroy those objects.
+
+  // Therefore, before the multicomponent user calls this fxn, they should call the following: 
+  // set_Cl_n
+  // set_Cl_nm1
+  // set_Cl_n_backtrace (this can just be a vec which will hold the values computed by this fxn)
+  // set_Cl_nm1_backtrace (" ")
+  // set_T_l
+
+
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning to do backtrace \n");
+
+  // If we are doing the multialloy case, verify that all the necessary things are defined:
+  if(do_multicomponent_fields){
+    bool conc_check = true;
+    for(int j=0; j<num_conc_fields; j++){
+      conc_check = conc_check && Cl_n.vec[j] != NULL;
+      conc_check = conc_check && Cl_nm1.vec[j] != NULL; 
+      conc_check = conc_check && Cl_backtrace_n.vec[j] != NULL; 
+      conc_check = conc_check && Cl_backtrace_nm1.vec[j] != NULL; 
+    }
+    if(!conc_check){
+      throw std::runtime_error("my_p4est_stefan_with_fluids:do_backtrace_for_scalar_temp_conc_problem():" 
+                               "The concentration check has failed for multicomponent usage." 
+                               "Please provide the necessary concentration vectors to the stefan_with_fluids solver before calling this fxn.");
+    }
+
+    bool temp_check = (T_l_n.vec!=NULL) && (T_l_nm1.vec!=NULL) && 
+                      (T_l_backtrace_n.vec!=NULL) && (T_l_backtrace_nm1.vec!=NULL);
+    if(!temp_check){
+      throw std::runtime_error("my_p4est_stefan_with_fluids:do_backtrace_for_scalar_temp_conc_problem():" 
+                               "The temperature check has failed for multicomponent usage." 
+                               "Please provide the necessary concentration vectors to the stefan_with_fluids solver before calling this fxn.");
+    }
+    bool grid_check = (p4est_np1!=NULL) && (nodes_np1!=NULL) && (ngbd_np1!=NULL) && (ngbd_n!=NULL);
+
+
+    if(!grid_check){
+      throw std::runtime_error("my_p4est_stefan_with_fluids:do_backtrace_for_scalar_temp_conc_problem():" 
+                               "The grid check has failed for multicomponent usage." 
+                               "Please provide the necessary concentration vectors to the stefan_with_fluids solver before calling this fxn.");
+    }
+
+    // Initialize the neighbors (just in case)
+    ngbd_np1->init_neighbors();
+    ngbd_n->init_neighbors();
+    
+  }
 
   // Initialize objects we will use in this function:
   // PETSC Vectors for second derivatives
   vec_and_ptr_dim_t T_l_dd, T_l_dd_nm1;
   Vec v_dd[P4EST_DIM][P4EST_DIM];
   Vec v_dd_nm1[P4EST_DIM][P4EST_DIM];
+
+  // Initialize for potential concentration fields from multialloy
+  std::vector<vec_and_ptr_dim_t> Cl_dd;
+  std::vector<vec_and_ptr_dim_t> Cl_dd_nm1;
+  if(do_multicomponent_fields){
+    Cl_dd.resize(num_conc_fields);
+    if(advection_sl_order == 2) Cl_dd_nm1.resize(num_conc_fields);
+    // ^ The above will be a [num_conc_fields]x[P4EST_DIM]x[num_nodes] object. 
+    // i.e.) Cl_dd[j].vec[d][n] will hold the derivative of the jth concentration field in the d Cartesian direction
+    // at node index n 
+  }
 
   // Create vector to hold back-trace points:
   vector <double> xyz_d[P4EST_DIM];
@@ -851,6 +864,19 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
     T_l_dd_nm1.create(p4est_n, nodes_n);
     ngbd_n->second_derivatives_central(T_l_nm1.vec,T_l_dd_nm1.vec);
   }
+
+  if(do_multicomponent_fields){
+    for(int j=0; j<num_conc_fields; j++){
+      Cl_dd[j].create(p4est_np1, nodes_np1);
+      ngbd_np1->second_derivatives_central(Cl_n.vec[j], Cl_dd[j].vec);
+
+      if(advection_sl_order==2){
+        Cl_dd_nm1[j].create(p4est_np1, nodes_np1);
+        ngbd_n->second_derivatives_central(Cl_nm1.vec[j], Cl_dd_nm1[j].vec);
+      }
+    }
+  }
+
 
   foreach_dimension(d){
     foreach_dimension(dd){
@@ -904,6 +930,20 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
     SL_backtrace_interp_nm1.interpolate(T_l_backtrace_nm1.vec);
   }
 
+  // Interpolate the concentration data to back-traced points:
+  if(do_multicomponent_fields){
+    for(int j=0; j<num_conc_fields; j++){
+      SL_backtrace_interp.set_input(Cl_n.vec[j], Cl_dd[j].vec[0], Cl_dd[j].vec[1], quadratic_non_oscillatory_continuous_v2);
+      SL_backtrace_interp.interpolate(Cl_backtrace_n.vec[j]);
+
+
+    if(advection_sl_order==2){
+      SL_backtrace_interp_nm1.set_input(Cl_nm1.vec[j], Cl_dd_nm1[j].vec[0], Cl_dd_nm1[j].vec[1], quadratic_non_oscillatory_continuous_v2);
+      SL_backtrace_interp_nm1.interpolate(Cl_backtrace_nm1.vec[j]);
+    }
+    }
+  }
+
   // Destroy velocity derivatives now that not needed:
   foreach_dimension(d){
     foreach_dimension(dd)
@@ -917,6 +957,22 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
   T_l_dd.destroy();
   if(advection_sl_order==2) {
     T_l_dd_nm1.destroy();
+  }
+
+  // Destroy multicomp derivatives:
+  if(do_multicomponent_fields){
+    for(int j=0; j<num_conc_fields; j++){
+      Cl_dd[j].destroy();
+      if(advection_sl_order==2){
+        Cl_dd_nm1[j].destroy();
+      }
+    }
+
+    Cl_dd.clear();
+    if(advection_sl_order == 2) Cl_dd_nm1.clear();
+    // ^ The above will be a [num_conc_fields]x[P4EST_DIM]x[num_nodes] object. 
+    // i.e.) Cl_dd[j].vec[d][n] will hold the derivative of the jth concentration field in the d Cartesian direction
+    // at node index n 
   }
 
   // Clear interp points:
@@ -3370,15 +3426,6 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
     point_fields.push_back(Vec_for_vtk_export_t(v_interface.vec[1], "v_interface_y"));
   }
 
-  // multicomponent problem -- concentration fields
-  if(solve_multicomponent){
-    for(int i=0; i<num_conc_fields; i++){
-      char conc_tag[10];
-      sprintf(conc_tag, "Cl_%d", i);
-      point_fields.push_back(Vec_for_vtk_export_t(Cl_n.vec[i], conc_tag));
-    }
-  }
-
   if(solve_navier_stokes){
     point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "u"));
 
@@ -3390,30 +3437,6 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
 
     }
   }
-  // multicomponent problem -- other relevant fields
-  if(solve_multicomponent){
-    // TO-DO MULTICOMP: add saving to vtk for other relevant fields once we know what they are
-
-    // Fields Daniil saves to vtk in multialloy:
-    /* 
-    - front_phi - i think this is just our phi
-    - contr_phi - don't know what this guy is 
-    - tl_ - we have this already
-    - ts_ - we have this already 
-    - cl_ (all comps) - i've added this above
-    - front_velo_norm - i believe this is the same as v_interface but let's double check
-    - front_curvature - we save this as kappa
-    - bc_error -  
-    - dendrite_number
-    - dendrite_tip
-    - seed_map
-    - smoothed_nodes
-    - front_phi_unsmooth
-
-    */
-  
-  }
-
 
   if(track_evolving_geometries && !is_crash){
     island_numbers.create(p4est_np1, nodes_np1);
@@ -3610,23 +3633,6 @@ void my_p4est_stefan_with_fluids_t::prepare_fields_for_save_or_load(vector<save_
       to_add.pointer_to_vecs = &T_s_n.vec;
       fields_to_save_np1.push_back(to_add);
     }
-  }
-
-  // Multicomponent fields:
-  if(solve_multicomponent){
-    // Concentrations:
-    for(int i=0; i<num_conc_fields; i++){
-      char conc_tag[10];
-      sprintf(conc_tag, "Cl_%d", i);
-      to_add.name = conc_tag;
-      to_add.DATA_SAMPLING = NODE_DATA;
-      to_add.nvecs = 1;
-      to_add.pointer_to_vecs = &Cl_n.vec[i];
-      fields_to_save_np1.push_back(to_add);
-    }
-
-    // TO-DO MULTICOMP: add any other fields we may want to save to the solver state
-    // i.e.) solid history? 
   }
 
   // Navier Stokes fields:

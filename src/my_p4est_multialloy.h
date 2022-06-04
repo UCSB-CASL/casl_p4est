@@ -61,6 +61,11 @@ private:
   double diag_;
 
   //--------------------------------------------------
+  // Stefan with fluids solver (used when we are solving coupled case)
+  //--------------------------------------------------
+  my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver;
+
+  //--------------------------------------------------
   // Geometry
   //--------------------------------------------------
   vec_and_ptr_t contr_phi_;
@@ -87,6 +92,15 @@ private:
   /* velocity */
   vector<vec_and_ptr_dim_t> front_velo_;
   vector<vec_and_ptr_t>     front_velo_norm_;
+
+  //--------------------------------------------------
+  // Navier-Stokes fields 
+  //--------------------------------------------------
+  vec_and_ptr_dim_t v_n;
+  vec_and_ptr_dim_t v_nm1;
+  vec_and_ptr_t vorticity;
+  vec_and_ptr_t press_nodes;
+
 
   //--------------------------------------------------
   // Lagrangian Multipliers (for speeding up)
@@ -180,6 +194,8 @@ private:
 
   interpolation_method interpolation_between_grids_;
 
+  bool solve_with_fluids; // To set if we are solving the coupled problem
+
   //--------------------------------------------------
   // Dendrite counting and profiling
   //--------------------------------------------------
@@ -243,6 +259,10 @@ private:
              input[v_num_comps + 2]*input[v_num_comps + P4EST_DIM + 2])
         / MAX(input[0], 1e-7);
   }
+
+
+  // To-do w/fluids: actually write this:
+  void prepare_refinement_fields();
 
 
 public:
@@ -558,6 +578,7 @@ public:
   void update_grid_eno();
   void update_grid_solid();
   int  one_step(int it_scheme=2, double *bc_error_max=NULL, double *bc_error_avg=NULL, std::vector<int> *num_pdes=NULL, std::vector<double> *bc_error_max_all=NULL, std::vector<double> *bc_error_avg_all=NULL);
+  int  one_step_w_fluids(int it_scheme, double *bc_error_max, double *bc_error_avg, std::vector<int> *num_pdes, std::vector<double> *bc_error_max_all, std::vector<double> *bc_error_avg_all);
   void save_VTK(int iter);
   void save_VTK_solid(int iter);
   void save_p4est(int iter);

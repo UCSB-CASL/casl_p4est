@@ -255,18 +255,19 @@ private:
 
 
   // -----------------------------------------------
-  // For the multicomponent problem :
+  // Fields for assisting in the multicomponent problem 
+  // (whose main operations are handled by my_p4est_multialloy):
   // -----------------------------------------------
-  int num_conc_fields;
 
-  // Concentration fields & related things
+  // Concentration fields & backtraces
   vec_and_ptr_array_t Cl_n;
   vec_and_ptr_array_t Cl_nm1;
 
-  vec_and_ptr_dim_t Cl0_grad;
+  vec_and_ptr_array_t Cl_backtrace_n;
+  vec_and_ptr_array_t Cl_backtrace_nm1;
 
-  my_p4est_multialloy_t* multialloy_solver;
-  my_p4est_poisson_nodes_multialloy_t* poisson_nodes_multialloy_solver;
+  //TO-DO MULTICOMP: add a check to make sure new fields have been received from multialloy before doing the backtrace
+
 
   // Fields called in multialloy initialize fxn:
   // ----------------------
@@ -602,7 +603,7 @@ public:
   void initialize_fields();
 
   /*!
-  * \brief initialize_fields_multicomponenet: This function initializes the fields Cl for i number concentration components
+  * \brief initialize_fields_multicomponent: This function initializes the fields Cl for i number concentration components
   * It does so either by CF_DIM's provided by the user for each of these fields, or by vectors provided by the user (WIP)
   * This is an internal fxn and is called by initialize_fields in the case when the solve_multicomponenet flag is turned on, indicating that
   * the user wishes to solve the multicomponent problem (alloy or other, anything w temp and at least one concentration field)
@@ -617,7 +618,7 @@ public:
   // Functions related to scalar temp/conc problem:
   // -------------------------------------------------------
 
-  void do_backtrace_for_scalar_temp_conc_problem();
+  void do_backtrace_for_scalar_temp_conc_problem(bool do_multicomponent_fields, int num_conc_fields);
   void setup_rhs_for_scalar_temp_conc_problem();
   void poisson_nodes_step_for_scalar_temp_conc_problem();
   void setup_and_solve_poisson_nodes_problem_for_scalar_temp_conc();
@@ -635,6 +636,8 @@ public:
   void extend_relevant_fields();
   double interfacial_velocity_expression(double Tl_d, double Ts_d);
   bool compute_interfacial_velocity();
+  bool compute_interfacial_velocity_stefan();
+  bool compute_interfacial_velocity_multicomponent();
   void compute_timestep();
 
   // -------------------------------------------------------
@@ -839,6 +842,21 @@ public:
   vec_and_ptr_t get_T_l_n(){return T_l_n;}
   vec_and_ptr_t get_T_s_n(){return T_s_n;}
 
+  // TO-DO MULTICOMP: verify that the below does indeed work the way I think it works?
+  void set_T_l_n(vec_and_ptr_t &T_l_n_){
+    T_l_n = T_l_n_;
+  }
+  void set_T_l_nm1(vec_and_ptr_t &T_l_nm1_){
+    T_l_nm1 = T_l_nm1_;
+  }
+
+  void set_T_l_backtrace_n(vec_and_ptr_t &T_l_backtrace_n_){
+    T_l_backtrace_n = T_l_backtrace_n_;
+  }
+  void set_T_l_backtrace_nm1(vec_and_ptr_t &T_l_backtrace_nm1_){
+    T_l_backtrace_nm1 = T_l_backtrace_nm1_;
+  }
+
   // ------
   // Interface:
   // ------
@@ -900,6 +918,25 @@ public:
       user_provided_external_heat_source[i] = user_heat_source_[i];
     }
     there_is_user_provided_heat_source = true;
+  }
+
+
+  // ------
+  // Setting concentration-related fields used by multialloy:
+  // (You should not need fxns for getting these since they won't be destroyed/recreated, 
+  // so the address of any modified provided vec_and_ptr will be the same as original)
+  // ------
+  void set_Cl_n(vec_and_ptr_array_t &Cl_n_){
+    Cl_n = Cl_n_;
+  }
+  void set_Cl_nm1(vec_and_ptr_array_t &Cl_nm1_){
+    Cl_nm1 = Cl_nm1_;
+  }
+  void set_Cl_backtrace_n(vec_and_ptr_array_t &Cl_backtrace_n_){
+    Cl_backtrace_n = Cl_backtrace_n_;
+  }
+  void set_Cl_backtrace_nm1(vec_and_ptr_array_t &Cl_backtrace_nm1_){
+    Cl_backtrace_nm1 = Cl_backtrace_nm1_;
   }
 
   // ----------------------------------------------
