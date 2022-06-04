@@ -823,6 +823,34 @@ public:
   my_p4est_node_neighbors_t* get_ngbd_np1(){return ngbd_np1;}
   // (WIP)
 
+  my_p4est_cell_neigbors_t* get_ngbd_c_np1(){
+    return ngbd_c_np1;
+  }
+
+  my_p4est_faces_t* get_faces_np1(){
+    return faces_np1;
+  }
+
+  void set_p4est_np1(p4est_t* p4est_np1_){
+    p4est_np1 = p4est_np1_;
+  }
+  void set_nodes_np1(p4est_nodes_t* nodes_np1_){
+    nodes_np1 = nodes_np1_;
+  }
+  void set_ngbd_np1(my_p4est_node_neigbors_t* ngbd_np1_){
+    ngbd_np1 = ngbd_np1_;
+  }
+
+  void set_p4est_n(p4est_t* p4est_n_){
+      p4est_n = p4est_n_;
+  }
+  void set_nodes_n(p4est_nodes_t* nodes_n_){
+      nodes_n = nodes_n_;
+  }
+  void set_ngbd_n(my_p4est_node_neighbors_t* ngbd_n_){
+      ngbd_n = ngbd_n_;
+  }
+
   // -----------------------------------------------
   // Level set function(s):
   // -----------------------------------------------
@@ -944,7 +972,9 @@ public:
   // ----------------------------------------------
   vec_and_ptr_dim_t get_v_interface(){return v_interface;}
 
-
+  void set_v_interface(vec_and_ptr_dim_t v_interface_){
+    v_interface = v_interface_;
+  }
   // ----------------------------------------------
   // Navier-Stokes problem:
   // ----------------------------------------------

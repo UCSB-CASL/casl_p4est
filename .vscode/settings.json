@@ -3,5 +3,6 @@
     "files.associations": {
         "stdexcept": "cpp"
     },
-    "editor.fontSize": 10
+    "editor.fontSize": 14,
+    "cmake.sourceDirectory": "${workspaceFolder}/examples/multialloy_with_fluids"
 }

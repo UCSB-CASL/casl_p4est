@@ -44,6 +44,15 @@ private:
   splitting_criteria_t *sp_crit_;
 
   //--------------------------------------------------
+  // nm1 grid (used for backtraced values when solving w fluids)
+  //--------------------------------------------------
+  p4est_t                     *p4est_nm1;
+  p4est_ghost_t               *ghost_nm1;
+  p4est_nodes_t               *nodes_nm1;
+  my_p4est_hierarchy_t        *hierarchy_nm1;
+  my_p4est_node_neighbors_t   *ngbd_nm1;
+
+  //--------------------------------------------------
   // Auxiliary grid that does not coarsen to keep track of quantities inside the solid
   //--------------------------------------------------
   p4est_t                     *solid_p4est_;
@@ -85,9 +94,17 @@ private:
   vector<vec_and_ptr_t> tl_;
   vector<vec_and_ptr_t> ts_;
 
+  // backtraced temperatures:
+  vec_and_ptr_t tl_backtrace_n;
+  vec_and_ptr_t tl_backtrace_nm1;
+
   /* concentrations */
   vector<vec_and_ptr_array_t> cl_;
   vec_and_ptr_dim_t           cl0_grad_;
+
+  // backtraced concentrations:
+  vec_and_ptr_array_t cl_backtrace_n;
+  vec_and_ptr_array_t cl_backtrace_nm1;
 
   /* velocity */
   vector<vec_and_ptr_dim_t> front_velo_;
@@ -100,6 +117,13 @@ private:
   vec_and_ptr_dim_t v_nm1;
   vec_and_ptr_t vorticity;
   vec_and_ptr_t press_nodes;
+
+  // Never actually use below, we will just get them from stefan_W_fluids after it 
+  // initializes its fluid solver component
+  my_p4est_cell_neighbors_t* ngbd_c_;
+  my_p4est_faces_t* faces_;
+
+  my_p4est_navier_stokes_t* ns;
 
 
   //--------------------------------------------------
@@ -263,6 +287,8 @@ private:
 
   // To-do w/fluids: actually write this:
   void prepare_refinement_fields();
+  void initialize_for_fluids(){
+
 
 
 public:
