@@ -2,5 +2,6 @@
     "C_Cpp.default.configurationProvider": "go2sh.cmake-integration",
     "files.associations": {
         "stdexcept": "cpp"
-    }
+    },
+    "editor.fontSize": 10
 }
