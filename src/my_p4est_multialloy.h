@@ -155,16 +155,24 @@ private:
   // boundary conditions at container
   BoundaryConditionType contr_bc_type_temp_;
   BoundaryConditionType contr_bc_type_conc_;
+  BoundaryConditionType contr_bc_type_vel_;
+  BoundaryConditionType contr_bc_type_pres_;
 
   CF_DIM           *contr_bc_value_temp_;
   vector<CF_DIM *>  contr_bc_value_conc_;
+  CF_DIM           *contr_bc_value_pres_;
+  CF_DIM           *contr_bc_value_vel_;
 
   // boundary condtions at walls
   BoundaryConditionType wall_bc_type_temp_;
   BoundaryConditionType wall_bc_type_conc_;
+  BoundaryConditionType wall_bc_type_vel_;
+  BoundaryConditionType wall_bc_type_pres_;
 
   CF_DIM           *wall_bc_value_temp_;
   vector<CF_DIM *>  wall_bc_value_conc_;
+  CF_DIM           *wall_bc_value_pres_;
+  CF_DIM           *wall_bc_value_vel_;
 
   // simulation scale
   double scaling_;
@@ -331,6 +339,18 @@ public:
     }
   }
 
+  inline void set_container_conditions_velocity(BoundaryConditionType bc_type, CF_DIM &bc_value)
+  {
+    contr_bc_type_vel_ = =  bc_type;
+    contr_bc_value_vel_ = &bc_value;
+  }
+
+  inline void set_container_conditions_pressure(BoundaryConditionType bc_type, CF_DIM &bc_value)
+  {
+    contr_bc_type_pres_ = =  bc_type;
+    contr_bc_value_pres_ = &bc_value; 
+  }
+
   inline void set_wall_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
     wall_bc_type_temp_  =  bc_type;
@@ -344,6 +364,18 @@ public:
     {
       wall_bc_value_conc_[i] = bc_value[i];
     }
+  }
+
+  inline void set_wall_conditions_velocity(BoundaryConditionType bc_type, CF_DIM &bc_value)
+  {
+    wall_bc_type_vel_  =  bc_type;
+    wall_bc_value_vel_ = &bc_value;
+  }
+
+  inline void set_wall_conditions_pressure(BoundaryConditionType bc_type, CF_DIM &bc_value)
+  {
+    wall_bc_type_pres_  =  bc_type;
+    wall_bc_value_pres_ = &bc_value;
   }
 
   void set_front(Vec phi);

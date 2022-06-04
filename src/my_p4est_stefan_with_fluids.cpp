@@ -496,17 +496,21 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
   if(hierarchy_n!=NULL) {
     delete hierarchy_n;
   }
+
   if(ngbd_n!=NULL) {delete ngbd_n;}
+
 
   hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, &brick);
   ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
   ngbd_n->init_neighbors();
+
 
   // Update the neigborhood and hierarchy:
   if(hierarchy_np1!=NULL) {
     delete hierarchy_np1;
   }
   if(ngbd_np1!=NULL) {delete ngbd_np1;}
+
 
   hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, &brick);
   ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
@@ -523,9 +527,10 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
   // Extend fields:
   extend_relevant_fields();
 
-  // Compute vinterface:
-  v_interface.create(p4est_np1, nodes_np1);
-  compute_interfacial_velocity();
+      // Compute vinterface:
+      v_interface.create(p4est_np1, nodes_np1);
+      compute_interfacial_velocity();
+  }
 
   load_tstep =tstep;
   tstart=tn;
