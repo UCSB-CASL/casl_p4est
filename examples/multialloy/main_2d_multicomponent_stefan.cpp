@@ -1804,20 +1804,20 @@ public:
 bool xlower_wall(DIM(double x, double y, double z))
 {
   // Front x wall, excluding the top and bottom corner points in y
-  return ((fabs(x - xmin) <= EPS) && (fabs(y - ymin) > EPS) && (fabs(y - ymax) > EPS));
+  return ((fabs(x - xmin.val) <= EPS) && (fabs(y - ymin.val) > EPS) && (fabs(y - ymax.val) > EPS));
 };
 bool xupper_wall(DIM(double x, double y, double z))
 {
   // back x wall, excluding the top and bottom corner points in y
-  return ((fabs(x - xmax) <= EPS) && (fabs(y - ymin) > EPS) && (fabs(y - ymax) > EPS));
+  return ((fabs(x - xmax.val) <= EPS) && (fabs(y - ymin.val) > EPS) && (fabs(y - ymax.val) > EPS));
 };
 bool ylower_wall(DIM(double x, double y, double z))
 {
-  return (fabs(y - ymin) <= EPS);
+  return (fabs(y - ymin.val) <= EPS);
 }
 bool yupper_wall(DIM(double x, double y, double z))
 {
-  return (fabs(y - ymax) <= EPS);
+  return (fabs(y - ymax.val) <= EPS);
 };
 
 bool is_x_wall(DIM(double x, double y, double z))
@@ -1845,6 +1845,13 @@ double sign_neumann_wall(DIM(double x, double y, double z))
   }
 };
 
+// TO-DO MULTICOMP: find a more permanent soln for this shady business
+enum:int{ BASIC_MULTI_ALLOY};
+int example_ = BASIC_MULTI_ALLOY;
+
+int u0 = 1.;
+int v0 = 0.;
+
 bool dirichlet_velocity_walls(DIM(double x, double y, double z))
 {
   switch (example_)
@@ -1861,6 +1868,9 @@ class bc_wall_value_velocity : public CF_DIM
 {
   public:
     const unsigned char dir;
+    bc_wall_value_velocity(const unsigned char& dir_):dir(dir_){
+      P4EST_ASSERT(dir<P4EST_DIM);
+    }
     double operator()(DIM(double x, double y, double z)) const
     {
       switch (example_)
@@ -1891,7 +1901,7 @@ class bc_wall_value_velocity : public CF_DIM
       }
     }
   }
-}bc_wall_value_vel;
+};
 
 class bc_wall_value_pressure : public CF_DIM{
   public: 
@@ -1911,6 +1921,21 @@ class bc_wall_value_pressure : public CF_DIM{
     }
   }
 }bc_wall_value_pres;
+
+
+class BC_interface_value_velocity: public my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t{
+
+  public:
+    unsigned char dir;
+    BC_interface_value_velocity(my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_vgamma_for_bc) : interfacial_bc_fluid_velocity_t(parent_solver, do_we_use_vgamma_for_bc){}
+
+    double operator()(double x, double y) const
+    {
+        return Conservation_of_Mass(DIM(x,y,z));
+     } // Condition derived from mass balance across interface
+};
+
+
 
 int main(int argc, char *argv[])
   {
@@ -2288,13 +2313,11 @@ int main(int argc, char *argv[])
     // set boundary conditions
     mas.set_container_conditions_thermal(bc_type_temp.val, bc_value_temp);
     mas.set_container_conditions_composition(bc_type_conc.val, bc_value_conc_all);
-    mas.set_container_conditions_velocity(bc_wall_type_vel.val, bc_wall_value_vel);
-    mas.set_container_conditions_pressure(bc_wall_type_pressure.val, bc_wall_value_pres);
+
 
     mas.set_wall_conditions_thermal(bc_type_temp.val, bc_value_temp);
     mas.set_wall_conditions_composition(bc_type_conc.val, bc_value_conc_all);
-    mas.set_wall_conditions_velocity(bc_wall_type_vel.val, bc_wall_value_vel);
-    mas.set_wall_conditions_pressure(bc_wall_type_pressure.val, bc_wall_value_pres);
+
     mas.set_volumetric_heat(volumetric_heat_cf);
 
     // set time steps
@@ -2307,6 +2330,56 @@ int main(int argc, char *argv[])
     mas.set_concentration(cl_cf_all, cs_cf_all);
     mas.set_ft(ft_cf);
 
+
+    // Initialize for fluid and create fluid BC needed at interface:
+    mas.initialize_for_fluids();
+
+    // Get the stefan w fluids solver to provide to the bc object:
+    my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver = mas.get_stefan_w_fluids_solver();
+
+    BC_interface_value_velocity* bc_interface_val_vel[P4EST_DIM];
+    bc_wall_value_velocity* bc_wall_val_vel[P4EST_DIM];
+
+    // Create the bc for fluid velocity
+    foreach_dimension(d){
+      // Interface:
+      bc_interface_val_vel[d] = new BC_interface_value_velocity(stefan_w_fluids_solver, true);
+
+      // Wall:
+      bc_wall_val_vel[d] = new bc_wall_value_velocity(d);
+
+    }
+
+    // Give the interface bc for fluid velocity *back* to multialloy:
+    my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t* bc_to_pass_fluid_vel[P4EST_DIM];
+    CF_DIM* bc_wall_val_velocity_[P4EST_DIM];
+    foreach_dimension(d){
+      bc_to_pass_fluid_vel[d] = bc_interface_val_vel[d];
+      bc_wall_val_velocity_[d] = bc_wall_val_vel[d];
+    }
+
+
+    // Set NS bc's :
+
+    // Interface velocity
+    BoundaryConditionType bc_interface_type_fluid_vel = DIRICHLET;
+    mas.set_bc_interface_conditions_velocity(bc_interface_type_fluid_vel, bc_to_pass_fluid_vel);
+
+    // Interface pressure:
+
+    // TO-DO MULTICOMP: revisit if this bc situation is really correct
+    // Wall velocity:
+    mas.set_container_conditions_velocity(bc_wall_type_vel.val, bc_wall_val_velocity_);
+    mas.set_wall_conditions_velocity(bc_wall_type_vel.val, bc_wall_val_velocity_);
+
+
+    // Wall pressure:
+    mas.set_container_conditions_pressure(bc_wall_type_pressure.val, bc_wall_value_pres);
+    mas.set_wall_conditions_pressure(bc_wall_type_pressure.val, bc_wall_value_pres);
+
+
+    // (done w NS things)
+    // ---------------------
     // set solver parameters
     mas.set_bc_tolerance(bc_tolerance.val);
     mas.set_max_iterations(max_iterations.val);
@@ -2620,78 +2693,148 @@ int main(int argc, char *argv[])
             std::vector<double *> point_data;
             std::vector<std::string> point_data_names;
 
-            point_data.push_back(contr.ptr);
-            point_data_names.push_back("contr");
-            point_data.push_back(front.ptr);
-            point_data_names.push_back("phi");
-            point_data.push_back(tl.ptr);
-            point_data_names.push_back("tl");
-            point_data.push_back(ts.ptr);
-            point_data_names.push_back("ts");
-            point_data.push_back(vn.ptr);
-            point_data_names.push_back("vn");
-            point_data.push_back(ft.ptr);
-            point_data_names.push_back("ft");
-            point_data.push_back(tf.ptr);
-            point_data_names.push_back("tf");
-            point_data.push_back(vf.ptr);
-            point_data_names.push_back("vf");
+            std::vector<Vec_for_vtk_export_t> point_fields;
+            std::vector<Vec_for_vtk_export_t> cell_fields;
+            // FOR REFERENCE:
+//            point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
 
-            point_data.push_back(front_exact.ptr);
-            point_data_names.push_back("phi_exact");
-            point_data.push_back(tl_exact.ptr);
-            point_data_names.push_back("tl_exact");
-            point_data.push_back(ts_exact.ptr);
-            point_data_names.push_back("ts_exact");
-            point_data.push_back(vn_exact.ptr);
-            point_data_names.push_back("vn_exact");
-            point_data.push_back(ft_exact.ptr);
-            point_data_names.push_back("ft_exact");
-            point_data.push_back(tf_exact.ptr);
-            point_data_names.push_back("tf_exact");
-            point_data.push_back(vf_exact.ptr);
-            point_data_names.push_back("vf_exact");
+//            point_data.push_back(contr.ptr);
+//            point_data_names.push_back("contr");
+            point_fields.push_back(Vec_for_vtk_export_t(contr.vec, "contr"));
 
-            point_data.push_back(front_error.ptr);
-            point_data_names.push_back("phi_error");
-            point_data.push_back(tl_error.ptr);
-            point_data_names.push_back("tl_error");
-            point_data.push_back(ts_error.ptr);
-            point_data_names.push_back("ts_error");
-            point_data.push_back(vn_error.ptr);
-            point_data_names.push_back("vn_error");
-            point_data.push_back(ft_error.ptr);
-            point_data_names.push_back("ft_error");
-            point_data.push_back(tf_error.ptr);
-            point_data_names.push_back("tf_error");
-            point_data.push_back(vf_error.ptr);
-            point_data_names.push_back("vf_error");
+
+//            point_data.push_back(front.ptr);
+//            point_data_names.push_back("phi");
+            point_fields.push_back(Vec_for_vtk_export_t(front.vec, "phi"));
+
+
+//            point_data.push_back(tl.ptr);
+//            point_data_names.push_back("tl");
+            point_fields.push_back(Vec_for_vtk_export_t(tl.vec, "tl"));
+
+
+//            point_data.push_back(ts.ptr);
+//            point_data_names.push_back("ts");
+            point_fields.push_back(Vec_for_vtk_export_t(ts.vec, "ts"));
+
+
+//            point_data.push_back(vn.ptr);
+//            point_data_names.push_back("vn");
+            point_fields.push_back(Vec_for_vtk_export_t(vn.vec, "vn"));
+
+
+//            point_data.push_back(ft.ptr);
+//            point_data_names.push_back("ft");
+            point_fields.push_back(Vec_for_vtk_export_t(ft.vec, "ft"));
+
+//            point_data.push_back(tf.ptr);
+//            point_data_names.push_back("tf");
+            point_fields.push_back(Vec_for_vtk_export_t(tf.vec, "tf"));
+
+//            point_data.push_back(vf.ptr);
+//            point_data_names.push_back("vf");
+              point_fields.push_back(Vec_for_vtk_export_t(vf.vec, "vf"));
+
+
+//            point_data.push_back(front_exact.ptr);
+//            point_data_names.push_back("phi_exact");
+              point_fields.push_back(Vec_for_vtk_export_t(front_exact.vec, "phi_exact"));
+
+//            point_data.push_back(tl_exact.ptr);
+//            point_data_names.push_back("tl_exact");
+            point_fields.push_back(Vec_for_vtk_export_t(tl_exact.vec, "tl_exact"));
+
+//            point_data.push_back(ts_exact.ptr);
+//            point_data_names.push_back("ts_exact");
+            point_fields.push_back(Vec_for_vtk_export_t(ts_exact.vec, "ts_exact"));
+
+//            point_data.push_back(vn_exact.ptr);
+//            point_data_names.push_back("vn_exact");
+            point_fields.push_back(Vec_for_vtk_export_t(vn_exact.vec, "vn_exact"));
+
+//            point_data.push_back(ft_exact.ptr);
+//            point_data_names.push_back("ft_exact");
+            point_fields.push_back(Vec_for_vtk_export_t(ft_exact.vec, "ft_exact"));
+
+//            point_data.push_back(tf_exact.ptr);
+//            point_data_names.push_back("tf_exact");
+            point_fields.push_back(Vec_for_vtk_export_t(tf_exact.vec, "tf_exact"));
+
+//            point_data.push_back(vf_exact.ptr);
+//            point_data_names.push_back("vf_exact");
+            point_fields.push_back(Vec_for_vtk_export_t(vf_exact.vec, "vf_exact"));
+
+//            point_data.push_back(front_error.ptr);
+//            point_data_names.push_back("phi_error");
+            point_fields.push_back(Vec_for_vtk_export_t(front_error.vec, "phi_error"));
+
+//            point_data.push_back(tl_error.ptr);
+//            point_data_names.push_back("tl_error");
+            point_fields.push_back(Vec_for_vtk_export_t(tl_error.vec, "tl_error"));
+
+//            point_data.push_back(ts_error.ptr);
+//            point_data_names.push_back("ts_error");
+            point_fields.push_back(Vec_for_vtk_export_t(ts_error.vec, "ts_error"));
+
+//            point_data.push_back(vn_error.ptr);
+//            point_data_names.push_back("vn_error");
+            point_fields.push_back(Vec_for_vtk_export_t(vn_error.vec, "vn_error"));
+
+//            point_data.push_back(ft_error.ptr);
+//            point_data_names.push_back("ft_error");
+            point_fields.push_back(Vec_for_vtk_export_t(ft_error.vec, "ft_error"));
+
+//            point_data.push_back(tf_error.ptr);
+//            point_data_names.push_back("tf_error");
+            point_fields.push_back(Vec_for_vtk_export_t(tf_error.vec, "tf_error"));
+
+//            point_data.push_back(vf_error.ptr);
+//            point_data_names.push_back("vf_error");
+            point_fields.push_back(Vec_for_vtk_export_t(vf_error.vec, "vf_error"));
 
             for (int i = 0; i < num_comps.val; ++i)
             {
               char numstr[21];
               sprintf(numstr, "%d", i);
 
-              point_data.push_back(cl.ptr[i]);
-              point_data_names.push_back(std::string("cl") + numstr);
-              point_data.push_back(cl_exact.ptr[i]);
-              point_data_names.push_back(std::string("cl") + numstr + std::string("_exact"));
-              point_data.push_back(cl_error.ptr[i]);
-              point_data_names.push_back(std::string("cl") + numstr + std::string("_error"));
+//              point_data.push_back(cl.ptr[i]);
+//              point_data_names.push_back(std::string("cl") + numstr);
+              point_fields.push_back(Vec_for_vtk_export_t(cl.vec[i], std::string("cl") + numstr));
 
-              point_data.push_back(cs.ptr[i]);
-              point_data_names.push_back(std::string("cs") + numstr);
-              point_data.push_back(cs_exact.ptr[i]);
-              point_data_names.push_back(std::string("cs") + numstr + std::string("_exact"));
-              point_data.push_back(cs_error.ptr[i]);
-              point_data_names.push_back(std::string("cs") + numstr + std::string("_error"));
+
+//              point_data.push_back(cl_exact.ptr[i]);
+//              point_data_names.push_back(std::string("cl") + numstr + std::string("_exact"));
+              point_fields.push_back(Vec_for_vtk_export_t(cl_exact.vec[i], std::string("cl") + numstr + std::string("_exact")));
+
+//              point_data.push_back(cl_error.ptr[i]);
+//              point_data_names.push_back(std::string("cl") + numstr + std::string("_error"));
+              point_fields.push_back(Vec_for_vtk_export_t(cl_error.vec[i], std::string("cl") + numstr + std::string("_error")));
+
+
+//              point_data.push_back(cs.ptr[i]);
+//              point_data_names.push_back(std::string("cs") + numstr);
+              point_fields.push_back(Vec_for_vtk_export_t(cs.vec[i], std::string("cs") + numstr));
+
+//              point_data.push_back(cs_exact.ptr[i]);
+//              point_data_names.push_back(std::string("cs") + numstr + std::string("_exact"));
+              point_fields.push_back(Vec_for_vtk_export_t(cs_exact.vec[i], std::string("cs") + numstr + std::string("_exact")));
+
+//              point_data.push_back(cs_error.ptr[i]);
+//              point_data_names.push_back(std::string("cs") + numstr + std::string("_error"));
+              point_fields.push_back(Vec_for_vtk_export_t(cs_error.vec[i], std::string("cs") + numstr + std::string("_error")));
             }
 
-            my_p4est_vtk_write_all_lists(p4est, nodes, mas.get_ghost(),
-                                         P4EST_TRUE, P4EST_TRUE,
+//            my_p4est_vtk_write_all_lists(p4est, nodes, mas.get_ghost(),
+//                                         P4EST_TRUE, P4EST_TRUE,
+//                                         name,
+//                                         point_data, point_data_names,
+//                                         cell_data, cell_data_names);
+
+            my_p4est_vtk_write_all_lists(p4est,nodes, mas.get_ghost(),
+                                         P4EST_TRUE,P4EST_TRUE,
                                          name,
-                                         point_data, point_data_names,
-                                         cell_data, cell_data_names);
+                                         point_fields, cell_fields);
+
 
             PetscPrintf(p4est->mpicomm, "VTK with analytic saved in %s\n", name);
           }

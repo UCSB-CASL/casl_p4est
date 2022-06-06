@@ -212,12 +212,15 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   delete sp_crit_;
 }
 
-my_p4est_multialloy_t::initialize_for_fluids(){
+void my_p4est_multialloy_t::initialize_for_fluids(){
 
   // NOTE: calling this fxn assumes that initialize for multialloy
   // has already been performed
 
-  stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(p4est_->mpicomm);    
+  if(mpi_ == NULL){
+    throw std::runtime_error("You must set the mpi environment via multialloy:set_mpi_env() in order to create the stefan w fluids solver \n");
+  }
+  stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(mpi_);
 
   // Set up the initial nm1 grids that we will need:
   p4est_nm1 = p4est_copy(p4est_, P4EST_FALSE); // copy the grid but not the data
@@ -230,18 +233,63 @@ my_p4est_multialloy_t::initialize_for_fluids(){
   nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
 
   // Get the new neighbors:
-  hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, &brick);
+  hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, &brick_);
   ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1,nodes_nm1);
 
   // Initialize the neigbors:
   ngbd_nm1->init_neighbors();
 
-  // ----------------------------------------------
 
+  // ----------------------------------------------
   // Next will need to initialize the NS solver:
   // ----------------------------------------------
+  // (1) Pass along the boundary conditions associated w the fluid to stefan_w_fluids:
+  // -------------
+
+  // TO-DO MULTICOMP: flesh this out
+  // Interface velocity:
+  stefan_w_fluids_solver->set_bc_interface_value_velocity(bc_interface_val_fluid_vel);
+//  stefan_w_fluids_solver->set_bc_interface_type_velocity(bc_interface_type_fluid_vel);
+
+  // Interface pressure:
 
 
+  // Wall velocity:
+
+
+  // Wall pressure:
+
+  // -------------
+  // (2) Pass along all the necessary grid variables:
+  // -------------
+  stefan_w_fluids_solver->set_brick(brick_);
+  stefan_w_fluids_solver->set_hierarchy_np1(hierarchy_);
+  stefan_w_fluids_solver->set_p4est_np1(p4est_);
+  stefan_w_fluids_solver->set_nodes_np1(nodes_);
+  stefan_w_fluids_solver->set_ghost_np1(ghost_);
+  stefan_w_fluids_solver->set_ngbd_np1(ngbd_);
+
+  stefan_w_fluids_solver->set_ngbd_n(ngbd_nm1);
+  // -------------
+  // (3) pass along the level set function:
+  // -------------
+  stefan_w_fluids_solver->set_phi(front_phi_);
+  // -------------
+  // (4) pass along timestep
+  // -------------
+  stefan_w_fluids_solver->set_dt(dt_[0]);
+  stefan_w_fluids_solver->set_dt_nm1(dt_[1]);
+
+  // -------------
+  // (5) pass along nondim type and relevant nondim parameters:
+  // -------------
+  // TO-DO MULTICOMP: will make this more user friendly later, but this serves as a first pass
+  stefan_w_fluids_solver->set_problem_dimensionalization_type(NONDIM_BY_SCALAR_DIFFUSIVITY);
+  stefan_w_fluids_solver->set_Re(1.);
+  stefan_w_fluids_solver->set_Pr(1.);
+  stefan_w_fluids_solver->set_NS_advection_order(2);
+  stefan_w_fluids_solver->set_cfl_NS(2.); // TO-DO MULTICOMP: THIS SHOULD NOT BE HARD-CODED !!!
+  stefan_w_fluids_solver->set_uniform_band(sp_crit_->band);
 
 
   // TO-DO MULTICOMP
@@ -253,7 +301,14 @@ my_p4est_multialloy_t::initialize_for_fluids(){
   // TO-DO MULTICOMP
   // Parameters we need to actually provide:
   // rho, mu, SL order, uband, vort thresh(ignored), cfl_NS
+  // -------------
+  // Initialize the ns solver:
+  // -------------
   stefan_w_fluids_solver->initialize_ns_solver();
+
+  // -------------
+  // Get back out the cell neigbors and faces:
+  // -------------
 
   // Then we should grab back out the ngbd_c and faces so that multialloy has access to those pointers 
   // since the actual objects get created by stefan_w_fluids and navier_stokes
@@ -417,8 +472,6 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
 
   VecSetGhost(solid_time_.vec, 0.);
 
-  // Lastly, initialize for the coupled fluids problem if we are doing that:
-  if(solve_with_fluids) initialize_for_fluids();
 }
 
 
@@ -856,6 +909,18 @@ void my_p4est_multialloy_t::update_grid()
   // Update the NS grids and fields through the stefan w fluids solver
   // ns = stefan_w_fluids_solver.get_ns();
   // ns->update_from_tn_....
+  my_p4est_navier_stokes_t* ns = stefan_w_fluids_solver->get_ns_solver();
+
+
+
+//  ns->update_from_tn_to_tnp1_grid_external((there_is_a_substrate? phi_eff.vec : phi.vec), phi_nm1.vec,
+//                                           v_n.vec, v_nm1.vec,
+//                                           p4est_np1, nodes_np1, ghost_np1,
+//                                           ngbd_np1,
+//                                           faces_np1,ngbd_c_np1,
+//                                           hierarchy_np1);
+
+
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -1186,7 +1251,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     wall_bc_value_conc_ [i]->t = time_;
   }
 
-  // TO-DO MULTICOMP: 
+  // TO-DO MULTICOMP: // DID IT
 
   // Get the backtraced values for conc components and temperature from 
   // stefan with fluids solver
@@ -1221,7 +1286,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   stefan_w_fluids_solver->set_nodes_np1(nodes_);
   stefan_w_fluids_solver->set_ngbd_np1(ngbd_);
 
-  stefan_w_fluids_solver->set_ngbd(ngbd_nm1);
+  stefan_w_fluids_solver->set_ngbd_n(ngbd_nm1);
 
   // Now call stefan_w_fluids to do the backtrace:
   stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_);
@@ -1249,10 +1314,8 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   tl_backtrace_n.get_array();
   tl_backtrace_nm1.get_array();
 
-  for(int j=0; j<num_comps_; j++){
-    cl_backtrace_n[j].get_array();
-    cl_backtrace_nm1[j].get_array();
-  }
+  cl_backtrace_n.get_array();
+  cl_backtrace_nm1.get_array();
 
   double xyz[P4EST_DIM];
   double heat_gen = 0;
@@ -1264,8 +1327,8 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
 
   // Compute the time coefficients associated with the Semi-Lagragian advective disc
-  double SL_alpha = (2.*dt_[0] + dt_[1]])/(dt_[0] + dt_[1]]); // SL alpha coeff
-  double SL_beta = (-1.*dt_[0])/(dt_[0] + dt_[1]]); // SL beta coefff
+  double SL_alpha = (2.*dt_[0] + dt_[1])/(dt_[0] + dt_[1]); // SL alpha coeff
+  double SL_beta = (-1.*dt_[0])/(dt_[0] + dt_[1]); // SL beta coefff
 
 
   foreach_node(n, nodes_)
@@ -1290,13 +1353,13 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     }
 
     // Use SL disc for fluid temp:
-    rhs_tl.ptr[n] = t_l_backtrace_n.ptr[n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1]])) + 
-                    t_l_backtrace_nm1.ptr[n]*(SL_beta/dt_[1]);
+    rhs_tl.ptr[n] = tl_backtrace_n.ptr[n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1])) +
+                    tl_backtrace_nm1.ptr[n]*(SL_beta/dt_[1]);
 
     // Use SL disc for fluid concentrations:
     for(int j = 0; j<num_comps_; ++j){
-      rhs_cl.ptr[j][n] = c_l_backtrace_n[j].ptr[n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1]])) + 
-                    c_l_backtrace_nm1[j].ptr[n]*(SL_beta/dt_[1]);
+      rhs_cl.ptr[j][n] = cl_backtrace_n.ptr[j][n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1])) +
+                    cl_backtrace_nm1.ptr[j][n]*(SL_beta/dt_[1]);
     }
 
 
@@ -1410,10 +1473,10 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   vgamma_n_vec.create(p4est_, nodes_);
   
 
-  front_normal_[0].get_array();
+  front_normal_.get_array();
   vgamma_n_vec.get_array();
   foreach_dimension(dim){
-    VecCopyGhost(front_normal_[0].vec[dim], vgamma_n_vec.vec[dim]);
+    VecCopyGhost(front_normal_.vec[dim], vgamma_n_vec.vec[dim]);
     // VecScaleGhost(vgamma_n_vec.vec[dim], front_velo_norm_[0]);
   
 
@@ -1422,7 +1485,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     }
   
   }
-  front_normal_[0].restore_array();
+  front_normal_.restore_array();
   vgamma_n_vec.restore_array();
   
   stefan_w_fluids_solver->set_v_interface(vgamma_n_vec);
@@ -1435,15 +1498,22 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // - 
   // -
   // TO-DO: put these below in initialize (I think)
-  // - boundary conditions (these can just be passed by multialloy once) 
+  // - boundary conditions (these can just be passed by multialloy once) (think it is sufficient to do this in our initialize_for_fluids() fxn)
   // - any boussinesq options
-  // - problem dimensionalization type 
+  // - problem dimensionalization type (did this in initialize)
   // - fluid velocity vectors, vorticity vector, pressure vector
   
   // (3) solve the NS 
   stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem();
 
   // (4) get out the velocities, pressure, vort, for visualization
+  v_n = stefan_w_fluids_solver->get_v_n();
+  press_nodes = stefan_w_fluids_solver->get_press_nodes();
+  vorticity = stefan_w_fluids_solver->get_vorticity();
+
+
+
+
 
   compute_solid();
 

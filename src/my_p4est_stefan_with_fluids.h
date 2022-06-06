@@ -1,7 +1,6 @@
 #ifndef MY_P4EST_STEFAN_WITH_FLUIDS_H
 #define MY_P4EST_STEFAN_WITH_FLUIDS_H
 
-
 #ifndef P4_TO_P8
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
@@ -20,7 +19,7 @@
 #include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_navier_stokes.h>
-#include <src/my_p4est_multialloy.h>
+//#include <src/my_p4est_multialloy.h>
 #include <src/my_p4est_macros.h>
 
 #else
@@ -823,7 +822,7 @@ public:
   my_p4est_node_neighbors_t* get_ngbd_np1(){return ngbd_np1;}
   // (WIP)
 
-  my_p4est_cell_neigbors_t* get_ngbd_c_np1(){
+  my_p4est_cell_neighbors_t* get_ngbd_c_np1(){
     return ngbd_c_np1;
   }
 
@@ -837,7 +836,21 @@ public:
   void set_nodes_np1(p4est_nodes_t* nodes_np1_){
     nodes_np1 = nodes_np1_;
   }
-  void set_ngbd_np1(my_p4est_node_neigbors_t* ngbd_np1_){
+
+  void set_ghost_np1(p4est_ghost_t* ghost_np1_){
+    ghost_np1 = ghost_np1_;
+  }
+
+  void set_hierarchy_np1(my_p4est_hierarchy_t* hierarchy_np1_){
+    hierarchy_np1 = hierarchy_np1_;
+  }
+
+  void set_brick(my_p4est_brick_t& brick_){
+    brick = brick_;
+  }
+//  void set_brick(p4est_){}
+
+  void set_ngbd_np1(my_p4est_node_neighbors_t* ngbd_np1_){
     ngbd_np1 = ngbd_np1_;
   }
 
@@ -857,6 +870,9 @@ public:
 
   // (WIP)
   vec_and_ptr_t get_phi(){return phi;}
+  void set_phi(vec_and_ptr_t& phi_){
+    phi = phi_;
+  }
 
   // -----------------------------------------------
   // Interface geometry:
@@ -1138,6 +1154,8 @@ public:
   void set_cfl_Stefan(double cfl_stefan_){cfl_Stefan = cfl_stefan_;}
   void set_cfl_NS(double cfl_ns_){cfl_NS = cfl_ns_;}
 
+  void set_NS_advection_order(int adv_order){NS_advection_sl_order = 2;}
+
   // ----------------------------------------------
   // Related to dimensionalization type:
   // ----------------------------------------------
@@ -1253,7 +1271,7 @@ public:
     Tinfty = Tinfty_;
     Tinterface = Tinterface_;
     T0 = T0_;
-  };
+  }
 
   void set_Tflush(double Tflush_){Tflush = Tflush_;}
 
@@ -1321,8 +1339,8 @@ public:
   void set_start_w_merged_grains(bool start_w_merged){start_w_merged_grains  = start_w_merged;}
 
 
-  void set_solve_multicomponent(bool solve_multi_){solve_multicomponent = solve_multi_;}
-  void set_number_components(int num_comp){num_conc_fields = num_comp;}
+//  void set_solve_multicomponent(bool solve_multi_){solve_multicomponent = solve_multi_;}
+//  void set_number_components(int num_comp){num_conc_fields = num_comp;}
 
   // ----------------------------------------------
   // Other misc parameters

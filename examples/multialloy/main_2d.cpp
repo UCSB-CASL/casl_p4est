@@ -1929,6 +1929,11 @@ int main (int argc, char* argv[])
   mas.set_concentration(cl_cf_all, cs_cf_all);
   mas.set_ft(ft_cf);
 
+  // Give the bc object back to the solver:
+
+
+
+
   // set solver parameters
   mas.set_bc_tolerance             (bc_tolerance.val);
   mas.set_max_iterations           (max_iterations.val);

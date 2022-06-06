@@ -136,12 +136,6 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   // TO-DO: make sure compute_pressure_ handled correctly in main
 
   // ----------------------------------------------
-  // Multicomponenent problem:
-  // ----------------------------------------------
-  multialloy_solver = NULL;
-  poisson_nodes_multialloy_solver = NULL;
-  num_conc_fields = 0;
-  // ----------------------------------------------
   // Related to domain:
   // ----------------------------------------------
   // Set initial values (purposely unreasonable) for the domain info:
@@ -527,10 +521,10 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
   // Extend fields:
   extend_relevant_fields();
 
-      // Compute vinterface:
-      v_interface.create(p4est_np1, nodes_np1);
-      compute_interfacial_velocity();
-  }
+  // Compute vinterface:
+  v_interface.create(p4est_np1, nodes_np1);
+  compute_interfacial_velocity();
+
 
   load_tstep =tstep;
   tstart=tn;
@@ -1518,16 +1512,6 @@ void my_p4est_stefan_with_fluids_t::extend_relevant_fields(){
                                          50, 2,
                                          extension_band_use_, extension_band_extend_,
                                          solid_normals.vec, NULL, NULL, false, NULL, NULL);
-  }
-
-  // Extend conc fields (if doing multicomponent):
-  if(solve_multicomponent){
-    for(int i=0; i<num_conc_fields; i++){
-      ls->extend_Over_Interface_TVD_Full((there_is_a_substrate? phi_solid_eff.vec : phi_solid.vec), Cl_n.vec[i],
-                                         50, 2,
-                                         extension_band_use_, extension_band_extend_,
-                                         solid_normals.vec, NULL, NULL, false, NULL, NULL);
-    }
   }
 
   // -------------------------------
