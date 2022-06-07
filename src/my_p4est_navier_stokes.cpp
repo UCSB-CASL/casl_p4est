@@ -2246,6 +2246,643 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
   return (grid_is_unchanged && level_set == NULL);
 }
 
+// Added for SHS research by Luis Ángel.
+void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_for_shs_restart( const CF_DIM *level_set )
+{
+	PetscErrorCode ierr;
+
+	ierr = PetscLogEventBegin( log_my_p4est_navier_stokes_update, 0, 0, 0, 0 );
+	CHKERRXX( ierr );
+	if( ns_time_step_analyzer.is_on())
+	{
+		ns_time_step_analyzer.reset(); // this is typically the beginning of a new time step
+		ns_time_step_analyzer.start( grid_update );
+	}
+
+	if( !dt_updated )
+		compute_dt();
+	dt_updated = false;
+
+	/* initialize the new forest and nodes, at time np1 */
+	p4est_t *p4est_np1 = p4est_n;
+	p4est_nodes_t *nodes_np1 = nullptr;
+	Vec phi_np1 = nullptr;
+	double *phi_np1_p = nullptr;
+	Vec smoke_np1 = nullptr;
+	my_p4est_interpolation_nodes_t interp_nodes( ngbd_n );
+	std::vector<Vec> interp_inputs;
+	interp_inputs.resize( 0 );
+	std::vector<Vec> interp_outputs;
+	interp_outputs.resize( 0 );
+
+	bool keep_grid_as_such = false;
+	bool grid_is_unchanged = true;
+	bool iterative_grid_update_converged = false;
+	if( !keep_grid_as_such )
+	{
+		if( ANDD( vorticity_components[0], vorticity_components[1],
+				  vorticity_components[2] ))    // You can't update the grid if you're tracking running stats!
+			throw std::runtime_error(
+				"my_p4est_navier_stokes_t::update_from_tn_to_tnp1: We don't support running stats while modifying the grid" );
+
+		auto *criteria = (splitting_criteria_cf_and_uniform_band_shs_t *) p4est_n->user_pointer;
+
+		/* construct a new forest */
+		p4est_np1 = p4est_copy( p4est_n, P4EST_FALSE ); // very efficient operation, costs almost nothing
+		p4est_np1->connectivity = p4est_n->connectivity; // connectivity is not duplicated by p4est_copy, the pointer (i.e. the memory-address) of connectivity seems to be copied from my understanding of the source file of p4est_copy, but I feel this is a bit safer [Raphael Egan]
+		p4est_np1->user_pointer = (void *) &criteria;
+		Vec vorticity_np1 = nullptr;
+		Vec norm_grad_u_np1 = nullptr;
+		unsigned int iter = 0;
+		p4est_ghost_t *ghost_np1 = nullptr;
+		my_p4est_hierarchy_t *hierarchy_np1 = nullptr;
+		my_p4est_node_neighbors_t *ngbd_n_np1 = nullptr;
+		while( !iterative_grid_update_converged )
+		{
+			/* ---   FIND THE NEXT ADAPTIVE GRID   --- */
+			/* For the very first iteration of the grid-update procedure, p4est_np1 is a
+			 * simple pure copy of p4est_n, so no node creation nor data interpolation is
+			 * required. Hence the "if(iter>0)..." statements and the ternary statements
+			 * (iter > 0 ? : ) */
+			// partition the grid if it has changed...
+			if( iter > 0 )
+				my_p4est_partition( p4est_np1, P4EST_FALSE, nullptr );
+			// ghost_np1, hierarchy_np1 and ngbd_n_np1 are required for the grid update if and only if smoke is defined and refinement with smoke is activated
+			if( iter > 0 && smoke != nullptr && refine_with_smoke )
+				ghost_np1 = my_p4est_ghost_new( p4est_np1, P4EST_CONNECT_FULL );
+			// get nodes_np1
+			// reset nodes_np1 if needed
+			if( nodes_np1 != nullptr && nodes_np1 != nodes_n )
+			{
+				p4est_nodes_destroy( nodes_np1 );
+				CHKERRXX( ierr );
+			}
+			nodes_np1 = ((iter > 0)? my_p4est_nodes_new( p4est_np1, ghost_np1 ) : nodes_n);
+			// reset phi_np1 if needed
+			if( phi_np1 != nullptr && phi_np1 != phi )
+			{
+				ierr = VecDestroy( phi_np1 );
+				CHKERRXX( ierr );
+				phi_np1 = nullptr;
+			}
+			// get phi_np1
+			if( iter > 0 || level_set != nullptr )
+			{
+				ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &phi_np1 );
+				CHKERRXX( ierr );
+				if( level_set != nullptr )
+				{
+					ierr = VecGetArray( phi_np1, &phi_np1_p );
+					CHKERRXX( ierr );
+				}
+				for( p4est_locidx_t n = 0; n < nodes_np1->indep_nodes.elem_count; ++n )
+				{
+					double xyz[P4EST_DIM];
+					node_xyz_fr_n( n, p4est_np1, nodes_np1, xyz );
+					if( iter > 0 )
+						interp_nodes.add_point( n, xyz );
+					if( level_set != nullptr )
+						phi_np1_p[n] = (*level_set)( xyz );
+				}
+				if( level_set != nullptr )
+				{
+					ierr = VecRestoreArray( phi_np1, &phi_np1_p );
+					phi_np1_p = nullptr;
+					CHKERRXX( ierr );
+				}
+				else
+				{
+					interp_inputs.push_back( phi );
+					interp_outputs.push_back( phi_np1 );
+				}
+			}
+			else
+				phi_np1 = phi;
+			// reset vorticity_np1 if needed
+			if( vorticity_np1 != nullptr && vorticity_np1 != vorticity )
+			{
+				ierr = VecDestroy( vorticity_np1 );
+				CHKERRXX( ierr );
+				vorticity_np1 = nullptr;
+			}
+			if( norm_grad_u_np1 != nullptr && norm_grad_u_np1 != norm_grad_u )
+			{
+				ierr = VecDestroy( norm_grad_u_np1 );
+				CHKERRXX( ierr );
+				norm_grad_u_np1 = nullptr;
+			}
+			// get vorticity_np1
+			if( iter > 0 )
+			{
+				ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &vorticity_np1 );
+				CHKERRXX( ierr );
+				interp_inputs.push_back( vorticity );
+				interp_outputs.push_back( vorticity_np1 );
+				if( norm_grad_u != nullptr )
+				{
+					ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &norm_grad_u_np1 );
+					CHKERRXX( ierr );
+					interp_inputs.push_back( norm_grad_u );
+					interp_outputs.push_back( norm_grad_u_np1 );
+				}
+			}
+			else
+			{
+				vorticity_np1 = vorticity;
+				norm_grad_u_np1 = norm_grad_u;
+			}
+			// reset smoke_np1 if needed
+			if( smoke_np1 != nullptr && smoke_np1 != smoke )
+			{
+				ierr = VecDestroy( smoke_np1 );
+				CHKERRXX( ierr );
+				smoke_np1 = nullptr;
+			}
+			// get smoke_np1 (if required)
+			Vec vtmp[P4EST_DIM];
+			if( smoke != nullptr && refine_with_smoke )
+			{
+				ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &smoke_np1 );
+				CHKERRXX( ierr );
+				for( unsigned char dir = 0; dir < P4EST_DIM; ++dir )
+				{
+					if( iter > 0 )
+					{
+						ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &vtmp[dir] );
+						CHKERRXX( ierr );
+						interp_inputs.push_back( vnp1_nodes[dir] );
+						interp_outputs.push_back( vtmp[dir] );
+					}
+					else
+						vtmp[dir] = vnp1_nodes[dir];
+				}
+			}
+			if( iter > 0 )
+			{
+				interp_nodes.set_input( interp_inputs, linear );
+				interp_nodes.interpolate( interp_outputs );
+				interp_inputs.resize( 0 );
+				interp_outputs.resize( 0 );
+				interp_nodes.clear();
+			}
+			if( smoke != nullptr && refine_with_smoke )
+			{
+				P4EST_ASSERT( ghost_np1 != NULL || iter == 0 );
+				hierarchy_np1 = (iter > 0? new my_p4est_hierarchy_t( p4est_np1, ghost_np1, brick ) : hierarchy_n);
+				ngbd_n_np1 = (iter > 0? new my_p4est_node_neighbors_t( hierarchy_np1, nodes_np1 ) : ngbd_n);
+				advect_smoke( ngbd_n_np1, vtmp, smoke_np1 );
+				for( unsigned char dir = 0; dir < P4EST_DIM; ++dir )
+					if( vtmp[dir] != nullptr && vtmp[dir] != vnp1_nodes[dir] )
+					{
+						ierr = VecDestroy( vtmp[dir] );
+						CHKERRXX( ierr );
+					}
+				if( iter > 0 )
+				{
+					p4est_ghost_destroy( ghost_np1 );
+					delete hierarchy_np1;
+					delete ngbd_n_np1;
+				}
+			}
+			iterative_grid_update_converged = !criteria->refine_and_coarsen( p4est_np1, nodes_np1, phi_np1 );
+			grid_is_unchanged = grid_is_unchanged && iterative_grid_update_converged;
+			iter++;
+
+			if( iter > ((u_int) 2 + criteria->max_lvl - criteria->min_lvl)) // increase the rhs by one to account for the very first step that used to be out of the loop, [Raphael]
+			{
+				ierr = PetscPrintf( p4est_n->mpicomm, "ooops ... the grid update did not converge\n" );
+				CHKERRXX( ierr );
+				break;
+			}
+		}
+		if( vorticity_np1 != nullptr && vorticity_np1 != vorticity )
+		{
+			ierr = VecDestroy( vorticity_np1 );
+			CHKERRXX( ierr );
+		} // destroy it if created in the iterative process
+		if( norm_grad_u_np1 != nullptr && norm_grad_u_np1 != norm_grad_u )
+		{
+			ierr = VecDestroy( norm_grad_u_np1 );
+			CHKERRXX( ierr );
+		} // destroy it if created in the iterative process
+		// done refining using the specific grid-refinement criterion, reset the original data as user-pointer
+		p4est_np1->user_pointer = criteria;
+	}
+
+	int smoke_np1_is_still_valid = (smoke_np1 != nullptr && iterative_grid_update_converged? 1 : 0); // collectively the same at this stage: the vectors are still ok if the iterative procedure exited properly by grid_is_changing turning false;
+	if( !grid_is_unchanged )
+	{
+		/* Get the final forest at time np1: balance (2:1 neighbor cell sizes) the results of the iterative grid update
+		 * and repartition it.
+		 * If grid_is_unchanged is true, there is no need to do that, since the np1 forest is strictly the same
+		 * as the forest at time n in such a case (which is supposedly already balanced and partitioned)! */
+		p4est_gloidx_t num_global_quadrants_np1_before_balance_and_partition = p4est_np1->global_num_quadrants;
+		p4est_balance( p4est_np1, P4EST_CONNECT_FULL, nullptr );
+		my_p4est_partition( p4est_np1, P4EST_FALSE, nullptr );
+		if( smoke_np1_is_still_valid == 1 )
+		{
+			smoke_np1_is_still_valid = ((p4est_np1->global_num_quadrants == num_global_quadrants_np1_before_balance_and_partition)? 1 : 0);
+			int mpiret = MPI_Allreduce( MPI_IN_PLACE, &smoke_np1_is_still_valid, 1, MPI_INT, MPI_LAND, p4est_np1->mpicomm );
+			SC_CHECK_MPI( mpiret );
+			// the smoke_np1 vector is still ok if the balance step did not create new quadrants: we might need to rescatter it but it is still ok, no need to recalculate it...
+		}
+	}
+	else
+	{
+		P4EST_ASSERT( p4est_is_equal( p4est_n, p4est_np1, P4EST_FALSE ));
+		if( p4est_np1 != p4est_n )
+			p4est_destroy(
+				p4est_np1 );// no need to keep two identical forests in memory if they are exactly the same, just make p4est_nm1 and p4est_n point to the same one eventually and handle memory correspondingly...
+		p4est_np1 = p4est_n;
+	}
+
+	/* Get the ghost cells at time np1, */
+	p4est_ghost_t *ghost_np1 = nullptr;
+	if( !grid_is_unchanged )
+	{
+		ghost_np1 = my_p4est_ghost_new( p4est_np1, P4EST_CONNECT_FULL );
+		my_p4est_ghost_expand( p4est_np1, ghost_np1 );
+		int n_ghost_addtnl_expansions = get_cfl() > 1? ( int ) ceil( get_cfl() - 1 ) : ( int ) third_degree_ghost_are_required( convert_to_xyz );
+		for( int i = 0; i < n_ghost_addtnl_expansions; i++ )
+			my_p4est_ghost_expand( p4est_np1, ghost_np1 );
+	}
+	else
+		ghost_np1 = ghost_n;
+	if( !grid_is_unchanged )
+	{
+		p4est_nodes_destroy( nodes_np1 );
+		nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
+	}
+	else
+	{
+		P4EST_ASSERT( nodes_np1 == NULL || nodes_np1 == nodes_n );
+		nodes_np1 = nodes_n;
+	}
+	my_p4est_hierarchy_t *hierarchy_np1 = nullptr;
+	if( !grid_is_unchanged )
+		hierarchy_np1 = new my_p4est_hierarchy_t( p4est_np1, ghost_np1, brick );
+	else
+		hierarchy_np1 = hierarchy_n;
+	my_p4est_node_neighbors_t *ngbd_np1 = nullptr;
+	if( !grid_is_unchanged )
+		ngbd_np1 = new my_p4est_node_neighbors_t( hierarchy_np1, nodes_np1 );
+	else
+		ngbd_np1 = ngbd_n;
+	ngbd_np1->init_neighbors();
+
+	my_p4est_cell_neighbors_t *ngbd_c_np1 = nullptr;
+	if( !grid_is_unchanged )
+		ngbd_c_np1 = new my_p4est_cell_neighbors_t( hierarchy_np1 );
+	else
+		ngbd_c_np1 = ngbd_c;
+	my_p4est_faces_t *faces_np1 = nullptr;
+	if( !grid_is_unchanged )
+		faces_np1 = new my_p4est_faces_t( p4est_np1, ghost_np1, brick, ngbd_c_np1 );
+	else
+		faces_np1 = faces_n;
+
+	/* slide relevant fiels and grids in time: nm1 data are disregarded, n data becomes nm1 data and np1 data become n data...
+	 * In particular, if grid_is_unchanged is false, the np1 grid is different than grid at time n, we need to
+	 * re-construct its faces and cell-neighbors and the solvers we have used will need to be destroyed... */
+
+	// 1) scalar field phi, possible scenarii:
+	//    i)  if the grid is unchanged and phi_np1 is not defined yet (iterative grid update forcibly skipped) --> sample the given valid levelset if it is given, and/or simply set phi_np1 = phi
+	//    ii) if the grid is changed, the node interpolator input buffer needs to be reset anyways (for future interpolation) and phi_np1 is recreated as a side result (if previously evaluated
+	//        from a valid given levelset, this is a small overhead; if previously obtained from linear interpolation it is no longer valid anyways since non-oscillatory quadratic interpolation
+	//        is desired eventually)
+	// Reinitialization is performed only if desired and if either the grid has changed or if a valid given levelset function has been given!
+	bool phi_may_have_changed = true;
+	if( grid_is_unchanged )
+	{
+		P4EST_ASSERT( ghosts_are_equal( ghost_n, ghost_np1 ));
+		P4EST_ASSERT( nodes_are_equal( p4est_n->mpisize, nodes_n, nodes_np1 ));
+		P4EST_ASSERT( phi != NULL );
+		P4EST_ASSERT((phi_np1 == NULL && keep_grid_as_such) || (!keep_grid_as_such && ((phi_np1 == phi && level_set == NULL) ||
+																					   (phi_np1 != phi && phi_np1 != NULL &&
+																						level_set != NULL))));
+		if( phi_np1 == nullptr ) // in this case, the grid is forcibly kept as such
+		{
+			if( level_set != nullptr ) // if keep_grid_as_such is true but a valid CF_ levelset is given, sample it on phi (which exists and is of appropriate size)...
+				sample_cf_on_nodes( p4est_np1, nodes_np1, *level_set, phi );
+			else
+				phi_may_have_changed = false; // in this case (ONLY), no change at all in phi, for sure
+			// set phi_np1 == phi, to enable reinitialization thereafter if desired
+			phi_np1 = phi;
+		}
+	}
+	else
+	{
+		P4EST_ASSERT( phi_np1 != NULL && phi_np1 != phi );
+		ierr = VecDestroy( phi_np1 );
+		CHKERRXX( ierr ); // even if it existed, it is no longer valid, since non-oscillatory interpolation is desired on the final np1 grid
+		// build the new phi, either by direct evaluation if levelset is given
+		// or by non-oscillatory interpolation from current state if not.
+		ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &phi_np1 );
+		CHKERRXX( ierr );
+		if( level_set != nullptr )
+		{
+			ierr = VecGetArray( phi_np1, &phi_np1_p );
+			CHKERRXX( ierr );
+		}
+		for( p4est_locidx_t n = 0; n < nodes_np1->indep_nodes.elem_count; ++n )
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( n, p4est_np1, nodes_np1, xyz );
+			interp_nodes.add_point( n, xyz );
+			if( level_set != nullptr )
+				phi_np1_p[n] = (*level_set)( xyz );
+		}
+		if( level_set != nullptr )
+		{
+			ierr = VecRestoreArray( phi_np1, &phi_np1_p );
+			CHKERRXX( ierr );
+		}
+		else
+		{
+			interp_nodes.set_input( phi, quadratic_non_oscillatory );
+			interp_nodes.interpolate( phi_np1 );
+		}
+	}
+
+	// we also recalculate the gradient of phi if needed
+	Vec grad_phi_np1 = grad_phi; // if phi is unchanged, so is grad_phi
+	if( phi_may_have_changed )
+	{
+		// if not, build and calculate the new one:
+		ierr = VecCreateGhostNodesBlock( p4est_np1, nodes_np1, P4EST_DIM, &grad_phi_np1 );
+		CHKERRXX( ierr );
+		ngbd_np1->first_derivatives_central( phi_np1, grad_phi_np1 );
+	}
+	my_p4est_interpolation_nodes_t *interp_phi_np1 = (ngbd_n != ngbd_np1? new my_p4est_interpolation_nodes_t( ngbd_np1 ) : interp_phi);
+	my_p4est_interpolation_nodes_t *interp_grad_phi_np1 = (ngbd_n != ngbd_np1? new my_p4est_interpolation_nodes_t( ngbd_np1 )
+																			 : interp_grad_phi);
+	interp_phi_np1->set_input( phi_np1, linear );
+	interp_grad_phi_np1->set_input( grad_phi_np1, linear, P4EST_DIM );
+
+	// 2) scalar field vorticity: reset it to the appropriate size if the grid has changed, nothing to do otherwise
+	if( !grid_is_unchanged )
+	{
+		ierr = VecDestroy( vorticity );
+		CHKERRXX( ierr );
+		ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &vorticity );
+		CHKERRXX( ierr );
+		if( norm_grad_u != nullptr )
+		{
+			ierr = VecDestroy( norm_grad_u );
+			CHKERRXX( ierr );
+			ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &norm_grad_u );
+			CHKERRXX( ierr );
+		}
+	}
+	// 3) velocity fields at the nodes (and their second derivatives)
+	for( u_char dir = 0; dir < P4EST_DIM; ++dir )
+	{
+		ierr = VecDestroy( vnm1_nodes[dir] );
+		CHKERRXX( ierr );
+		vnm1_nodes[dir] = vn_nodes[dir]; // At this point, both vnm1_nodes and vn_nodes point to the same object
+		if( !grid_is_unchanged )
+		{
+			ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &vn_nodes[dir] );
+			CHKERRXX( ierr );
+		} // At this point, we now create a new object, which vn_nodes points to now.
+		else
+			vn_nodes[dir] = vnp1_nodes[dir];
+		for( unsigned char dd = 0; dd < P4EST_DIM; ++dd )
+		{
+			ierr = VecDestroy( second_derivatives_vnm1_nodes[dd][dir] );
+			CHKERRXX( ierr );
+			second_derivatives_vnm1_nodes[dd][dir] = second_derivatives_vn_nodes[dd][dir];
+			ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &second_derivatives_vn_nodes[dd][dir] );
+			CHKERRXX( ierr );
+		}
+	}
+	if( !grid_is_unchanged )
+	{
+		interp_nodes.set_input( vnp1_nodes, interp_v_update, P4EST_DIM );
+		interp_nodes.interpolate( vn_nodes );
+		CHKERRXX( ierr );
+	}
+	for( auto& vnp1_dir : vnp1_nodes )
+	{
+		if( !grid_is_unchanged )
+		{
+			ierr = VecDestroy( vnp1_dir );
+			CHKERRXX( ierr );
+		}
+		ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &vnp1_dir );
+		CHKERRXX( ierr );
+	}
+	ngbd_np1->second_derivatives_central( vn_nodes, DIM( second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1],
+														 second_derivatives_vn_nodes[2] ), P4EST_DIM );
+	if( !grid_is_unchanged )
+		interp_nodes.clear();
+
+	// [Raphael]: the following was already commented in the original version. If uncommented, I think it should be called here...
+	/* set velocity inside solid to bc_v */
+	//  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
+
+	// 4) scalar field smoke (if needed)
+	if( smoke != nullptr )
+	{
+		// if smoke_np1 already exists but is no longer useful, destroy it...
+		if( smoke_np1 != nullptr && !smoke_np1_is_still_valid )
+		{
+			ierr = VecDestroy( smoke_np1 );
+			CHKERRXX( ierr );
+			smoke_np1 = nullptr;
+		}
+		if( smoke_np1 == nullptr ) // calculate it if not already done or if needs to be redone...
+		{
+			ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &smoke_np1 );
+			CHKERRXX( ierr );
+			advect_smoke( ngbd_np1, vn_nodes, smoke_np1 ); // lighter call if the neighborhood is already known...
+			ierr = VecDestroy( smoke );
+			CHKERRXX( ierr ); // you can now destroy this one (after it has been advected)
+			smoke = smoke_np1;
+		}
+		else // smoke_np1 already exists and is valid
+		{
+			ierr = VecDestroy( smoke );
+			CHKERRXX( ierr );
+			if( grid_is_unchanged ) // it is good as such if grid is unchanged (since nodes_np1 == nodes_n)
+				smoke = smoke_np1;
+			else // just needs to be re-scattered in this case, do not recalculate all the advection equations...
+			{
+				ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &smoke );
+				CHKERRXX( ierr );
+				VecScatter ctx;
+				ierr = VecScatterCreateChangeLayout( p4est_np1->mpicomm, smoke_np1, smoke, &ctx );
+				CHKERRXX( ierr );
+				ierr = VecGhostChangeLayoutBegin( ctx, smoke_np1, smoke );
+				CHKERRXX( ierr );
+				ierr = VecGhostChangeLayoutEnd( ctx, smoke_np1, smoke );
+				CHKERRXX( ierr );
+				ierr = VecScatterDestroy( ctx );
+				CHKERRXX( ierr );
+				ierr = VecDestroy( smoke_np1 );
+				CHKERRXX( ierr );
+				smoke_np1 = nullptr;
+			}
+		}
+	}
+
+	// 5) cell-centered hodge variable, face-centered dxyz_hodge and face-centered face_is_well_defined vectors
+	// if the grid is changed, the first two variables are interpolated (cells to cells and faces to faces) and the
+	// face_is_well_defined vectors are recalculated and reset.
+	// If the grid is unchanged, hodge and dxyz_hodge are good as such, no need to recalculate them. However, the
+	// face_is_well_defined vectors need to be recalculated if the levelset has been reset...
+	if( !grid_is_unchanged ) // if the grid has changed, we need to re-interpolate cell and face data to new cells and new faces
+	{
+		/* interpolate the Hodge variable on the new forest (for good initial guess for next projection step)
+		 * build a new cell-centered pressure vector for calculating the next pressure field */
+		my_p4est_interpolation_cells_t interp_cell( ngbd_c, ngbd_n );
+		for( p4est_topidx_t tree_idx = p4est_np1->first_local_tree; tree_idx <= p4est_np1->last_local_tree; ++tree_idx )
+		{
+			p4est_tree_t *tree = p4est_tree_array_index( p4est_np1->trees, tree_idx );
+			for( p4est_locidx_t q = 0; q < tree->quadrants.elem_count; ++q )
+			{
+				p4est_locidx_t quad_idx = tree->quadrants_offset + q;
+				double xyz_c[P4EST_DIM];
+				quad_xyz_fr_q( quad_idx, tree_idx, p4est_np1, ghost_np1, xyz_c );
+				interp_cell.add_point( quad_idx, xyz_c );
+			}
+		}
+		interp_cell.set_input( hodge, phi, &bc_hodge );
+		Vec hodge_tmp;
+		ierr = VecCreateGhostCells( p4est_np1, ghost_np1, &hodge_tmp );
+		CHKERRXX( ierr );
+		interp_cell.interpolate( hodge_tmp );
+		interp_cell.clear();
+		ierr = VecDestroy( hodge );
+		CHKERRXX( ierr );
+		hodge = hodge_tmp;
+		ierr = VecGhostUpdateBegin( hodge, INSERT_VALUES, SCATTER_FORWARD );
+		CHKERRXX( ierr );
+		// create a new pressure vector...
+		ierr = VecDestroy( pressure );
+		CHKERRXX( ierr );
+		ierr = VecCreateGhostCells( p4est_np1, ghost_np1, &pressure );
+		CHKERRXX( ierr );
+
+		/* interpolate the gradient of the Hodge variable on the new forest
+		 * The (Dirichlet) velocity boundary conditions depend on the components of the gradient of Hodge, so they are
+		 * required to condition the solver for the next step...
+		 * [Raphael's note:] it might be better and more efficient to recalculate them from the interpolated Hodge here
+		 * above for better consistent conditioning of the iterative solver (since this is how the solver itself defines
+		 * its components within a solve step) --> ask Frederic's opinion! */
+		my_p4est_interpolation_faces_t interp_faces( ngbd_n, faces_n );
+
+		for( unsigned char dir = 0; dir < P4EST_DIM; ++dir )
+		{
+			Vec dxyz_hodge_tmp;
+			ierr = VecCreateGhostFaces( p4est_np1, faces_np1, &dxyz_hodge_tmp, dir );
+			CHKERRXX( ierr );
+			for( p4est_locidx_t f_idx = 0; f_idx < faces_np1->num_local[dir]; ++f_idx )
+			{
+				double xyz[P4EST_DIM];
+				faces_np1->xyz_fr_f( f_idx, dir, xyz );
+				interp_faces.add_point( f_idx, xyz );
+			}
+			interp_faces.set_input( dxyz_hodge[dir], dir, 1, face_is_well_defined[dir] );
+			interp_faces.interpolate( dxyz_hodge_tmp );
+			interp_faces.clear();
+
+			ierr = VecDestroy( dxyz_hodge[dir] );
+			CHKERRXX( ierr );
+			dxyz_hodge[dir] = dxyz_hodge_tmp;
+
+			ierr = VecGhostUpdateBegin( dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD );
+			CHKERRXX( ierr );
+
+			ierr = VecDestroy( face_is_well_defined[dir] );
+			CHKERRXX( ierr );
+			ierr = VecCreateGhostFaces( p4est_np1, faces_np1, &face_is_well_defined[dir], dir );
+			CHKERRXX( ierr );
+			check_if_faces_are_well_defined( faces_np1, dir, *interp_phi_np1, bc_v[dir], face_is_well_defined[dir] );
+
+			ierr = VecDestroy( vstar[dir] );
+			CHKERRXX( ierr );
+			ierr = VecCreateGhostFaces( p4est_np1, faces_np1, &vstar[dir], dir );
+			CHKERRXX( ierr );
+
+			ierr = VecDestroy( vnp1[dir] );
+			CHKERRXX( ierr );
+			ierr = VecCreateGhostFaces( p4est_np1, faces_np1, &vnp1[dir], dir );
+			CHKERRXX( ierr );
+		}
+		// finish communicating ghost values for hodge and dxyz_hodge
+		ierr = VecGhostUpdateEnd( hodge, INSERT_VALUES, SCATTER_FORWARD );
+		CHKERRXX( ierr );
+		for( auto& dir : dxyz_hodge )
+		{
+			ierr = VecGhostUpdateEnd( dir, INSERT_VALUES, SCATTER_FORWARD );
+			CHKERRXX( ierr );
+		}
+	}
+	else if( level_set != nullptr )
+	{
+		// the grid is unchanged but the levelset might have changed, hence possibly affecting the face_is_well_defined vectors --> the solvers cannot be reused safely
+		for( unsigned char dir = 0; dir < P4EST_DIM; ++dir )
+			check_if_faces_are_well_defined( faces_np1, dir, *interp_phi_np1, bc_v[dir], face_is_well_defined[dir] );
+	}
+
+	/* update the variables */
+	if( p4est_nm1 != p4est_n )
+		p4est_destroy( p4est_nm1 );
+	p4est_nm1 = p4est_n;
+	p4est_n = p4est_np1;
+	if( ghost_nm1 != ghost_n )
+		p4est_ghost_destroy( ghost_nm1 );
+	ghost_nm1 = ghost_n;
+	ghost_n = ghost_np1;
+	if( nodes_nm1 != nodes_n )
+		p4est_nodes_destroy( nodes_nm1 );
+	nodes_nm1 = nodes_n;
+	nodes_n = nodes_np1;
+	if( hierarchy_nm1 != hierarchy_n )
+		delete hierarchy_nm1;
+	hierarchy_nm1 = hierarchy_n;
+	hierarchy_n = hierarchy_np1;
+	if( ngbd_nm1 != ngbd_n )
+		delete ngbd_nm1;
+	ngbd_nm1 = ngbd_n;
+	ngbd_n = ngbd_np1;
+	if( ngbd_c != ngbd_c_np1 )
+		delete ngbd_c;
+	ngbd_c = ngbd_c_np1;
+	if( faces_n != faces_np1 )
+		delete faces_n;
+	faces_n = faces_np1;
+	// we can finally slide phi, grad phi and reset the interpolators...
+	if( phi != phi_np1 )
+	{
+		ierr = VecDestroy( phi );
+		CHKERRXX( ierr );
+	}
+	phi = phi_np1;
+	if( grad_phi != grad_phi_np1 )
+	{
+		ierr = VecDestroy( grad_phi );
+		CHKERRXX( ierr );
+	}
+	grad_phi = grad_phi_np1;
+	// reset the phi-interpolator tools
+	if( interp_phi != interp_phi_np1 )
+		delete interp_phi;
+	interp_phi = interp_phi_np1;
+	if( interp_grad_phi != interp_grad_phi_np1 )
+		delete interp_grad_phi;
+	interp_grad_phi = interp_grad_phi_np1;
+
+
+	semi_lagrangian_backtrace_is_done = false;
+	interpolators_from_face_to_nodes_are_set = interpolators_from_face_to_nodes_are_set && grid_is_unchanged;
+	ierr = PetscLogEventEnd( log_my_p4est_navier_stokes_update, 0, 0, 0, 0 );
+	CHKERRXX( ierr );
+	if( ns_time_step_analyzer.is_on())
+		ns_time_step_analyzer.stop();
+}
+
 // ELYCE TRYING SOMETHING:
 void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1, Vec phi_n,
                                                                     p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1,
@@ -3526,7 +4163,7 @@ double my_p4est_navier_stokes_t::compute_velocity_at_local_node(const p4est_loci
   }
 }
 
-void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_DIM *level_set, bool do_reinitialization)
+void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_DIM *level_set, bool do_reinitialization, const bool& from_shs)
 {
   double dt_nm1_saved             = dt_nm1;
   double dt_n_saved               = dt_n;
@@ -3556,7 +4193,10 @@ void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_DIM *l
   }
   compute_vorticity();
 
-  update_from_tn_to_tnp1(level_set, false, do_reinitialization);
+  if( from_shs )
+	update_from_tn_to_tnp1_for_shs_restart(level_set);	// This will recreate the grid with custom splitting criterion instead of coarsining/refining the old one.
+  else
+    update_from_tn_to_tnp1(level_set, false, do_reinitialization);
 
   const p4est_topidx_t* t2v = conn->tree_to_vertex;
   const double* v2c = conn->vertices;
