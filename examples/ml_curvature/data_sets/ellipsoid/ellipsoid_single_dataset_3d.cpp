@@ -27,7 +27,7 @@
  *
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: May 31, 2022.
+ * Updated: June 7, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -54,15 +54,15 @@ int main ( int argc, char* argv[] )
 	param_list_t pl;
 	param_t<double> nonSaddleMinIH2KG( pl, -7e-6, "nonSaddleMinIH2KG", "Min numerical dimensionless Gaussian curvature (at Gamma) for "
 																	   "numerical non-saddle samples (default: -7e-6)" );
-	param_t<u_short>     experimentId( pl,     1, "experimentId"	 , "Experiment Id (default: 0)" );
-	param_t<bool>   useExactSignedLSF( pl,  false, "useExactSignedLSF", "Whether to use an exact signed level-set function to populate the "
+	param_t<u_short>     experimentId( pl,     0, "experimentId"	 , "Experiment Id (default: 0)" );
+	param_t<bool>   useExactSignedLSF( pl,  true, "useExactSignedLSF", "Whether to use an exact signed level-set function to populate the "
 																	   "nodal phi vector (default: true" );
 	param_t<u_short>            maxRL( pl,     6, "maxRL"			 , "Maximum level of refinement per unit-cube octree (default: 6)" );
 	param_t<u_short>      reinitIters( pl,    10, "reinitIters"		 , "Number of iterations for reinitialization (default: 10)" );
 	param_t<double>             maxHK( pl,  2./3, "maxHK"			 , "Expected maximum dimensionless mean curvature (default: 2/3)" );
-	param_t<double>                 a( pl,  1.65, "a"				 , "Ellipsoid's x-semiaxis (default: 4)" );
-	param_t<double>                 b( pl,  0.75, "b"				 , "Ellipsoid's y-semiaxis (default: 2.5)" );
-	param_t<double>                 c( pl,   0.2, "c"				 , "Ellipsoid's z-semiaxis (default: 0.25)" );
+	param_t<double>                 a( pl,  1.65, "a"				 , "Ellipsoid's x-semiaxis (default: 1.65)" );
+	param_t<double>                 b( pl,  0.75, "b"				 , "Ellipsoid's y-semiaxis (default: 0.75)" );
+	param_t<double>                 c( pl,   0.2, "c"				 , "Ellipsoid's z-semiaxis (default: 0.2)" );
 	param_t<bool>       perturbCenter( pl,  true, "perturbCenter"	 , "Whether to perturb the ellipsoid's center randomly in [-h/2,+h/2]^3"
 															   		   " (default: true)" );
 	param_t<bool>      randomRotation( pl,  true, "randomRotation"	 , "Whether to apply a rotation with a random angle about a random unit"
@@ -71,7 +71,7 @@ int main ( int argc, char* argv[] )
 	param_t<std::string>       outDir( pl,   ".", "outDir"			 , "Path where data files will be written to (default: build folder)" );
 	param_t<bool>      useNegCurvNorm( pl,  true, "useNegCurvNorm"	 , "Whether we want to apply negative-mean-curvature normalization for "
 															   		   "numerical non-saddle samples (default: true)" );
-	param_t<double>       randomNoise( pl,  0, "randomNoise"		 , "How much random noise to add to phi(x) as [+/-]h*randomNoise.  Use "
+	param_t<double>       randomNoise( pl,  1e-4, "randomNoise"		 , "How much random noise to add to phi(x) as [+/-]h*randomNoise.  Use "
 																	   "a negative value or 0 to disable this feature (default: 1e-4)" );
 
 	try
