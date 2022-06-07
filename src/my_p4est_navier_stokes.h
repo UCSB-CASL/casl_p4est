@@ -747,6 +747,8 @@ public:
 
   bool update_from_tn_to_tnp1(const CF_DIM *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 
+  void update_from_tn_to_tnp1_for_shs_restart(const CF_DIM *level_set=NULL);
+
   /*!
    * \brief update_from_tn_to_tnp1_grid_external
    * This function performs the sliding of all necessary fields internal to the navier_stokes solver from the grid at time n to a user-provided grid and level-set function at time np1.
@@ -835,9 +837,10 @@ public:
    * loaded from disk.
    * \param level_set           [in] : levelset function
    * \param do_reinitialization [in] : requires reinitialization for the node-sampled levelset function values, if true (default is true)
+   * \param from_shs			[in] : set it to true if you want use the splitting criteria from the banded shs channel; false otherwise.
    * Raphael EGAN
    */
-  void refine_coarsen_grid_after_restart(const CF_DIM *level_set, bool do_reinitialization = true);
+  void refine_coarsen_grid_after_restart(const CF_DIM *level_set, bool do_reinitialization = true, const bool& from_shs=false );
 
   /*!
    * \brief memory_estimate: self-explanatory

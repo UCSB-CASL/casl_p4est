@@ -4,7 +4,7 @@
  * run the program with the -help flag to see the available options
  *
  * Author: Raphael Egan, with updates by Luis Ángel.
- * Updated: May 22, 2022.
+ * Updated: June 7, 2022.
  */
 
 // System
@@ -1128,8 +1128,11 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   ns->set_bc(channel.get_bc_on_velocity(), channel.get_bc_on_pressure());
   CF_DIM* tmp[P4EST_DIM] = {DIM(external_acceleration[0], external_acceleration[1], external_acceleration[2])};
   ns->set_external_forces_per_unit_mass(tmp);
-  if (fix_restarted_grid)
-    ns->refine_coarsen_grid_after_restart(&channel, false);
+  if( fix_restarted_grid )
+  {
+	ns->refine_coarsen_grid_after_restart( &channel, false, true );
+	CHKERRXX( PetscPrintf( ns->get_mpicomm(), "Applied refine/coarsening to adapt to new grid configuration." ) );
+  }
 
   // Bug! The following two functions make use of setup.tn, but tn is not yet initialized!  I'll assign temporarily tstart to tn just in case.
   double tmp1 = setup.tn; setup.tn = setup.tstart;
@@ -1237,7 +1240,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
     const double desired_u_tau  = 1.0;
     const double viscosity      = mass_density*desired_u_tau*channel.delta()/setup.Reynolds;
     external_acceleration[dir::x]->set_value(channel.acceleration_for_canonical_u_tau(desired_u_tau));
-    ns->set_parameters(viscosity, mass_density, cmd.get<int>("sl_order", default_sl_order), data->uniform_band, cmd.get<double>("thresh", default_thresh), cmd.get<double>("cfl", default_cfl));
+    ns->set_parameters(viscosity, mass_density, cmd.get<int>("sl_order", default_sl_order), data->uniformBand(), cmd.get<double>("thresh", default_thresh), cmd.get<double>("cfl", default_cfl));
     P4EST_ASSERT(fabs(channel.canonical_Re_tau(external_acceleration[0]->get_value(), ns->get_nu()) - setup.Reynolds) < setup.Reynolds*10.0*EPS);
   }
   else
@@ -1246,7 +1249,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
     controller->activate_forcing(desired_U_b);
     external_acceleration[dir::x]->set_value(channel.acceleration_for_constant_mass_flow(desired_U_b, setup.Reynolds, setup.nterms_in_series));
     const double viscosity      = mass_density*desired_U_b*channel.delta()/setup.Reynolds;
-    ns->set_parameters(viscosity, mass_density, cmd.get<int>("sl_order", default_sl_order), data->uniform_band, cmd.get<double>("thresh", default_thresh), cmd.get<double>("cfl", default_cfl));
+    ns->set_parameters(viscosity, mass_density, cmd.get<int>("sl_order", default_sl_order), data->uniformBand(), cmd.get<double>("thresh", default_thresh), cmd.get<double>("cfl", default_cfl));
     P4EST_ASSERT(fabs(channel.Re_b(ns->get_rho()*MULTD(controller->targeted_bulk_velocity(), channel.height(), channel.width()), ns->get_rho(), ns->get_nu()) - setup.Reynolds) < setup.Reynolds*10.0*EPS);
   }
 
