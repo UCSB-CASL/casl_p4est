@@ -1,3 +1,8 @@
 {
-    "C_Cpp.default.configurationProvider": "go2sh.cmake-integration"
+    "C_Cpp.default.configurationProvider": "go2sh.cmake-integration",
+    "files.associations": {
+        "stdexcept": "cpp"
+    },
+    "editor.fontSize": 14,
+    "cmake.sourceDirectory": "${workspaceFolder}/examples/multialloy_with_fluids"
 }

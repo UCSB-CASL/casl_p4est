@@ -17,6 +17,7 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_poisson_nodes_multialloy.h>
+#include <src/my_p4est_stefan_with_fluids.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_macros.h>
 #endif
@@ -29,6 +30,7 @@ class my_p4est_multialloy_t
 {
 private:
   PetscErrorCode ierr;
+  mpi_environment_t* mpi_;
 
   //--------------------------------------------------
   // Main grid
@@ -42,6 +44,15 @@ private:
   my_p4est_node_neighbors_t   *ngbd_;
 
   splitting_criteria_t *sp_crit_;
+
+  //--------------------------------------------------
+  // nm1 grid (used for backtraced values when solving w fluids)
+  //--------------------------------------------------
+  p4est_t                     *p4est_nm1;
+  p4est_ghost_t               *ghost_nm1;
+  p4est_nodes_t               *nodes_nm1;
+  my_p4est_hierarchy_t        *hierarchy_nm1;
+  my_p4est_node_neighbors_t   *ngbd_nm1;
 
   //--------------------------------------------------
   // Auxiliary grid that does not coarsen to keep track of quantities inside the solid
@@ -59,6 +70,11 @@ private:
   double dxyz_max_, dxyz_min_;
   double dxyz_close_interface_;
   double diag_;
+
+  //--------------------------------------------------
+  // Stefan with fluids solver (used when we are solving coupled case)
+  //--------------------------------------------------
+  my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver;
 
   //--------------------------------------------------
   // Geometry
@@ -80,13 +96,37 @@ private:
   vector<vec_and_ptr_t> tl_;
   vector<vec_and_ptr_t> ts_;
 
+  // backtraced temperatures:
+  vec_and_ptr_t tl_backtrace_n;
+  vec_and_ptr_t tl_backtrace_nm1;
+
   /* concentrations */
   vector<vec_and_ptr_array_t> cl_;
   vec_and_ptr_dim_t           cl0_grad_;
 
+  // backtraced concentrations:
+  vec_and_ptr_array_t cl_backtrace_n;
+  vec_and_ptr_array_t cl_backtrace_nm1;
+
   /* velocity */
   vector<vec_and_ptr_dim_t> front_velo_;
   vector<vec_and_ptr_t>     front_velo_norm_;
+
+  //--------------------------------------------------
+  // Navier-Stokes fields 
+  //--------------------------------------------------
+  vec_and_ptr_dim_t v_n;
+  vec_and_ptr_dim_t v_nm1;
+  vec_and_ptr_t vorticity;
+  vec_and_ptr_t press_nodes;
+
+  // Never actually use below, we will just get them from stefan_W_fluids after it 
+  // initializes its fluid solver component
+  my_p4est_cell_neighbors_t* ngbd_c_;
+  my_p4est_faces_t* faces_;
+
+  my_p4est_navier_stokes_t* ns;
+
 
   //--------------------------------------------------
   // Lagrangian Multipliers (for speeding up)
@@ -141,16 +181,24 @@ private:
   // boundary conditions at container
   BoundaryConditionType contr_bc_type_temp_;
   BoundaryConditionType contr_bc_type_conc_;
+  BoundaryConditionType contr_bc_type_vel_;
+  BoundaryConditionType contr_bc_type_pres_;
 
   CF_DIM           *contr_bc_value_temp_;
   vector<CF_DIM *>  contr_bc_value_conc_;
+  CF_DIM           *contr_bc_value_pres_;
+  CF_DIM           *contr_bc_value_vel_[P4EST_DIM];
 
   // boundary condtions at walls
   BoundaryConditionType wall_bc_type_temp_;
   BoundaryConditionType wall_bc_type_conc_;
+  BoundaryConditionType wall_bc_type_vel_;
+  BoundaryConditionType wall_bc_type_pres_;
 
   CF_DIM           *wall_bc_value_temp_;
   vector<CF_DIM *>  wall_bc_value_conc_;
+  CF_DIM           *wall_bc_value_pres_;
+  CF_DIM           *wall_bc_value_vel_[P4EST_DIM];
 
   // simulation scale
   double scaling_;
@@ -171,6 +219,8 @@ private:
   bool enforce_planar_front_;
 
   interpolation_method interpolation_between_grids_;
+
+  bool solve_with_fluids; // To set if we are solving the coupled problem
 
   //--------------------------------------------------
   // Dendrite counting and profiling
@@ -237,12 +287,23 @@ private:
   }
 
 
+  // To-do w/fluids: actually write this:
+  void prepare_refinement_fields();
+
+
+
+
 public:
   my_p4est_multialloy_t(int num_comps, int time_order);
   ~my_p4est_multialloy_t();
 
   void initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip, double band);
 
+  inline void set_mpi_env(mpi_environment_t* mpi_in){
+    mpi_ = mpi_in;
+  }
+
+  void initialize_for_fluids();
   inline void set_scaling(double value) { scaling_ = value; }
   inline void set_composition_parameters(double solute_diff[])
   {
@@ -311,6 +372,61 @@ public:
     }
   }
 
+  inline void set_container_conditions_velocity(BoundaryConditionType bc_type, CF_DIM* bc_value[P4EST_DIM])
+  {
+    contr_bc_type_vel_ =  bc_type;
+    foreach_dimension(d){
+      contr_bc_value_vel_[d] = bc_value[d];
+
+    }
+  }
+
+  inline void set_container_conditions_pressure(BoundaryConditionType bc_type, CF_DIM &bc_value)
+  {
+    contr_bc_type_pres_ =  bc_type;
+    contr_bc_value_pres_ = &bc_value; 
+  }
+
+  inline void set_wall_conditions_velocity(BoundaryConditionType bc_type, CF_DIM* bc_value[P4EST_DIM])
+  {
+    wall_bc_type_vel_ =  bc_type;
+    foreach_dimension(d){
+      wall_bc_value_vel_[d] = bc_value[d];
+
+    }
+  }
+
+  inline void set_wall_conditions_pressure(BoundaryConditionType bc_type, CF_DIM &bc_value)
+  {
+    wall_bc_type_pres_ =  bc_type;
+    wall_bc_value_pres_ = &bc_value;
+  }
+
+
+  // set fluid velocity interface bc
+
+  my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t* bc_interface_val_fluid_vel[P4EST_DIM];
+  BoundaryConditionType bc_interface_type_fluid_vel;
+
+  CF_DIM *bc_interface_val_fluid_press;
+  BoundaryConditionType bc_interface_type_fluid_press;
+
+  void set_bc_interface_conditions_velocity(BoundaryConditionType bc_type, my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t* bc_interface_value_velocity_[P4EST_DIM]){
+
+    bc_interface_type_fluid_vel = bc_type;
+    foreach_dimension(d){
+      bc_interface_val_fluid_vel[d] = bc_interface_value_velocity_[d];
+    }
+  }
+
+
+  void set_bc_interface_conditions_pressure(BoundaryConditionType bc_type, CF_DIM& bc_value){
+
+    bc_interface_type_fluid_press = bc_type;
+    bc_interface_val_fluid_press = &bc_value;
+
+  }
+
   inline void set_wall_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
     wall_bc_type_temp_  =  bc_type;
@@ -324,6 +440,18 @@ public:
     {
       wall_bc_value_conc_[i] = bc_value[i];
     }
+  }
+
+  inline void set_wall_conditions_velocity(BoundaryConditionType bc_type, CF_DIM &bc_value)
+  {
+    wall_bc_type_vel_  =  bc_type;
+    wall_bc_value_vel_ = &bc_value;
+  }
+
+  inline void set_wall_conditions_pressure(BoundaryConditionType bc_type, CF_DIM &bc_value)
+  {
+    wall_bc_type_pres_  =  bc_type;
+    wall_bc_value_pres_ = &bc_value;
   }
 
   void set_front(Vec phi);
@@ -482,7 +610,9 @@ public:
 
   inline double get_dt() { return dt_[0]; }
   inline double get_front_velocity_max() { return front_velo_norm_max_; }
-
+  my_p4est_stefan_with_fluids_t* get_stefan_w_fluids_solver(){
+    return stefan_w_fluids_solver;
+  }
 //  inline double get_max_interface_velocity() { return vgamma_max_; }
 
   inline void set_dt_all(double dt)
@@ -526,6 +656,7 @@ public:
   void update_grid_eno();
   void update_grid_solid();
   int  one_step(int it_scheme=2, double *bc_error_max=NULL, double *bc_error_avg=NULL, std::vector<int> *num_pdes=NULL, std::vector<double> *bc_error_max_all=NULL, std::vector<double> *bc_error_avg_all=NULL);
+  int  one_step_w_fluids(int it_scheme, double *bc_error_max, double *bc_error_avg, std::vector<int> *num_pdes, std::vector<double> *bc_error_max_all, std::vector<double> *bc_error_avg_all);
   void save_VTK(int iter);
   void save_VTK_solid(int iter);
   void save_p4est(int iter);

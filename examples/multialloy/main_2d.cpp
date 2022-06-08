@@ -226,6 +226,7 @@ param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooli
 
 param_t<BoundaryConditionType> bc_type_conc (pl, NEUMANN, "bc_type_conc", "DIRICHLET/NEUMANN");
 param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRICHLET/NEUMANN");
+param_t<BoundaryConditionType> bc_wall_type_vel  (pl, NEUMANN, "bc_wall_type_vel", "DIRICHLET/NEUMANN");
 //param_t<BoundaryConditionType> bc_type_temp (pl, DIRICHLET, "bc_type_temp", "DIRICHLET/NEUMANN");
 
 param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
@@ -1927,6 +1928,11 @@ int main (int argc, char* argv[])
   mas.set_temperature(tl_cf, ts_cf, tf_cf);
   mas.set_concentration(cl_cf_all, cs_cf_all);
   mas.set_ft(ft_cf);
+
+  // Give the bc object back to the solver:
+
+
+
 
   // set solver parameters
   mas.set_bc_tolerance             (bc_tolerance.val);
