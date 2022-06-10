@@ -54,7 +54,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: May 27, 2022.
+ * Updated: June 9, 2022.
  */
 namespace kml
 {
@@ -623,9 +623,11 @@ namespace kml
 		 * @param [in] loMinHK Lower bound for dimensionless mean curvature for non-saddle samples.
 		 * @param [in] upMinHK Upper bound for blending numerical with neurally corrected estimation for non-saddle samples.
 		 * @param [in] nonSaddleMinIH2KG Minimum ih2kg value to consider a sample from a non-saddle region.
+		 * @param [in] bypassHRequirement If true, we don't enforce that h be equal to nnets' h.
+		 * @throws invalid_argument error if h or the blending range is invalid.
 		 */
 		Curvature( const NeuralNetwork *nnetNS, const NeuralNetwork *nnetSD, const double& h, const double& loMinHK=0.004,
-				   const double& upMinHK=0.007, const double& nonSaddleMinIH2KG=-7e-6 );
+				   const double& upMinHK=0.007, const double& nonSaddleMinIH2KG=-7e-6, const bool& bypassHRequirement=false );
 #endif
 
 		/**

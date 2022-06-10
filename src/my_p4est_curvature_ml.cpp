@@ -959,15 +959,18 @@ kml::Curvature::Curvature( const NeuralNetwork *nnet, const double& h, const dou
 }
 #else
 kml::Curvature::Curvature( const NeuralNetwork *nnetNS, const NeuralNetwork *nnetSD, const double& h, const double& loMinHK,
-						   const double& upMinHK, const double& nonSaddleMinIH2KG )
+						   const double& upMinHK, const double& nonSaddleMinIH2KG, const bool& bypassHRequirement )
 						   : _h( h ), LO_MIN_HK( loMinHK ), UP_MIN_HK( upMinHK ), _nonSaddleMinIH2KG( nonSaddleMinIH2KG ),
 						   _nnet( nnetNS ), _nnet_sd( nnetSD )
 {
-	if( ABS( _h - _nnet->getH() ) > EPS || ABS( _h - _nnet_sd->getH() ) > EPS )
-		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::Constructor: Neural networks and current spacing are incompatible!" );
+	if( _h <= 0 || _h >= 1 )
+		throw std::invalid_argument( "[CASL_ERROR] kml::Curvature::Constructor: Invalid mesh size! Should be in the range of (0, 1)." );
+
+	if( !bypassHRequirement && (ABS( _h - _nnet->getH() ) > EPS || ABS( _h - _nnet_sd->getH() ) > EPS) )
+		throw std::invalid_argument( "[CASL_ERROR] kml::Curvature::Constructor: Neural networks and current spacing are incompatible!" );
 
 	if( loMinHK >= upMinHK || loMinHK < 0 )
-		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::Constructor: minHK lower- and upper-bound for non-saddles must be positive!" );
+		throw std::invalid_argument( "[CASL_ERROR] kml::Curvature::Constructor: minHK lower- and upper-bound for non-saddles must be positive!" );
 }
 #endif
 
