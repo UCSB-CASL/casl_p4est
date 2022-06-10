@@ -6,12 +6,12 @@
  * where R is constant across grid resolutions.
  *
  * This is the test on section 3.1 of "A hybrid particle volume-of-fluid method for curvature estimation in multiphase flows" by Karnakov,
- * Litvinov, and Koumoutsakos.  We compute the relative mean and maximum absolute errors on nodes next to Gamma for 100 random centers.
- *
- * TODO: Increase test to level 11, add option to compute errors relative or absolute (i.e., without dividing by hk*).
+ * Litvinov, and Koumoutsakos.  We compute the (optional) relative mean and maximum absolute errors on nodes next to Gamma for 100 random
+ * centers.
  *
  * Developer: Luis Ángel.
  * Created: June 9, 2022.
+ * Updated: June 10, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 #include <src/my_p8est_utils.h>
@@ -26,10 +26,11 @@
 int getNumStatsAndFlag( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
 						const double& h, const u_short& octMaxRL, const double xyzMin[P4EST_DIM], const double xyzMax[P4EST_DIM],
 						const double& trueHK, double& numRelL2Norm, double& numRelLInftyNorm, int& nNumericalSaddles, Vec sampledFlag,
-						const double& nonSaddleMinIH2KG=-7e-6 );
+						const double& nonSaddleMinIH2KG=-7e-6, const bool& relativeErrors=true );
 void getHybStats( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi, const double& h,
 				  const double& trueHK, double& hybRelL2Norm, double& hybRelLInftyNorm, int& nHybNodes, const kml::NeuralNetwork *nnetNS,
-				  const kml::NeuralNetwork *nnetSD, Vec sampledFlag, const double& nonSaddleMinIH2KG=-7e-6, const u_short& nnetsMaxRL=0 );
+				  const kml::NeuralNetwork *nnetSD, Vec sampledFlag, const double& nonSaddleMinIH2KG=-7e-6, const u_short& nnetsMaxRL=0,
+				  const bool& relativeErrors=true );
 
 
 int main ( int argc, char* argv[] )
@@ -40,9 +41,10 @@ int main ( int argc, char* argv[] )
 																	   "numerical non-saddle samples (default: -7e-6)" );
 	param_t<u_short>          loMaxRL( pl,     7, "loMaxRL"			 , "Lower-bound maximum level of refinement per unit-cube octree "
 																	   "(default: 7)" );
-	param_t<u_short>          upMaxRL( pl,    10, "upMaxRL"			 , "Upper-bound maximum level of refinement per unit-cube octree "
-																	   "(default: 10)" );
+	param_t<u_short>          upMaxRL( pl,    11, "upMaxRL"			 , "Upper-bound maximum level of refinement per unit-cube octree "
+																	   "(default: 11)" );
 	param_t<double>                 R( pl,2./128, "R"				 , "Radius (default: 2/128) " );
+	param_t<bool>      relativeErrors( pl,  true, "relativeErrors"	 , "Whether to compute relative errors or absolute (default: true)" );
 	param_t<u_short>      reinitIters( pl,    10, "reinitIters"		 , "Number of iterations for reinitialization (default: 10)" );
 	param_t<u_short>       numSpheres( pl,   100, "numSpheres"		 , "Number of spheres to test per grid resolution (default: 100)" );
 	param_t<u_int>        randomState( pl,    11, "randomState"		 , "Seed for random perturbations of the centers (default: 11)" );
@@ -188,11 +190,11 @@ int main ( int argc, char* argv[] )
 				Vec sampledFlag;				// This vector will be used as filter.
 				CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
 				nGridPoints += getNumStatsAndFlag( p4est, nodes, ngbd, phi, h, octMaxRL, xyz_min, xyz_max, trueHK, numRelL2Norm,
-												   numRelLInftyNorm, nNumericalSaddles, sampledFlag, nonSaddleMinIH2KG() );
+												   numRelLInftyNorm, nNumericalSaddles, sampledFlag, nonSaddleMinIH2KG(), relativeErrors() );
 
 				// Accumulate hybrid statistics.
 				getHybStats( p4est, nodes, ngbd, phi, h, trueHK, hybRelL2Norm, hybRelLInftyNorm, nHybNodes, &nnetNS, &nnetSD, sampledFlag,
-							 nonSaddleMinIH2KG(), nnetsMaxRL() );
+							 nonSaddleMinIH2KG(), nnetsMaxRL(), relativeErrors() );
 
 				if( nGridPoints != nHybNodes )
 					throw std::runtime_error( "Number of grid points next to Gamma and number of hybrid nodes has diverged!" );
@@ -224,10 +226,11 @@ int main ( int argc, char* argv[] )
 			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &numRelLInftyNorm, 1, MPI_DOUBLE, MPI_MAX, mpi.comm() ) );
 			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &numRelL2Norm, 1, MPI_DOUBLE, MPI_SUM, mpi.comm() ) );
 			numRelL2Norm = sqrt( numRelL2Norm / nGridPoints );
+			CHKERRXX( PetscPrintf( mpi.comm(), "** R/h = %f\n", R() / h ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "** Number of grid points = %i (%i saddles)\n", nGridPoints, nNumericalSaddles ) );
 			CHKERRXX( PetscPrintf( mpi.comm(), "   Numerical baseline:\n" ) );
-			CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of grid points     = %i\n", nGridPoints ) );
-			CHKERRXX( PetscPrintf( mpi.comm(), "   - Rel L2 error norm         = %.6e\n", numRelL2Norm ) );
-			CHKERRXX( PetscPrintf( mpi.comm(), "   - Rel LInfty error norm     = %.6e\n", numRelLInftyNorm ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "   - %sL2 error norm         = %.6e\n", relativeErrors()? "Rel " : "", numRelL2Norm ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "   - %sLInfty error norm     = %.6e\n", relativeErrors()? "Rel " : "", numRelLInftyNorm ) );
 
 			// ...then the hybrid approach.
 			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &nHybNodes, 1, MPI_INT, MPI_SUM, mpi.comm() ) );
@@ -236,10 +239,8 @@ int main ( int argc, char* argv[] )
 			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &hybRelL2Norm, 1, MPI_DOUBLE, MPI_SUM, mpi.comm() ) );
 			hybRelL2Norm = sqrt( hybRelL2Norm / nHybNodes );
 			CHKERRXX( PetscPrintf( mpi.comm(), "   Hybrid approach:\n" ) );
-			CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of grid points     = %i\n", nHybNodes ) );
-			CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of num saddles     = %i\n", nNumericalSaddles ) );
-			CHKERRXX( PetscPrintf( mpi.comm(), "   - Rel L2 error norm         = %.6e\n", hybRelL2Norm ) );
-			CHKERRXX( PetscPrintf( mpi.comm(), "   - Rel LInfty error norm     = %.6e\n", hybRelLInftyNorm ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "   - %sL2 error norm         = %.6e\n", relativeErrors()? "Rel " : "", hybRelL2Norm ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "   - %sLInfty error norm     = %.6e\n", relativeErrors()? "Rel " : "", hybRelLInftyNorm ) );
 
 			CHKERRXX( PetscPrintf( mpi.comm(), "   Completed %i resolution after %.2f secs:\n", maxRL, watch.get_duration_current() ) );
 			CHKERRXX( PetscPrintf( mpi.comm(), "-------------------------------------------------------------------------\n" ) );
@@ -270,10 +271,12 @@ int main ( int argc, char* argv[] )
  * @param [in] sampledFlag Vector of >= 1 values for nodes where we'll use the hybrid approach.
  * @param [in] nonSaddleMinIH2KG Min numerical dimensionless Gaussian curvature (at Gamma) for numerical non-saddle samples.
  * @param [in] nnetsMaxRL Set to <= 0 to use nnets corresponding to each max RL; if > 0, use a single nnet for all grid resolutions.
+ * @param [in] relativeErrors If true, divide error by true hk*; otherwise, absolute errors are computed.
  */
 void getHybStats( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi, const double& h,
 				  const double& trueHK, double& hybRelL2Norm, double& hybRelLInftyNorm, int& nHybNodes, const kml::NeuralNetwork *nnetNS,
-				  const kml::NeuralNetwork *nnetSD, Vec sampledFlag, const double& nonSaddleMinIH2KG, const u_short& nnetsMaxRL )
+				  const kml::NeuralNetwork *nnetSD, Vec sampledFlag, const double& nonSaddleMinIH2KG, const u_short& nnetsMaxRL,
+				  const bool& relativeErrors )
 {
 	// Hybrid curvature vectors.
 	Vec numCurvature, hybHK, hybFlag, normal[P4EST_DIM];
@@ -297,9 +300,9 @@ void getHybStats( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4e
 		{
 			if( sampledFlagReadPtr[n] != 0 )		// Filter did work.
 			{
-				double relHKError = (trueHK - hybHKReadPtr[n]) / trueHK;
-				hybRelL2Norm += SQR( relHKError );
-				hybRelLInftyNorm = MAX( hybRelLInftyNorm, ABS( relHKError ) );
+				double hkError = (trueHK - hybHKReadPtr[n]) / (relativeErrors? trueHK : 1.0);
+				hybRelL2Norm += SQR( hkError );
+				hybRelLInftyNorm = MAX( hybRelLInftyNorm, ABS( hkError ) );
 				nHybNodes++;
 			}
 			else
@@ -342,13 +345,14 @@ void getHybStats( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4e
  * @param [in,out] nNumericalSaddles Running number of numerical saddles.
  * @param [out] sampledFlag Parallel vector with >= 1 for valid nodes (next to Gamma), 0s otherwise.
  * @param [in] nonSaddleMinIH2KG Min numerical dimensionless Gaussian curvature (at Gamma) for numerical non-saddle samples.
+ * @param [in] relativeErrors Whether to divide the error by true hk* or keep the errors as absolute values.
  * @returns Number of valid grid points next to Gamma.
  * @throws invalid_argument exception if the phi or sampledFlag vector is null.
  */
 int getNumStatsAndFlag( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
 						const double& h, const u_short& octMaxRL, const double xyzMin[P4EST_DIM], const double xyzMax[P4EST_DIM],
 						const double& trueHK, double& numRelL2Norm, double& numRelLInftyNorm, int& nNumericalSaddles, Vec sampledFlag,
-						const double& nonSaddleMinIH2KG )
+						const double& nonSaddleMinIH2KG, const bool& relativeErrors )
 {
 	if( !phi || !sampledFlag )
 		throw std::invalid_argument( "getNumStatsAndFlag: phi and sampledFlag vectors can't be null!" );
@@ -408,9 +412,9 @@ int getNumStatsAndFlag( const p4est_t *p4est, const p4est_nodes_t *nodes, const 
 			double ih2kgVal = SQR( h ) * kappaMGValues[1];
 
 			// Compute relative errors.
-			double relHKError = (ihkVal - trueHK) / trueHK;
-			numRelL2Norm += SQR( relHKError );
-			numRelLInftyNorm = MAX( numRelLInftyNorm, ABS( relHKError ) );
+			double hkError = (ihkVal - trueHK) / (relativeErrors? trueHK : 1.0);
+			numRelL2Norm += SQR( hkError );
+			numRelLInftyNorm = MAX( numRelLInftyNorm, ABS( hkError ) );
 
 			// Update flags: we should expect only non-saddles.
 			if( ih2kgVal >= nonSaddleMinIH2KG )
