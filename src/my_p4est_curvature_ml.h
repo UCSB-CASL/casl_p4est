@@ -54,7 +54,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: June 9, 2022.
+ * Updated: June 10, 2022.
  */
 namespace kml
 {
@@ -367,6 +367,7 @@ namespace kml
 		 * components positive.  The function doesn't modify any of the invariant quantities, such as the curvature(s).
 		 * @note Exploits the fact that curvature is invariant to rotation.  Before calling this function you must have
 		 * flipped the sign of the stencil (and gradient) to the desired configuration (possibly negatively normalized).
+		 * @note For numerical stability, if |grad component| < eps, it's set to sign(grad component)*eps.
 		 * @param [in,out] stencil Feature array in standard order (e.g., mm[m], m0[m], mp[m],..., [p]pm, [p]p0, [p]pp).
 		 * @throws runtime_error If one or more reoriented gradient component components is negative after the process.
 		 */

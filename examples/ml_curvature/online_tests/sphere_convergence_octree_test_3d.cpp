@@ -1,7 +1,7 @@
 /**
  * Convergence test for non-saddle and saddle neural networks on a sphere of fixed radius.  The surface is represented implicitly by
  *
- *                                           phi(x,y,z) = sqrt(x^2 + y^2 + z^2) - R^2,
+ *                                           phi(x,y,z) = sqrt(x^2 + y^2 + z^2) - R,
  *
  * where R is constant across grid resolutions.
  *
@@ -21,16 +21,6 @@
 #include "../data_sets/ellipsoid/ellipsoid_3d.h"
 #include "test_utils_3d.h"
 #include <src/parameter_list.h>
-
-
-int getNumStatsAndFlag( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
-						const double& h, const u_short& octMaxRL, const double xyzMin[P4EST_DIM], const double xyzMax[P4EST_DIM],
-						const double& trueHK, double& numRelL2Norm, double& numRelLInftyNorm, int& nNumericalSaddles, Vec sampledFlag,
-						const double& nonSaddleMinIH2KG=-7e-6, const bool& relativeErrors=true );
-void getHybStats( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi, const double& h,
-				  const double& trueHK, double& hybRelL2Norm, double& hybRelLInftyNorm, int& nHybNodes, const kml::NeuralNetwork *nnetNS,
-				  const kml::NeuralNetwork *nnetSD, Vec sampledFlag, const double& nonSaddleMinIH2KG=-7e-6, const u_short& nnetsMaxRL=0,
-				  const bool& relativeErrors=true );
 
 
 int main ( int argc, char* argv[] )
@@ -99,7 +89,7 @@ int main ( int argc, char* argv[] )
 			watch.start();
 			char header[100];
 			sprintf( header, "\n-----------------------------[ Resolution %2d ]---------------------------\n", maxRL );
-			CHKERRXX( PetscPrintf( mpi.comm(), header, maxRL ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), header ) );
 			int dot = 0;
 			double dotdt = numSpheres() / (double)(strlen( header ) - 2);
 
@@ -189,12 +179,13 @@ int main ( int argc, char* argv[] )
 				// Acumulate numerical statistics and flag grid points next to Gamma where we want to use the hybrid approach.
 				Vec sampledFlag;				// This vector will be used as filter.
 				CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
-				nGridPoints += getNumStatsAndFlag( p4est, nodes, ngbd, phi, h, octMaxRL, xyz_min, xyz_max, trueHK, numRelL2Norm,
-												   numRelLInftyNorm, nNumericalSaddles, sampledFlag, nonSaddleMinIH2KG(), relativeErrors() );
+				nGridPoints += test_utils::sphere::getNumStatsAndFlag( p4est, nodes, ngbd, phi, h, octMaxRL, xyz_min, xyz_max, trueHK,
+																	   numRelL2Norm, numRelLInftyNorm, nNumericalSaddles, sampledFlag,
+																	   nonSaddleMinIH2KG(), relativeErrors() );
 
 				// Accumulate hybrid statistics.
-				getHybStats( p4est, nodes, ngbd, phi, h, trueHK, hybRelL2Norm, hybRelLInftyNorm, nHybNodes, &nnetNS, &nnetSD, sampledFlag,
-							 nonSaddleMinIH2KG(), nnetsMaxRL(), relativeErrors() );
+				test_utils::sphere::getHybStats( p4est, nodes, ngbd, phi, h, trueHK, hybRelL2Norm, hybRelLInftyNorm, nHybNodes, &nnetNS,
+												 &nnetSD, sampledFlag, nonSaddleMinIH2KG(), nnetsMaxRL(), relativeErrors() );
 
 				if( nGridPoints != nHybNodes )
 					throw std::runtime_error( "Number of grid points next to Gamma and number of hybrid nodes has diverged!" );
@@ -223,6 +214,7 @@ int main ( int argc, char* argv[] )
 
 			// Show results for current grid resolution: first numerical baseline.
 			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &nGridPoints, 1, MPI_INT, MPI_SUM, mpi.comm() ) );
+			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &nNumericalSaddles, 1, MPI_INT, MPI_SUM, mpi.comm() ) );
 			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &numRelLInftyNorm, 1, MPI_DOUBLE, MPI_MAX, mpi.comm() ) );
 			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &numRelL2Norm, 1, MPI_DOUBLE, MPI_SUM, mpi.comm() ) );
 			numRelL2Norm = sqrt( numRelL2Norm / nGridPoints );
@@ -234,7 +226,6 @@ int main ( int argc, char* argv[] )
 
 			// ...then the hybrid approach.
 			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &nHybNodes, 1, MPI_INT, MPI_SUM, mpi.comm() ) );
-			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &nNumericalSaddles, 1, MPI_INT, MPI_SUM, mpi.comm() ) );
 			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &hybRelLInftyNorm, 1, MPI_DOUBLE, MPI_MAX, mpi.comm() ) );
 			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &hybRelL2Norm, 1, MPI_DOUBLE, MPI_SUM, mpi.comm() ) );
 			hybRelL2Norm = sqrt( hybRelL2Norm / nHybNodes );
@@ -251,207 +242,4 @@ int main ( int argc, char* argv[] )
 	{
 		std::cerr << e.what() << std::endl;
 	}
-}
-
-
-/**
- * Accumulate stats for hybrid approach.
- * @note No metric reduction across processes occurs here --everything is local.
- * @param [in] p4est P4est structure.
- * @param [in] nodes Nodes structure.
- * @param [in] ngbd Neighborhood structure.
- * @param [in] phi Nodal level-set values.
- * @param [in] h Mesh size.
- * @param [in] trueHK Expected dimensionless mean curvature.
- * @param [in,out] hybRelL2Norm Cumulative sum of ((k - k*)/k*)^2 terms to compute relative L2 norm.
- * @param [in,out] hybRelLInftyNorm Running value of maximum |k - k*|/|k*| error.
- * @param [in,out] nHybNodes Number of nodes where we used the hybrid approach.
- * @param [in] nnetNS Neural network for non-saddle samples.
- * @param [in] nnetSD Neural network for saddle samples.
- * @param [in] sampledFlag Vector of >= 1 values for nodes where we'll use the hybrid approach.
- * @param [in] nonSaddleMinIH2KG Min numerical dimensionless Gaussian curvature (at Gamma) for numerical non-saddle samples.
- * @param [in] nnetsMaxRL Set to <= 0 to use nnets corresponding to each max RL; if > 0, use a single nnet for all grid resolutions.
- * @param [in] relativeErrors If true, divide error by true hk*; otherwise, absolute errors are computed.
- */
-void getHybStats( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi, const double& h,
-				  const double& trueHK, double& hybRelL2Norm, double& hybRelLInftyNorm, int& nHybNodes, const kml::NeuralNetwork *nnetNS,
-				  const kml::NeuralNetwork *nnetSD, Vec sampledFlag, const double& nonSaddleMinIH2KG, const u_short& nnetsMaxRL,
-				  const bool& relativeErrors )
-{
-	// Hybrid curvature vectors.
-	Vec numCurvature, hybHK, hybFlag, normal[P4EST_DIM];
-	CHKERRXX( VecDuplicate( phi, &numCurvature ) );	// Numerical mean curvature at the nodes.
-	CHKERRXX( VecDuplicate( phi, &hybHK ) );		// Hybrid curvature at normal projections of interface nodes (masked with sampledFlag).
-	CHKERRXX( VecDuplicate( phi, &hybFlag ) );		// Where we used the hybrid approach (should match sampledFlag).
-	for( auto& dim : normal )
-		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
-
-	kml::Curvature mlCurvature( nnetNS, nnetSD, h, 0.004, 0.007, nonSaddleMinIH2KG, nnetsMaxRL > 0 );
-	mlCurvature.compute( *ngbd, phi, normal, numCurvature, hybHK, hybFlag, true, nullptr, sampledFlag );
-
-	// Compute statistics.
-	const double *hybHKReadPtr, *sampledFlagReadPtr, *hybFlagReadPtr;
-	CHKERRXX( VecGetArrayRead( hybHK, &hybHKReadPtr ) );
-	CHKERRXX( VecGetArrayRead( sampledFlag, &sampledFlagReadPtr ) );
-	CHKERRXX( VecGetArrayRead( hybFlag, &hybFlagReadPtr ) );
-	foreach_local_node( n, nodes )
-	{
-		if( hybFlagReadPtr[n] == 1 )
-		{
-			if( sampledFlagReadPtr[n] != 0 )		// Filter did work.
-			{
-				double hkError = (trueHK - hybHKReadPtr[n]) / (relativeErrors? trueHK : 1.0);
-				hybRelL2Norm += SQR( hkError );
-				hybRelLInftyNorm = MAX( hybRelLInftyNorm, ABS( hkError ) );
-				nHybNodes++;
-			}
-			else
-				std::cerr << "Error!!! Did you just compute the hybrid curvature for non-sampled node " << n << "?!" << std::endl;
-		}
-		else
-		{
-			if( sampledFlagReadPtr[n] != 0 )
-				std::cerr << "Error!!! Node " << n << " was supposed to be considered for hybrid computation!" << std::endl;
-		}
-	}
-
-	CHKERRXX( VecRestoreArrayRead( hybHK, &hybHKReadPtr ) );
-	CHKERRXX( VecRestoreArrayRead( sampledFlag, &sampledFlagReadPtr ) );
-	CHKERRXX( VecRestoreArrayRead( hybFlag, &hybFlagReadPtr ) );
-
-	// Clean up.
-	CHKERRXX( VecDestroy( numCurvature ) );
-	CHKERRXX( VecDestroy( hybHK ) );
-	CHKERRXX( VecDestroy( hybFlag ) );
-	for( auto& dim : normal )
-		CHKERRXX( VecDestroy( dim ) );
-}
-
-
-/**
- * Collect numerical statistics and populate the sampledFlag vector to filter out invalid nodes during the hybrid computation of curvature.
- * @note No reduction across processes occurs for error stats within this function --everything is local.
- * @param [in] p4est P4est data structure.
- * @param [in] nodes Nodes data structure.
- * @param [in] ngbd Nodes' neighborhood data structure.
- * @param [in] phi Parallel vector with level-set values.
- * @param [in] h Mesh size.
- * @param [in] octMaxRL Effective octree maximum level of refinement (octree's side length must be a multiple of h).
- * @param [in] xyzMin Domain's minimum coordinates.
- * @param [in] xyzMax Domain's maximum coordinates.
- * @param [in] trueHK Expected dimensionless mean curvature.
- * @param [in,out] numRelL2Norm Cumulative sum of ((k - k*)/k*)^2 terms to compute the relative L2 error norm.
- * @param [in,out] numRelLInftyNorm Running relative L^infty norm of |k - k*|/|k*| terms.
- * @param [in,out] nNumericalSaddles Running number of numerical saddles.
- * @param [out] sampledFlag Parallel vector with >= 1 for valid nodes (next to Gamma), 0s otherwise.
- * @param [in] nonSaddleMinIH2KG Min numerical dimensionless Gaussian curvature (at Gamma) for numerical non-saddle samples.
- * @param [in] relativeErrors Whether to divide the error by true hk* or keep the errors as absolute values.
- * @returns Number of valid grid points next to Gamma.
- * @throws invalid_argument exception if the phi or sampledFlag vector is null.
- */
-int getNumStatsAndFlag( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
-						const double& h, const u_short& octMaxRL, const double xyzMin[P4EST_DIM], const double xyzMax[P4EST_DIM],
-						const double& trueHK, double& numRelL2Norm, double& numRelLInftyNorm, int& nNumericalSaddles, Vec sampledFlag,
-						const double& nonSaddleMinIH2KG, const bool& relativeErrors )
-{
-	if( !phi || !sampledFlag )
-		throw std::invalid_argument( "getNumStatsAndFlag: phi and sampledFlag vectors can't be null!" );
-
-	// Get indices for locally owned candidate nodes next to Gamma.
-	NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd, (char)octMaxRL );
-	std::vector<p4est_locidx_t> indices;
-	nodesAlongInterface.getIndices( &phi, indices );
-
-	// Compute normal vectors and mean/Gaussian curvatures.
-	Vec normals[P4EST_DIM],	kappaMG[2];
-	for( auto& component : normals )
-		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &component ) );
-	CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaMG[0] ) );	// This is mean curvature, and
-	CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaMG[1] ) );	// this is Gaussian curvature.
-
-	compute_normals_and_curvatures( *ngbd, phi, normals, kappaMG[0], kappaMG[1] );
-
-	const double *phiReadPtr;								// We need access to phi to project points onto Gamma.
-	CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
-
-	const double *normalsReadPtr[P4EST_DIM];
-	for( int i = 0; i < P4EST_DIM; i++ )
-		CHKERRXX( VecGetArrayRead( normals[i], &normalsReadPtr[i] ) );
-
-	// Reset interface flag.
-	double *sampledFlagPtr;
-	CHKERRXX( VecGetArray( sampledFlag, &sampledFlagPtr ) );
-	for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
-		sampledFlagPtr[n] = 0;
-
-	// Prepare mean and Gaussian curvature interpolation.
-	my_p4est_interpolation_nodes_t kappaMGInterp( ngbd );
-	kappaMGInterp.set_input( kappaMG, interpolation_method::linear, 2 );
-	int nGridPoints = 0;
-	for( const auto& n : indices )
-	{
-		double xyz[P4EST_DIM];
-		node_xyz_fr_n( n, p4est, nodes, xyz );
-		if( ABS( xyz[0] - xyzMin[0] ) <= 4 * h || ABS( xyz[0] - xyzMax[0] ) <= 4 * h ||	// Skip nodes too close
-			ABS( xyz[1] - xyzMin[1] ) <= 4 * h || ABS( xyz[1] - xyzMax[1] ) <= 4 * h ||	// to domain boundary.
-			ABS( xyz[2] - xyzMin[2] ) <= 4 * h || ABS( xyz[2] - xyzMax[2] ) <= 4 * h )
-			continue;
-
-		std::vector<p4est_locidx_t> stencil;
-		try
-		{
-			if( !nodesAlongInterface.getFullStencilOfNode( n , stencil ) )	//Does it have a valid stencil?
-				continue;
-
-			// Valid candidate grid node.
-			for( int c = 0; c < P4EST_DIM; c++ )			// Find the location where to (linearly) interpolate curvatures.
-				xyz[c] -= phiReadPtr[n] * normalsReadPtr[c][n];
-			double kappaMGValues[2];
-			kappaMGInterp( xyz, kappaMGValues );			// Get linearly interpolated mean and Gaussian curvature in one shot.
-			double ihkVal = h * kappaMGValues[0];
-			double ih2kgVal = SQR( h ) * kappaMGValues[1];
-
-			// Compute relative errors.
-			double hkError = (ihkVal - trueHK) / (relativeErrors? trueHK : 1.0);
-			numRelL2Norm += SQR( hkError );
-			numRelLInftyNorm = MAX( numRelLInftyNorm, ABS( hkError ) );
-
-			// Update flags: we should expect only non-saddles.
-			if( ih2kgVal >= nonSaddleMinIH2KG )
-				sampledFlagPtr[n] = 1;
-			else
-			{
-				nNumericalSaddles++;
-				sampledFlagPtr[n] = 2;
-			}
-			nGridPoints++;
-		}
-		catch( std::runtime_error &rt )
-		{
-			std::cerr << rt.what() << std::endl;
-		}
-		catch( std::exception &e )
-		{
-			std::cerr << e.what() << std::endl;
-			throw std::runtime_error( e.what() );
-		}
-	}
-	kappaMGInterp.clear();
-
-	// Scatter node info across processes.
-	CHKERRXX( VecRestoreArray( sampledFlag, &sampledFlagPtr ) );
-	CHKERRXX( VecGhostUpdateBegin( sampledFlag, INSERT_VALUES, SCATTER_FORWARD ) );
-	CHKERRXX( VecGhostUpdateEnd( sampledFlag, INSERT_VALUES, SCATTER_FORWARD ) );
-
-	// Clean up.
-	for( int i = 0; i < P4EST_DIM; i++ )
-		CHKERRXX( VecRestoreArrayRead( normals[i], &normalsReadPtr[i] ) );
-	CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
-
-	CHKERRXX( VecDestroy( kappaMG[0] ) );
-	CHKERRXX( VecDestroy( kappaMG[1] ) );
-	for( auto& component : normals )
-		CHKERRXX( VecDestroy( component ) );
-
-	return nGridPoints;
 }

@@ -435,7 +435,15 @@ void kml::utils::rotateStencilToFirstOctant( double stencil[] )
 void kml::utils::rotateStencilToFirstQuadrant( double stencil[] )
 #endif
 {
+	// Begin by stabilizing the numerical calculations: if any of the center gradient components is smaller than eps (in absolute value),
+	// set it to +/- eps depending on the original sign.
 	const int CENTER_IDX = floor(num_neighbors_cube / 2);	// Must be 4 in 2D and 13 in 3D.
+	for( int i = 1; i <= P4EST_DIM; i++ )
+	{
+		if( ABS( stencil[num_neighbors_cube*i + CENTER_IDX] ) < EPS )
+			stencil[num_neighbors_cube*i + CENTER_IDX] = SIGN( stencil[num_neighbors_cube*i + CENTER_IDX] ) * EPS;
+	}
+
 	const double grad1[P4EST_DIM] = {DIM( stencil[num_neighbors_cube*1 + CENTER_IDX],
 									 	  stencil[num_neighbors_cube*2 + CENTER_IDX],
 										  stencil[num_neighbors_cube*3 + CENTER_IDX] )};
