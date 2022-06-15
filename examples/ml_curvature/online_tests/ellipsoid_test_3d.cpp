@@ -44,10 +44,10 @@ int main ( int argc, char* argv[] )
 																	   "nodal phi vector (default: true" );
 	param_t<u_short>            maxRL( pl,     6, "maxRL"			 , "Maximum level of refinement per unit-cube octree (default: 6)" );
 	param_t<u_short>      reinitIters( pl,    10, "reinitIters"		 , "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>             maxHK( pl,  2./3, "maxHK"			 , "Expected maximum dimensionless mean curvature (default: 2/3)" );
-	param_t<double>                 a( pl,  1.65, "a"				 , "Ellipsoid's x-semiaxis (default: 4)" );
-	param_t<double>                 b( pl,  0.75, "b"				 , "Ellipsoid's y-semiaxis (default: 2.5)" );
-	param_t<double>                 c( pl,   0.2, "c"				 , "Ellipsoid's z-semiaxis (default: 0.25)" );
+	param_t<double>             maxHK( pl,  2./3, "maxHK"			 , "Allowed maximum dimensionless mean curvature (default: 2/3)" );
+	param_t<double>                 a( pl,  1.65, "a"				 , "Ellipsoid's x-semiaxis (default: 1.65)" );
+	param_t<double>                 b( pl,  0.75, "b"				 , "Ellipsoid's y-semiaxis (default: 0.75)" );
+	param_t<double>                 c( pl,   0.2, "c"				 , "Ellipsoid's z-semiaxis (default: 0.2)" );
 	param_t<bool>       perturbOrigin( pl,  true, "perturbOrigin"	 , "Whether to perturb the ellipsoid's center randomly in [-h/2,+h/2]^3"
 																	   " (default: true)" );
 	param_t<bool>      randomRotation( pl,  true, "randomRotation"	 , "Whether to apply a rotation with a random angle about a random unit"

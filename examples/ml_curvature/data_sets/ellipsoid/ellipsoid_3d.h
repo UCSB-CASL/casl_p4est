@@ -2,7 +2,7 @@
  * A collection of classes and functions related to an ellipsoid.
  * Developer: Luis Ángel.
  * Created: April 5, 2022.
- * Updated: May 31, 2022.
+ * Updated: June 14, 2022.
  */
 
 #ifndef ML_CURVATURE_ELLIPSOID_3D_H
@@ -321,7 +321,7 @@ private:
 			double D = dlib::find_min_trust_region( dlib::objective_delta_stop_strategy( _deltaStop ),				// Append .be_verbose() for debugging.
 													EllipsoidPointDistanceModel( p, *(_ellipsoid) ), initialPoint, initialTrustRadius );
 			d = sqrt( 2 * D );	// D is the 0.5*||dist||^2.
-			if( d > d0 )
+			if( d - d0 > EPS )
 				throw std::runtime_error( errorPrefix + "Distance at nearest point is larger than distance at the initial guess." );
 
 			// To verify that the numerical method work, we can check that P-Q(theta,psi) is perpendicular to the tangent plane at Q(theta,psi).

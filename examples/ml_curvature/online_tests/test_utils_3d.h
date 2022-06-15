@@ -3,7 +3,7 @@
  *
  * Developer: Luis Ángel.
  * Created: May 27, 2022.
- * Updated: June 10, 2022.
+ * Updated: June 14, 2022.
  */
 
 #ifndef ML_CURVATURE_TEST_UTILS_H
@@ -43,22 +43,36 @@ namespace test_utils
 	 * @param [in] reinitTime How long it took to reinitialize the level-set values.
 	 * @param [in] exportVTK Whether to export to VTK.
 	 * @param [in] surfaceName If exporting to VTK, use this prefix.
+	 * @param [in] suffix If exporting to VTK, use this suffix (e.g., for evolution over time).
+	 * @param [out] metrics If null, print stats to standard output; otherwise, append the time, mean abs and max abs errors for numerics
+	 * 						and nnets in that order.
 	 */
 	void collectErrorStats( const mpi_environment_t& mpi, const double& h, const int& maxRL, parStopWatch& watch, const p4est_t *p4est,
 							const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, const p4est_ghost_t *ghost, Vec phi,
 							Vec sampledFlag, Vec trueHK, const double& nonSaddleMinIH2KG, const int& nNumericalSaddles,
-							const kml::NeuralNetwork *nnetNS, const kml::NeuralNetwork *nnetSD,
-							const double& reinitTime=0, const bool& exportVTK=false, const std::string& surfaceName="" )
+							const kml::NeuralNetwork *nnetNS, const kml::NeuralNetwork *nnetSD, const double& reinitTime=0,
+							const bool& exportVTK=false, const std::string& surfaceName="", const std::string& suffix="",
+							std::vector<double> *metrics=nullptr )
 	{
 		double numTime, numMaxAbsError, numMeanAbsError;
 		int numGridPoints;
-		CHKERRXX( PetscPrintf( mpi.comm(), "* Evaluating numerical baseline...  " ) );
+		if( !metrics )
+			CHKERRXX( PetscPrintf( mpi.comm(), "* Evaluating numerical baseline...  " ) );
 		numTime = numericalBaselineComputation( mpi, *ngbd, h, phi, trueHK, &watch, sampledFlag, numMaxAbsError, numMeanAbsError, numGridPoints );
-		CHKERRXX( PetscPrintf( mpi.comm(), "done with the following stats:\n" ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Time (in secs)            = %.6f\n", numTime + reinitTime ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of grid points     = %i\n", numGridPoints ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Mean absolute error       = %.6e\n", numMeanAbsError ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "   - Maximum absolute error    = %.6e\n", numMaxAbsError ) );
+		if( !metrics )
+		{
+			CHKERRXX( PetscPrintf( mpi.comm(), "done with the following stats:\n" ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "   - Time (in secs)            = %.6f\n", numTime + reinitTime ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of grid points     = %i\n", numGridPoints ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "   - Mean absolute error       = %.6e\n", numMeanAbsError ) );
+			CHKERRXX( PetscPrintf( mpi.comm(), "   - Maximum absolute error    = %.6e\n", numMaxAbsError ) );
+		}
+		else
+		{
+			metrics->push_back( numTime + reinitTime );
+			metrics->push_back( numMeanAbsError );
+			metrics->push_back( numMaxAbsError );
+		}
 
 		// Compute hybrid (dimensionless) mean curvature.
 		if( nnetNS && nnetSD )
@@ -72,7 +86,8 @@ namespace test_utils
 			for( auto& dim : normal )
 				CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
 
-			CHKERRXX( PetscPrintf( mpi.comm(), "* Computing hybrid mean curvature... " ) );
+			if( !metrics )
+				CHKERRXX( PetscPrintf( mpi.comm(), "* Computing hybrid mean curvature... " ) );
 			kml::Curvature mlCurvature( nnetNS, nnetSD, h, 0.004, 0.007, nonSaddleMinIH2KG );
 			std::pair<double, double> durations = mlCurvature.compute( *ngbd, phi, normal, numCurvature, hybHK, hybFlag, true, &watch, sampledFlag );
 
@@ -116,11 +131,20 @@ namespace test_utils
 			SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &meanAbsError, 1, MPI_DOUBLE, MPI_SUM, mpi.comm() ) );
 			meanAbsError /= nHybNodes;
 
-			CHKERRXX( PetscPrintf( mpi.comm(), "done with the following stats:\n" ) );
-			CHKERRXX( PetscPrintf( mpi.comm(), "   - Time (in secs)            = %.6f\n", durations.second + reinitTime ) );
-			CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of grid points     = %i (%i saddles)\n", nHybNodes, nNumericalSaddles ) );
-			CHKERRXX( PetscPrintf( mpi.comm(), "   - Mean absolute error       = %.6e\n", meanAbsError ) );
-			CHKERRXX( PetscPrintf( mpi.comm(), "   - Maximum absolute error    = %.6e\n", maxAbsError ) );
+			if( !metrics )
+			{
+				CHKERRXX( PetscPrintf( mpi.comm(), "done with the following stats:\n" ) );
+				CHKERRXX( PetscPrintf( mpi.comm(), "   - Time (in secs)            = %.6f\n", durations.second + reinitTime ) );
+				CHKERRXX( PetscPrintf( mpi.comm(), "   - Number of grid points     = %i (%i saddles)\n", nHybNodes, nNumericalSaddles ) );
+				CHKERRXX( PetscPrintf( mpi.comm(), "   - Mean absolute error       = %.6e\n", meanAbsError ) );
+				CHKERRXX( PetscPrintf( mpi.comm(), "   - Maximum absolute error    = %.6e\n", maxAbsError ) );
+			}
+			else
+			{
+				metrics->push_back( durations.second + reinitTime );
+				metrics->push_back( meanAbsError );
+				metrics->push_back( maxAbsError );
+			}
 
 			// Export visual data.
 			if( exportVTK )
@@ -128,7 +152,7 @@ namespace test_utils
 				const double *phiReadPtr;
 				CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ));
 				std::ostringstream oss;
-				oss << surfaceName << "_online_test_lvl" << maxRL;
+				oss << surfaceName << "_online_test_lvl" << maxRL << (!suffix.empty()? "_" + suffix : "");
 				my_p4est_vtk_write_all( p4est, nodes, ghost,
 										P4EST_TRUE, P4EST_TRUE,
 										5, 0, oss.str().c_str(),
