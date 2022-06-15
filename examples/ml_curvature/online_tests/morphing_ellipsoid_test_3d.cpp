@@ -117,7 +117,7 @@ int main ( int argc, char* argv[] )
 		linspace( initialRadius(), c(), numSteps(), cVals );
 		int vtkIdx = 0;
 
-		CHKERRXX( PetscPrintf( mpi.comm(), "\"idx\", \"num_mae\", \"num_maxae\", \"nnet_mae\", \"nnet_maxae\", \"time\"\n" ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "\"k_max\", \"num_mae\", \"num_maxae\", \"nnet_mae\", \"nnet_maxae\", \"time\"\n" ) );
 		for( u_short idx = 0; idx < numSteps(); idx++ )
 		{
 			// Shape parameters.
@@ -226,7 +226,8 @@ int main ( int argc, char* argv[] )
 			}
 
 			// Printing the metrics.
-			CHKERRXX( PetscPrintf( mpi.comm(), "%02d, %.6e, %.6e, %.6e, %.6e, %.2f\n", idx, metrics[1], metrics[2], metrics[4], metrics[5],
+			double kMax = MAX( maxK[0], maxK[1], maxK[2] );
+			CHKERRXX( PetscPrintf( mpi.comm(), "%.6f, %.6e, %.6e, %.6e, %.6e, %.2f\n", kMax * h, metrics[1], metrics[2], metrics[4], metrics[5],
 								   currentTime ) );
 
 			// Clean up.
