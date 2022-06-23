@@ -4299,6 +4299,7 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   stefan_w_fluids_solver->set_tn(tstart);
   stefan_w_fluids_solver->set_tfinal(tfinal);
   PetscPrintf(mpi.comm(), "Set tfinal as %f \n", tfinal);
+//  dt_max_allowed=(6.989e-03)/100;
   stefan_w_fluids_solver->set_dt_max_allowed(dt_max_allowed);
 
   stefan_w_fluids_solver->set_cfl_Stefan(cfl);

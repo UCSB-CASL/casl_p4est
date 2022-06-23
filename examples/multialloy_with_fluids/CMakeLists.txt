@@ -5,6 +5,7 @@ project( multialloy_with_fluids )
 
 set( CMAKE_CXX_STANDARD 14 )
 set (DIMENSION 2d)
+set (CMAKE_BUILD_TYPE Debug)
 ###################################### Compiler custom macros for current project ######################################
 
 if( DIMENSION MATCHES 2d )
@@ -22,7 +23,7 @@ add_compile_definitions( PRIVATE EIGEN_DONT_PARALLELIZE )		# Prevents paralleliz
 ############################# Load paths to libraries and set compiler for current system ##############################
 
 set( PARCASL ${CMAKE_CURRENT_SOURCE_DIR}/../../ )				# CASL library root directory.
-include( ${PARCASL}/cmake/darkness.cmake )							# Set paths for this machine and populate LIBS, INC_DIRS, and LIB_DIRS lists.
+include( ${PARCASL}/cmake/persephone.cmake )							# Set paths for this machine and populate LIBS, INC_DIRS, and LIB_DIRS lists.
 
 if( CMAKE_BUILD_TYPE MATCHES Debug )
 	add_compile_definitions( PRIVATE DEBUG )					# Enable debug macro.

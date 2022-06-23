@@ -27,6 +27,7 @@ else()
 	message( FATAL_ERROR "Invalid or missing CMAKE_BUILD_TYPE macro --it should be 'Debug' or 'Release'." )
 endif()
 
+
 # MPI.
 set( MPI_DIR /usr/lib/mpich )
 
@@ -35,7 +36,7 @@ set( MPI_DIR /usr/lib/mpich )
 # some component use:
 # find_package( Boost COMPONENTS filesystem REQUIRED )  <-- filesystem component.
 # then `link_libraries( ${Boost_FILESYSTEM_LIBRARY} )` and  `include_directories( ${Boost_INCLUDE_DIR} )`.
-set( BOOST_DIR /home/elyce/workspace/source_libraries/boost_1_70_0 )
+set( BOOST_DIR /home/elyce/workspace/libraries/boost )
 
 # Let's add libraries to the lists.
 list( APPEND INC_DIRS					# Include directories.

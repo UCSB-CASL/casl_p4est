@@ -1413,8 +1413,14 @@ void my_p4est_stefan_with_fluids_t::extend_relevant_fields(){
   // Extend Temperature Fields across the interface:
   // -------------------------------
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Calling extension over phi \n");
+  double diag_;
+  double small;
+  get_dxyz_min(p4est_np1, dxyz_smallest, &small, &diag_ );
+  extension_band_use_ = 4*diag_;
+  extension_band_extend_ = 4*diag_;
 
   // Extend liquid temperature:
+
   ls->extend_Over_Interface_TVD_Full((there_is_a_substrate? phi_eff.vec : phi.vec)/*phi.vec*/, T_l_n.vec,
                                     50, 2,
                                     extension_band_use_, extension_band_extend_,
@@ -1427,7 +1433,8 @@ void my_p4est_stefan_with_fluids_t::extend_relevant_fields(){
                                          50, 2,
                                          extension_band_use_, extension_band_extend_,
                                          solid_normals.vec, NULL,
-                                         /*&Ts_bc*/NULL, false, NULL, NULL);
+                                         NULL, false, NULL, NULL);
+
   }
 
   // -------------------------------
@@ -1484,7 +1491,8 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
   // Begin calculation:
   if(!force_interfacial_velocity_to_zero){
     // Cut the extension band in half for region to actually compute vgamma:
-    extension_band_extend_/=2;
+    double vgamma_band = dxyz_close_to_interface;
+//    extension_band_extend_/=2;
 
 
     // Get the first derivatives to compute the jump
@@ -1518,7 +1526,7 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
     for(size_t i=0; i<ngbd_np1->get_layer_size();i++){
       p4est_locidx_t n = ngbd_np1->get_layer_node(i);
 
-      if(fabs(phi.ptr[n])<extension_band_extend_){ // TO-DO: should be nondim for ALL cases
+      if(fabs(phi.ptr[n])<vgamma_band){ // TO-DO: should be nondim for ALL cases
 
         vgamma_n.ptr[n] = 0.; // Initialize
         foreach_dimension(d){
@@ -1543,7 +1551,7 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
     // Compute the jump in the local nodes:
     for(size_t i = 0; i<ngbd_np1->get_local_size();i++){
       p4est_locidx_t n = ngbd_np1->get_local_node(i);
-      if(fabs(phi.ptr[n])<extension_band_extend_){
+      if(fabs(phi.ptr[n])<vgamma_band){
         vgamma_n.ptr[n] = 0.; // initialize
         foreach_dimension(d){
           jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n], do_we_solve_for_Ts?T_s_d.ptr[d][n]:0.);
@@ -1578,9 +1586,10 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
 
 
     // Extend the interfacial velocity to the whole domain for advection of the LSF:
+
     foreach_dimension(d){
       ls->extend_from_interface_to_whole_domain_TVD((there_is_a_substrate? phi_eff.vec : phi.vec),
-                                                   jump.vec[d], v_interface.vec[d]); // , 20/*, NULL, 2., 4.*/);
+                                                   jump.vec[d], v_interface.vec[d]);
     }
 
 
@@ -2681,6 +2690,8 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
 
     // Shift the LSF:
     double shift = dxyz_min_*proximity_smoothing_;
+    //double shift = v_interface_max_norm*dt*proximity_smoothing_;
+    PetscPrintf(mpi->comm(), "\n - vint*dt = %0.3e \n -dxyz*prox = %0.3e \n Ratio = %0.3e \n", v_interface_max_norm*dt, shift, v_interface_max_norm*dt/shift);
     ierr = VecCopyGhost(phi.vec, front_phi_tmp.vec);CHKERRXX(ierr);
     ierr = VecShiftGhost(front_phi_tmp.vec, shift);CHKERRXX(ierr);
 
@@ -2759,7 +2770,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
     front_phi_tmp.destroy();
   }
 
-  if (fabs(proximity_smoothing_)>0.) {
+  if (0/*fabs(proximity_smoothing_)>0.*/) {
     // (Optional, not used anymore)
     // Second pass --  we shift LSF down, reinitialize, shift back, and see if some of those nodes are still "stuck"
     // shift level-set downwards and reinitialize
