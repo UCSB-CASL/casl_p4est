@@ -136,12 +136,6 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   // TO-DO: make sure compute_pressure_ handled correctly in main
 
   // ----------------------------------------------
-  // Multicomponenent problem:
-  // ----------------------------------------------
-  multialloy_solver = NULL;
-  poisson_nodes_multialloy_solver = NULL;
-  num_conc_fields = 0;
-  // ----------------------------------------------
   // Related to domain:
   // ----------------------------------------------
   // Set initial values (purposely unreasonable) for the domain info:
@@ -496,17 +490,21 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
   if(hierarchy_n!=NULL) {
     delete hierarchy_n;
   }
+
   if(ngbd_n!=NULL) {delete ngbd_n;}
+
 
   hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, &brick);
   ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
   ngbd_n->init_neighbors();
+
 
   // Update the neigborhood and hierarchy:
   if(hierarchy_np1!=NULL) {
     delete hierarchy_np1;
   }
   if(ngbd_np1!=NULL) {delete ngbd_np1;}
+
 
   hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, &brick);
   ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
@@ -521,11 +519,22 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
   }
 
   // Extend fields:
-  extend_relevant_fields();
+  // TO-DO : if defn of extension bands is generalized, make sure that is applied here (or maybe we should just make a function called "compute extension bands" and use that everywhere
+  if(solve_stefan)
+  {
+      dxyz_min(p4est_np1, dxyz_smallest);
+      min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
+      extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
+      extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
+      dxyz_close_to_interface = dxyz_close_to_interface_mult*MAX(dxyz_smallest[0],dxyz_smallest[1]);
 
-  // Compute vinterface:
-  v_interface.create(p4est_np1, nodes_np1);
-  compute_interfacial_velocity();
+      extend_relevant_fields();
+
+      // Compute vinterface:
+      v_interface.create(p4est_np1, nodes_np1);
+      compute_interfacial_velocity();
+  }
+
 
   load_tstep =tstep;
   tstart=tn;
@@ -1513,16 +1522,6 @@ void my_p4est_stefan_with_fluids_t::extend_relevant_fields(){
                                          50, 2,
                                          extension_band_use_, extension_band_extend_,
                                          solid_normals.vec, NULL, NULL, false, NULL, NULL);
-  }
-
-  // Extend conc fields (if doing multicomponent):
-  if(solve_multicomponent){
-    for(int i=0; i<num_conc_fields; i++){
-      ls->extend_Over_Interface_TVD_Full((there_is_a_substrate? phi_solid_eff.vec : phi_solid.vec), Cl_n.vec[i],
-                                         50, 2,
-                                         extension_band_use_, extension_band_extend_,
-                                         solid_normals.vec, NULL, NULL, false, NULL, NULL);
-    }
   }
 
   // -------------------------------

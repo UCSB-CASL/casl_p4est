@@ -507,8 +507,8 @@ void set_geometry(){
       ymin = 0.0; ymax = 2.0;
 
       // Number of trees:
-      nx = 2.0;
-      ny = 2.0;
+      nx = 1.0;
+      ny = 1.0;
 
       // Periodicity:
       px = 0;
@@ -2331,7 +2331,7 @@ struct INITIAL_VELOCITY : CF_DIM
 // Wall functions -- these evaluate to true or false depending on
 // if the location is on the wall --  they just add coding simplicity for wall boundary conditions
 // --------------------------
-bool xlower_wall(DIM(double x, double y, doublze z)){
+bool xlower_wall(DIM(double x, double y, double z)){
   // Front x wall, excluding the top and bottom corner points in y
   return ((fabs(x - xmin) <= EPS) && (fabs(y - ymin)>EPS) && (fabs(y - ymax)>EPS));
 };
