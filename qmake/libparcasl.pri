@@ -193,7 +193,7 @@ SOURCES += \
 # $$PARCASL/src/my_p4est_xgfm_cells.cpp \
   $$PARCASL/src/voronoi2D.cpp \
   $$PARCASL/src/my_p4est_fast_sweeping.cpp \
-  $$PARCASL/src/my_p4est_nodes_along_interface.cpp
+  $$PARCASL/src/my_p4est_nodes_along_interface.cpp\
   $$PARCASL/src/my_p4est_navier_stokes_nodes.cpp\
 
 # headers-only stuff
