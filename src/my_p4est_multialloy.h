@@ -396,11 +396,11 @@ public:
     }
   }
 
-  inline void set_wall_conditions_pressure(BoundaryConditionType bc_type, CF_DIM &bc_value)
+  /*inline void set_wall_conditions_pressure(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
     wall_bc_type_pres_ =  bc_type;
     wall_bc_value_pres_ = &bc_value;
-  }
+  }*/
 
 
   // set fluid velocity interface bc
@@ -441,12 +441,12 @@ public:
       wall_bc_value_conc_[i] = bc_value[i];
     }
   }
-
+  /*
   inline void set_wall_conditions_velocity(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
     wall_bc_type_vel_  =  bc_type;
     wall_bc_value_vel_ = &bc_value;
-  }
+  }*/
 
   inline void set_wall_conditions_pressure(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
