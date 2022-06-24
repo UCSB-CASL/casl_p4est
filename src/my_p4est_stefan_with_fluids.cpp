@@ -519,11 +519,21 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
   }
 
   // Extend fields:
-  extend_relevant_fields();
+  // TO-DO : if defn of extension bands is generalized, make sure that is applied here (or maybe we should just make a function called "compute extension bands" and use that everywhere
+  if(solve_stefan)
+  {
+      dxyz_min(p4est_np1, dxyz_smallest);
+      min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
+      extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
+      extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
+      dxyz_close_to_interface = dxyz_close_to_interface_mult*MAX(dxyz_smallest[0],dxyz_smallest[1]);
 
-  // Compute vinterface:
-  v_interface.create(p4est_np1, nodes_np1);
-  compute_interfacial_velocity();
+      extend_relevant_fields();
+
+      // Compute vinterface:
+      v_interface.create(p4est_np1, nodes_np1);
+      compute_interfacial_velocity();
+  }
 
 
   load_tstep =tstep;

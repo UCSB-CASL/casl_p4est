@@ -507,8 +507,8 @@ void set_geometry(){
       ymin = 0.0; ymax = 2.0;
 
       // Number of trees:
-      nx = 2.0;
-      ny = 2.0;
+      nx = 1.0;
+      ny = 1.0;
 
       // Periodicity:
       px = 0;
