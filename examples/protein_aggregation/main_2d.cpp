@@ -74,7 +74,7 @@ const static std::string main_description =
 parameter_list_t pl;
 
 // Examples:
-DEFINE_PARAMETER(pl,int,example_,0,"Example number. 0 = Frank sphere, 1 = Ice melting. (default: 0)");
+DEFINE_PARAMETER(pl,int,example_,1,"Example number. 0 = Frank sphere, 1 = Ice melting. (default: 1)");
 
 // Define the numeric label for each type of example to make implementation a bit more clear
 enum{
@@ -1210,7 +1210,7 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
 
     // Save data:
     std::vector<std::string> point_names;
-    std::vector<double*> point_data;
+    std::vector<const double*> point_data;
 
     if(example_ == FRANK_SPHERE){
         point_names = {"phi","Tl","Ts","v_int_x","v_int_y","T_error" ,"T_analytical",ZCODE("v_int_z")};
@@ -1222,9 +1222,17 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     }
 
     std::vector<std::string> cell_names;
-    std::vector<double*> cell_data;
+    std::vector<const double*> cell_data;
 
     // my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);       //SP
+
+    my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, filename,
+                                       &point_data, &point_names,
+                                       NULL, NULL,
+                                       NULL, NULL,
+                                       &cell_data, &cell_names,
+                                       NULL, NULL,
+                                       NULL, NULL);
 
 
     // Restore arrays:
@@ -1266,7 +1274,7 @@ int main(int argc, char** argv) {
 
   // stopwatch
   parStopWatch w;
-  w.start("Running example: multialloy_with_fluids");
+  w.start("Running example: protein_aggregation");
 
   // Loop through all grid resolutions (if we are studying multiple):
   for(int grid_res_iter=0; grid_res_iter<=num_splits; grid_res_iter++){
