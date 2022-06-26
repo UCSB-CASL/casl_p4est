@@ -128,6 +128,8 @@ $> tar -xvf boost_1_78_0.tar.bz2
 ```
 $> cd boost_1_78_0
 $> sudo ./bootstrap.sh --prefix=/usr/local/boost-1.78.0
+$> ./b2
+$> sudo ./b2 install
 ```
 The library will then be placed in the `/usr/local/boost-1.78.0/` folder.  It comes with `lib/` and `include/boost/`
 folders.

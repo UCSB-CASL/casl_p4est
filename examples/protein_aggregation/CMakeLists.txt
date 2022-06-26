@@ -51,7 +51,7 @@ endif()
 # Libraries and their linking/include directories (see cmake/<machine>.cmake).  Also adding OpenMP.
 link_directories(
 		${LIB_DIRS}
-		#/usr/local/opt/libomp/lib 
+		/usr/lib/x86_64-linux-gnu/
 		)
 
 link_libraries(

@@ -1224,7 +1224,7 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     std::vector<std::string> cell_names;
     std::vector<double*> cell_data;
 
-    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+    // my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);       //SP
 
 
     // Restore arrays:
@@ -1581,8 +1581,14 @@ int main(int argc, char** argv) {
         compute_normals(*ngbd,phi_solid.vec,solid_normals.vec);
 
         // Extend Temperature Fields across the interface:
-        ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
-        ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
+        // ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
+        // ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
+
+
+        //SP
+        ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, extension_band_use_, extension_band_extend_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
+        ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, extension_band_use_, extension_band_extend_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
+
 
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Successfully extended fields across interface \n");
 

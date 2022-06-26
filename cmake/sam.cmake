@@ -30,26 +30,29 @@ endif()
 # MPI.
 set( MPI_DIR /usr )
 
+set( MPI_INC /usr/include/x86_64-linux-gnu/mpich/include )
+set( MPI_LIB /usr/lib/x86_64-linux-gnu )
+
 # Boost.  For header-only functions, you don't need to specify a particular component in
 # `link_libraries`-- just add the path to boost headers in `include_directories`.  If you need
 # some component use:
 # find_package( Boost COMPONENTS filesystem REQUIRED )  <-- filesystem component.
 # then `link_libraries( ${Boost_FILESYSTEM_LIBRARY} )` and  `include_directories( ${Boost_INCLUDE_DIR} )`.
-set( BOOST_DIR /usr/include/boost )
+set( BOOST_DIR /usr/local/boost-1.78.0 )
 
 # Let's add libraries to the lists.
 list( APPEND INC_DIRS					# Include directories.
 		${PETSC_DIR}/include
 		${P4EST_DIR}/include
 		${VORO_DIR}/include/voro++
-		${MPI_DIR}/include
+		${MPI_INC}
 		${BOOST_DIR}/include )
 
 list( APPEND LIB_DIRS					# Library directories.
 		${PETSC_DIR}/lib
 		${P4EST_DIR}/lib
 		${VORO_DIR}/lib
-		${MPI_DIR}/lib
+		${MPI_LIB}
 		${BOOST_DIR}/lib )
 
 list( APPEND LIBS						# Libraries: Note we don't include Boost --we need header-only functions.
