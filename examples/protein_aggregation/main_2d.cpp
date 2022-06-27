@@ -74,12 +74,13 @@ const static std::string main_description =
 parameter_list_t pl;
 
 // Examples:
-DEFINE_PARAMETER(pl,int,example_,1,"Example number. 0 = Frank sphere, 1 = Ice melting. (default: 1)");
+DEFINE_PARAMETER(pl,int,example_,2,"Example number. 0 = Frank sphere, 1 = Ice melting, 2 = Protein Aggregation. (default: 2)");
 
 // Define the numeric label for each type of example to make implementation a bit more clear
 enum{
     FRANK_SPHERE = 0,
-    ICE_MELT = 1
+    ICE_MELT = 1,
+    PROTEIN = 2
 };
 
 // Save settings:
@@ -112,8 +113,8 @@ DEFINE_PARAMETER(pl,int,py,0,"Periodicity in y? Default: false");
 DEFINE_PARAMETER(pl,int,pz,0,"Periodicity in z? Default: false");
 
 DEFINE_PARAMETER(pl,int,nx,0,"Number of trees in x-direction (default: 1)");
-DEFINE_PARAMETER(pl,int,ny,0,"Number of trees in x-direction (default: 1)");
-DEFINE_PARAMETER(pl,int,nz,0,"Number of trees in x-direction (default: 1)");
+DEFINE_PARAMETER(pl,int,ny,0,"Number of trees in y-direction (default: 1)");
+DEFINE_PARAMETER(pl,int,nz,0,"Number of trees in z-direction (default: 1)");
 
 DEFINE_PARAMETER(pl,double,scaling,1.0,"The desired scaling between your physical problem and computational domain. ie.) physical_length_scale*scaling = computational_length_scale (default: 1.0 - aka, no scaling necessary)");
 
@@ -154,26 +155,28 @@ double sigma;
 // Auxiliary functions for initializing the problem:
 // -----------------------------------------
 void set_geometry(){
+  double r_physical;
+
   switch(example_){
   case FRANK_SPHERE:
-         CODE2D(xmin = -5.0;ymin = -5.0; zmin = 0.0;
-                xmax = 5.0; ymax = 5.0; zmax = 0.0;)
-         CODE3D(xmin = -3.0;ymin = -3.0; zmin = -3.0;
-                xmax = 3.0; ymax = 3.0; zmax = 3.0;)
+      CODE2D(xmin = -5.0;ymin = -5.0; zmin = 0.0;
+            xmax = 5.0; ymax = 5.0; zmax = 0.0;)
+      CODE3D(xmin = -3.0;ymin = -3.0; zmin = -3.0;
+            xmax = 3.0; ymax = 3.0; zmax = 3.0;)
 
-         nx = 1; ny = 1; CODE2D(nz = 0); CODE3D(nz = 1);
-         px = 0; py = 0; pz = 0;
+      nx = 1; ny = 1; CODE2D(nz = 0); CODE3D(nz = 1);
+      px = 0; py = 0; pz = 0;
 
-         CODE2D(s0 = 0.6286;) // 1.5621
-         CODE3D(s0 = 0.5653;) // 2.0760
-         CODE2D(T_inf = -0.2); // -0.5
-         CODE3D(T_inf = -0.1);
+      CODE2D(s0 = 0.6286;) // 1.5621
+      CODE3D(s0 = 0.5653;) // 2.0760
+      CODE2D(T_inf = -0.2); // -0.5
+      CODE3D(T_inf = -0.1);
 
-         Tinterface = 0.0;
-         Twall = T_inf;
-         scaling = 1.;
-
+      Tinterface = 0.0;
+      Twall = T_inf;
+      scaling = 1.;
       break;
+
   case ICE_MELT:
       CODE2D(xmin = -0.8; ymin = -0.8; zmin = 0.0;
              xmax = 0.8; ymax = 0.8; zmax = 0.0);
@@ -185,7 +188,27 @@ void set_geometry(){
       // Scaling -> phyiscal_length_scale*scaling = computational_length_scale.
       // Scaling has units of 1/L where L is the physical length scale
       // Scaling = computational size/physical size
-      double r_physical = 0.02; // 2 cm --> 0.02 m
+      r_physical = 0.02; // 2 cm --> 0.02 m
+      scaling = 1.5/0.15;
+      r0 = r_physical*scaling; // Computational radius -- not physical size
+
+      Tice_init = 263.0; // [K] initial temp of ice out of freezer
+      Tinterface = 273.0; // [K] -- freezing temp of water
+      Twall = 298.0; // [K] -- a bit under boiling temp of water
+      break;
+    
+    case PROTEIN:
+      CODE2D(xmin = -0.8; ymin = -0.8; zmin = 0.0;
+             xmax = 0.8; ymax = 0.8; zmax = 0.0);
+       CODE3D(xmin = -0.8; ymin = -0.8; zmin = -0.8;
+       xmax = 0.8; ymax = 0.8; zmax = 0.8);
+       nx = 1; ny = 1; CODE2D(nz = 0); CODE3D(nz = 1);
+       px = 0; py = 0; pz = 0;
+
+      // Scaling -> phyiscal_length_scale*scaling = computational_length_scale.
+      // Scaling has units of 1/L where L is the physical length scale
+      // Scaling = computational size/physical size
+      r_physical = 0.02; // 2 cm --> 0.02 m
       scaling = 1.5/0.15;
       r0 = r_physical*scaling; // Computational radius -- not physical size
 
@@ -216,6 +239,12 @@ void simulation_time_info(){
       tfinal = 90.*60.; // approx 90 minutes
       dt_max_allowed = 20.0;
       break;
+    
+    case PROTEIN:
+      tstart = 0.0;
+      tfinal = 90.*60.; // approx 90 minutes
+      dt_max_allowed = 20.0;
+      break;
     }
   tn = tstart;
 }
@@ -231,6 +260,10 @@ void set_diffusivities(){
       alpha_l = 1.0;
       break;
     case ICE_MELT:
+      alpha_s = (1.1820e-6); //ice - [m^2]/s
+      alpha_l = (1.4547e-7); //water- [m^2]/s
+      break;
+    case PROTEIN:
       alpha_s = (1.1820e-6); //ice - [m^2]/s
       alpha_l = (1.4547e-7); //water- [m^2]/s
       break;
@@ -252,6 +285,14 @@ void set_conductivities(){
       break;
 
     case ICE_MELT:
+      k_s = 2.3;//2.2; // W/[m*K]
+      k_l = 0.65; // W/[m*K]
+      L = 334.e3; //J/kg
+      rho_l = 1000.0; // kg/m^3
+      sigma = 9.e-6;//30.e-3 // J/m^2 // surface tension of water
+      break;
+
+    case PROTEIN:
       k_s = 2.3;//2.2; // W/[m*K]
       k_l = 0.65; // W/[m*K]
       L = 334.e3; //J/kg
@@ -363,12 +404,17 @@ struct LEVEL_SET : CF_DIM {
 public:
   double operator() (DIM(double x, double y, double z)) const
   {
+    
      switch (example_){
       case FRANK_SPHERE:
         return s0 - sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+        
 
       case ICE_MELT:
          return r0 - sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+
+      case PROTEIN:
+        return MAX(r0 - sqrt(SQR(x - 1.5 * r0) + SQR(y) CODE3D(+ SQR(z))), r0 - sqrt(SQR(x + 1.5 * r0) + SQR(y) CODE3D(+ SQR(z))));
 
       default: throw std::invalid_argument("You must choose an example type\n");
       }
@@ -387,6 +433,9 @@ void interface_bc(){
       interface_bc_type_temp = DIRICHLET;
       break;
     case ICE_MELT:
+      interface_bc_type_temp = DIRICHLET;
+      break;
+    case PROTEIN:
       interface_bc_type_temp = DIRICHLET;
       break;
     }
@@ -412,6 +461,9 @@ public:
     case ICE_MELT: // Water case, has surface tension effects
         //return Tinterface;
         return Tinterface*(1. + sigma*kappa_interp(DIM(x,y,z))/L);
+    case PROTEIN: // Water case, has surface tension effects
+        //return Tinterface;
+        return Tinterface*(1. + sigma*kappa_interp(DIM(x,y,z))/L);
       }
   }
 };
@@ -422,6 +474,7 @@ public:
   { switch(example_){
       case FRANK_SPHERE: return 1.0;
       case ICE_MELT: return 1.0;
+      case PROTEIN: return 1.0;
       }
   }
 }bc_interface_coeff;
@@ -524,6 +577,18 @@ public:
         break;
     }// end of ICE_MELT case
 
+    case PROTEIN: {
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) CODE3D(|| zlower_wall(DIM(x,y,z)) || zupper_wall(DIM(x,y,z)))){
+            if (level_set(DIM(x,y,z)) < EPS){
+                return Twall;
+              }
+            else{
+                return Tinterface;
+              }
+          } // end of "if on wall"
+        break;
+    }// end of PROTEIN case
+
     default: break;
     } // end of switch case
   }
@@ -548,6 +613,17 @@ public:
         return frank_sphere_solution_t(sval);
         }
     case ICE_MELT:{
+        r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+        m = (Twall - Tinterface)/(level_set(DIM(xmax,ymax,zmax)) - r0);
+        if (level_set(DIM(x,y,z))<0){
+            return Twall;
+        }
+        else{
+            return Tice_init;
+        }
+
+    }
+    case PROTEIN:{
         r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
         m = (Twall - Tinterface)/(level_set(DIM(xmax,ymax,zmax)) - r0);
         if (level_set(DIM(x,y,z))<0){
@@ -1300,7 +1376,7 @@ int main(int argc, char** argv) {
     const int n_xyz[]      = { nx,  ny,  nz};
     const double xyz_min[] = {xmin, ymin, zmin};
     const double xyz_max[] = {xmax,  ymax,  zmax};
-    const int periodic[]   = { px,  py,  pz};
+    const int periodic[]   = { px,  py,  pz};           // SPAK: determines periodicity along each dimension. If px=1, x-axis is periodic. 
 
     // Initialize simulation time info:
     simulation_time_info();
@@ -1325,7 +1401,7 @@ int main(int argc, char** argv) {
     k_s/=scaling;
     k_l/=scaling;
 
-    if(example_==ICE_MELT){
+    if(example_==ICE_MELT || example_==PROTEIN){
         sigma/=scaling;
     }
 
@@ -1974,7 +2050,7 @@ int main(int argc, char** argv) {
           if(example_ == FRANK_SPHERE){
               check_frank_sphere_error(T_l_n, T_s_n, phi, v_interface, p4est_np1, nodes_np1, dxyz_close_to_interface,name,fich,tstep);
             }
-          if(example_ == ICE_MELT){
+          if(example_ == ICE_MELT || example_ == PROTEIN){
               keep_going = check_ice_melted(phi,tn + dt,nodes_np1,p4est_np1);
           }
 
