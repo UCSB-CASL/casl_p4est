@@ -5,7 +5,7 @@ project( protein_aggregation )
 
 set( CMAKE_CXX_STANDARD 14 )
 
-set (DIMENSION 2d)
+set (DIMENSION 3d)
 
 ###################################### Compiler custom macros for current project ######################################
 

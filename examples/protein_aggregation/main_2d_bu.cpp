@@ -1,9 +1,11 @@
 /*
- * Title: Protein Aggregation
+ * Title: stefan_mls
  * Description:
- * Author: Samira
- * Date Created: 07-04-2022
+ * Author: Elyce
+ * Date Created: 11-27-2019
  */
+
+//#define P4_TO_P8
 
 #ifndef P4_TO_P8
 #include <src/my_p4est_utils.h>
@@ -17,6 +19,7 @@
 #include <src/my_p4est_semi_lagrangian.h>
 
 #include <src/my_p4est_poisson_nodes_mls.h>
+#include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_macros.h>
 
@@ -32,6 +35,7 @@
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_poisson_nodes_mls.h>
+#include <src/my_p8est_poisson_nodes.h>
 #include <src/my_p8est_interpolation_nodes.h>
 
 #include <src/my_p8est_macros.h>
@@ -46,8 +50,19 @@
 using namespace std;
 
 const static std::string main_description =
-     "This is protein aggregation modeling project. \n"
-     "Developer: Samira Pakravan (spakravan@ucsb.edu), July 2022.\n"
+     "In this example, we illustrate the procedure and methods used in the CASL p4est \n"
+     "library to solve the Stefan problem. This example builds on fundamental tools \n"
+     "of the CASL library such as interpolation, extrapolation of fields, adaptive grid \n"
+     "refinement, reinitialization and advection of a level set function, and solution of \n"
+     "a Poisson problem. \n"
+     "Two examples are included in each 2D and 3D. One solves the Frank Sphere problem, a \n"
+     "known analytical solution to the Stefan problem, and computes errors of the solution. \n"
+     "The other models the melting of ice in a tub of water. Note: the ice melting example \n"
+     "is more for illustrative purposes of a physical example, and has not been rigorously validated. \n"
+     "\n"
+     "For more information, please see the Solving_a_Stefan_problem_with_CASL_p4est.pdf file included \n"
+     "in the example folder. \n "
+    "Developer: Elyce Bayat (ebayat@ucsb.edu), December 2019.\n"
      "\n\n\n"
      "Note: There are 3 environment variables to set depending on the data you wish to save. They are: \n"
      "(1) OUT_DIR_VTK -- the directory where you wish to save the vtk files of your simulation \n"
@@ -59,15 +74,18 @@ const static std::string main_description =
 parameter_list_t pl;
 
 // Examples:
-DEFINE_PARAMETER(pl,int,example_,0,"Example number. 0 = Protein Aggregation (default: 0)");
+DEFINE_PARAMETER(pl,int,example_,2,"Example number. 0 = Frank sphere, 1 = Ice melting, 2 = Protein Aggregation. (default: 2)");
 
 // Define the numeric label for each type of example to make implementation a bit more clear
 enum{
-    PROTEIN = 0
+    FRANK_SPHERE = 0,
+    ICE_MELT = 1,
+    PROTEIN = 2
 };
 
 // Save settings:
 DEFINE_PARAMETER(pl,bool,save_vtk,1,"Save to vtk? (default: true)");
+DEFINE_PARAMETER(pl,bool,save_frank_sphere_errors,0,"Save frank sphere errors? (default: false, but running frank sphere example will set it to true)");
 DEFINE_PARAMETER(pl,int,save_every_iter,1,"Save every n (provided value) number of iterations (default:1)");
 
 
@@ -77,26 +95,26 @@ DEFINE_PARAMETER(pl,bool,print_checkpoints,0,"Boolean value for whether or not y
 DEFINE_PARAMETER(pl,int,method_,1,"Timestepping method. 1 = Backward Euler, 2= Crank-Nicholson. (default: 1)");
 
 // Grid parameters
-DEFINE_PARAMETER(pl,int,lmin,6,"Minimum level of refinement (default: 4)");
-DEFINE_PARAMETER(pl,int,lmax,8,"Maximum level of refinement (default: 6)");
+DEFINE_PARAMETER(pl,int,lmin,5,"Minimum level of refinement (default: 4)");
+DEFINE_PARAMETER(pl,int,lmax,7,"Maximum level of refinement (default: 6)");
 DEFINE_PARAMETER(pl,double,lip,1.5,"Lipschitz constant (default: 1.5)");
 DEFINE_PARAMETER(pl,int,num_splits,0,"Number of splits -- used for convergence analysis (default: 0)");
 
 // Problem geometry:
-DEFINE_PARAMETER(pl,double,xmin,-1.0,"Minimum x-coordinate of the grid (default: -1.0)");
-DEFINE_PARAMETER(pl,double,xmax, 1.0,"Maximum x-coordinate of the grid (default:  1.0)");
-DEFINE_PARAMETER(pl,double,ymin,-1.0,"Minimum y-coordinate of the grid (default: -1.0)");
-DEFINE_PARAMETER(pl,double,ymax, 1.0,"Maximum y-coordinate of the grid (default:  1.0)");
-DEFINE_PARAMETER(pl,double,zmin,-1.0,"Minimum z-coordinate of the grid (default: -1.0)");
-DEFINE_PARAMETER(pl,double,zmax, 1.0,"Maximum z-coordinate of the grid (default:  1.0)");
+DEFINE_PARAMETER(pl,double,xmin,0.0,"Minimum x-coordinate of the grid (default: 0.0)");
+DEFINE_PARAMETER(pl,double,xmax,1.0,"Maximum x-coordinate of the grid (default: 1.0)");
+DEFINE_PARAMETER(pl,double,ymin,0.0,"Minimum y-coordinate of the grid (default: 0.0)");
+DEFINE_PARAMETER(pl,double,ymax,1.0,"Maximum y-coordinate of the grid (default: 1.0)");
+DEFINE_PARAMETER(pl,double,zmin,0.0,"Minimum z-coordinate of the grid (default: 0.0)");
+DEFINE_PARAMETER(pl,double,zmax,1.0,"Maximum z-coordinate of the grid (default: 1.0)");
 
-DEFINE_PARAMETER(pl,int,px,1,"Periodicity in x? Default: true");
-DEFINE_PARAMETER(pl,int,py,1,"Periodicity in y? Default: true");
-DEFINE_PARAMETER(pl,int,pz,1,"Periodicity in z? Default: true");
+DEFINE_PARAMETER(pl,int,px,0,"Periodicity in x? Default: false");
+DEFINE_PARAMETER(pl,int,py,0,"Periodicity in y? Default: false");
+DEFINE_PARAMETER(pl,int,pz,0,"Periodicity in z? Default: false");
 
-DEFINE_PARAMETER(pl,int,nx,1,"Number of trees in x-direction (default: 1)");
-DEFINE_PARAMETER(pl,int,ny,1,"Number of trees in y-direction (default: 1)");
-DEFINE_PARAMETER(pl,int,nz,1,"Number of trees in z-direction (default: 1)");
+DEFINE_PARAMETER(pl,int,nx,0,"Number of trees in x-direction (default: 1)");
+DEFINE_PARAMETER(pl,int,ny,0,"Number of trees in y-direction (default: 1)");
+DEFINE_PARAMETER(pl,int,nz,0,"Number of trees in z-direction (default: 1)");
 
 DEFINE_PARAMETER(pl,double,scaling,1.0,"The desired scaling between your physical problem and computational domain. ie.) physical_length_scale*scaling = computational_length_scale (default: 1.0 - aka, no scaling necessary)");
 
@@ -105,7 +123,7 @@ DEFINE_PARAMETER(pl,double,tstart,0.0,"Simulation start time (default: 0.0)");
 DEFINE_PARAMETER(pl,double,tfinal,1.0,"Simulation end time (default: 1.0)");
 
 // Solution stability:
-DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number to enforce for timestepping (default: 0.5)");
+DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number to enforce for timestepping (default: 0.25)");
 DEFINE_PARAMETER(pl,double,v_interface_max_allowed,500.0,"Maximum interfacial velocity allowed -- will abort if interface value exceeds this (default: 500.0");
 DEFINE_PARAMETER(pl,double,dt_max_allowed,1.0,"Maximum allowable timestep -- if timestep exceeds this, it will be set to this value instead (default 1.0)");
 
@@ -139,13 +157,53 @@ double sigma;
 void set_geometry(){
   double r_physical;
 
-  switch(example_){  
+  switch(example_){
+  case FRANK_SPHERE:
+      CODE2D(xmin = -5.0;ymin = -5.0; zmin = 0.0;
+            xmax = 5.0; ymax = 5.0; zmax = 0.0;)
+      CODE3D(xmin = -3.0;ymin = -3.0; zmin = -3.0;
+            xmax = 3.0; ymax = 3.0; zmax = 3.0;)
+
+      nx = 1; ny = 1; CODE2D(nz = 0); CODE3D(nz = 1);
+      px = 0; py = 0; pz = 0;
+
+      CODE2D(s0 = 0.6286;) // 1.5621
+      CODE3D(s0 = 0.5653;) // 2.0760
+      CODE2D(T_inf = -0.2); // -0.5
+      CODE3D(T_inf = -0.1);
+
+      Tinterface = 0.0;
+      Twall = T_inf;
+      scaling = 1.;
+      break;
+
+  case ICE_MELT:
+      CODE2D(xmin = -0.8; ymin = -0.8; zmin = 0.0;
+             xmax = 0.8; ymax = 0.8; zmax = 0.0);
+       CODE3D(xmin = -0.8; ymin = -0.8; zmin = -0.8;
+       xmax = 0.8; ymax = 0.8; zmax = 0.8);
+       nx = 1; ny = 1; CODE2D(nz = 0); CODE3D(nz = 1);
+       px = 0; py = 0; pz = 0;
+
+      // Scaling -> phyiscal_length_scale*scaling = computational_length_scale.
+      // Scaling has units of 1/L where L is the physical length scale
+      // Scaling = computational size/physical size
+      r_physical = 0.02; // 2 cm --> 0.02 m
+      scaling = 1.5/0.15;
+      r0 = r_physical*scaling; // Computational radius -- not physical size
+
+      Tice_init = 263.0; // [K] initial temp of ice out of freezer
+      Tinterface = 273.0; // [K] -- freezing temp of water
+      Twall = 298.0; // [K] -- a bit under boiling temp of water
+      break;
+    
     case PROTEIN:
       CODE2D(xmin = -0.8; ymin = -0.8; zmin = 0.0;
              xmax = 0.8; ymax = 0.8; zmax = 0.0);
        CODE3D(xmin = -0.8; ymin = -0.8; zmin = -0.8;
-             xmax = 0.8; ymax = 0.8; zmax = 0.8);
-
+       xmax = 0.8; ymax = 0.8; zmax = 0.8);
+       nx = 1; ny = 1; CODE2D(nz = 0); CODE3D(nz = 1);
+       px = 0; py = 0; pz = 0;
 
       // Scaling -> phyiscal_length_scale*scaling = computational_length_scale.
       // Scaling has units of 1/L where L is the physical length scale
@@ -169,6 +227,19 @@ void set_geometry(){
 double dt; // Global variable which holds the current timestep value
 void simulation_time_info(){
   switch(example_){
+    case FRANK_SPHERE:
+      tstart = 1.0;
+      tfinal = 1.3;
+
+      dt_max_allowed = 0.05;
+
+      break;
+    case ICE_MELT:
+      tstart = 0.0;
+      tfinal = 90.*60.; // approx 90 minutes
+      dt_max_allowed = 20.0;
+      break;
+    
     case PROTEIN:
       tstart = 0.0;
       tfinal = 90.*60.; // approx 90 minutes
@@ -184,6 +255,14 @@ double alpha_s;
 double alpha_l;
 void set_diffusivities(){
   switch(example_){
+    case FRANK_SPHERE:
+      alpha_s = 1.0;
+      alpha_l = 1.0;
+      break;
+    case ICE_MELT:
+      alpha_s = (1.1820e-6); //ice - [m^2]/s
+      alpha_l = (1.4547e-7); //water- [m^2]/s
+      break;
     case PROTEIN:
       alpha_s = (1.1820e-6); //ice - [m^2]/s
       alpha_l = (1.4547e-7); //water- [m^2]/s
@@ -198,6 +277,21 @@ double rho_l; // Liquid density
 
 void set_conductivities(){
   switch(example_){
+    case FRANK_SPHERE:
+      k_s = 1.0;
+      k_l = 1.0;
+      L = 1.0;
+      rho_l = 1.0;
+      break;
+
+    case ICE_MELT:
+      k_s = 2.3;//2.2; // W/[m*K]
+      k_l = 0.65; // W/[m*K]
+      L = 334.e3; //J/kg
+      rho_l = 1000.0; // kg/m^3
+      sigma = 9.e-6;//30.e-3 // J/m^2 // surface tension of water
+      break;
+
     case PROTEIN:
       k_s = 2.3;//2.2; // W/[m*K]
       k_l = 0.65; // W/[m*K]
@@ -312,6 +406,13 @@ public:
   {
     
      switch (example_){
+      case FRANK_SPHERE:
+        return s0 - sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+        
+
+      case ICE_MELT:
+         return r0 - sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+
       case PROTEIN:
         return MAX(r0 - sqrt(SQR(x - 1.5 * r0) + SQR(y) CODE3D(+ SQR(z))), r0 - sqrt(SQR(x + 1.5 * r0) + SQR(y) CODE3D(+ SQR(z))));
 
@@ -328,6 +429,12 @@ BoundaryConditionType interface_bc_type_temp;
 // Auxiliary function which initializes the interface BC type -- call this function before setting interface bc in the solver
 void interface_bc(){
   switch(example_){
+    case FRANK_SPHERE:
+      interface_bc_type_temp = DIRICHLET;
+      break;
+    case ICE_MELT:
+      interface_bc_type_temp = DIRICHLET;
+      break;
     case PROTEIN:
       interface_bc_type_temp = DIRICHLET;
       break;
@@ -349,6 +456,11 @@ public:
   double operator()(DIM(double x, double y,double z)) const
   {
     switch(example_){
+      case FRANK_SPHERE: // Frank sphere case, no surface tension
+        return Tinterface;
+    case ICE_MELT: // Water case, has surface tension effects
+        //return Tinterface;
+        return Tinterface*(1. + sigma*kappa_interp(DIM(x,y,z))/L);
     case PROTEIN: // Water case, has surface tension effects
         //return Tinterface;
         return Tinterface*(1. + sigma*kappa_interp(DIM(x,y,z))/L);
@@ -360,6 +472,8 @@ class BC_interface_coeff: public CF_DIM{
 public:
   double operator()(DIM(double x, double y,double z)) const
   { switch(example_){
+      case FRANK_SPHERE: return 1.0;
+      case ICE_MELT: return 1.0;
       case PROTEIN: return 1.0;
       }
   }
@@ -425,7 +539,8 @@ public:
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
     switch(example_){
-      case PROTEIN: return ROBIN;
+      case FRANK_SPHERE: return DIRICHLET;
+      case ICE_MELT: return DIRICHLET;
       default: break;
       }
   }
@@ -437,6 +552,31 @@ public:
   double operator()(DIM(double x, double y, double z)) const
   {
     switch(example_){
+      case FRANK_SPHERE:{
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) CODE3D(|| zlower_wall(DIM(x,y,z)) || zupper_wall(DIM(x,y,z)))){
+            if (level_set(DIM(x,y,z)) < EPS){
+                double r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+                double sval = s(r,tn+dt);
+                return frank_sphere_solution_t(sval);
+              }
+            else{
+                return Tinterface;
+              }
+          }
+        break;
+       }
+    case ICE_MELT: {
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) CODE3D(|| zlower_wall(DIM(x,y,z)) || zupper_wall(DIM(x,y,z)))){
+            if (level_set(DIM(x,y,z)) < EPS){
+                return Twall;
+              }
+            else{
+                return Tinterface;
+              }
+          } // end of "if on wall"
+        break;
+    }// end of ICE_MELT case
+
     case PROTEIN: {
         if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) CODE3D(|| zlower_wall(DIM(x,y,z)) || zupper_wall(DIM(x,y,z)))){
             if (level_set(DIM(x,y,z)) < EPS){
@@ -467,6 +607,22 @@ public:
     double sval;
     double Tsloped;
     switch(example_){
+    case FRANK_SPHERE:{
+        r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+        sval = s(r,tn);
+        return frank_sphere_solution_t(sval);
+        }
+    case ICE_MELT:{
+        r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+        m = (Twall - Tinterface)/(level_set(DIM(xmax,ymax,zmax)) - r0);
+        if (level_set(DIM(x,y,z))<0){
+            return Twall;
+        }
+        else{
+            return Tice_init;
+        }
+
+    }
     case PROTEIN:{
         r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
         m = (Twall - Tinterface)/(level_set(DIM(xmax,ymax,zmax)) - r0);
@@ -1122,14 +1278,24 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     phi.get_array();
     Tl.get_array(); Ts.get_array();
     v_int.get_array();
-   
+    if(example_ == FRANK_SPHERE){
+        T_error.get_array();
+        T_ana.get_array();
+    }
+
 
     // Save data:
     std::vector<std::string> point_names;
     std::vector<const double*> point_data;
 
-    point_names = {"phi","Tl","Ts","v_int_x","v_int_y",ZCODE("v_int_z")};
-    point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],ZCODE(v_int.ptr[2])};
+    if(example_ == FRANK_SPHERE){
+        point_names = {"phi","Tl","Ts","v_int_x","v_int_y","T_error" ,"T_analytical",ZCODE("v_int_z")};
+        point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],T_error.ptr,T_ana.ptr,ZCODE(v_int.ptr[2])};
+    }
+    else{
+        point_names = {"phi","Tl","Ts","v_int_x","v_int_y",ZCODE("v_int_z")};
+        point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],ZCODE(v_int.ptr[2])};
+    }
 
     std::vector<std::string> cell_names;
     std::vector<const double*> cell_data;
@@ -1150,6 +1316,11 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     phi.restore_array();
     Tl.restore_array(); Ts.restore_array();
     v_int.restore_array();
+    if(example_ == FRANK_SPHERE){
+        T_error.restore_array();
+        T_ana.restore_array();
+    }
+
 
     // Scale things back:
     foreach_dimension(d){
@@ -1230,7 +1401,7 @@ int main(int argc, char** argv) {
     k_s/=scaling;
     k_l/=scaling;
 
-    if(example_==PROTEIN){
+    if(example_==ICE_MELT || example_==PROTEIN){
         sigma/=scaling;
     }
 
@@ -1375,7 +1546,19 @@ int main(int argc, char** argv) {
     // For checking error for Frank Sphere analytical solution:
     FILE *fich;
     char name[1000];
-  
+    if (example_ == FRANK_SPHERE){
+      const char* outdir_err = getenv("OUT_DIR_ERR");
+      if(!outdir_err && save_frank_sphere_errors){
+          throw std::invalid_argument("You need to set the environment variable OUT_DIR_ERR to save vtk files\n");
+      }
+
+      CODE2D(sprintf(name,"%s/frank_sphere_error_2d_lmin_%d_lmax_%d_method_%d.dat",outdir_err,lmin+grid_res_iter,lmax + grid_res_iter,method_);)
+      CODE3D(sprintf(name,"%s/frank_sphere_error_3d_lmin_%d_lmax_%d_method_%d.dat",outdir_err,lmin+grid_res_iter,lmax + grid_res_iter,method_);)
+
+      ierr = PetscFOpen(mpi.comm(),name,"w",&fich); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(),fich,"time " "timestep " "iteration " "phi_error " "T_l_error " "T_s_error " "v_int_error " "number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
+      ierr = PetscFClose(mpi.comm(),fich); CHKERRXX(ierr);
+      }
 
     // For checking memory usage
     FILE *fich_mem;
@@ -1524,8 +1707,38 @@ int main(int argc, char** argv) {
           vec_and_ptr_t T_ana;
           vec_and_ptr_t T_error;
 
-          save_stefan_fields(p4est,nodes,ghost,phi,T_l_n,T_s_n,v_interface,T_error,T_ana,output);
-         
+
+          if(example_ == FRANK_SPHERE){
+              T_ana.create(p4est,nodes);
+              T_error.create(p4est,nodes);
+              sample_cf_on_nodes(p4est,nodes,temp_current_time,T_ana.vec);
+
+              T_error.get_array();T_ana.get_array();T_l_n.get_array();T_s_n.get_array();phi.get_array();
+              foreach_node(n,nodes){
+                if(phi.ptr[n]<=0.){
+                  T_error.ptr[n] = fabs(T_l_n.ptr[n] - T_ana.ptr[n]);
+                  }
+                else{
+                    T_error.ptr[n] = fabs(T_s_n.ptr[n] - T_ana.ptr[n]);
+                  }
+
+              }
+              T_error.restore_array();
+              T_ana.restore_array();
+              T_l_n.restore_array();
+              T_s_n.restore_array();
+              phi.restore_array();
+
+
+              save_stefan_fields(p4est,nodes,ghost,phi,T_l_n,T_s_n,v_interface,T_error,T_ana,output);
+              T_ana.destroy();
+              T_error.destroy();
+          }
+          else{
+              save_stefan_fields(p4est,nodes,ghost,phi,T_l_n,T_s_n,v_interface,T_error,T_ana,output);
+          }
+
+
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Successfully saved to vtk \n");
           }
 
@@ -1760,12 +1973,12 @@ int main(int argc, char** argv) {
           solver_Ts->set_rhs(rhs_Ts.vec);
 
           // Set some other solver properties:
-          solver_Tl->set_integration_order(2); // For Neumann/Robin
+          solver_Tl->set_integration_order(1); // For Neumann/Robin
           solver_Tl->set_use_sc_scheme(0); // For Neumann/Robin
           solver_Tl->set_cube_refinement(cube_refinement); // For Neumann/Robin
           solver_Tl->set_store_finite_volumes(0);
 
-          solver_Ts->set_integration_order(2);
+          solver_Ts->set_integration_order(1);
           solver_Ts->set_use_sc_scheme(0);
           solver_Ts->set_cube_refinement(cube_refinement);
           solver_Ts->set_store_finite_volumes(0);
@@ -1773,14 +1986,6 @@ int main(int argc, char** argv) {
           // Set the wall BC:
           solver_Tl ->set_wc(wall_bc_type_temp,wall_bc_value_temp);
           solver_Ts ->set_wc(wall_bc_type_temp,wall_bc_value_temp);
-
-          solver_Tl->set_use_taylor_correction(1);
-          solver_Tl->set_kink_treatment(1);
-          solver_Tl->set_enfornce_diag_scaling(1);
-
-          solver_Ts->set_use_taylor_correction(1);
-          solver_Ts->set_kink_treatment(1);
-          solver_Ts->set_enfornce_diag_scaling(1);
 
 
           PetscLogDouble mem11;
@@ -1842,7 +2047,10 @@ int main(int argc, char** argv) {
           // Some example specific operations for the Poisson problem:
           // ------------------------------------------------------------
           // Check error on the Frank sphere, if relevant:
-          if(example_ == PROTEIN){
+          if(example_ == FRANK_SPHERE){
+              check_frank_sphere_error(T_l_n, T_s_n, phi, v_interface, p4est_np1, nodes_np1, dxyz_close_to_interface,name,fich,tstep);
+            }
+          if(example_ == ICE_MELT || example_ == PROTEIN){
               keep_going = check_ice_melted(phi,tn + dt,nodes_np1,p4est_np1);
           }
 
