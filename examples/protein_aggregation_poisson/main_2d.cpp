@@ -27,6 +27,11 @@
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_macros.h>
+#include <src/my_p8est_node_neighbors.h>
+#include <src/casl_math.h>
+#include <src/my_p8est_level_set.h>
+#include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_poisson_nodes_mls.h>
 #endif
 
 #include <src/Parser.h>
@@ -58,6 +63,14 @@ struct:CF_DIM {
 } robin_coeff_cf;
 
 int main(int argc, char** argv) {
+  
+  const char* outdir_vtk = getenv("OUT_DIR_VTK");
+  if(!outdir_vtk){
+      throw std::invalid_argument("You need to set the environment variable OUT_DIR_VTK to save vtk files\n");
+  }
+  char output[1000];
+  sprintf(output,"%s/protein_aggregation_poisson",outdir_vtk);
+
 
   // prepare parallel enviroment
   mpi_environment_t mpi;
@@ -170,9 +183,10 @@ int main(int argc, char** argv) {
   ierr = VecGetArray(rhs, &rhs_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(solution, &solution_ptr); CHKERRXX(ierr);
 
+  
   my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
-                         5, 0, "protein_aggregation_poisson",
+                         5, 0, output,
                          VTK_POINT_DATA, "phi", phi_ptr,
                          VTK_POINT_DATA, "robin_coeff", robin_coeff_ptr,
                          VTK_POINT_DATA, "robin_coeff_flattened", robin_coeff_flattened_ptr,

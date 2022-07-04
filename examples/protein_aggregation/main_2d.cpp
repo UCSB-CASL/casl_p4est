@@ -1669,7 +1669,7 @@ int main(int argc, char** argv) {
         // ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
 
 
-        //SP
+        //SPAK
         ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, extension_band_use_, extension_band_extend_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
         ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, extension_band_use_, extension_band_extend_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
 
@@ -1693,7 +1693,7 @@ int main(int argc, char** argv) {
         PetscLogDouble mem2;
         if(check_memory_usage) PetscMemoryGetCurrentUsage(&mem2);
         // --------------------------------------------------------------------------------------------------------------
-        // SAVING DATA: Save data every specified amout of timesteps: -- Do this after values are extended across interface (rather than before) to make visualization nicer
+        // SAVING DATA: Save data every specified amount of timesteps: -- Do this after values are extended across interface (rather than before) to make visualization nicer
         // --------------------------------------------------------------------------------------------------------------
         if(save_vtk && (tstep%save_every_iter ==0)){
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Preparing to save vtk ... \n");

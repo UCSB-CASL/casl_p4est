@@ -1,0 +1,4 @@
+{
+    "cmake.sourceDirectory": "${workspaceFolder}/examples/protein_aggregation",
+    "cmake.configureOnOpen": true
+}
