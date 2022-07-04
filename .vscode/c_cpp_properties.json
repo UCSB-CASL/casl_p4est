@@ -3,14 +3,18 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**",
+                "/usr/local/petsc-3.16.3/include",
+                "/usr/local/p4est-2.8/include",
+                "/usr/lib/x86_64-linux-gnu/mpich/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
             "cStandard": "gnu17",
             "cppStandard": "gnu++14",
             "intelliSenseMode": "linux-gcc-x64",
-            "configurationProvider": "ms-vscode.cmake-tools"
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "forcedInclude": ["/usr/local/petsc-3.16.3/include/petsc.h"]
         }
     ],
     "version": 4
