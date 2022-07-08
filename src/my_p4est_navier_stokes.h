@@ -1002,11 +1002,14 @@ public:
    * @param [in] iter Iteration number to be appended to exported file.
    * @param [in] vtkPath Folder where to save the VTK export for visualization (by default, the build directory).
    * @param [in] csvPath Folder where to save the csv data file (by default, the build directory).
+   * @param [in] onlySum Whether we want to reduce by averaging or keeping the sum of the running stats.  Useful for data collection across
+   * 					 restarts.
    * @throws runtime_error if running stats hash map is empty, or if the grid changed and we couldn't locate some coordinates in the map, or
    * 		 if collecting data from all ranks fails, or if we couldn't save data to a file, or if the vorticity components are not computed,
    * 		 or if the time span over which we desire the average is near 0, or if we can't create or open target directories.
    */
-  void compute_and_save_nodal_running_statistics_averages( const u_int& iter, const std::string& vtkPath=".", const std::string& csvPath="." );
+  void compute_and_save_nodal_running_statistics_averages( const u_int& iter, const std::string& vtkPath=".",
+														   const std::string& csvPath=".", const bool& onlySum=false );
 #endif
 };
 

@@ -4,7 +4,7 @@
  * run the program with the -help flag to see the available options
  *
  * Author: Raphael Egan, with updates by Luis Ángel.
- * Updated: June 7, 2022.
+ * Updated: July 8, 2022.
  */
 
 // System
@@ -209,6 +209,7 @@ struct simulation_setup
   int running_stats_cur_count;	// Counts for how many steps we have accumulated stats.
   int running_stats_step;		// Helps us determine when it's time to update running stats.
   bool running_stats_done;
+  bool running_stats_only_sum;	// Allows us to reduce running stats by computing only their sums (not the avg).  Useful for collecting data across restarts.
   const bool save_state;
   double dt_save_data;
   const unsigned int n_states;
@@ -245,6 +246,7 @@ struct simulation_setup
     save_drag(cmd.contains("save_drag")),
     do_accuracy_check(cmd.contains("accuracy_check") && cmd.contains("restart")),
 	do_running_stats(cmd.contains("running_stats") && cmd.contains("restart") && !cmd.contains("accuracy_check")),
+	running_stats_only_sum(cmd.contains("running_stats_only_sum")),
     save_state(cmd.contains("save_state_dt")),
     n_states(cmd.get<unsigned int>("save_nstates", default_save_nstates)),
     save_profiles(cmd.contains("save_mean_profiles")),
@@ -293,6 +295,8 @@ struct simulation_setup
 	  running_stats_num_steps = cmd.get<int>( "running_stats_num_steps", -1 );
 	  if( running_stats_num_steps <= 0 )
 		throw std::invalid_argument( "simulation_setup::simulation_setup(): the value of running_stats_num_steps must be strictly positive" );
+	  if( running_stats_only_sum && !save_state )
+		throw std::invalid_argument( "simulation_steup::simulation_setup(): the only-sum feature for running stats requires to enable save_state" );
 	}
 	running_stats_done = false;
 
@@ -695,6 +699,7 @@ public:
 	// First part works on the slice averaged velocity profile.  Note we are interested on the x-component (i.e., u) of
 	// the velocity, which gets averaged for every "height" along the y-axis.
     ns->get_slice_averaged_vnp1_profile(dir::x, dir::y, slice_averaged_profile, u_scaling);
+	bool will_save_avged_running_stats = setup.time_to_save_running_stats() && setup.running_stats_cur_count + 1 >= setup.running_stats_num_steps;
     if (ns->get_mpirank() == 0)
     {
       if (iter_export_profile == 0)
@@ -712,12 +717,12 @@ public:
         }
       }
 
-      if (iter_export_profile != 0 && (iter_export_profile%setup.nexport_avg == 0 || setup.time_to_save_state()))
+      if (iter_export_profile != 0 && (iter_export_profile%setup.nexport_avg == 0 || setup.time_to_save_state() || will_save_avged_running_stats))
       {
         // we export velocity profile data every nexport_avg iterations *OR* if the solver state is about to be exported at the beginning of next iteration
         // this second condition avoids truncation errors in the relevant data files when restarting the simulation from a saved solver state
         // In the latter case, we need to export nm1 profiles for it to be read in case of restart
-        if (setup.time_to_save_state())
+        if (setup.time_to_save_state() || will_save_avged_running_stats)	// Also check if we'll be saving averaged running stats, implying saving state too.
         {
           const std::string path_to_binary_slice_velocity_profile_nm1 = profile_path + "/slice_velocity_profile_nm1.bin";
           if (file_exists(path_to_binary_slice_velocity_profile_nm1))
@@ -766,12 +771,12 @@ public:
           }
         }
 
-        if (iter_export_profile != 0 && (iter_export_profile%setup.nexport_avg == 0 || (setup.time_to_save_state())))
+        if (iter_export_profile != 0 && (iter_export_profile%setup.nexport_avg == 0 || setup.time_to_save_state() || will_save_avged_running_stats))
         {
           // we export velocity profile data every nexport_avg iterations *OR* if the solver state is about to be exported at the beginning of next iteration
           // this second condition avoids truncation errors in the relevant data files when restarting the simulation from a saved solver state
           // In the latter case, we need to export nm1 profiles for it to be read in case of restart
-          if (setup.time_to_save_state())
+          if (setup.time_to_save_state() || will_save_avged_running_stats)	// Also check if we'll be saving averaged running stats, implying saving state too.
           {
             const std::string path_to_binary_line_velocity_profile_nm1 = profile_path + "/line_velocity_profile_nm1_index_" + std::to_string(bin_idx) + ".bin";
             if (file_exists(path_to_binary_line_velocity_profile_nm1))
@@ -801,7 +806,7 @@ public:
       }
     }
     // if we exported velocity profile data because of an exported solver state but not because of a reached value of iter_export_profile, we reset its value to 0!
-    if (iter_export_profile != 0 && setup.time_to_save_state() && iter_export_profile%setup.nexport_avg != 0)
+    if (iter_export_profile != 0 && (setup.time_to_save_state() || will_save_avged_running_stats) && iter_export_profile%setup.nexport_avg != 0)
       iter_export_profile = 0;
 
     iter_export_profile++;
@@ -1619,6 +1624,7 @@ int main (int argc, char* argv[])
   cmd.add_option("running_stats", 		"collect average nodal running statistics, including velocity (u,v,w), component products (uu,vv,ww,uv,uw,vw), pressure, pressure variance, and vorticity components. Export also results to VTK.\n\tThis option is only available for 3D and on restart, if the grid won't change, and if accuracy check is not requested." );
   cmd.add_option("running_stats_dt", 	"accumulate nodal running statistics every running_stats_dt time lapse (REQUIRED if running_stats is activated)");
   cmd.add_option("running_stats_num_steps", "collect average nodal running statistics for as many as running_stats_num_steps or until the requested simulation's duration is attained (REQUIRED if running_stats is activated)");
+  cmd.add_option("running_stats_only_sum", "export only the running statistic sums and avoid averaging over the simulation duration. This allows collecting stats across restarts. This option requires the save_state option enabled to save the state right after saving stats to file. Default is 'not given'");
   cmd.add_option("save_drag",           "activates exportation of the total drag, non-dimensionalized by 2.0*rho*U_b^2*length (*width) (--> estimate of (Re_tau/Re_b)^2 at steady state)");
   cmd.add_option("save_state_dt",       "if present, this activates the 'save-state' feature. \n\tThe solver state is saved every save_state_dt time steps in backup_ subfolders.");
   cmd.add_option("save_nstates",        "determines how many solver states must be memorized in backup_ folders, default is " + std::to_string(default_save_nstates));
@@ -1771,9 +1777,12 @@ int main (int argc, char* argv[])
 		CHKERRXX( PetscPrintf(mpi.comm(), "--> Completed running stats step %d/%d...\n", setup.running_stats_cur_count, setup.running_stats_num_steps ) );
 		if( setup.running_stats_cur_count >= setup.running_stats_num_steps )
 		{
-		  ns->compute_and_save_nodal_running_statistics_averages( setup.iter, setup.export_dir + "/vtu", setup.export_dir );
+		  ns->compute_and_save_nodal_running_statistics_averages( setup.iter, setup.export_dir + "/vtu", setup.export_dir, setup.running_stats_only_sum );
 		  ns->clear_running_statistics_map();
 		  setup.running_stats_done = true;
+
+		  if( setup.save_state )
+			ns->save_state(setup.export_dir.c_str(), setup.tn, setup.n_states);
 		}
 	}
 #endif
@@ -1787,10 +1796,13 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   if( setup.do_running_stats && !setup.running_stats_done )
   {
-	CHKERRXX( PetscPrintf( mpi.comm(), "--> Didn't complete expected number of steps for running stats, but we'll compute averages now...\n" ) );
-	ns->compute_and_save_nodal_running_statistics_averages( setup.iter, setup.export_dir + "/vtu", setup.export_dir );
+	CHKERRXX( PetscPrintf( mpi.comm(), "--> Didn't complete expected number of steps for running stats, but we'll reduce them now...\n" ) );
+	ns->compute_and_save_nodal_running_statistics_averages( setup.iter, setup.export_dir + "/vtu", setup.export_dir, setup.running_stats_only_sum );
 	ns->clear_running_statistics_map();
 	setup.running_stats_done = true;
+
+	if( setup.save_state )
+	  ns->save_state(setup.export_dir.c_str(), setup.tn, setup.n_states);
   }
 #endif
 
