@@ -4960,7 +4960,8 @@ void my_p4est_navier_stokes_t::accumulate_nodal_running_statistics( const double
 	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Updated running statistics for %i nodes across the forest with delta_t = %.5e.\n", updated, deltaT ) );
 }
 
-void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages( const u_int& iter, const std::string& vtkPath, const std::string& csvPath )
+void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_averages( const u_int& iter, const std::string& vtkPath,
+																				   const std::string& csvPath, const bool& onlySum )
 {
 	const int N_FIELDS = 17;
 	const double T = _runningStatisticsLastTime - _runningStatisticsStartTime;
@@ -5027,22 +5028,23 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 		}
 
 		int i = 0;
+		double denom = (onlySum? 1.0 : T);
 		for( const double& dim : xyz )						// Copy first the xyz coordinates (not the normalized, though).
 			fields[i++][idx] = dim;
-		fields[i++][idx] = record->second.u / T;			// 3 (idx in field).
-		fields[i++][idx] = record->second.v / T;			// 4
-		fields[i++][idx] = record->second.w / T;			// 5
-		fields[i++][idx] = record->second.uu / T;			// 6
-		fields[i++][idx] = record->second.vv / T;			// 7
-		fields[i++][idx] = record->second.ww / T;			// 8
-		fields[i++][idx] = record->second.uv / T;			// 9
-		fields[i++][idx] = record->second.uw / T;			// 10
-		fields[i++][idx] = record->second.vw / T;			// 11
-		fields[i++][idx] = record->second.pressure / T;		// 12
-		fields[i++][idx] = record->second.vort_u / T;		// 13
-		fields[i++][idx] = record->second.vort_v / T;		// 14
-		fields[i++][idx] = record->second.vort_w / T;		// 15
-		fields[i  ][idx] = record->second.pressure2 / T;	// 16
+		fields[i++][idx] = record->second.u / denom;		// 3 (idx in field).
+		fields[i++][idx] = record->second.v / denom;		// 4
+		fields[i++][idx] = record->second.w / denom;		// 5
+		fields[i++][idx] = record->second.uu / denom;		// 6
+		fields[i++][idx] = record->second.vv / denom;		// 7
+		fields[i++][idx] = record->second.ww / denom;		// 8
+		fields[i++][idx] = record->second.uv / denom;		// 9
+		fields[i++][idx] = record->second.uw / denom;		// 10
+		fields[i++][idx] = record->second.vw / denom;		// 11
+		fields[i++][idx] = record->second.pressure / denom;	// 12
+		fields[i++][idx] = record->second.vort_u / denom;	// 13
+		fields[i++][idx] = record->second.vort_v / denom;	// 14
+		fields[i++][idx] = record->second.vort_w / denom;	// 15
+		fields[i  ][idx] = record->second.pressure2 / denom;// 16
 
 		// Populate auxiliary visualization vectors.
 		avgVelPtr[0][n]   = fields[ 3][idx];										// Velocity components.
@@ -5089,7 +5091,7 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 	CHKERRXX( VecGhostUpdateEnd( pressureVar, INSERT_VALUES, SCATTER_FORWARD ) );
 
 	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &idx, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
-	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Computed average running statistics for %i nodes for a time interval of %.5e across the forest.\n", T, idx ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Computed average running statistics for %i nodes for a time interval of %.8f across the forest.\n", T, idx ) );
 	_runningStatisticsStartTime = _runningStatisticsLastTime = 0;
 
 	////////////////////////////////////////////////////// Now save VTK with averages //////////////////////////////////////////////////////
