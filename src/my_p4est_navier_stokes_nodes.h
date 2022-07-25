@@ -494,8 +494,6 @@ public:
   inline my_p4est_node_neighbors_t* get_ngbd_n() { return ngbd_n; }
   inline my_p4est_node_neighbors_t* get_ngbd_nm1() { return ngbd_nm1; }
 
-  inline my_p4est_cell_neighbors_t* get_ngbd_c() { return ngbd_c; }
-
   inline p4est_t *get_p4est() { return p4est_n; }
 
   // ---------------------------------------------------
