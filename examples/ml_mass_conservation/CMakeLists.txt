@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 14 )
 ###################################### Compiler custom macros for current project ######################################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC rotation_2d.cpp )
+	list( APPEND SRC rotation_vortex_patch_2d.cpp )
 else()
 	message( FATAL_ERROR "Invalid or missing DIMENSION macro --it should be '2d'." )
 endif()
