@@ -170,9 +170,9 @@ int main(int argc, char *argv[]) {
   // Now, read the options and/or set default parameters
 
   // which molecule(s)
-  const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
+  const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/work/CASL/casl_p4est/examples/biomol/new_mols");
   //const string input_folder                 = cmd.get<string> ("input-dir", "/home/regan/Desktop/casl_p4est_develop/examples/biomol/mols");
-  const string pqr_input                    = cmd.get<string>("pqr", "1etn.");
+  const string pqr_input                    = cmd.get<string>("pqr", "451c.");
   //    const string pqr_input                    = cmd.get<string>("pqr", "3J6D."); // in 2D, for the illustrative planar molecule in the paper
   //    const string pqr_input                    = cmd.get<string>("pqr", "/3J3Q/pqr/3j3q-bundle."); // in 3D, for the graphical abstract of the paper
   const vector<string>* pqr = NULL;
@@ -214,7 +214,7 @@ int main(int argc, char *argv[]) {
 
 
   // exportation folder and files
-  string output_folder                      = cmd.get<string>("output-dir", "/home/rochi/LabCode/results/biomol");
+  string output_folder                      = cmd.get<string>("output-dir", "/home/rochi/work/CASL/release/biomol");
   //string output_folder                      = cmd.get<string>("output-dir", "/home/regan/workspace/projects/biomol");
   mkdir(output_folder.c_str(), 0755);
   string subvtk                             = cmd.get<string>("subvtk", "yes");
