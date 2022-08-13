@@ -94,6 +94,7 @@ private:
 
   /* temperature */
   vector<vec_and_ptr_t> tl_;
+  vec_and_ptr_dim_t tl_dd;
   vector<vec_and_ptr_t> ts_;
 
   // backtraced temperatures:
@@ -103,7 +104,7 @@ private:
   /* concentrations */
   vector<vec_and_ptr_array_t> cl_;
   vec_and_ptr_dim_t           cl0_grad_;
-
+  vec_and_ptr_dim_t cl0_dd;
   // backtraced concentrations:
   vec_and_ptr_array_t cl_backtrace_n;
   vec_and_ptr_array_t cl_backtrace_nm1;
@@ -118,6 +119,7 @@ private:
   vec_and_ptr_dim_t v_n;
   vec_and_ptr_dim_t v_nm1;
   vec_and_ptr_t vorticity;
+  vec_and_ptr_t vorticity_refine;
   vec_and_ptr_t press_nodes;
 
   // Never actually use below, we will just get them from stefan_W_fluids after it 
@@ -288,10 +290,16 @@ private:
 
 
   // To-do w/fluids: actually write this:
-  void prepare_refinement_fields();
-
-
-
+  bool refine_by_vorticity;
+  void set_refine_by_vorticity(bool refine_by_vorticity_){refine_by_vorticity = refine_by_vorticity_;}
+  bool refine_by_d2T;
+  void set_refine_by_d2T(bool ref_by_d2T_){refine_by_d2T = ref_by_d2T_;}
+  bool refine_by_d2C;
+  void set_refine_by_d2C(bool ref_by_d2C_){refine_by_d2C = ref_by_d2C_;}
+  double vorticity_threshold;
+  double d2T_threshold;
+  double d2C_threshold;
+  //void prepare_refinement_fields();
 
 public:
   my_p4est_multialloy_t(int num_comps, int time_order);
@@ -653,6 +661,7 @@ public:
 
   void compute_dt();
   void update_grid();
+  void update_grid_w_fluids();
   void update_grid_eno();
   void update_grid_solid();
   int  one_step(int it_scheme=2, double *bc_error_max=NULL, double *bc_error_avg=NULL, std::vector<int> *num_pdes=NULL, std::vector<double> *bc_error_max_all=NULL, std::vector<double> *bc_error_avg_all=NULL);

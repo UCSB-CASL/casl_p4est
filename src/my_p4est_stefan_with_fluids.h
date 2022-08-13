@@ -1066,7 +1066,7 @@ public:
     hodge_percentage_of_max_u = max_perc;
   }
   void set_hodge_max_iteration(int max_it){hodge_max_it = max_it;}
-
+  double get_NS_norm(){return NS_norm;}
   void set_compute_pressure(bool compute_press){compute_pressure_ = compute_press;}
   // ----------------------------------------------
   // Related to domain:
@@ -1386,6 +1386,22 @@ public:
     theta0 = theta0_;
     deltaT = deltaT_;
   };
+
+  double get_theta_infty(){
+    return theta_infty;
+  }
+
+  double get_theta_interface(){
+    return theta_interface;
+  }
+
+  double get_theta0(){
+    return theta0;
+  }
+
+  double get_deltaT(){
+    return deltaT;
+  }
 
   // -------------------------------------------------------
   // Auxiliary initializations:

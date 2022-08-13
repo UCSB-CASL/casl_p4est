@@ -717,14 +717,401 @@ void my_p4est_multialloy_t::update_grid()
 
   sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
   sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
-//  sl.set_velo_interpolation(linear);
+  //  sl.set_velo_interpolation(linear);
+
+  // save copy of old level-set function (used for front regularization later)
+  // (gonna use front_curvature_ as tmp, it will be destroyed later anyway)
+  ierr = VecCopyGhost(front_phi_.vec, front_curvature_.vec); CHKERRXX(ierr);
+
+  if (num_time_layers_ == 2) {
+    sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
+  } else {
+    sl.update_p4est(front_velo_[1].vec, front_velo_[0].vec, dt_[1], dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
+  }
+
+  /* interpolate the quantities onto the new grid */
+  // also shifts n+1 -> n
+
+  PetscPrintf(p4est_->mpicomm, "done!\n");
+  PetscPrintf(p4est_->mpicomm, "Transfering data between grids... ");
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
+  my_p4est_interpolation_nodes_t interp(ngbd_);
+
+  double xyz[P4EST_DIM];
+  foreach_node(n, nodes_np1)
+  {
+    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+    interp.add_point(n, xyz);
+  }
+
+  vec_and_ptr_t front_phi_old;
+  front_phi_old.create(front_phi_.vec);
+  interp.set_input(front_curvature_.vec, interpolation_between_grids_);
+  interp.interpolate(front_phi_old.vec);
+
+  // interpolate old level-set function
+  front_phi_dd_.destroy();
+  front_phi_dd_.create(p4est_np1, nodes_np1);
+  front_curvature_.destroy();
+  front_curvature_.create(front_phi_.vec);
+  front_normal_.destroy();
+  front_normal_.create(front_phi_dd_.vec);
+  /* temperature */
+  for (int j = num_time_layers_-1; j > 0; --j)
+  {
+    tl_[j].destroy();
+    tl_[j].create(front_phi_.vec);
+    interp.set_input(tl_[j-1].vec, interpolation_between_grids_);
+    interp.interpolate(tl_[j].vec);
+
+    ts_[j].destroy();
+    ts_[j].create(front_phi_.vec);
+    interp.set_input(ts_[j-1].vec, interpolation_between_grids_);
+    interp.interpolate(ts_[j].vec);
+
+    cl_[j].destroy();
+    cl_[j].create(front_phi_.vec);
+    for (int i = 0; i < num_comps_; ++i)
+    {
+      interp.set_input(cl_[j-1].vec[i], interpolation_between_grids_);
+      interp.interpolate(cl_[j].vec[i]);
+    }
+
+    front_velo_norm_[j].destroy();
+    front_velo_norm_[j].create(front_phi_.vec);
+    interp.set_input(front_velo_norm_[j-1].vec, interpolation_between_grids_);
+    interp.interpolate(front_velo_norm_[j].vec);
+
+    front_velo_[j].destroy();
+    front_velo_[j].create(front_phi_dd_.vec);
+    foreach_dimension(dim)
+    {
+      interp.set_input(front_velo_[j-1].vec[dim], interpolation_between_grids_);
+      interp.interpolate(front_velo_[j].vec[dim]);
+    }
+  }
+
+  tl_[0].destroy();
+  tl_[0].create(front_phi_.vec);
+  VecCopyGhost(tl_[1].vec, tl_[0].vec);
+  ts_[0].destroy();
+  ts_[0].create(front_phi_.vec);
+  VecCopyGhost(ts_[1].vec, ts_[0].vec);
+  cl_[0].destroy();
+  cl_[0].create(front_phi_.vec);
+  for (int i = 0; i < num_comps_; ++i)
+  {
+    VecCopyGhost(cl_[1].vec[i], cl_[0].vec[i]);
+  }
+  front_velo_[0].destroy();
+  front_velo_[0].create(front_phi_dd_.vec);
+  front_velo_norm_[0].destroy();
+  front_velo_norm_[0].create(front_phi_.vec);
+
+  vec_and_ptr_t contr_phi_tmp(p4est_np1, nodes_np1);
+  interp.set_input(contr_phi_.vec, linear);
+  interp.interpolate(contr_phi_tmp.vec);
+  contr_phi_.destroy();
+  contr_phi_.set(contr_phi_tmp.vec);
+  contr_phi_dd_.destroy();
+  contr_phi_dd_.create(p4est_np1, nodes_np1);
+
+  cl0_grad_.destroy();
+  cl0_grad_.create(front_phi_dd_.vec);
+
+  dendrite_number_.destroy();
+  dendrite_number_.create(front_phi_.vec);
+  dendrite_tip_.destroy();
+  dendrite_tip_.create(front_phi_.vec);
+  bc_error_.destroy();
+  bc_error_.create(front_phi_.vec);
+  smoothed_nodes_.destroy();
+  smoothed_nodes_.create(front_phi_.vec);
+  front_phi_unsmooth_.destroy();
+  front_phi_unsmooth_.create(front_phi_.vec);
+  ierr = VecCopyGhost(front_phi_.vec, front_phi_unsmooth_.vec); CHKERRXX(ierr);
+
+  if (num_seeds_ == 1)
+  {
+    seed_map_.destroy();
+    seed_map_.create(front_phi_.vec);
+    VecSetGhost(seed_map_.vec, 0.);
+  } else {
+    vec_and_ptr_t tmp(front_phi_.vec);
+    interp.set_input(seed_map_.vec, linear);
+    interp.interpolate(tmp.vec);
+    seed_map_.destroy();
+    seed_map_.set(tmp.vec);
+  }
+
+  vec_and_ptr_t psi_tl_tmp(front_phi_.vec);
+  interp.set_input(psi_tl_.vec, linear);
+  interp.interpolate(psi_tl_tmp.vec);
+  psi_tl_.destroy();
+  psi_tl_.set(psi_tl_tmp.vec);
+
+  vec_and_ptr_t psi_ts_tmp(front_phi_.vec);
+  interp.set_input(psi_ts_.vec, linear);
+  interp.interpolate(psi_ts_tmp.vec);
+  psi_ts_.destroy();
+  psi_ts_.set(psi_ts_tmp.vec);
+
+  vec_and_ptr_array_t psi_cl_tmp(num_comps_, front_phi_.vec);
+  for (int i = 0; i < num_comps_; ++i)
+  {
+    interp.set_input(psi_cl_.vec[i], linear);
+    interp.interpolate(psi_cl_tmp.vec[i]);
+  }
+  psi_cl_.destroy();
+  psi_cl_.set(psi_cl_tmp.vec.data());
+
+  p4est_destroy      (p4est_); p4est_ = p4est_np1;
+  p4est_ghost_destroy(ghost_); ghost_ = ghost_np1;
+  p4est_nodes_destroy(nodes_); nodes_ = nodes_np1;
+  hierarchy_->update(p4est_, ghost_);
+  ngbd_->update(hierarchy_, nodes_);
+
+  PetscPrintf(p4est_->mpicomm, "done!\n");
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
+  regularize_front(front_phi_old.vec);
+  front_phi_old.destroy();
+
+  /* reinitialize phi */
+  my_p4est_level_set_t ls_new(ngbd_);
+//  ls_new.reinitialize_1st_order_time_2nd_order_space(front_phi_.vec, 20);
+//  ls_new.reinitialize_1st_order_time_2nd_order_space(front_phi_.vec, 100);
+  ls_new.reinitialize_2nd_order(front_phi_.vec, 50);
+
+  if (num_seeds_ > 1)
+  {
+    VecScaleGhost(front_phi_.vec, -1.);
+    ls_new.extend_Over_Interface_TVD_Full(front_phi_.vec, seed_map_.vec, 20, 0);
+    seed_map_.get_array();
+    foreach_node(n, nodes_) seed_map_.ptr[n] = round(seed_map_.ptr[n]);
+    seed_map_.restore_array();
+    VecScaleGhost(front_phi_.vec, -1.);
+  }
+
+  /* second derivatives, normals, curvature, angles */
+  compute_geometric_properties_front();
+  compute_geometric_properties_contr();
+
+
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_multialloy_t::update_grid_w_fluids(){
+
+  // define things needed for the refinement/coarsening tool
+  bool use_block = false;
+  bool expand_ghost_layer = true;
+
+  std::vector<compare_option_t> compare_opn;
+  std::vector<compare_diagonal_option_t> diag_opn;
+  std::vector<double> criteria;
+  std::vector<int> custom_lmax;
+  PetscInt num_fields = 0;
+  if(refine_by_vorticity) {
+    num_fields+=1;
+    vorticity_refine.create(p4est_, nodes_);
+  }// for vorticity
+  if(refine_by_d2T){
+    num_fields+=2;
+    tl_dd.create(p4est_, nodes_);
+    ngbd_->second_derivatives_central(tl_[num_time_layers_-1].vec,tl_dd.vec);
+  }// for temperature
+  if(refine_by_d2C){
+    num_fields+=2;
+    cl0_dd.create(p4est_,nodes_);
+    ngbd_->second_derivatives_central(cl_[num_time_layers_-1].vec[0],cl0_dd.vec);
+  }// for concentration (using the first component ) // might change later
+
+  // Create array of fields we will refine by
+  Vec fields_[num_fields];
+
+  // Begin preparing for refinement
+  if (num_fields>0){
+    if(refine_by_vorticity){
+      vorticity.get_array();
+      vorticity_refine.get_array();
+    }
+    if(refine_by_d2T){
+      tl_dd.get_array();
+    }
+    if(refine_by_d2C){
+      cl0_dd.get_array();
+    }
+    front_phi_.get_array();
+    // Compute proper refinement fields on layer nodes:
+    for(size_t i = 0; i<ngbd_->get_layer_size(); i++){
+      p4est_locidx_t n = ngbd_->get_layer_node(i);
+      if(front_phi_.ptr[n] < 0.){
+        if(refine_by_vorticity)vorticity_refine.ptr[n] = vorticity.ptr[n];
+      }
+      else{
+        if(refine_by_vorticity) vorticity_refine.ptr[n] = 0.0;
+        if(refine_by_d2T){ // Set to 0 in solid subdomain, don't want to refine by T_l_dd in there
+          foreach_dimension(d){
+            tl_dd.ptr[d][n]=0.;
+          }
+        }
+        if(refine_by_d2C){ // Set to 0 in solid subdomain, don't want to refine by T_l_dd in there
+          foreach_dimension(d){
+             cl0_dd.ptr[d][n]=0.;
+          }
+        }
+      }
+    } // end of loop over layer nodes
+    // Begin updating for ghost nodes
+    if(refine_by_vorticity){
+      ierr = VecGhostUpdateBegin(vorticity_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
+    }
+    if(refine_by_d2T){
+      foreach_dimension(d){
+        ierr = VecGhostUpdateBegin(tl_dd.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+      }
+    }
+    if(refine_by_d2C){
+      foreach_dimension(d){
+        ierr = VecGhostUpdateBegin(cl0_dd.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+      }
+    }
+    //Compute proper refinement fields on local nodes:
+    for(size_t i = 0; i<ngbd_->get_local_size(); i++){
+      p4est_locidx_t n = ngbd_->get_local_node(i);
+      if(front_phi_.ptr[n] < 0.){
+        if(refine_by_vorticity)vorticity_refine.ptr[n] = vorticity.ptr[n];
+      }
+      else{
+        if(refine_by_vorticity)vorticity_refine.ptr[n] = 0.0;
+        if(refine_by_d2T){ // Set to 0 in solid subdomain, don't want to refine by T_l_dd in there
+          foreach_dimension(d){
+            tl_dd.ptr[d][n]=0.;
+          }
+        }
+        if(refine_by_d2C){ // Set to 0 in solid subdomain, don't want to refine by T_l_dd in there
+          foreach_dimension(d){
+            cl0_dd.ptr[d][n]=0.;
+          }
+        }
+      }
+    } // end of loop over local nodes
+    // Finish updating the ghost values:
+    if(refine_by_vorticity)ierr = VecGhostUpdateEnd(vorticity_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
+    if(refine_by_d2T){
+      foreach_dimension(d){
+        ierr = VecGhostUpdateEnd(tl_dd.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+      }
+    }
+    if(refine_by_d2C){
+      foreach_dimension(d){
+        ierr = VecGhostUpdateEnd(cl0_dd.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+      }
+    }
+    // Restore appropriate arrays:
+    if(refine_by_d2T) {tl_dd.restore_array();}
+    if(refine_by_vorticity){
+      vorticity.restore_array();
+      vorticity_refine.restore_array();
+    }
+    if(refine_by_d2C) {cl0_dd.restore_array();}
+    front_phi_.restore_array();
+
+    PetscInt fields_idx=0;
+    if(refine_by_vorticity)fields_[fields_idx++]=vorticity_refine.vec;
+    if(refine_by_d2T){
+      fields_[fields_idx++]= tl_dd.vec[0];
+      fields_[fields_idx++]= tl_dd.vec[1];
+    }
+    if(refine_by_d2C){
+      fields_[fields_idx++]= cl0_dd.vec[0];
+      fields_[fields_idx++]= cl0_dd.vec[1];
+    }
+    P4EST_ASSERT(fields_idx==num_fields);
+    // ------------------------------------------------------------
+    // Add our instructions:
+    // ------------------------------------------------------------
+    // Coarsening instructions: (for vorticity)
+    double lint= stefan_w_fluids_solver->get_lint();
+    double lmin= stefan_w_fluids_solver->get_lmin();
+    double lmax= stefan_w_fluids_solver->get_lmax();
+    if(refine_by_vorticity){
+      compare_opn.push_back(LESS_THAN);
+      diag_opn.push_back(DIVIDE_BY);
+      criteria.push_back(vorticity_threshold*stefan_w_fluids_solver->get_NS_norm()/2.);
+
+      // Refining instructions: (for vorticity)
+      compare_opn.push_back(GREATER_THAN);
+      diag_opn.push_back(DIVIDE_BY);
+      criteria.push_back(vorticity_threshold*stefan_w_fluids_solver->get_NS_norm());
+
+      if(stefan_w_fluids_solver->get_lint()>0){custom_lmax.push_back(stefan_w_fluids_solver->get_lint());}
+      else{custom_lmax.push_back(stefan_w_fluids_solver->get_lmax());}
+    }
+    if(refine_by_d2T){
+      double dxyz_smallest[P4EST_DIM];
+      dxyz_min(p4est_,dxyz_smallest);
+
+      double theta_infty= stefan_w_fluids_solver->get_theta_infty();
+      double theta_interface= stefan_w_fluids_solver->get_theta_interface();
+      double theta0= stefan_w_fluids_solver->get_theta0();
+      double deltaT= stefan_w_fluids_solver->get_deltaT();
+      double dTheta= fabs(theta_infty - theta_interface)>0 ? fabs(theta_infty - theta_interface): 1.0;
+      dTheta/=SQR(MIN(dxyz_smallest[0],dxyz_smallest[1])); // max d2Theta in liquid subdomain
+
+      // Define variables for the refine/coarsen instructions for d2T fields:
+      compare_diagonal_option_t diag_opn_d2T = DIVIDE_BY;
+      compare_option_t compare_opn_d2T = SIGN_CHANGE;
+      double refine_criteria_d2T = dTheta*d2T_threshold;
+      double coarsen_criteria_d2T = dTheta*d2T_threshold*0.1;
+
+      // Coarsening instructions: (for d2T/dx2)
+      compare_opn.push_back(compare_opn_d2T);
+      diag_opn.push_back(diag_opn_d2T);
+      criteria.push_back(coarsen_criteria_d2T); // did 0.1* () for the coarsen if no sign change OR below threshold case
+
+      // Refining instructions: (for d2T/dx2)
+      compare_opn.push_back(compare_opn_d2T);
+      diag_opn.push_back(diag_opn_d2T);
+      criteria.push_back(refine_criteria_d2T);
+      if(lint>0){custom_lmax.push_back(lint);}
+      else{custom_lmax.push_back(lmax);}
+
+      // Coarsening instructions: (for d2T/dy2)
+      compare_opn.push_back(compare_opn_d2T);
+      diag_opn.push_back(diag_opn_d2T);
+      criteria.push_back(coarsen_criteria_d2T);
+
+      // Refining instructions: (for d2T/dy2)
+      compare_opn.push_back(compare_opn_d2T);
+      diag_opn.push_back(diag_opn_d2T);
+      criteria.push_back(refine_criteria_d2T);
+      if(lint>0){custom_lmax.push_back(lint);}
+      else{custom_lmax.push_back(lmax);}
+    }
+  }
+
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  PetscPrintf(p4est_->mpicomm, "Updating grid... ");
+
+  // advect interface and update p4est
+  p4est_t       *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
+  p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd_, ngbd_);
+
+  sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
+  sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
+  //  sl.set_velo_interpolation(linear);
 
   // save copy of old level-set function (used for front regularization later)
   // (gonna use front_curvature_ as tmp, it will be destroyed later anyway)
   ierr = VecCopyGhost(front_phi_.vec, front_curvature_.vec); CHKERRXX(ierr);
 
 
-  // TO-DO MULTICOMP: add an if statement here which prepares refinement fields using Elyce's tool, and uses 
+  // TO-DO MULTICOMP: add an if statement here which prepares refinement fields using Elyce's tool, and uses
   // Elyce's version of update_p4est, since we need to refine and coarsen around more fields
 
 
@@ -882,13 +1269,14 @@ void my_p4est_multialloy_t::update_grid()
   PetscPrintf(p4est_->mpicomm, "done!\n");
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  regularize_front(front_phi_old.vec);
-  front_phi_old.destroy();
+  // Rochi edit - moving this further down in the function; front_phi_old is needed in the naviwe stokes solver
+  //  regularize_front(front_phi_old.vec);
+  //  front_phi_old.destroy();
 
   /* reinitialize phi */
   my_p4est_level_set_t ls_new(ngbd_);
-//  ls_new.reinitialize_1st_order_time_2nd_order_space(front_phi_.vec, 20);
-//  ls_new.reinitialize_1st_order_time_2nd_order_space(front_phi_.vec, 100);
+  //  ls_new.reinitialize_1st_order_time_2nd_order_space(front_phi_.vec, 20);
+  //  ls_new.reinitialize_1st_order_time_2nd_order_space(front_phi_.vec, 100);
   ls_new.reinitialize_2nd_order(front_phi_.vec, 50);
 
   if (num_seeds_ > 1)
@@ -913,13 +1301,14 @@ void my_p4est_multialloy_t::update_grid()
 
 
 
-//  ns->update_from_tn_to_tnp1_grid_external((there_is_a_substrate? phi_eff.vec : phi.vec), phi_nm1.vec,
-//                                           v_n.vec, v_nm1.vec,
-//                                           p4est_np1, nodes_np1, ghost_np1,
-//                                           ngbd_np1,
-//                                           faces_np1,ngbd_c_np1,
-//                                           hierarchy_np1);
-
+  ns->update_from_tn_to_tnp1_grid_external(front_phi_.vec, front_phi_old.vec,
+                                           v_n.vec, v_nm1.vec,
+                                           p4est_, nodes_, ghost_,
+                                           ngbd_,
+                                           faces_,ngbd_c_,
+                                           hierarchy_);
+  regularize_front(front_phi_old.vec);
+  front_phi_old.destroy();
 
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
