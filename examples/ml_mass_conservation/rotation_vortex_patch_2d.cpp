@@ -2,13 +2,14 @@
  * Testing error-correcting neural network for semi-Lagrangian advection for a circular rotation patch.
  * The test consists of a rigid-body rotation inside a disk located at the center of a [-1,+1]^2 domain and no flow outside of the circle.
  * The exact solution is that the circle should not deform.  This test was suggested by one of the reviewers of the paper.
- * The velocity field inside the circle of radius 0.5 is given by U(u,v) = (1/0.5)*(-y, x), and max|U| = 1.  k internal revolutions are
- * completed at t = k*2*pi*r = k*pi, where r = 0.5 is the original max internal velocity magnitude, and k is a positive integer.
+ * The velocity field inside the circle of radius 0.6 is given by U(u,v) = (1/0.6)*(-(y-y0), (x-x0)), and max|U| = 1.  k internal
+ * revolutions are completed at t = k*2*pi*r = k*pi, where r is the original max internal velocity magnitude, and k is a positive integer.
  *
  * Code is based on rotation_2d.cpp
  *
  * Author: Luis Ángel (임 영민)
  * Created: August 10, 2022.
+ * Updated: August 14, 2022.
  */
 
 #ifndef P4_TO_P8
@@ -36,32 +37,34 @@
 class UComponent : public CF_2
 {
 private:
-	const double R;		// Circular patch radius; also, the normalizing factor.
+	const double R;			// Circular patch radius; also, the normalizing factor.
+	const double _x0, _y0;	// Center coordinates.
 
 public:
-	explicit UComponent( double r ): R( r ) {}
+	explicit UComponent( const double& r, const double& x0, const double& y0 ): R( r ), _x0( x0 ), _y0( y0 ) {}
 
 	double operator()( double x, double y ) const override
 	{
-		if( SQR( x ) + SQR( y ) >= SQR( R ) )		// No flow outside circle.
+		if( SQR( x - _x0 ) + SQR( y - _y0 ) >= SQR( R ) )		// No flow outside circle.
 			return 0;
-		return -y / R;
+		return -(y - _y0) / R;
 	}
 };
 
 class VComponent : public CF_2
 {
 private:
-	const double R;		// Circular patch radius; also, the normalizing factor.
+	const double R;			// Circular patch radius; also, the normalizing factor.
+	const double _x0, _y0;	// Center coordinates.
 
 public:
-	explicit VComponent( double r ): R( r ) {}
+	explicit VComponent( const double& r, const double& x0, const double& y0 ): R( r ), _x0( x0 ), _y0( y0 ) {}
 
 	double operator()( double x, double y ) const override
 	{
-		if( SQR( x ) + SQR( y ) >= SQR( R ) )		// No flow outside circle.
+		if( SQR( x - _x0 ) + SQR( y - _y0 ) >= SQR( R ) )		// No flow outside circle.
 			return 0;
-		return x / R;
+		return (x - _x0) / R;
 	}
 };
 
@@ -162,7 +165,7 @@ int main( int argc, char** argv )
 	const int MAX_D = 1;
 	const int NUM_TREES_PER_DIM = 2;	// Number of macro cells per dimension.
 	const int PERIODICITY = 0;			// Domain periodicity.
-	const double VEL_NORM_FACTOR = 0.5;
+	const double VEL_NORM_FACTOR = 0.6;
 
 	const int NUM_ITER_VTK = 1;			// Save VTK files every NUM_ITER_VTK iterations.
 
@@ -208,22 +211,26 @@ int main( int argc, char** argv )
 		sprintf( msg, ">> Began 2D circular vortex patch test with MAX_RL = %d in %s mode\n", MAX_RL, mode()? "NNET" : "NUMERICAL" );
 		CHKERRXX( PetscPrintf( mpi.comm(), msg ) );
 
-		// Define the velocity field arrays.
-		UComponent uComponent( VEL_NORM_FACTOR );
-		VComponent vComponent( VEL_NORM_FACTOR );
-		const CF_DIM *velocityField[P4EST_DIM] = {&uComponent, &vComponent};
-
 		// Domain information: a square with the same number of trees per dimension.
 		const int n_xyz[] = {NUM_TREES_PER_DIM, NUM_TREES_PER_DIM, NUM_TREES_PER_DIM};
 		const double xyz_min[] = {MIN_D, MIN_D, MIN_D};
 		const double xyz_max[] = {MAX_D, MAX_D, MAX_D};
 		const int periodic[] = {PERIODICITY, PERIODICITY, PERIODICITY};
 
-		// Define the initial interfaces: exact and non-signed distance function.
-		const double CENTER[P4EST_DIM] = {DIM( 0, 0, 0 )};
+		// Define the initial interfaces: exact and non-signed distance function.  Perturb the center randomly.
+		const double h = 1. / (1 << MAX_RL);
+		std::mt19937 gen; 			// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
+		std::uniform_real_distribution<double> uniformDistributionAroundCenter( -h/2.0, +h/2.0 );
+		double CENTER[P4EST_DIM] = {DIM( uniformDistributionAroundCenter( gen ), uniformDistributionAroundCenter( gen ), 0 )};
+		SC_CHECK_MPI( MPI_Bcast( CENTER, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random shift and rotation.
 		const double RADIUS = VEL_NORM_FACTOR;
 		geom::SphereNSD sphereNsd( DIM( CENTER[0], CENTER[1], 0 ), RADIUS );
 		geom::Sphere sphere( DIM( CENTER[0], CENTER[1], 0 ), RADIUS );
+
+		// Define the velocity field components.
+		UComponent uComponent( VEL_NORM_FACTOR, CENTER[0], CENTER[1] );
+		VComponent vComponent( VEL_NORM_FACTOR, CENTER[0], CENTER[1] );
+		const CF_DIM *velocityField[P4EST_DIM] = {&uComponent, &vComponent};
 
 		// Macromesh declaration via the brick and connectivity objects.
 		my_p4est_brick_t brick;
