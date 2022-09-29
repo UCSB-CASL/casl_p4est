@@ -581,30 +581,60 @@ private:
 	 * @param [in] tree_dimensions Owning tree dimensions.
 	 * @param [in] phi_p Pointer to a double array of level-set values.
 	 * @param [in] midBounds Array of max height from wall for mid layers.  If no mid layers exist or lmid_delta_percent is invalid,
-	 * 			   midBounds is empty.
+	 * 			   midBounds is empty.  In special refinement, this array applies to the plastron.
+	 * @param [in] midBoundsRidge Array of max height from wall for mid layers for grid points lying on or above solid ridges.  Only valid
+	 * 			   if special refinement is enabled.
 	 */
 	void tag_quadrant( p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, p4est_nodes_t* nodes,
-					   const double *tree_dimensions, const double *phi_p, const std::vector<double>& midBounds );
+					   const double *tree_dimensions, const double *phi_p, const std::vector<double>& midBounds,
+					   const std::vector<double>& midBoundsRidge );
+
+	/**
+	 * Normalize a z-value to poitch coordinates (i.e., in the range of [0, P)).
+	 * @param [in] z Input val.
+	 * @return Normalized value between 0 and P, excluding P.
+	 */
+	double _normalize_z( const double& z ) const;
+
+	/**
+	 * Numerical offset for gratings (similarly done in my_p4est_shs_channel.h class).
+	 * @return Grating offset along the z-direction.
+	 */
+	double _offset() const;
 
 public:
 	const double DELTA;					// Channel half-height (on the y-axis).
 	const double LMID_DELTA_PERCENT;	// How far to extend mid-level cells (use 0 to disable this option).
+	const bool SPECIAL_REFINEMENT;		// Whether we'll use separate special refinement for plastrons and ridges.
+	const int PLASTRON_MAX_LVL;			// Maximum level of refinement for plastron.
+	const double GF;					// Gas fraction.
+	const double P;						// Pitch.
+	const double WIDTH;					// Channel width.
+	const double MAX_Z;					// Maximum z-value of the computational domain (i.e., WIDTH/2).
+	const int N_Z_TREES;
 
 	/**
 	 * Constructor.
 	 * @param [in] minLvl Quad/Octree minimum level of refinement.
 	 * @param [in] maxLvl Quad/Octree maximum level of refinement.
 	 * @param [in] phi Level-set object.
-	 * @param [in] uniformBand Desired uniform band next to the wall (regardless of type of interface: solid or gas).
+	 * @param [in] uniformBand Desired uniform band next to the wall, using as a reference dy_min over the plastron.  If special refinement
+	 * 			   is enabled, the uniform band over the ridge will have approximately the same half width as the plastron's uniform band.
 	 * @param [in] delta Channel half-height.
 	 * @param [in] lmidDeltaPercent How far to extend mid-level cells away from the wall.  Value must be in [0,1), where 0 disables the option.
 	 * @param [in] lip Lipschitz constant.
+	 * @param [in] gf Gas fraction in the interval (0, 1).
+	 * @param [in] pitch Gratings length (ridge + plastron).
+	 * @param [in] width Channel width.
+	 * @param [in] nZTrees Number of trees in the z-direction.
+	 * @param [in] spRef Whether to use special refinement for plastrons and ridges.
 	 */
-	splitting_criteria_cf_and_uniform_band_shs_t( const int& minLvl, const int& maxLvl, const CF_DIM *phi,
-												  const double& uniformBand, const double& delta,
-												  const double& lmidDeltaPercent, const double& lip ) :
+	splitting_criteria_cf_and_uniform_band_shs_t( const int& minLvl, const int& maxLvl, const CF_DIM *phi, const double& uniformBand,
+												  const double& delta, const double& lmidDeltaPercent, const double& lip, const double& gf,
+												  const double& pitch, const double& width, const int& nZTrees, const bool& spRef=false ) :
 		splitting_criteria_cf_and_uniform_band_t( minLvl, maxLvl, phi, uniformBand, lip ),
-		DELTA( delta ), LMID_DELTA_PERCENT( lmidDeltaPercent )
+		DELTA( delta ), LMID_DELTA_PERCENT( lmidDeltaPercent ), GF( gf ),  P( pitch ), WIDTH( width ), MAX_Z( width / 2 ),
+		N_Z_TREES( nZTrees ), SPECIAL_REFINEMENT( spRef ), PLASTRON_MAX_LVL( spRef? (maxLvl - 2) : maxLvl )
 	{
 		std::string errorPrefix = "[CASL_ERROR] splitting_criteria_cf_and_uniform_band_shs_t::constructor: ";
 
@@ -613,7 +643,27 @@ public:
 
 		// Validate only if we expect mid-level cells and user wants to use mid-level cell percentage option.
 		if( maxLvl > minLvl && (lmidDeltaPercent < 0 || lmidDeltaPercent >= 1) )
-			throw std::invalid_argument( errorPrefix + "Mid-level-cell extension must non-negative and no more than 1*delta away from the wall." );
+			throw std::invalid_argument( errorPrefix + "Mid-level-cell extension must be non-negative and no more than 1*delta away from "
+													   "the wall." );
+
+		// For special refinement, we'll use one layer of the smallest dy for the whole wall, and then the next level of refinement for the
+		// plastron will be maxLvl - 2 <---this is considered the max lvl of ref for the plastron, whereas the ridge will undergo a banded
+		// discretization starting next to the wall at the user-defined max lvl of ref.
+		if( SPECIAL_REFINEMENT && maxLvl - minLvl < 3 )
+		{
+			// Require at least 2 different lvls of ref over plastron: one for the uniform band and other for discretizing the rest.
+			throw std::invalid_argument( errorPrefix + "The difference between min and max levels of refinement must be at least 3 "
+													   "for the special discretization!" );
+		}
+
+		if( GF <= PETSC_MACHINE_EPSILON || GF >= 1 - PETSC_MACHINE_EPSILON )
+			throw std::invalid_argument( errorPrefix + "Gas fraction must be in the range of (0, 1), excluding the end points!" );
+
+		if( P > WIDTH )
+			throw std::invalid_argument( errorPrefix + "Pitch can't be larger than domain width!" );
+
+		if( N_Z_TREES <= 0 )
+			throw std::invalid_argument( errorPrefix + "There must be at least one tree along the z-direction!" );
 	}
 
 	/**
@@ -626,6 +676,13 @@ public:
 	bool refine_and_coarsen( p4est_t* p4est, p4est_nodes_t* nodes, Vec phi );
 
 	/**
+	 * Check if point is on or hovers a solid ridge.
+	 * @param [in] xyz Point coords.
+	 * @return True is on/above ridge, false otherwise.
+	 */
+	bool is_ridge( const double xyz[P4EST_DIM] ) const;
+
+	/**
 	 * Retrieve the uniform band property.
 	 * @return uniform band half width.
 	 */
@@ -635,12 +692,14 @@ public:
 	}
 
 	/**
-	 * Calculate the limits for each band a different levels.
-	 * @param [in] smallest_dy Smallest mesh dy.
+	 * Calculate the limits for each band a different levels.  These bands take place above the height determined by the uniform band as
+	 * computed on the plastron.
+	 * @param [in] plastronSmallest_dy Smallest mesh dy for plastron, used to compute the uniform band half width on the whole wall.
 	 * @param [out] midBounds The limits for each intermediate refinement level (i.e., betwen min_lvl and max_lvl, excluding the ends).
+	 * @param [in] isRidge Whether calculations should be performed for the solid ridge or the plastron.
 	 * @return True if computations succeeded; false otherwise.  You can also check for success if midBounds is non-empty.
 	 */
-	bool getBandedBounds( const double& smallest_dy, std::vector<double>& midBounds ) const;
+	bool getBandedBounds( const double& plastronSmallest_dy, std::vector<double>& midBounds, const bool& isRidge=false ) const;
 };
 
 #endif // REFINE_COARSEN_H

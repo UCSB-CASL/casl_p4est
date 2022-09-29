@@ -1474,12 +1474,15 @@ p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topi
 #ifdef P4_TO_P8
 		double dz = (tree_zmax - tree_zmin) * dmin;
 #endif
-		double smallest_dy = (tree_ymax - tree_ymin) * (double)P4EST_QUADRANT_LEN( data->max_lvl ) / P4EST_ROOT_LEN;
+		double ridge_smallest_dy = (tree_ymax - tree_ymin) * (double)P4EST_QUADRANT_LEN( data->max_lvl ) / P4EST_ROOT_LEN;
+		double plastron_smallest_dy = (tree_ymax - tree_ymin) * (double)P4EST_QUADRANT_LEN( data->PLASTRON_MAX_LVL ) / P4EST_ROOT_LEN;
 
 		// Use smallest_dy to define the limits for mid-level-cell refinement.
-		std::vector<double> midBounds;
-		bool midLvlCellsOK = data->getBandedBounds( smallest_dy, midBounds );
-		const int NUM_MID_LEVELS = (int)midBounds.size();
+		std::vector<double> midBounds, midBoundsRidge;
+		data->getBandedBounds( plastron_smallest_dy, midBounds, false );
+		data->getBandedBounds( plastron_smallest_dy, midBoundsRidge, true );
+		const int PLASTRON_NUM_MID_LEVELS = (int)midBounds.size();
+		const int RIDGE_NUM_MID_LEVELS = (int)midBoundsRidge.size();
 
 		double x = (tree_xmax - tree_xmin) * (double)quad->x / (double)P4EST_ROOT_LEN + tree_xmin;
 		double y = (tree_ymax - tree_ymin) * (double)quad->y / (double)P4EST_ROOT_LEN + tree_ymin;
@@ -1499,23 +1502,38 @@ p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topi
 					double xyz[P4EST_DIM] = {DIM( x + ci * 0.5 * dx, y + cj * 0.5 * dy, z + ck * 0.5 * dz )};
 					f = phi( DIM( xyz[0], xyz[1], xyz[2] ) );
 					is_crossed = is_crossed || (vmmm_is_neg != (f <= 0.0));
-					if( fabs( f ) < data->uniformBand() * smallest_dy || is_crossed )
+					if( is_crossed )
 						return P4EST_TRUE;
+
+					double minDistToWall = MIN( ABS( xyz[1] + data->DELTA ), ABS( xyz[1] - data->DELTA ) );
+					bool isRidge = data->is_ridge( xyz );
 
 					// Check if any of quad's corners/midpoints are in the negative domain.
 					if( f <= 0 )
 					{
-						// If after the above condition we didn't refine a quad, we need to check cells next to the
-						// air interface (which is not considered by the solid-ridge-based level-set function).
-						double minDistToWall = MIN( ABS( xyz[1] + data->DELTA ), ABS( xyz[1] - data->DELTA ) );
-						if( minDistToWall < data->uniformBand() * smallest_dy )
-							return P4EST_TRUE;	// Enforce uniform band along the wall, regardless of interface type.
+						bool ref_band = minDistToWall < MAX( 2.0, data->uniformBand() ) * plastron_smallest_dy;	// Notice the use of the plastron min dy.
+
+						// In special refinement, we want one of the smallest dy along the whole wall.
+						if( data->SPECIAL_REFINEMENT && ref_band )
+						{
+							if( !isRidge && minDistToWall >= ridge_smallest_dy && quad->level >= data->PLASTRON_MAX_LVL )
+								return P4EST_FALSE;
+						}
+
+						if( minDistToWall < data->uniformBand() * plastron_smallest_dy )
+							return P4EST_TRUE;	// Enforce uniform band along the wall.
 
 						// Check the mid-level cells (and their bands) only if requested and valid.
-						if( NUM_MID_LEVELS > 0 && midLvlCellsOK )
+						if( isRidge && RIDGE_NUM_MID_LEVELS > 0 )			// On solid ridge.
 						{
-							int boundIdx = MAX( 0, MIN( (data->max_lvl - 1) - (quad->level + 1), NUM_MID_LEVELS - 1 ) );	// We want to check if we can go one level up.
-							if( minDistToWall < midBounds[boundIdx] && quad->level < data->max_lvl - boundIdx - 1 )
+							int boundIdx = MAX( 0, MIN( (data->max_lvl - 1) - (quad->level + 1), RIDGE_NUM_MID_LEVELS - 1 ) );				// Can we go one level up?
+							if( minDistToWall < midBoundsRidge[boundIdx] && quad->level < data->max_lvl - boundIdx - 1 )
+								return P4EST_TRUE;
+						}
+						else if( !isRidge && PLASTRON_NUM_MID_LEVELS > 0 )	// On plastron.
+						{
+							int boundIdx = MAX( 0, MIN( (data->PLASTRON_MAX_LVL - 1) - (quad->level + 1), PLASTRON_NUM_MID_LEVELS - 1 ) );	// Can we go one level up?
+							if( minDistToWall < midBounds[boundIdx] && quad->level < data->PLASTRON_MAX_LVL - boundIdx - 1 )
 								return P4EST_TRUE;
 						}
 					}
@@ -1563,14 +1581,15 @@ bool splitting_criteria_cf_and_uniform_band_shs_t::refine_and_coarsen( p4est_t* 
 		for( u_char dir = 0; dir < P4EST_DIM; ++dir )
 			tree_dimensions[dir] = v2c[3 * t2v[P4EST_CHILDREN * tree_idx + P4EST_CHILDREN - 1] + dir] - v2c[3 * t2v[P4EST_CHILDREN * tree_idx + 0] + dir];
 
-		const double smallest_dy = tree_dimensions[1] * (((double) P4EST_QUADRANT_LEN((int8_t) max_lvl))/((double) P4EST_ROOT_LEN));
-		std::vector<double> midBounds;
-		getBandedBounds( smallest_dy, midBounds );
+		const double plastron_smallest_dy = tree_dimensions[1] * (((double) P4EST_QUADRANT_LEN((int8_t) PLASTRON_MAX_LVL))/((double) P4EST_ROOT_LEN));
+		std::vector<double> midBounds, midBoundsRidge;
+		getBandedBounds( plastron_smallest_dy, midBounds, false );	// Band limits for plastron and ridge (equal if no special refinement is used).
+		getBandedBounds( plastron_smallest_dy, midBoundsRidge, true );
 
 		for( p4est_locidx_t q = 0; q < tree->quadrants.elem_count; ++q )
 		{
 			p4est_locidx_t quad_idx = q + tree->quadrants_offset;
-			tag_quadrant( p4est, quad_idx, tree_idx, nodes, tree_dimensions, phi_p, midBounds );
+			tag_quadrant( p4est, quad_idx, tree_idx, nodes, tree_dimensions, phi_p, midBounds, midBoundsRidge );
 		}
 	}
 
@@ -1599,13 +1618,31 @@ function_end:
 	return is_grid_changed;
 }
 
+double splitting_criteria_cf_and_uniform_band_shs_t::_normalize_z( const double &z ) const
+{
+	double sz = z + MAX_Z;
+	return sz - floor( sz / P ) * P;
+}
+
+double splitting_criteria_cf_and_uniform_band_shs_t::_offset() const
+{
+	return 0.1 * WIDTH / (N_Z_TREES * (1 << max_lvl));
+}
+
+bool splitting_criteria_cf_and_uniform_band_shs_t::is_ridge( const double xyz[P4EST_DIM] ) const
+{
+	return _offset() >= _normalize_z( xyz[2] ) || _normalize_z( xyz[2] ) >= P * GF - _offset();
+}
+
 void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx,
 																 p4est_nodes_t *nodes, const double *tree_dimensions, const double *phi_p,
-																 const std::vector<double>& midBounds )
+																 const std::vector<double>& midBounds,
+																 const std::vector<double>& midBoundsRidge )
 {
 	p4est_tree_t *tree = p4est_tree_array_index( p4est->trees, tree_idx );
 	p4est_quadrant_t *quad = p4est_quadrant_array_index( &tree->quadrants, quad_idx - tree->quadrants_offset );
-	const int NUM_MID_LEVELS = (int)midBounds.size();
+	const int PLASTRON_NUM_MID_LEVELS = (int)midBounds.size();
+	const int RIDGE_NUM_MID_LEVELS = (int)midBoundsRidge.size();
 
 	if( quad->level < min_lvl )
 		quad->p.user_int = REFINE_QUADRANT;
@@ -1615,12 +1652,12 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 	{
 		const double quad_denom = (( double ) P4EST_QUADRANT_LEN( quad->level )) / (( double ) P4EST_ROOT_LEN);
 		const double quad_diag = sqrt(SUMD( SQR( tree_dimensions[0] ), SQR( tree_dimensions[1] ), SQR( tree_dimensions[2] ))) * quad_denom;
-		const double smallest_dy = tree_dimensions[1] * (((double) P4EST_QUADRANT_LEN((int8_t) max_lvl))/((double) P4EST_ROOT_LEN));
+		const double ridge_smallest_dy = tree_dimensions[1] * (((double) P4EST_QUADRANT_LEN((int8_t) max_lvl))/((double) P4EST_ROOT_LEN));
+		const double plastron_smallest_dy = tree_dimensions[1] * (((double) P4EST_QUADRANT_LEN((int8_t) PLASTRON_MAX_LVL))/((double) P4EST_ROOT_LEN));
 
 		bool coarsen = (quad->level > min_lvl);
 		if( coarsen )
 		{
-			bool all_pos = true;
 			bool cor_band = true;
 			bool cor_intf = true;
 			p4est_locidx_t node_idx;
@@ -1630,18 +1667,27 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 				node_idx = nodes->local_nodes[P4EST_CHILDREN * quad_idx + k];
 				double xyz[P4EST_DIM];
 				node_xyz_fr_n( node_idx, p4est, nodes, xyz );
+				bool isRidge = is_ridge( xyz );
 				double minDistToWall = MIN( ABS( xyz[1] + DELTA ), ABS( xyz[1] - DELTA ) );
-				cor_band = cor_band && minDistToWall > uniform_band * smallest_dy;
+				cor_band = cor_band && minDistToWall > uniform_band * plastron_smallest_dy;	// Note that comparison is made with respect to plastron's band.
 				cor_intf = cor_intf && minDistToWall >= lip * 2.0 * quad_diag;
 
-				all_pos = all_pos && SIGN(phi_p[node_idx]) * minDistToWall > MAX( 2.0, uniform_band ) * smallest_dy;
-				if( cor_band && cor_intf )
+				if( cor_band && cor_intf )	// Coarsen with banding criterion only if requested.
 				{
-					int boundIdx = MAX( 0, MIN( (max_lvl - 1) - quad->level, NUM_MID_LEVELS - 1 ) );
-					cor_band = minDistToWall > midBounds[boundIdx];
+					int boundIdx;
+					if( isRidge && RIDGE_NUM_MID_LEVELS > 0 )
+					{
+						boundIdx = MAX( 0, MIN( (max_lvl - 1) - quad->level, RIDGE_NUM_MID_LEVELS - 1 ) );
+						cor_band = minDistToWall > midBoundsRidge[boundIdx];
+					}
+					else if( !isRidge && PLASTRON_NUM_MID_LEVELS > 0 )
+					{
+						boundIdx = MAX( 0, MIN( (PLASTRON_NUM_MID_LEVELS - 1) - quad->level, PLASTRON_NUM_MID_LEVELS - 1 ) );
+						cor_band = minDistToWall > midBounds[boundIdx];
+					}
 				}
 
-				coarsen = (cor_band && cor_intf) || all_pos;
+				coarsen = (cor_band && cor_intf);
 				if( !coarsen )
 					break;
 			}
@@ -1650,7 +1696,6 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 		bool refine = (quad->level < max_lvl);
 		if( refine )
 		{
-			bool is_neg = false;
 			bool ref_band = false;
 			bool ref_intf = false;
 			p4est_locidx_t node_idx;
@@ -1689,24 +1734,42 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 							P4EST_ASSERT( node_idx < (( p4est_locidx_t ) nodes->indep_nodes.elem_count));
 							double xyz[P4EST_DIM];
 							node_xyz_fr_n( node_idx, p4est, nodes, xyz );
+							bool isRidge = is_ridge( xyz );
 							double minDistToWall = MIN( ABS( xyz[1] + DELTA ), ABS( xyz[1] - DELTA ) );
 
-							ref_band = ref_band || minDistToWall < MAX( 2.0, uniform_band ) * smallest_dy;
+							ref_band = ref_band || minDistToWall < MAX( 2.0, uniform_band ) * plastron_smallest_dy;		// Notice the use of the plastron min dy.
 							ref_intf = ref_intf || minDistToWall <= lip * quad_diag;
-							is_neg = is_neg || SIGN(phi_p[node_idx]) * minDistToWall < MAX( 2.0, uniform_band ) * smallest_dy;
 
-							if( is_neg && !ref_band )
+							// In special refinement, we want one of the smallest dy along the whole wall.
+							if( SPECIAL_REFINEMENT && ref_band )
 							{
-								// Check the mid-level cells (and their bands) only if requested and valid.
-								if( NUM_MID_LEVELS > 0 )
+								if( !isRidge && minDistToWall >= ridge_smallest_dy && quad->level >= PLASTRON_MAX_LVL )
 								{
-									int boundIdx = MAX( 0, MIN( (max_lvl - 1) - (quad->level + 1), NUM_MID_LEVELS - 1 ) );	// We want to check if we can go one level up.
-									if( minDistToWall < midBounds[boundIdx] && quad->level < max_lvl - boundIdx - 1 )
+									refine = false;
+									continue;
+								}
+							}
+
+							if( !ref_band )	// Not within the uniform band?
+							{
+								int boundIdx;
+
+								// Check the mid-level cells (and their bands) only if requested and valid.
+								if( isRidge && RIDGE_NUM_MID_LEVELS > 0 )			// On solid ridge.
+								{
+									boundIdx = MAX( 0, MIN( (max_lvl - 1) - (quad->level + 1), RIDGE_NUM_MID_LEVELS - 1 ) );				// Can go one level up?
+									if( minDistToWall < midBoundsRidge[boundIdx] && quad->level < max_lvl - boundIdx - 1 )
+										ref_band = true;
+								}
+								else if( !isRidge && PLASTRON_NUM_MID_LEVELS > 0 )	// On plastron.
+								{
+									boundIdx = MAX( 0, MIN( (PLASTRON_MAX_LVL - 1) - (quad->level + 1), PLASTRON_NUM_MID_LEVELS - 1 ) );	// Can go one level up?
+									if( minDistToWall < midBounds[boundIdx] && quad->level < PLASTRON_MAX_LVL - boundIdx - 1 )
 										ref_band = true;
 								}
 							}
 
-							refine = is_neg && (ref_band || ref_intf);
+							refine = (ref_band || ref_intf);
 							if( refine )
 								goto end_of_function;
 						}
@@ -1714,6 +1777,9 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 		}
 
 end_of_function:
+		if( coarsen && refine )
+			std::cout << "Here" << std::endl;
+
 		if( refine )
 			quad->p.user_int = REFINE_QUADRANT;
 		else if( coarsen )
@@ -1723,11 +1789,12 @@ end_of_function:
 	}
 }
 
-bool splitting_criteria_cf_and_uniform_band_shs_t::getBandedBounds( const double& smallest_dy, std::vector<double>& midBounds ) const
+bool splitting_criteria_cf_and_uniform_band_shs_t::getBandedBounds( const double& plastronSmallest_dy, std::vector<double>&midBounds,
+																	const bool& isRidge ) const
 {
-	// Use smallest_dy to define the limits for mid-level-cell refinement.
-	const int NUM_MID_LEVELS = max_lvl - min_lvl - 1;
-	double midEffectiveDist = DELTA * LMID_DELTA_PERCENT - uniformBand() * smallest_dy;
+	// Use smallest_dy to define the limits for mid-level-cell refinement.  In special refinement, max_lvl is the extremely small cells we need over the ridge.
+	const int NUM_MID_LEVELS = (isRidge? max_lvl : PLASTRON_MAX_LVL) - min_lvl - 1;
+	double midEffectiveDist = DELTA * LMID_DELTA_PERCENT - uniformBand() * plastronSmallest_dy;
 	bool midLvlCellsOK = false;
 	midBounds.clear();
 	if( NUM_MID_LEVELS > 0 && LMID_DELTA_PERCENT > 0 )	// Use option only if user allowed it with a percent > 0.
@@ -1744,7 +1811,7 @@ bool splitting_criteria_cf_and_uniform_band_shs_t::getBandedBounds( const double
 			for( int i = 0; i < NUM_MID_LEVELS; i++ )
 			{
 				if( i == 0 )
-					midBounds.push_back( uniformBand() * smallest_dy + (1 << i) * b );
+					midBounds.push_back( uniformBand() * plastronSmallest_dy + (1 << i) * b );
 				else
 					midBounds.push_back( midBounds.back() + (1 << i) * b );
 			}

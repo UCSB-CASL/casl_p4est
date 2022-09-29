@@ -539,7 +539,7 @@ public:
   inline double GF()              const { P4EST_ASSERT(is_configured); return gas_frac; }
   inline int lmax()               const { P4EST_ASSERT(is_configured); return max_lvl; }
 
-  inline double operator()(DIM(double x, double y, double z)) const
+  inline double operator()(DIM(double x, double y, double z)) const override
   {
     P4EST_ASSERT(is_configured);
 #ifdef P4_TO_P8
@@ -567,7 +567,6 @@ public:
     compute_vecs();
     compute_series_coeff();
     P4EST_ASSERT(vecs_are_set && coeff_are_set);
-    return;
   }
 
   inline void check_Reynolds(const flow_setting &flow_setup, const double& Re) const
@@ -694,13 +693,14 @@ public:
 										    splitting_criteria_cf_and_uniform_band_shs_t* &sp,
 										    p4est_connectivity_t *conn, const mpi_environment_t& mpi_, const int& lmin,
 											const unsigned int wall_layer, const double& lmid_delta_percent,
-											const double& lip_user, const double& cfl_user )
+											const double& lip_user, const double& cfl_user, const bool& special_refinement )
   {
     P4EST_ASSERT( is_configured );
     delete sp;
     sp = new splitting_criteria_cf_and_uniform_band_shs_t( lmin, max_lvl, this,
 														   calculate_uniform_band_for_ns_solver( wall_layer ), delta(),
-														   lmid_delta_percent, calculate_lip_for_ns_solver( lip_user ) );
+														   lmid_delta_percent, calculate_lip_for_ns_solver( lip_user ), GF(), get_pitch(),
+														   width(), brick->nxyztrees[2], special_refinement );
 
     if( forest != nullptr )
       p4est_destroy( forest );
