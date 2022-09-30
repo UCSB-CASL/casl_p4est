@@ -590,12 +590,14 @@ private:
 					   const double *tree_dimensions, const double *phi_p, const std::vector<double>& midBounds,
 					   const std::vector<double>& midBoundsRidge );
 
+#ifdef P4_TO_P8
 	/**
 	 * Normalize a z-value to poitch coordinates (i.e., in the range of [0, P)).
 	 * @param [in] z Input val.
 	 * @return Normalized value between 0 and P, excluding P.
 	 */
 	double _normalize_z( const double& z ) const;
+#endif
 
 	/**
 	 * Numerical offset for gratings (similarly done in my_p4est_shs_channel.h class).
@@ -610,9 +612,13 @@ public:
 	const int PLASTRON_MAX_LVL;			// Maximum level of refinement for plastron.
 	const double GF;					// Gas fraction.
 	const double P;						// Pitch.
-	const double WIDTH;					// Channel width.
-	const double MAX_Z;					// Maximum z-value of the computational domain (i.e., WIDTH/2).
-	const int N_Z_TREES;
+	const double XYZ_DIM[P4EST_DIM];	// Channel dimensions.
+	const double XYZ_MIN[P4EST_DIM];	// Min coords of channel.
+	const double XYZ_MAX[P4EST_DIM];	// Max coords of channel.
+	const int N_TREES[P4EST_DIM];		// Number of trees in each direction.
+#ifdef P4_TO_P8
+	const bool SPANWISE;				// Whether the gratings are perpendicular to the flow.
+#endif
 
 	/**
 	 * Constructor.
@@ -626,16 +632,20 @@ public:
 	 * @param [in] lip Lipschitz constant.
 	 * @param [in] gf Gas fraction in the interval (0, 1).
 	 * @param [in] pitch Gratings length (ridge + plastron).
-	 * @param [in] width Channel width.
-	 * @param [in] nZTrees Number of trees in the z-direction.
+	 * @param [in] xyzDim Channel dimensions (not normalized by delta).
+	 * @param [in] nTrees Number of trees in each direction.
 	 * @param [in] spRef Whether to use special refinement for plastrons and ridges.
+	 * @param [in] spanwise Whether the gratings are perpendicular to the flow (option available only in 3D).
 	 */
 	splitting_criteria_cf_and_uniform_band_shs_t( const int& minLvl, const int& maxLvl, const CF_DIM *phi, const double& uniformBand,
 												  const double& delta, const double& lmidDeltaPercent, const double& lip, const double& gf,
-												  const double& pitch, const double& width, const int& nZTrees, const bool& spRef=false ) :
+												  const double& pitch, const double xyzDim[P4EST_DIM], const int nTrees[P4EST_DIM],
+												  const bool& spRef=false ONLY3D(COMMA const bool& spanwise=false) ) :
 		splitting_criteria_cf_and_uniform_band_t( minLvl, maxLvl, phi, uniformBand, lip ),
-		DELTA( delta ), LMID_DELTA_PERCENT( lmidDeltaPercent ), GF( gf ),  P( pitch ), WIDTH( width ), MAX_Z( width / 2 ),
-		N_Z_TREES( nZTrees ), SPECIAL_REFINEMENT( spRef ), PLASTRON_MAX_LVL( spRef? (maxLvl - 2) : maxLvl )
+		DELTA( delta ), LMID_DELTA_PERCENT( lmidDeltaPercent ), GF( gf ),  P( pitch ), XYZ_DIM{DIM( xyzDim[0], xyzDim[1], xyzDim[2] )},
+		XYZ_MIN{DIM( -xyzDim[0]/2, -xyzDim[1]/2, -xyzDim[2]/2 )}, XYZ_MAX{DIM( xyzDim[0]/2, xyzDim[1]/2, xyzDim[2]/2 )},
+		N_TREES{DIM( nTrees[0], nTrees[1], nTrees[2] )}, SPECIAL_REFINEMENT( spRef ), PLASTRON_MAX_LVL( spRef? (maxLvl - 2) : maxLvl )
+		ONLY3D(COMMA SPANWISE( spanwise ))
 	{
 		std::string errorPrefix = "[CASL_ERROR] splitting_criteria_cf_and_uniform_band_shs_t::constructor: ";
 
@@ -659,12 +669,6 @@ public:
 
 		if( GF <= PETSC_MACHINE_EPSILON || GF >= 1 - PETSC_MACHINE_EPSILON )
 			throw std::invalid_argument( errorPrefix + "Gas fraction must be in the range of (0, 1), excluding the end points!" );
-
-		if( P > WIDTH )
-			throw std::invalid_argument( errorPrefix + "Pitch can't be larger than domain width!" );
-
-		if( N_Z_TREES <= 0 )
-			throw std::invalid_argument( errorPrefix + "There must be at least one tree along the z-direction!" );
 	}
 
 	/**

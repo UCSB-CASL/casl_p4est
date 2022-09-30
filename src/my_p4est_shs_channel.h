@@ -18,11 +18,6 @@ typedef enum
   undefined_flow_condition
 } flow_setting;
 
-static double my_fmod(const double& num, const double& denom)
-{
-  return (num - std::floor(num/denom)*denom);
-}
-
 class my_p4est_shs_channel_t : public CF_DIM
 {
   // parameters defining the channel
@@ -697,10 +692,11 @@ public:
   {
     P4EST_ASSERT( is_configured );
     delete sp;
+	double dimensions[P4EST_DIM] = {DIM(length(), height(), width())};
     sp = new splitting_criteria_cf_and_uniform_band_shs_t( lmin, max_lvl, this,
 														   calculate_uniform_band_for_ns_solver( wall_layer ), delta(),
 														   lmid_delta_percent, calculate_lip_for_ns_solver( lip_user ), GF(), get_pitch(),
-														   width(), brick->nxyztrees[2], special_refinement );
+														   dimensions, brick->nxyztrees, special_refinement ONLY3D(COMMA spanwise));
 
     if( forest != nullptr )
       p4est_destroy( forest );

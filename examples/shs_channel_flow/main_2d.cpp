@@ -1129,9 +1129,10 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
     delete data; data = nullptr;
   }
   P4EST_ASSERT(data == nullptr);
+  double dimensions[P4EST_DIM] = {DIM(channel.length(), channel.height(), channel.width())};
   data = new splitting_criteria_cf_and_uniform_band_shs_t(cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl),
       channel.lmax(), &channel, uniform_band, channel.delta(), cmd.get<double>("lmid_delta_percent", default_lmid_delta_percent ), lip,
-	  channel.GF(), channel.get_pitch(), channel.width(), brick->nxyztrees[2], cmd.contains("special_refinement"));
+	  channel.GF(), channel.get_pitch(), dimensions, brick->nxyztrees, cmd.contains("special_refinement") ONLY3D(COMMA channel.spanwise_grooves()));
   auto* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
   bool fix_restarted_grid = (channel.lmax() != to_delete->max_lvl);
   delete to_delete;

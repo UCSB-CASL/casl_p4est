@@ -1605,20 +1605,29 @@ function_end:
 	return is_grid_changed;
 }
 
+#ifdef P4_TO_P8
 double splitting_criteria_cf_and_uniform_band_shs_t::_normalize_z( const double &z ) const
 {
-	double sz = z + MAX_Z;
-	return sz - floor( sz / P ) * P;
+	return my_fmod( z + XYZ_MAX[2], P );
 }
+#endif
 
 double splitting_criteria_cf_and_uniform_band_shs_t::_offset() const
 {
-	return 0.1 * WIDTH / (N_Z_TREES * (1 << max_lvl));
+#ifdef P4_TO_P8
+	if( !SPANWISE )
+		return 0.1 * XYZ_DIM[2] / (N_TREES[2] * (1 << max_lvl));
+#endif
+	return 0.5 * XYZ_DIM[0] / (N_TREES[0] * (1 << max_lvl));
 }
 
 bool splitting_criteria_cf_and_uniform_band_shs_t::is_ridge( const double xyz[P4EST_DIM] ) const
 {
-	return _offset() >= _normalize_z( xyz[2] ) || _normalize_z( xyz[2] ) >= P * GF - _offset();
+#ifdef P4_TO_P8
+	if( !SPANWISE )
+		return _offset() >= _normalize_z( xyz[2] ) || _normalize_z( xyz[2] ) >= P * GF - _offset();
+#endif
+	return my_fmod( xyz[0] - XYZ_MIN[0] - _offset(), P ) / P >= GF;
 }
 
 void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx,

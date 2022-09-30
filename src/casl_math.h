@@ -487,5 +487,18 @@ inline T mean( const std::vector<const T*>& data )
 	return m / data.size();
 }
 
+/**
+ * Compute floating-point modulus operation.
+ * @tparam T Data type (must be float or double)
+ * @param [in] num Numerator.
+ * @param [in] denom Denominator.
+ * @return modulus.
+ */
+template<typename T = double>
+inline T my_fmod( const T& num, const T& denom )
+{
+	return num - std::floor( num / denom ) * denom;
+}
+
 
 #endif // MY_P4EST_MATH_H
