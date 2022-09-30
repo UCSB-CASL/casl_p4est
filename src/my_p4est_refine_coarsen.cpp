@@ -1447,6 +1447,9 @@ bool splitting_criteria_band_t::refine_and_coarsen_with_band( p4est_t *p4est, p4
 p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad )
 {
 	auto *data = (splitting_criteria_cf_and_uniform_band_shs_t *) p4est->user_pointer;
+	if( data->SPECIAL_REFINEMENT )
+		throw std::runtime_error( "refine_levelset_cf_and_uniform_band_shs function is not allowed when special refinement option is enabled!" );
+
 	if( quad->level < data->min_lvl )		// Refine until we get to the desired min level.
 		return P4EST_TRUE;
 	else if( quad->level >= data->max_lvl )	// Stop refining beyond max level.
@@ -1474,15 +1477,12 @@ p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topi
 #ifdef P4_TO_P8
 		double dz = (tree_zmax - tree_zmin) * dmin;
 #endif
-		double ridge_smallest_dy = (tree_ymax - tree_ymin) * (double)P4EST_QUADRANT_LEN( data->max_lvl ) / P4EST_ROOT_LEN;
-		double plastron_smallest_dy = (tree_ymax - tree_ymin) * (double)P4EST_QUADRANT_LEN( data->PLASTRON_MAX_LVL ) / P4EST_ROOT_LEN;
+		double smallest_dy = (tree_ymax - tree_ymin) * (double)P4EST_QUADRANT_LEN( data->max_lvl ) / P4EST_ROOT_LEN;
 
 		// Use smallest_dy to define the limits for mid-level-cell refinement.
-		std::vector<double> midBounds, midBoundsRidge;
-		data->getBandedBounds( plastron_smallest_dy, midBounds, false );
-		data->getBandedBounds( plastron_smallest_dy, midBoundsRidge, true );
-		const int PLASTRON_NUM_MID_LEVELS = (int)midBounds.size();
-		const int RIDGE_NUM_MID_LEVELS = (int)midBoundsRidge.size();
+		std::vector<double> midBounds;
+		bool midLvlCellsOK = data->getBandedBounds( smallest_dy, midBounds );
+		const int NUM_MID_LEVELS = (int)midBounds.size();
 
 		double x = (tree_xmax - tree_xmin) * (double)quad->x / (double)P4EST_ROOT_LEN + tree_xmin;
 		double y = (tree_ymax - tree_ymin) * (double)quad->y / (double)P4EST_ROOT_LEN + tree_ymin;
@@ -1502,38 +1502,23 @@ p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topi
 					double xyz[P4EST_DIM] = {DIM( x + ci * 0.5 * dx, y + cj * 0.5 * dy, z + ck * 0.5 * dz )};
 					f = phi( DIM( xyz[0], xyz[1], xyz[2] ) );
 					is_crossed = is_crossed || (vmmm_is_neg != (f <= 0.0));
-					if( is_crossed )
+					if( fabs( f ) < data->uniformBand() * smallest_dy || is_crossed )
 						return P4EST_TRUE;
-
-					double minDistToWall = MIN( ABS( xyz[1] + data->DELTA ), ABS( xyz[1] - data->DELTA ) );
-					bool isRidge = data->is_ridge( xyz );
 
 					// Check if any of quad's corners/midpoints are in the negative domain.
 					if( f <= 0 )
 					{
-						bool ref_band = minDistToWall < MAX( 2.0, data->uniformBand() ) * plastron_smallest_dy;	// Notice the use of the plastron min dy.
-
-						// In special refinement, we want one of the smallest dy along the whole wall.
-						if( data->SPECIAL_REFINEMENT && ref_band )
-						{
-							if( !isRidge && minDistToWall >= ridge_smallest_dy && quad->level >= data->PLASTRON_MAX_LVL )
-								return P4EST_FALSE;
-						}
-
-						if( minDistToWall < data->uniformBand() * plastron_smallest_dy )
-							return P4EST_TRUE;	// Enforce uniform band along the wall.
+						// If after the above condition we didn't refine a quad, we need to check cells next to the
+						// air interface (which is not considered by the solid-ridge-based level-set function).
+						double minDistToWall = MIN( ABS( xyz[1] + data->DELTA ), ABS( xyz[1] - data->DELTA ) );
+						if( minDistToWall < data->uniformBand() * smallest_dy )
+							return P4EST_TRUE;	// Enforce uniform band along the wall, regardless of interface type.
 
 						// Check the mid-level cells (and their bands) only if requested and valid.
-						if( isRidge && RIDGE_NUM_MID_LEVELS > 0 )			// On solid ridge.
+						if( NUM_MID_LEVELS > 0 && midLvlCellsOK )
 						{
-							int boundIdx = MAX( 0, MIN( (data->max_lvl - 1) - (quad->level + 1), RIDGE_NUM_MID_LEVELS - 1 ) );				// Can we go one level up?
-							if( minDistToWall < midBoundsRidge[boundIdx] && quad->level < data->max_lvl - boundIdx - 1 )
-								return P4EST_TRUE;
-						}
-						else if( !isRidge && PLASTRON_NUM_MID_LEVELS > 0 )	// On plastron.
-						{
-							int boundIdx = MAX( 0, MIN( (data->PLASTRON_MAX_LVL - 1) - (quad->level + 1), PLASTRON_NUM_MID_LEVELS - 1 ) );	// Can we go one level up?
-							if( minDistToWall < midBounds[boundIdx] && quad->level < data->PLASTRON_MAX_LVL - boundIdx - 1 )
+							int boundIdx = MAX( 0, MIN( (data->max_lvl - 1) - (quad->level + 1), NUM_MID_LEVELS - 1 ) );	// We want to check if we can go one level up.
+							if( minDistToWall < midBounds[boundIdx] && quad->level < data->max_lvl - boundIdx - 1 )
 								return P4EST_TRUE;
 						}
 					}
@@ -1597,6 +1582,7 @@ bool splitting_criteria_cf_and_uniform_band_shs_t::refine_and_coarsen( p4est_t* 
 	my_p4est_refine( p4est, P4EST_FALSE, splitting_criteria_cf_and_uniform_band_shs_t::refine_fn, splitting_criteria_cf_and_uniform_band_shs_t::init_fn );
 
 	int is_grid_changed = false;
+	PetscPrintf( p4est->mpicomm, ">> Refining/coarsening... " );
 	for( p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it )
 	{
 		p4est_tree_t *tree = p4est_tree_array_index( p4est->trees, it );
@@ -1613,6 +1599,7 @@ bool splitting_criteria_cf_and_uniform_band_shs_t::refine_and_coarsen( p4est_t* 
 
 function_end:
 	MPI_Allreduce( MPI_IN_PLACE, &is_grid_changed, 1, MPI_INT, MPI_LOR, p4est->mpicomm );
+	PetscPrintf( p4est->mpicomm, "done!\n" );
 
 	CHKERRXX( VecRestoreArrayRead( phi, &phi_p ) );
 	return is_grid_changed;
@@ -1694,6 +1681,7 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 		}
 
 		bool refine = (quad->level < max_lvl);
+		double xyz[P4EST_DIM];
 		if( refine )
 		{
 			bool ref_band = false;
@@ -1732,7 +1720,6 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 						if( node_found )
 						{
 							P4EST_ASSERT( node_idx < (( p4est_locidx_t ) nodes->indep_nodes.elem_count));
-							double xyz[P4EST_DIM];
 							node_xyz_fr_n( node_idx, p4est, nodes, xyz );
 							bool isRidge = is_ridge( xyz );
 							double minDistToWall = MIN( ABS( xyz[1] + DELTA ), ABS( xyz[1] - DELTA ) );
@@ -1777,8 +1764,11 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 		}
 
 end_of_function:
+#ifdef DEBUG
 		if( coarsen && refine )
-			std::cout << "Here" << std::endl;
+			std::cerr << "Octant with point [" << xyz[0] << ", " << xyz[1] <<
+					  ONLY3D( "," << xyz[2] <<) "] is marked for coarsening and refinement!" << std::endl;
+#endif
 
 		if( refine )
 			quad->p.user_int = REFINE_QUADRANT;

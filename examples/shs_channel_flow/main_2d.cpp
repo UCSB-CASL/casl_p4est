@@ -4,7 +4,7 @@
  * run the program with the -help flag to see the available options
  *
  * Author: Raphael Egan, with updates by Luis Ángel.
- * Updated: September 29, 2022.
+ * Updated: September 30, 2022.
  */
 
 // System
@@ -296,9 +296,17 @@ struct simulation_setup
 	  if( running_stats_num_steps <= 0 )
 		throw std::invalid_argument( "simulation_setup::simulation_setup(): the value of running_stats_num_steps must be strictly positive" );
 	  if( running_stats_only_sum && !save_state )
-		throw std::invalid_argument( "simulation_steup::simulation_setup(): the only-sum feature for running stats requires to enable save_state" );
+		throw std::invalid_argument( "simulation_setup::simulation_setup(): the only-sum feature for running stats requires to enable save_state" );
 	}
 	running_stats_done = false;
+
+	if( cmd.contains("special_refinement") )	// Special refinement option only enabled when restarting from coarser grid in 3D.
+	{
+	  if( !cmd.contains("restart") )
+	  	throw std::invalid_argument( "simulation_setup::simulation_setup(): special refinement option is only available when restarting" );
+	  if( P4EST_DIM != 3 )						// NOLINT.
+		throw std::invalid_argument( "simulation_setup::simulation_setup(): special refinement option is only available in 3D" );
+	}
 
     dt_save_data = -1.0;
     if (save_state)
@@ -1137,7 +1145,7 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   if( fix_restarted_grid )
   {
 	ns->refine_coarsen_grid_after_restart( &channel, false, true );
-	CHKERRXX( PetscPrintf( ns->get_mpicomm(), "Applied refinement/coarsening to adapt to new grid configuration." ) );
+	CHKERRXX( PetscPrintf( ns->get_mpicomm(), "Applied refinement/coarsening to adapt to new grid configuration.\n" ) );
   }
 
   // Bug! The following two functions make use of setup.tn, but tn is not yet initialized!  I'll assign temporarily tstart to tn just in case.
@@ -1203,7 +1211,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   channel.create_p4est_ghost_and_nodes(p4est_nm1, ghost_nm1, nodes_nm1, data, connectivity, mpi,
                                        cmd.get<int>("lmin", default_lmin), cmd.get<unsigned int>("wall_layer", default_wall_layer),
                                        cmd.get<double>("lmid_delta_percent", default_lmid_delta_percent), cmd.get<double>("lip", default_lip),
-									   cmd.get<double>("cfl", default_cfl), cmd.contains("special_refinement"));
+									   cmd.get<double>("cfl", default_cfl), false);	// No special refinement applied here.
   auto *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
   auto *ngbd_nm1      = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
   /* create the initial forest at time n (copy of the former one) */
@@ -1581,7 +1589,7 @@ int main (int argc, char* argv[])
   cmd.add_option("thresh",              "the threshold used for the refinement criteria, default is " + std::to_string(default_thresh));
   cmd.add_option("wall_layer",          "number of finest cells desired to layer the channel walls, default is " + std::to_string(default_wall_layer) + " or value deduced from solver state if restarted.");
   cmd.add_option("lmid_delta_percent", 	"how far to use mid-level refinement cells away from the wall (as percent w.r.t. delta); provide 0 to disable this option; default is " + std::to_string( default_lmid_delta_percent ) );
-  cmd.add_option("special_refinement",  "if present, use special refinement for plastron and ridges. Use this option carefully because it will increase the resolution over the ridges while keeping a lower resolution over the gas interfaces.");
+  cmd.add_option("special_refinement",  "if present, use special refinement for plastron and ridges upon restart in 3D. Use this option carefully because it will increase the resolution over the ridges while keeping a lower (banded) resolution over the gas interfaces.");
   cmd.add_option("lip",                 "Lipschitz constant L for grid refinement. The levelset is defined as the negative distance to the top/bottom wall in case of spanwise grooves or to the closest no-slip region with streamwise grooves. \n\tWarning: this application uses a modified criterion comparin the levelset value to L\\Delta y (as opposed to L*diag(C)). \n\tDefault value is " + std::to_string(default_lip) + (default_lip < 10.0 ? " (fyi: that's thin for turbulent cases)" : "") + " or value read from solver state if restarted.");
   cmd.add_option("nx",                  "number of trees in the x-direction. \n\tThe default value is " + std::to_string(default_ntree_y) + "*length/height  to ensure aspect ratio of cells = 1 when using default dimensions");
   cmd.add_option("ny",                  "number of trees in the y-direction. \n\tThe default value is " + std::to_string(default_ntree_y) + "                to ensure aspect ratio of cells = 1 when using default dimensions");

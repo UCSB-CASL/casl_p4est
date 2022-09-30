@@ -387,6 +387,7 @@ refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, 
 
 /**
  * Refine the grid based on distances to the walls on the y-axis.
+ * This function should be used when special refinement is disabled.
  * @note This is an especialization of the refine_levelset_cf_and_uniform_band function.
  * @param [in] p4est Forest object.
  * @param [in] which_tree Current tree to which the quadrant belongs.
