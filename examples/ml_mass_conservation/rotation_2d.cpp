@@ -109,7 +109,7 @@ void writeVTK( int vtkIdx, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
 	PetscPrintf( p4est->mpicomm, ":: Saved vtk files with index %02d ::\n", vtkIdx );
 }
 
-void computeHKAndNormals( const double& h, const my_p4est_node_neighbors_t *nbgd, const Vec& phi, Vec& hk, Vec normal[P4EST_DIM] )
+void computeHKAndNormals( const double& h, const my_p4est_node_neighbors_t *nbgd, const Vec& phi, Vec& hk, Vec normal[P4EST_DIM], parStopWatch *watch=nullptr )
 {
 	PetscErrorCode ierr;
 
@@ -134,7 +134,10 @@ void computeHKAndNormals( const double& h, const my_p4est_node_neighbors_t *nbgd
 
 	// Compute curvature and normals for all points.  It'll be interpolated on the interface for valid points later.
 	// The normals are computed for locally owned points only (no scattered) while curvature is scattered forward.
+	double t = watch? watch->get_duration_current() : 0;
 	compute_normals( *nbgd, phi, normal );
+	if( watch )
+		std::cout << "Time: " << watch->get_duration_current() - t << std::endl;
 	compute_mean_curvature( *nbgd, normal, hk );
 
 	double *hkPtr;
@@ -324,7 +327,7 @@ int main( int argc, char** argv )
 		// Computing dimensionless curvature and normal vectors.
 		Vec hk = nullptr;
 		Vec normal[P4EST_DIM] = {nullptr, nullptr};
-		computeHKAndNormals( dxyz_min, nodeNeighbors, phi, hk, normal );
+		computeHKAndNormals( dxyz_min, nodeNeighbors, phi, hk, normal, &watch );
 
 		// Let's use a debugging vector to detect how were grid points updated at time tnp1: 0 if numerically and 1 if
 		// nnet was used.  We'll add another state: 2, if vertex state is 1 and is protected in selective reinit.

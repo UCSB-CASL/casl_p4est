@@ -841,13 +841,13 @@ void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double
 
   if(second_derivatives_needed)
   {
-    std::vector<double> DIM(fxx(nelements),fyy(nelements), fzz(nelements));
+    double DIM(fxx[nelements],fyy[nelements], fzz[nelements]);
     if (bs == 1)
-      laplace(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays);
+      laplace(f, DIM(fxx, fyy, fzz), n_arrays);
     else if (bs > 1 && comp < bs)
-      laplace_component(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs, comp);
+      laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
     else
-      laplace_all_components(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs);
+      laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
 
     for (unsigned int k = 0; k < nelements; ++k) {
       if(Dx_needs_yy_correction)
@@ -868,7 +868,6 @@ void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double
 #endif
     }
   }
-  return;
 }
 
 /*
@@ -934,23 +933,23 @@ void quad_neighbor_nodes_of_node_t::dx_central_internal(const double *f[], doubl
   P4EST_ASSERT(comp <= bs);
   // comp == bs means "all components", comp < bs means, only one, comp > bs is not accepted
   const unsigned int nelements = n_arrays*(((bs>1) && (comp==bs))? bs : 1);
-  std::vector<double> f_000(nelements), f_p00(nelements), f_m00(nelements);
+  double f_000[nelements], f_p00[nelements], f_m00[nelements];
   if (bs==1){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][node_000];
-    f_m00_linear(f, f_m00.data(), n_arrays);
-    f_p00_linear(f, f_p00.data(), n_arrays);
+    f_m00_linear(f, f_m00, n_arrays);
+    f_p00_linear(f, f_p00, n_arrays);
   } else if ((bs>1) && (comp < bs)){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][bs*node_000+comp];
-    f_m00_linear_component(f, f_m00.data(), n_arrays, bs, comp);
-    f_p00_linear_component(f, f_p00.data(), n_arrays, bs, comp);
+    f_m00_linear_component(f, f_m00, n_arrays, bs, comp);
+    f_p00_linear_component(f, f_p00, n_arrays, bs, comp);
   } else {
     for (unsigned int k = 0; k < n_arrays; ++k)
       for (unsigned int comp = 0; comp < bs; ++comp)
         f_000[k*bs+comp] = f[k][bs*node_000+comp];
-    f_m00_linear_all_components(f, f_m00.data(), n_arrays, bs);
-    f_p00_linear_all_components(f, f_p00.data(), n_arrays, bs);
+    f_m00_linear_all_components(f, f_m00, n_arrays, bs);
+    f_p00_linear_all_components(f, f_p00, n_arrays, bs);
   }
   for (unsigned int k = 0; k < nelements; ++k)
     fx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00); // naive approach so far
@@ -968,13 +967,13 @@ void quad_neighbor_nodes_of_node_t::dx_central_internal(const double *f[], doubl
 
   if(second_derivatives_needed)
   {
-    std::vector<double> DIM(fxx(nelements),fyy(nelements), fzz(nelements));
+    double DIM(fxx[nelements],fyy[nelements], fzz[nelements]);
     if (bs == 1)
-      laplace(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays);
+      laplace(f, DIM(fxx, fyy, fzz), n_arrays);
     else if (bs > 1 && comp < bs)
-      laplace_component(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs, comp);
+      laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
     else
-      laplace_all_components(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs);
+      laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
 
     for (unsigned int k = 0; k < nelements; ++k) {
       if(Dx_needs_yy_correction)
@@ -985,7 +984,6 @@ void quad_neighbor_nodes_of_node_t::dx_central_internal(const double *f[], doubl
 #endif
     }
   }
-  return;
 }
 
 void quad_neighbor_nodes_of_node_t::dy_central_internal(const double *f[], double *fy, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
