@@ -870,50 +870,6 @@ void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double
   }
 }
 
-/*
-void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(DIM(node_linear_combination &Dx, node_linear_combination &Dy, node_linear_combination &Dz), DIM(const node_linear_combination &Dxx, const node_linear_combination &Dyy, const node_linear_combination &Dzz)) const
-{
-  double yy_correction_weight_to_naive_Dx, xx_correction_weight_to_naive_Dy;
-#ifdef P4_TO_P8
-  double zz_correction_weight_to_naive_Dx, zz_correction_weight_to_naive_Dy;
-  double xx_correction_weight_to_naive_Dz, yy_correction_weight_to_naive_Dz;
-#endif
-  // correct them if needed
-  bool second_derivatives_needed = false;
-  const bool Dx_needs_yy_correction = naive_dx_needs_yy_correction(yy_correction_weight_to_naive_Dx); second_derivatives_needed = second_derivatives_needed || Dx_needs_yy_correction;
-#ifdef P4_TO_P8
-  const bool Dx_needs_zz_correction = naive_dx_needs_zz_correction(zz_correction_weight_to_naive_Dx); second_derivatives_needed = second_derivatives_needed || Dx_needs_zz_correction;
-#endif
-  const bool Dy_needs_xx_correction = naive_dy_needs_xx_correction(xx_correction_weight_to_naive_Dy); second_derivatives_needed = second_derivatives_needed || Dy_needs_xx_correction;
-#ifdef P4_TO_P8
-  const bool Dy_needs_zz_correction = naive_dy_needs_zz_correction(zz_correction_weight_to_naive_Dy); second_derivatives_needed = second_derivatives_needed || Dy_needs_zz_correction;
-  const bool Dz_needs_xx_correction = naive_dz_needs_xx_correction(xx_correction_weight_to_naive_Dz); second_derivatives_needed = second_derivatives_needed || Dz_needs_xx_correction;
-  const bool Dz_needs_yy_correction = naive_dz_needs_yy_correction(yy_correction_weight_to_naive_Dz); second_derivatives_needed = second_derivatives_needed || Dz_needs_yy_correction;
-#endif
-
-  if(second_derivatives_needed)
-  {
-    if(Dx_needs_yy_correction)
-      Dx.add_terms(Dyy, -yy_correction_weight_to_naive_Dx);
-#ifdef P4_TO_P8
-    if(Dx_needs_zz_correction)
-      Dx.add_terms(Dzz, -zz_correction_weight_to_naive_Dx);
-#endif
-    if(Dy_needs_xx_correction)
-      Dy.add_terms(Dxx, -xx_correction_weight_to_naive_Dy);
-#ifdef P4_TO_P8
-    if(Dy_needs_zz_correction)
-      Dy.add_terms(Dzz, -zz_correction_weight_to_naive_Dy);
-    if(Dz_needs_xx_correction)
-      Dz.add_terms(Dxx, -xx_correction_weight_to_naive_Dz);
-    if(Dz_needs_yy_correction)
-      Dz.add_terms(Dyy, -yy_correction_weight_to_naive_Dz);
-#endif
-  }
-  return;
-}
-*/
-
 void quad_neighbor_nodes_of_node_t::dx_central_internal(const double *f[], double *fx, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
 {
   /*
@@ -1005,23 +961,23 @@ void quad_neighbor_nodes_of_node_t::dy_central_internal(const double *f[], doubl
   P4EST_ASSERT(comp <= bs);
   // comp == bs means "all components", comp < bs means, only one, comp > bs is not accepted
   const unsigned int nelements = n_arrays*(((bs>1) && (comp==bs))? bs : 1);
-  std::vector<double> f_000(nelements), f_0p0(nelements), f_0m0(nelements);
+  double f_000[nelements], f_0p0[nelements], f_0m0[nelements];
   if (bs==1){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][node_000];
-    f_0m0_linear(f, f_0m0.data(), n_arrays);
-    f_0p0_linear(f, f_0p0.data(), n_arrays);
+    f_0m0_linear(f, f_0m0, n_arrays);
+    f_0p0_linear(f, f_0p0, n_arrays);
   } else if ((bs>1) && (comp < bs)){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][bs*node_000+comp];
-    f_0m0_linear_component(f, f_0m0.data(), n_arrays, bs, comp);
-    f_0p0_linear_component(f, f_0p0.data(), n_arrays, bs, comp);
+    f_0m0_linear_component(f, f_0m0, n_arrays, bs, comp);
+    f_0p0_linear_component(f, f_0p0, n_arrays, bs, comp);
   } else {
     for (unsigned int k = 0; k < n_arrays; ++k)
-      for (unsigned int comp = 0; comp < bs; ++comp)
-        f_000[k*bs+comp] = f[k][bs*node_000+comp];
-    f_0m0_linear_all_components(f, f_0m0.data(), n_arrays, bs);
-    f_0p0_linear_all_components(f, f_0p0.data(), n_arrays, bs);
+      for (unsigned int c = 0; c < bs; ++c)
+        f_000[k*bs+c] = f[k][bs*node_000+c];
+    f_0m0_linear_all_components(f, f_0m0, n_arrays, bs);
+    f_0p0_linear_all_components(f, f_0p0, n_arrays, bs);
   }
   for (unsigned int k = 0; k < nelements; ++k)
     fy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0); // naive approach so far
@@ -1032,20 +988,20 @@ void quad_neighbor_nodes_of_node_t::dy_central_internal(const double *f[], doubl
 #endif
   // correct it if needed
   bool second_derivatives_needed = false;
-  const bool Dy_needs_xx_correction = naive_dy_needs_xx_correction(xx_correction_weight_to_df_dy); second_derivatives_needed = second_derivatives_needed || Dy_needs_xx_correction;
+  const bool Dy_needs_xx_correction = naive_dy_needs_xx_correction(xx_correction_weight_to_df_dy); second_derivatives_needed = Dy_needs_xx_correction;
 #ifdef P4_TO_P8
   const bool Dy_needs_zz_correction = naive_dy_needs_zz_correction(zz_correction_weight_to_df_dy); second_derivatives_needed = second_derivatives_needed || Dy_needs_zz_correction;
 #endif
 
   if(second_derivatives_needed)
   {
-    std::vector<double> DIM(fxx(nelements),fyy(nelements), fzz(nelements));
+    double DIM(fxx[nelements], fyy[nelements], fzz[nelements]);
     if (bs == 1)
-      laplace(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays);
+      laplace(f, DIM(fxx, fyy, fzz), n_arrays);
     else if (bs > 1 && comp < bs)
-      laplace_component(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs, comp);
+      laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
     else
-      laplace_all_components(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs);
+      laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
     for (unsigned int k = 0; k < nelements; ++k) {
       if(Dy_needs_xx_correction)
         fy[k] -= fxx[k]*xx_correction_weight_to_df_dy;
@@ -1055,7 +1011,6 @@ void quad_neighbor_nodes_of_node_t::dy_central_internal(const double *f[], doubl
 #endif
     }
   }
-  return;
 }
 
 #ifdef P4_TO_P8
@@ -1078,23 +1033,23 @@ void quad_neighbor_nodes_of_node_t::dz_central_internal(const double *f[], doubl
   P4EST_ASSERT(comp <= bs);
   // comp == bs means "all components", comp < bs means, only one, comp > bs is not accepted
   const unsigned int nelements = n_arrays*(((bs>1) && (comp==bs))? bs : 1);
-  std::vector<double> f_000(nelements), f_00p(nelements), f_00m(nelements);
+  double f_000[nelements], f_00p[nelements], f_00m[nelements];
   if (bs==1){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][node_000];
-    f_00m_linear(f, f_00m.data(), n_arrays);
-    f_00p_linear(f, f_00p.data(), n_arrays);
+    f_00m_linear(f, f_00m, n_arrays);
+    f_00p_linear(f, f_00p, n_arrays);
   } else if ((bs>1) && (comp < bs)){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][bs*node_000+comp];
-    f_00m_linear_component(f, f_00m.data(), n_arrays, bs, comp);
-    f_00p_linear_component(f, f_00p.data(), n_arrays, bs, comp);
+    f_00m_linear_component(f, f_00m, n_arrays, bs, comp);
+    f_00p_linear_component(f, f_00p, n_arrays, bs, comp);
   } else {
     for (unsigned int k = 0; k < n_arrays; ++k)
       for (unsigned int comp = 0; comp < bs; ++comp)
         f_000[k*bs+comp] = f[k][bs*node_000+comp];
-    f_00m_linear_all_components(f, f_00m.data(), n_arrays, bs);
-    f_00p_linear_all_components(f, f_00p.data(), n_arrays, bs);
+    f_00m_linear_all_components(f, f_00m, n_arrays, bs);
+    f_00p_linear_all_components(f, f_00p, n_arrays, bs);
   }
   for (unsigned int k = 0; k < nelements; ++k)
     fz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m); // naive approach so far
@@ -1107,13 +1062,13 @@ void quad_neighbor_nodes_of_node_t::dz_central_internal(const double *f[], doubl
 
   if(second_derivatives_needed)
   {
-    std::vector<double> fxx(nelements),fyy(nelements), fzz(nelements);
+    double fxx[nelements], fyy[nelements], fzz[nelements];
     if (bs==1)
-      laplace(f, fxx.data(), fyy.data(), fzz.data(), n_arrays);
+      laplace(f, fxx, fyy, fzz, n_arrays);
     else if ((bs > 1) && (comp < bs))
-      laplace_component(f, fxx.data(), fyy.data(), fzz.data(), n_arrays, bs, comp);
+      laplace_component(f, fxx, fyy, fzz, n_arrays, bs, comp);
     else
-      laplace_all_components(f, fxx.data(), fyy.data(), fzz.data(), n_arrays, bs);
+      laplace_all_components(f, fxx, fyy, fzz, n_arrays, bs);
     for (unsigned int k = 0; k < nelements; ++k) {
       if(Dz_needs_xx_correction)
         fz[k] -= fxx[k]*xx_correction_weight_to_df_dz;
