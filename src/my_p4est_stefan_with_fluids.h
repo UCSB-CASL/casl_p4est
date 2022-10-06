@@ -819,6 +819,7 @@ public:
   // -----------------------------------------------
 
   p4est_nodes* get_nodes_np1(){return nodes_np1;}
+
   my_p4est_node_neighbors_t* get_ngbd_np1(){return ngbd_np1;}
   // (WIP)
 
@@ -841,6 +842,10 @@ public:
     ghost_np1 = ghost_np1_;
   }
 
+  void set_ghost_n(p4est_ghost_t* ghost_n_){
+    ghost_n = ghost_n_;
+  }
+
   void set_hierarchy_np1(my_p4est_hierarchy_t* hierarchy_np1_){
     hierarchy_np1 = hierarchy_np1_;
   }
@@ -854,6 +859,10 @@ public:
     ngbd_np1 = ngbd_np1_;
   }
 
+  void set_faces_np1(my_p4est_faces_t* faces_np1_){
+    faces_np1 = faces_np1_;
+  }
+
   void set_p4est_n(p4est_t* p4est_n_){
       p4est_n = p4est_n_;
   }
@@ -862,6 +871,9 @@ public:
   }
   void set_ngbd_n(my_p4est_node_neighbors_t* ngbd_n_){
       ngbd_n = ngbd_n_;
+  }
+  void set_hierarchy_n(my_p4est_hierarchy_t* hierarchy_n_){
+      hierarchy_n= hierarchy_n_;
   }
 
   // -----------------------------------------------
@@ -977,10 +989,10 @@ public:
     Cl_nm1 = Cl_nm1_;
   }
   void set_Cl_backtrace_n(vec_and_ptr_array_t &Cl_backtrace_n_){
-    Cl_backtrace_n = Cl_backtrace_n_;
+      Cl_backtrace_n = Cl_backtrace_n_;
   }
   void set_Cl_backtrace_nm1(vec_and_ptr_array_t &Cl_backtrace_nm1_){
-    Cl_backtrace_nm1 = Cl_backtrace_nm1_;
+      Cl_backtrace_nm1 = Cl_backtrace_nm1_;
   }
 
   // ----------------------------------------------
@@ -996,6 +1008,9 @@ public:
   // ----------------------------------------------
   my_p4est_navier_stokes_t* get_ns_solver(){return ns;}
   vec_and_ptr_dim_t get_v_n(){return v_n;}
+  vec_and_ptr_dim_t get_v_nm1(){return v_nm1;}
+  void set_v_n(vec_and_ptr_dim_t& v_n_){ v_n = v_n_;}
+  void set_v_nm1(vec_and_ptr_dim_t& v_nm1_){v_nm1 = v_nm1_;}
   vec_and_ptr_t get_vorticity(){return vorticity;}
   vec_and_ptr_t get_press_nodes(){return press_nodes;}
 
@@ -1009,6 +1024,7 @@ public:
   }
 
   void set_bc_interface_type_velocity(BoundaryConditionType* bc_interface_type_velocity_[P4EST_DIM]){
+
     foreach_dimension(d){
       bc_interface_type_velocity[d] = bc_interface_type_velocity_[d];
     }
@@ -1168,7 +1184,7 @@ public:
   double get_vel_nondim_to_dim(){
     return vel_nondim_to_dim;
   }
-
+  double get_uniform_band(){return uniform_band;}
   void set_Re(double Re_){Re = Re_;}
   void set_Pr(double Pr_){Pr = Pr_;}
   void set_Sc(double Sc_){Sc = Sc_;}

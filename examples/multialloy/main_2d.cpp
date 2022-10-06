@@ -2054,11 +2054,16 @@ int main (int argc, char* argv[])
     if (save_now)
     {
       if (save_dendrites.val)   mas.count_dendrites(vtk_idx);
-      if (save_vtk.val)         mas.save_VTK(vtk_idx);
-      if (save_vtk_solid.val)   mas.save_VTK_solid(vtk_idx);
-      if (save_p4est.val)       mas.save_p4est(vtk_idx);
-      if (save_p4est_solid.val) mas.save_p4est_solid(vtk_idx);
 
+      if (save_vtk.val)         mas.save_VTK(vtk_idx);
+      ierr = PetscPrintf(mpi.comm(), " Saving VTK is complete line 2059 \n"); CHKERRXX(ierr);
+      if (save_vtk_solid.val)   mas.save_VTK_solid(vtk_idx);
+      PetscPrintf(mpi.comm(), "VTK solid saving complete \n");
+      ierr = PetscPrintf(mpi.comm(), "Saved characteristics in %s\n", filename_characteristics); CHKERRXX(ierr);
+      if (save_p4est.val)       mas.save_p4est(vtk_idx);
+      PetscPrintf(mpi.comm(), "P4est saving complete \n");
+      if (save_p4est_solid.val) mas.save_p4est_solid(vtk_idx);
+      PetscPrintf(mpi.comm(), "P4est solid saving complete \n");
       // compute error
       if (save_vtk_analytical.val || save_accuracy.val)
       {
@@ -2172,11 +2177,40 @@ int main (int argc, char* argv[])
             }
           }
         }
+        ierr = PetscPrintf(mpi.comm(), " Code ran till line 2175 \n", filename_characteristics); CHKERRXX(ierr);
 
         if (save_vtk_analytical.val) {
           char name[1024];
           sprintf(name, "%s/vtu/analytic_lvl_%d_%d.%05d", out_dir, lmin.val, lmax.val, vtk_idx);
 
+          std::vector<Vec_for_vtk_export_t> point_fields;
+          std::vector<Vec_for_vtk_export_t> cell_fields={};
+          point_fields.push_back(Vec_for_vtk_export_t(contr.vec, "contr"));
+          point_fields.push_back(Vec_for_vtk_export_t(front.vec, "phi"));
+          point_fields.push_back(Vec_for_vtk_export_t(tl.vec, "tl"));
+          point_fields.push_back(Vec_for_vtk_export_t(ts.vec, "ts"));
+          point_fields.push_back(Vec_for_vtk_export_t(vn.vec, "vn"));
+          point_fields.push_back(Vec_for_vtk_export_t(ft.vec, "ft"));
+          point_fields.push_back(Vec_for_vtk_export_t(tf.vec, "tf"));
+          point_fields.push_back(Vec_for_vtk_export_t(vf.vec, "vf"));
+
+          point_fields.push_back(Vec_for_vtk_export_t(front_exact.vec, "phi_exact"));
+          point_fields.push_back(Vec_for_vtk_export_t(tl_exact.vec, "tl_exact"));
+          point_fields.push_back(Vec_for_vtk_export_t(ts_exact.vec, "ts_exact"));
+          point_fields.push_back(Vec_for_vtk_export_t(vn_exact.vec, "vn_exact"));
+          point_fields.push_back(Vec_for_vtk_export_t(ft_exact.vec, "ft_exact"));
+          point_fields.push_back(Vec_for_vtk_export_t(tf_exact.vec, "tf_exact"));
+          point_fields.push_back(Vec_for_vtk_export_t(vf_exact.vec, "vf_exact"));
+
+          point_fields.push_back(Vec_for_vtk_export_t(front_error.vec, "phi_error"));
+          point_fields.push_back(Vec_for_vtk_export_t(tl_error.vec, "tl_error"));
+          point_fields.push_back(Vec_for_vtk_export_t(ts_error.vec, "ts_error"));
+          point_fields.push_back(Vec_for_vtk_export_t(vn_error.vec, "vn_error"));
+          point_fields.push_back(Vec_for_vtk_export_t(ft_error.vec, "ft_error"));
+          point_fields.push_back(Vec_for_vtk_export_t(vn_error.vec, "tf_error"));
+          point_fields.push_back(Vec_for_vtk_export_t(ts_error.vec, "vf_error"));
+
+          /*
           // cell data
           std::vector<double *>    cell_data;
           std::vector<std::string> cell_data_names;
@@ -2209,7 +2243,20 @@ int main (int argc, char* argv[])
           point_data.push_back(ft_error.ptr); point_data_names.push_back("ft_error");
           point_data.push_back(tf_error.ptr); point_data_names.push_back("tf_error");
           point_data.push_back(vf_error.ptr); point_data_names.push_back("vf_error");
+          */
+          for (int i = 0; i < num_comps.val; ++i) {
+            char numstr[21]; sprintf(numstr, "%d", i);
+            point_fields.push_back(Vec_for_vtk_export_t(cl.vec[i], std::string("cl") + numstr));
+            point_fields.push_back(Vec_for_vtk_export_t(cl_exact.vec[i], std::string("cl") + numstr + std::string("_exact")));
+            point_fields.push_back(Vec_for_vtk_export_t(cl_error.vec[i], std::string("cl") + numstr + std::string("_error")));
 
+            point_fields.push_back(Vec_for_vtk_export_t(cs.vec[i], std::string("cs") + numstr));
+            point_fields.push_back(Vec_for_vtk_export_t(cs_exact.vec[i], std::string("cs") + numstr + std::string("_exact")));
+            point_fields.push_back(Vec_for_vtk_export_t(cs_error.vec[i], std::string("cs") + numstr + std::string("_error")));
+          }
+          ierr = PetscPrintf(mpi.comm(), " Code ran till line 2252 \n", filename_characteristics); CHKERRXX(ierr);
+
+          /*
           for (int i = 0; i < num_comps.val; ++i) {
             char numstr[21]; sprintf(numstr, "%d", i);
 
@@ -2220,13 +2267,13 @@ int main (int argc, char* argv[])
             point_data.push_back(cs.ptr[i]);       point_data_names.push_back(std::string("cs") + numstr);
             point_data.push_back(cs_exact.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_exact"));
             point_data.push_back(cs_error.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_error"));
-          }
+          }*/
 
           my_p4est_vtk_write_all_lists(p4est, nodes, mas.get_ghost(),
                                        P4EST_TRUE, P4EST_TRUE,
                                        name,
-                                       point_data, point_data_names,
-                                       cell_data, cell_data_names);
+                                       point_fields,
+                                       cell_fields);
 
 
           PetscPrintf(p4est->mpicomm, "VTK with analytic saved in %s\n", name);
@@ -2356,7 +2403,10 @@ int main (int argc, char* argv[])
     }
 
     // advance front to t_{n+1}
+    //mas.set_solve_with_fluids();
+    PetscPrintf(mpi.comm(), "Solve_with_fluids paramter has been set \n");
     mas.update_grid();
+    PetscPrintf(mpi.comm(), "Update grid with fluids is complete \n");
     mas.update_grid_solid();
 
     // solve nonlinear system for temperature, concentration and velocity at t_n
@@ -2364,6 +2414,7 @@ int main (int argc, char* argv[])
     bc_error_avg = 0;
 
     sub_iterations += mas.one_step(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
+    PetscPrintf(mpi.comm(), "Onestep w fluids is complete \n");
     tn             += mas.get_dt();
 
     if (save_step_convergence()) {

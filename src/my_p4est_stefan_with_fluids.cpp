@@ -795,18 +795,28 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   // set_Cl_nm1_backtrace (" ")
   // set_T_l
 
-
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning to do backtrace \n");
 
+//  PetscPrintf(p4est_np1->mpicomm, "v_n vec inside backtrace = %p \n", v_n.vec[0]);
+//  PetscPrintf(p4est_np1->mpicomm, "v_nm1 vec inside backtrace = %p \n", v_nm1.vec[0]);
+
+//  int vnsize0;
+//  VecGetSize(v_n.vec[0], &vnsize0);
+//  PetscPrintf(p4est_np1->mpicomm, "vn size0 = %d \n", vnsize0);
+//  int vnm1size0;
+//  VecGetSize(v_nm1.vec[0], &vnm1size0);
+//  PetscPrintf(p4est_np1->mpicomm, "vnm1 size0 = %d \n", vnm1size0);
   // If we are doing the multialloy case, verify that all the necessary things are defined:
   if(do_multicomponent_fields){
     bool conc_check = true;
+
+
     for(int j=0; j<num_conc_fields; j++){
-      conc_check = conc_check && Cl_n.vec[j] != NULL;
-      conc_check = conc_check && Cl_nm1.vec[j] != NULL; 
-      conc_check = conc_check && Cl_backtrace_n.vec[j] != NULL; 
-      conc_check = conc_check && Cl_backtrace_nm1.vec[j] != NULL; 
+
+      conc_check = (Cl_n.vec[j]!=NULL) && (Cl_nm1.vec[j]!=NULL) &&
+                            (Cl_backtrace_nm1.vec[j]!=NULL);
     }
+
     if(!conc_check){
       throw std::runtime_error("my_p4est_stefan_with_fluids:do_backtrace_for_scalar_temp_conc_problem():" 
                                "The concentration check has failed for multicomponent usage." 
@@ -820,6 +830,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
                                "The temperature check has failed for multicomponent usage." 
                                "Please provide the necessary concentration vectors to the stefan_with_fluids solver before calling this fxn.");
     }
+
     bool grid_check = (p4est_np1!=NULL) && (nodes_np1!=NULL) && (ngbd_np1!=NULL) && (ngbd_n!=NULL);
 
 
@@ -834,7 +845,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     ngbd_n->init_neighbors();
     
   }
-
+//  std::cout<<"backtrace line 838 ok \n";
   // Initialize objects we will use in this function:
   // PETSC Vectors for second derivatives
   vec_and_ptr_dim_t T_l_dd, T_l_dd_nm1;
@@ -844,6 +855,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   // Initialize for potential concentration fields from multialloy
   std::vector<vec_and_ptr_dim_t> Cl_dd;
   std::vector<vec_and_ptr_dim_t> Cl_dd_nm1;
+//  std::cout<<"backtrace line 848 ok \n";
   if(do_multicomponent_fields){
     Cl_dd.resize(num_conc_fields);
     if(advection_sl_order == 2) Cl_dd_nm1.resize(num_conc_fields);
@@ -851,7 +863,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     // i.e.) Cl_dd[j].vec[d][n] will hold the derivative of the jth concentration field in the d Cartesian direction
     // at node index n 
   }
-
+//  std::cout<<"backtrace line 856 ok \n";
   // Create vector to hold back-trace points:
   vector <double> xyz_d[P4EST_DIM];
   vector <double> xyz_d_nm1[P4EST_DIM];
@@ -859,7 +871,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   // Create the necessary interpolators
   my_p4est_interpolation_nodes_t SL_backtrace_interp(ngbd_np1); /*= NULL;*/
   my_p4est_interpolation_nodes_t SL_backtrace_interp_nm1(ngbd_n);/* = NULL;*/
-
+//  std::cout<<"backtrace line 864 ok \n";
   // Get the relevant second derivatives
   T_l_dd.create(p4est_np1, nodes_np1);
   ngbd_np1->second_derivatives_central(T_l_n.vec, T_l_dd.vec);
@@ -868,7 +880,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     T_l_dd_nm1.create(p4est_n, nodes_n);
     ngbd_n->second_derivatives_central(T_l_nm1.vec,T_l_dd_nm1.vec);
   }
-
+//  std::cout<<"backtrace line 873 ok \n";
   if(do_multicomponent_fields){
     for(int j=0; j<num_conc_fields; j++){
       Cl_dd[j].create(p4est_np1, nodes_np1);
@@ -881,7 +893,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     }
   }
 
-
+//  std::cout<<"backtrace line 886 ok \n";
   foreach_dimension(d){
     foreach_dimension(dd){
       ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &v_dd[d][dd]); CHKERRXX(ierr); // v_n_dd will be a dxdxn object --> will hold the dxd derivative info at each node n
@@ -891,14 +903,27 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     }
   }
 
+//  int num_nodes = nodes_np1->num_owned_indeps;
+//  MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_np1->mpicomm);
+//  PetscPrintf(p4est_np1->mpicomm, "Number of nodes before problem: %d \n", num_nodes);
+
+//  int vnsize;
+//  VecGetSize(v_n.vec[0], &vnsize);
+//  PetscPrintf(p4est_np1->mpicomm, "vn size = %d \n", vnsize);
+
+//  int vnddsize;
+//  VecGetSize(v_dd[0][0], &vnddsize);
+//  PetscPrintf(p4est_np1->mpicomm, "vnddnm1 size = %d \n", vnddsize);
+//  std::cout<<"backtrace line 895 ok \n";
   // v_dd[k] is the second derivative of the velocity components n along cartesian direction k
   // v_dd_nm1[k] is the second derivative of the velocity components nm1 along cartesian direction k
 
   ngbd_np1->second_derivatives_central(v_n.vec,v_dd[0],v_dd[1],P4EST_DIM);
+//  std::cout<<"backtrace line 900 ok \n";
   if(advection_sl_order ==2){
     ngbd_n->second_derivatives_central(v_nm1.vec, DIM(v_dd_nm1[0], v_dd_nm1[1], v_dd_nm1[2]), P4EST_DIM);
   }
-
+//  std::cout<<"backtrace line 903 ok \n";
   // Do the Semi-Lagrangian backtrace:
   if(advection_sl_order ==2){
     trajectory_from_np1_to_nm1(p4est_np1, nodes_np1, ngbd_n, ngbd_np1, v_nm1.vec, v_dd_nm1, v_n.vec, v_dd, dt_nm1, dt, xyz_d_nm1, xyz_d);
@@ -907,7 +932,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   else{
     trajectory_from_np1_to_n(p4est_np1, nodes_np1, ngbd_np1, dt, v_n.vec, v_dd, xyz_d);
   }
-
+//  std::cout<<"backtrace line 912 ok \n";
   // Add backtrace points to the interpolator(s):
   foreach_local_node(n, nodes_np1){
     double xyz_temp[P4EST_DIM];
@@ -937,7 +962,9 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   // Interpolate the concentration data to back-traced points:
   if(do_multicomponent_fields){
     for(int j=0; j<num_conc_fields; j++){
+
       SL_backtrace_interp.set_input(Cl_n.vec[j], Cl_dd[j].vec[0], Cl_dd[j].vec[1], quadratic_non_oscillatory_continuous_v2);
+
       SL_backtrace_interp.interpolate(Cl_backtrace_n.vec[j]);
 
 
@@ -945,6 +972,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
       SL_backtrace_interp_nm1.set_input(Cl_nm1.vec[j], Cl_dd_nm1[j].vec[0], Cl_dd_nm1[j].vec[1], quadratic_non_oscillatory_continuous_v2);
       SL_backtrace_interp_nm1.interpolate(Cl_backtrace_nm1.vec[j]);
     }
+
     }
   }
 
@@ -1073,7 +1101,14 @@ void my_p4est_stefan_with_fluids_t::setup_rhs_for_scalar_temp_conc_problem(){
       rhs_Tl.ptr[n]+=forcing_term_liquid.ptr[n];
       if(do_we_solve_for_Ts) rhs_Ts.ptr[n]+=forcing_term_solid.ptr[n];
     }
-
+//    std::cout<<rhs_Tl.ptr[n]<<"\n";
+//    std::cout<< "Time step dt0" << dt << "\n";
+//    std::cout<< "Time step dtnm1" << dt_nm1 << "\n";
+//    std::cout<< "T_l_backtrace_n : " << T_l_backtrace_n.ptr[n] <<"\n";
+//    std::cout<< "T_l_backtrace_nm1 : " << T_l_backtrace_nm1.ptr[n] <<"\n";
+//    std::cout<<"First term :: "<< T_l_backtrace_n.ptr[n]*((advection_alpha_coeff/dt))<<"\n";
+//    std::cout<<"Second term :: "<< -T_l_backtrace_n.ptr[n]*((advection_beta_coeff/dt_nm1))<<"\n";
+//    std::cout<<"Third term :: "<< T_l_backtrace_nm1.ptr[n]*(advection_beta_coeff/dt_nm1)<<"\n";
   }// end of loop over nodes
 
   // Restore arrays:
@@ -1771,6 +1806,11 @@ void my_p4est_stefan_with_fluids_t::compute_timestep(){
 
     // Compute new Stefan timestep:
     dt_Stefan = cfl_Stefan*MIN(dxyz_smallest[0], dxyz_smallest[1])/global_max_vnorm;
+//    std::cout<< "Plotting contents of dt_Stefan\n";
+//    std::cout<< "cfl stefan :: " << cfl_Stefan <<"\n";
+//    std::cout<< "dxy_min :: " << MIN(dxyz_smallest[0], dxyz_smallest[1]) <<"\n";;
+//    std::cout<< "velocity max norm " << global_max_vnorm <<"\n";
+
   } // end of if solve stefan
 
   // Compute dt_NS if necessary
@@ -1778,6 +1818,7 @@ void my_p4est_stefan_with_fluids_t::compute_timestep(){
     ns->compute_dt();
     dt_NS = ns->get_dt();
   }
+
 
   // Compute the timestep that will be used depending on what physics we have:
   if(solve_stefan && solve_navier_stokes){
@@ -1794,9 +1835,10 @@ void my_p4est_stefan_with_fluids_t::compute_timestep(){
   else{
     throw std::runtime_error("setting the timestep : you are not solving any of the possible physics ... \n");
   }
-
+//  std::cout<< "dt_stefan " <<dt_Stefan<<"\n";
+//  std::cout<< "dt_NS" << dt_NS<<"\n";
   v_interface_max_norm = global_max_vnorm;
-
+  // std::exit(EXIT_FAILURE);
   // TO-DO: want to move last tstep and clipping business to outside of the class,
   // don't forget to make that consistent in the main
 
@@ -1821,7 +1863,8 @@ void my_p4est_stefan_with_fluids_t::compute_timestep(){
   if(dt<dt_min_allowed){
     dt = dt_min_allowed;
   }
-
+//  std::cout<< "dt" << dt<<"\n";
+//  std::cout<< "dt_min_allowed" << dt_min_allowed<<"\n";
   // Print the interface velocity info:
   PetscPrintf(mpi->comm(),"\n"
                        "Computed interfacial velocity: \n"
@@ -1874,21 +1917,29 @@ void my_p4est_stefan_with_fluids_t::set_ns_parameters(){
 
 void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
 
-  // Create the initial neigbhors and faces (after first step, NS grid update will handle this internally)
+  // Create the initial neigbhors and faces (after first step, NS grid update will handle this internally
   ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
+
+
   faces_np1 = new my_p4est_faces_t(p4est_np1, ghost_np1, &brick, ngbd_c_np1);
 
   // Create the solver
   ns = new my_p4est_navier_stokes_t(ngbd_n,ngbd_np1,faces_np1);
 
-
   // Set the LSF:
   ns->set_phi((there_is_a_substrate ? phi_eff.vec:phi.vec));
 
   ns->set_dt(dt_nm1,dt);
+//  int vnsize0;
+//  VecGetSize(v_n.vec[0], &vnsize0);
+//  PetscPrintf(p4est_np1->mpicomm, "vn size before ns->set_velocities = %d \n", vnsize0);
 
   ns->set_velocities(v_nm1.vec, v_n.vec);
+//  int vnsize1;
+//  VecGetSize(v_n.vec[0], &vnsize1);
+//  PetscPrintf(p4est_np1->mpicomm, "vn size after ns->set_velocities = %d \n \n", vnsize1);
 
+  /*
   // To-do: move this switch case to the set parameters fxn since it makes more sense to have it there
   switch(problem_dimensionalization_type){
   case NONDIM_BY_FLUID_VELOCITY:
@@ -1912,57 +1963,76 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
   NS_norm = NS_max_allowed;
 
   PetscPrintf(mpi->comm(), "NS norm max allowed = %f, NS norm = %f \n", NS_max_allowed, NS_norm);
-
+  */
 } // end of "initialize_ns_solver()"
 
 bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
+
+  //std:: cout<< "Hello world ns 1 \n";
   // Destroy old pressure at nodes (if it exists) and create vector to hold new solns:
   press_nodes.destroy(); press_nodes.create(p4est_np1, nodes_np1);
 
+  //std:: cout<< "Hello world ns 2 \n";
   // Create vector to store old dxyz hodge:
+//  printf("(!!!!!) beginning of ns step, faces_np1 = %p \n", faces_np1);
   for (unsigned char d=0; d<P4EST_DIM; d++){
     ierr = VecCreateNoGhostFaces(p4est_np1, faces_np1, &dxyz_hodge_old[d], d); CHKERRXX(ierr);
   }
-
+  //std:: cout<< "Hello world ns 3 \n";
+  //std:: cout<< "Hello world ns 4 NS norm: " << NS_norm<<"\n";
+  //std:: cout<< "Hello world ns 4 NS hodge% of max: " << hodge_percentage_of_max_u<<"\n";
+  //std:: cout<< "Hello world ns 4 NS hodge tolerance: " << hodge_tolerance<<"\n";
   hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
-  PetscPrintf(mpi->comm(),"Hodge tolerance is %e \n",hodge_tolerance);
-
+  //std:: cout<< "Hello world ns 4 NS hodge tolerance: " << hodge_tolerance<<"\n";
+  //qPetscPrintf(mpi->comm(),"Hodge tolerance is %e \n",hodge_tolerance);
+  //std:: cout<< "Hello world ns 5 \n";
   int hodge_iteration = 0;
   double convergence_check_on_dxyz_hodge = DBL_MAX;
-
+  //std:: cout<< "Hello world ns 6 \n";
   face_solver = NULL;
   cell_solver = NULL;
-
+  //std:: cout<< "Hello world ns 7 \n";
   // Update the parameters: (this is only done to update the cfl potentially)
   // Use a function to set ns parameters to avoid code duplication
   set_ns_parameters();
+  //std:: cout<< "Hello world ns 8 \n";
+  //std:: cout<< "Hello world ns 8" << hodge_max_it<<" \n";
 
   // Enter the loop on the hodge variable and solve the NS equations
   while((hodge_iteration<hodge_max_it) && (convergence_check_on_dxyz_hodge>hodge_tolerance)){
+//    std:: cout<< "Hello world ns 8 HODGE iteration " << hodge_iteration<<" \n";
+    //std:: cout<< "Hello world ns 8 CONVERGENCE CHECK ON DXYZ HODGE" << hodge_tolerance<<" \n";
     ns->copy_dxyz_hodge(dxyz_hodge_old);
+//    std:: cout<< "Hello world ns 8_1 \n";
     ns->solve_viscosity(face_solver,(face_solver!=NULL),face_solver_type,pc_face);
-
+    //std:: cout<< "Hello world ns 8_2 \n";
+    //std:: cout<< "Hello world ns 9 \n";
     convergence_check_on_dxyz_hodge=
         ns->solve_projection(cell_solver,(cell_solver!=NULL),cell_solver_type,pc_cell,
                              false,NULL,dxyz_hodge_old,uvw_components);
-
+//    std:: cout<< "Hello world ns 10 \n";
+    //std:: cout << "Hodge iteration :: " << hodge_iteration <<"\n";
+    //std:: cout << "convergence check :: " << convergence_check_on_dxyz_hodge <<"\n";
+    //std:: cout << " NS_norm :: "<< NS_norm <<"\n";
+    //std:: cout << " mpi  :: "<< mpi <<"\n";
     ierr= PetscPrintf(mpi->comm(),"Hodge iteration : %d, (hodge error)/(NS_max): %0.3e \n",hodge_iteration,convergence_check_on_dxyz_hodge/NS_norm);CHKERRXX(ierr);
     hodge_iteration++;
   }
-  ierr = PetscPrintf(mpi->comm(), "Hodge loop exited \n");
-
+  //std:: cout<< "Hello world ns 11 \n";
+  //ierr = PetscPrintf(mpi->comm(), "Hodge loop exited \n");
+  //std:: cout<< "Hello world ns 12 \n";
   for (unsigned char d=0;d<P4EST_DIM;d++){
     ierr = VecDestroy(dxyz_hodge_old[d]); CHKERRXX(ierr);
   }
-
+  //std:: cout<< "Hello world ns 13 \n";
   // Delete solvers:
   delete face_solver;
   delete cell_solver;
 
-
+  //std:: cout<< "Hello world ns 14\n";
   // Compute velocity at the nodes
   ns->compute_velocity_at_nodes();
-
+  //std:: cout<< "Hello world ns 15 \n";
   // ------------------------
   // Slide velocity fields (for our use):
   // ------------------------
@@ -1973,7 +2043,7 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
     ns->get_node_velocities_n(v_nm1.vec[d], d);
     ns->get_node_velocities_np1(v_n.vec[d], d);
   }
-
+  //std:: cout<< "Hello world ns 16 \n";
 
   // ------------------------
   // Compute the pressure
@@ -1981,18 +2051,18 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
     ns->compute_pressure(); // note: only compute pressure at nodes when we are saving to VTK (or evaluating some errors)
     ns->compute_pressure_at_nodes(&press_nodes.vec);
   }
-
+  //std:: cout<< "Hello world ns 17 \n";
   // Get the computed values of vorticity
   vorticity.vec = ns->get_vorticity();
-
+  //std:: cout<< "Hello world ns 18 \n";
   // Check the L2 norm of u to make sure nothing is blowing up
   NS_norm = ns->get_max_L2_norm_u();
-
+  //std:: cout<< "Hello world ns 19 \n";
   PetscPrintf(mpi->comm(),"\n Max NS velocity norm: \n"
                         " - Computational value: %0.4f  "
                         " - Physical value: %0.3e [m/s]  "
                         " - Physical value: %0.3f [mm/s] \n",NS_norm,NS_norm*vel_nondim_to_dim,NS_norm*vel_nondim_to_dim*1000.);
-
+  //std:: cout<< "Hello world ns 20 \n";
   // Stop simulation if things are blowing up
   bool did_crash;
   if(NS_norm>NS_max_allowed){
@@ -2004,10 +2074,23 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
     did_crash = false;
   }
   return did_crash;
-
+  //std:: cout<< "Hello world ns 20\n";
 } // end of "navier_stokes_step()"
 
 void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(){
+  //std:: cout<< "Hello world 1 \n";
+
+//  int vnsize;
+//  VecGetSize(v_n.vec[0], &vnsize);
+//  PetscPrintf(p4est_np1->mpicomm, "vn size before setup and solve navier stokes problem = %d \n", vnsize);
+
+//  int num_nodesn = nodes_n->num_owned_indeps;
+//  MPI_Allreduce(MPI_IN_PLACE,&num_nodesn,1,MPI_INT,MPI_SUM, p4est_n->mpicomm);
+//  PetscPrintf(p4est_n->mpicomm, "!!! stefan w fluids nodes_n: %d \n", num_nodesn);
+
+//  int num_nodesnp1 = nodes_np1->num_owned_indeps;
+//  MPI_Allreduce(MPI_IN_PLACE,&num_nodesnp1,1,MPI_INT,MPI_SUM, p4est_np1->mpicomm);
+//  PetscPrintf(p4est_np1->mpicomm, "!!! stefan w fluids nodes_np1: %d \n", num_nodesnp1);
 
   // -------------------------------
   // Set the NS timestep:
@@ -2018,7 +2101,7 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(){
   else{
     ns->set_dt(dt);
   }
-
+//  std:: cout<< "Hello world 2 \n";
   // -------------------------------
   // Update BC and RHS objects for navier-stokes problem:
   // -------------------------------
@@ -2030,30 +2113,30 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(){
     if(interfacial_vel_bc_requires_vint){
       bc_interface_value_velocity[d]->set(ngbd_np1, v_interface.vec[d]);
     }
-
     bc_velocity[d].setInterfaceType(*bc_interface_type_velocity[d]);
     bc_velocity[d].setInterfaceValue(*bc_interface_value_velocity[d]);
     bc_velocity[d].setWallValues(*bc_wall_value_velocity[d]);
     bc_velocity[d].setWallTypes(*bc_wall_type_velocity[d]);
   }
+//  std:: cout<< "Hello world 3 \n";
   // Setup pressure conditions:
   bc_pressure.setInterfaceType(bc_interface_type_pressure);
   bc_pressure.setInterfaceValue(*bc_interface_value_pressure);
   bc_pressure.setWallTypes(*bc_wall_type_pressure);
   bc_pressure.setWallValues(*bc_wall_value_pressure);
-
+//  std:: cout<< "Hello world 4 \n";
   // -------------------------------
   // Set BC's and external forces if relevant
   // (note: these are actually updated in the fxn dedicated to it, aka setup_analytical_ics_and_bcs_for_this_tstep() )
   // -------------------------------
   // Set the boundary conditions:
   ns->set_bc(bc_velocity,&bc_pressure);
-
+//  std:: cout<< "Hello world 5 \n";
   // Set the RHS:
   if(there_is_user_provided_external_force_NS){
     ns->set_external_forces(user_provided_external_forces_NS);
   }
-
+//  std:: cout<< "Hello world 6 \n";
   // -------------------------------
   // Handle the Boussinesq case setup for the RHS, if relevant:
   // ---------------------------
@@ -2093,18 +2176,18 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(){
     }
   }
 
-
+//  std:: cout<< "Hello world 7 \n";
   // -------------------------------
   // Solve the Navier-Stokes problem:
   // -------------------------------
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning Navier-Stokes solution step... \n");
 
-
+//  std:: cout<< "Hello world 8 \n";
   // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
 
   bool did_crash = navier_stokes_step();
 
-
+//  std:: cout<< "Hello world 9 \n";
   // -------------------------------
   // Clear out the interfacial BC for the next timestep, if needed
   // -------------------------------
@@ -2113,7 +2196,7 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(){
       bc_interface_value_velocity[d]->clear();
     }
   }
-
+//  std:: cout<< "Hello world 10 \n";
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Completed Navier-Stokes step \n");
 
   if(did_crash){
@@ -2122,7 +2205,10 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(){
     save_fields_to_vtk(0, did_crash, crash_tag);
     throw std::runtime_error("The Navier Stokes step crashed \n");
   }
-
+  //std:: cout<< "Hello world 11 \n";
+//  int vnsize2;
+//  VecGetSize(v_n.vec[0], &vnsize2);
+//  PetscPrintf(p4est_np1->mpicomm, "vn size after setup and solve navier stokes problem = %d \n", vnsize2);
 
 } // end of "setup_and_solve_navier_stokes_problem()"
 

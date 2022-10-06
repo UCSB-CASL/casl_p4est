@@ -194,13 +194,13 @@ private:
   // boundary condtions at walls
   BoundaryConditionType wall_bc_type_temp_;
   BoundaryConditionType wall_bc_type_conc_;
-  BoundaryConditionType wall_bc_type_vel_;
-  BoundaryConditionType wall_bc_type_pres_;
+  //BoundaryConditionType wall_bc_type_vel_;
+  //BoundaryConditionType wall_bc_type_pres_;
 
   CF_DIM           *wall_bc_value_temp_;
   vector<CF_DIM *>  wall_bc_value_conc_;
-  CF_DIM           *wall_bc_value_pres_;
-  CF_DIM           *wall_bc_value_vel_[P4EST_DIM];
+  //CF_DIM           *wall_bc_value_pres_;
+  //CF_DIM           *wall_bc_value_vel_[P4EST_DIM];
 
   // simulation scale
   double scaling_;
@@ -301,6 +301,9 @@ private:
   double d2C_threshold;
   //void prepare_refinement_fields();
 
+  CF_DIM* initial_NS_velocity_n[P4EST_DIM];
+  CF_DIM* initial_NS_velocity_nm1[P4EST_DIM];
+
 public:
   my_p4est_multialloy_t(int num_comps, int time_order);
   ~my_p4est_multialloy_t();
@@ -318,6 +321,18 @@ public:
     for (int i = 0; i < num_comps_; ++i)
     {
       solute_diff_[i] = solute_diff[i];
+    }
+  }
+
+  void set_initial_NS_velocity_n_(CF_DIM* init_vel_n_[P4EST_DIM]){
+    foreach_dimension(d){
+      initial_NS_velocity_n[d] = init_vel_n_[d];
+    }
+  }
+
+  void set_initial_NS_velocity_nm1_(CF_DIM* init_vel_nm1_[P4EST_DIM]){
+    foreach_dimension(d){
+      initial_NS_velocity_nm1[d] = init_vel_nm1_[d];
     }
   }
 
@@ -365,6 +380,8 @@ public:
     interp.interpolate(solid_seed_.vec);
   }
 
+  inline void set_solve_with_fluids(){solve_with_fluids=true;}
+
   inline void set_container_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
     contr_bc_type_temp_  =  bc_type;
@@ -394,7 +411,7 @@ public:
     contr_bc_type_pres_ =  bc_type;
     contr_bc_value_pres_ = &bc_value; 
   }
-
+  /*
   inline void set_wall_conditions_velocity(BoundaryConditionType bc_type, CF_DIM* bc_value[P4EST_DIM])
   {
     wall_bc_type_vel_ =  bc_type;
@@ -403,7 +420,7 @@ public:
 
     }
   }
-
+  */
   /*inline void set_wall_conditions_pressure(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
     wall_bc_type_pres_ =  bc_type;
@@ -412,28 +429,81 @@ public:
 
 
   // set fluid velocity interface bc
-
+  my_p4est_stefan_with_fluids_t* return_stefan_solver(){
+    return  stefan_w_fluids_solver;
+  }
   my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t* bc_interface_val_fluid_vel[P4EST_DIM];
-  BoundaryConditionType bc_interface_type_fluid_vel;
+  BoundaryConditionType* bc_interface_type_fluid_vel[P4EST_DIM];
 
-  CF_DIM *bc_interface_val_fluid_press;
+  CF_DIM* bc_interface_val_fluid_press;
   BoundaryConditionType bc_interface_type_fluid_press;
 
-  void set_bc_interface_conditions_velocity(BoundaryConditionType bc_type, my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t* bc_interface_value_velocity_[P4EST_DIM]){
+  CF_DIM* bc_wall_value_velocity[P4EST_DIM];
+  WallBCDIM* bc_wall_type_velocity[P4EST_DIM];
 
-    bc_interface_type_fluid_vel = bc_type;
+  CF_DIM* bc_wall_value_pressure;
+  WallBCDIM* bc_wall_type_pressure;
+
+/*  void set_bc_interface_conditions_velocity(my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t* bc_interface_value_velocity_[P4EST_DIM]){
     foreach_dimension(d){
       bc_interface_val_fluid_vel[d] = bc_interface_value_velocity_[d];
+    }
+  }*/
+  void set_bc_interface_value_velocity(my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t* bc_interface_val_fluid_vel_[P4EST_DIM]){
+    foreach_dimension(d){
+      bc_interface_val_fluid_vel[d] = bc_interface_val_fluid_vel_[d];
+    }
+  }
+
+  void set_bc_interface_type_velocity(BoundaryConditionType* bc_interface_type_velocity_[P4EST_DIM]){
+
+    foreach_dimension(d){
+      bc_interface_type_fluid_vel[d] = bc_interface_type_velocity_[d];
+    }
+  }
+
+  void set_bc_interface_value_pressure(CF_DIM* bc_interface_val_fluid_press_){
+    bc_interface_val_fluid_press = bc_interface_val_fluid_press_;
+  }
+  void set_bc_interface_type_pressure(BoundaryConditionType bc_interface_type_fluid_press_){
+    bc_interface_type_fluid_press = bc_interface_type_fluid_press_;
+  }
+
+  // ------
+  // Wall velocity:
+  // ------
+  void set_bc_wall_value_velocity(CF_DIM* bc_wall_value_velocity_[P4EST_DIM]){
+    foreach_dimension(d){
+      bc_wall_value_velocity[d] = bc_wall_value_velocity_[d];
+    }
+  }
+
+  void set_bc_wall_type_velocity(WallBCDIM* bc_wall_type_velocity_[P4EST_DIM]){
+    foreach_dimension(d){
+      bc_wall_type_velocity[d] = bc_wall_type_velocity_[d];
     }
   }
 
 
+  // ------
+  // Wall pressure:
+  // ------
+  void set_bc_wall_value_pressure(CF_DIM* bc_wall_value_pressure_){
+    bc_wall_value_pressure = bc_wall_value_pressure_;
+  }
+  void set_bc_wall_type_pressure(WallBCDIM* bc_wall_type_pressure_){
+    bc_wall_type_pressure = bc_wall_type_pressure_;
+  }
+
+
+
+/*
   void set_bc_interface_conditions_pressure(BoundaryConditionType bc_type, CF_DIM& bc_value){
 
     bc_interface_type_fluid_press = bc_type;
     bc_interface_val_fluid_press = &bc_value;
 
-  }
+  }*/
 
   inline void set_wall_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
@@ -455,12 +525,12 @@ public:
     wall_bc_type_vel_  =  bc_type;
     wall_bc_value_vel_ = &bc_value;
   }*/
-
+  /*
   inline void set_wall_conditions_pressure(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
     wall_bc_type_pres_  =  bc_type;
     wall_bc_value_pres_ = &bc_value;
-  }
+  }*/
 
   void set_front(Vec phi);
   void set_container(Vec phi);
@@ -662,6 +732,7 @@ public:
   void compute_dt();
   void update_grid();
   void update_grid_w_fluids();
+  void update_grid_w_fluids_v2();
   void update_grid_eno();
   void update_grid_solid();
   int  one_step(int it_scheme=2, double *bc_error_max=NULL, double *bc_error_avg=NULL, std::vector<int> *num_pdes=NULL, std::vector<double> *bc_error_max_all=NULL, std::vector<double> *bc_error_avg_all=NULL);
