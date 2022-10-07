@@ -57,4 +57,3 @@ BOOST_INCLUDES = /home/elyce/workspace/source_libraries/boost_1_70_0
 QMAKE_CC=mpicc.mpich
 QMAKE_CXX=mpicxx.mpich
 QMAKE_LINK=mpicxx.mpich
-

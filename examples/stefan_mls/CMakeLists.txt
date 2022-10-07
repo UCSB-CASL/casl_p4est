@@ -1,10 +1,12 @@
 # This CMakeLists.txt file has been built manually from the common.pri and libparcasl.pri config files under qmake/
 # To create different configurations, look into https://www.jetbrains.com/help/clion/quick-cmake-tutorial.html
 cmake_minimum_required( VERSION 3.17 )
-project( multialloy_with_fluids )
+project( stefan_mls )
 
 set( CMAKE_CXX_STANDARD 14 )
-set (DIMENSION 2d)
+set (DIMENSION 3d)
+set (ENV{DIM} "${DIMENSION}")
+
 set (CMAKE_BUILD_TYPE Debug)
 
 # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -shared -fPIC")
@@ -69,5 +71,5 @@ include_directories(
 
 include( ${PARCASL}/cmake/libparcasl.cmake )
 
-add_executable( multialloy_with_fluids
+add_executable( stefan_mls-${DIMENSION}
 		${SRC} ${HEADERS} ${SOURCES} )

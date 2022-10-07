@@ -1208,23 +1208,33 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     }
 
 
-    // Save data:
-    std::vector<std::string> point_names;
-    std::vector<double*> point_data;
+//    // Save data:
+//    std::vector<std::string> point_names;
+//    std::vector<double*> point_data;
 
-    if(example_ == FRANK_SPHERE){
-        point_names = {"phi","Tl","Ts","v_int_x","v_int_y","T_error" ,"T_analytical",ZCODE("v_int_z")};
-        point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],T_error.ptr,T_ana.ptr,ZCODE(v_int.ptr[2])};
-    }
-    else{
-        point_names = {"phi","Tl","Ts","v_int_x","v_int_y",ZCODE("v_int_z")};
-        point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],ZCODE(v_int.ptr[2])};
-    }
+//    if(example_ == FRANK_SPHERE){
+//        point_names = {"phi","Tl","Ts","v_int_x","v_int_y","T_error" ,"T_analytical",ZCODE("v_int_z")};
+//        point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],T_error.ptr,T_ana.ptr,ZCODE(v_int.ptr[2])};
+//    }
+//    else{
+//        point_names = {"phi","Tl","Ts","v_int_x","v_int_y",ZCODE("v_int_z")};
+//        point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],ZCODE(v_int.ptr[2])};
+//    }
 
-    std::vector<std::string> cell_names;
-    std::vector<double*> cell_data;
+//    std::vector<std::string> cell_names;
+//    std::vector<double*> cell_data;
 
-    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+//    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> point_vec_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields;
+
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+    point_fields.push_back(Vec_for_vtk_export_t(Tl.vec, "Tl"));
+    point_fields.push_back(Vec_for_vtk_export_t(Ts.vec, "phi"));
+
+    my_p4est_vtk_write_all_lists(p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE,
+                                 filename, point_fields, cell_fields);
 
 
     // Restore arrays:
@@ -1581,8 +1591,8 @@ int main(int argc, char** argv) {
         compute_normals(*ngbd,phi_solid.vec,solid_normals.vec);
 
         // Extend Temperature Fields across the interface:
-        ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
-        ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
+        ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, extension_band_use_, extension_band_extend_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
+        ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2,  extension_band_use_, extension_band_extend_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
 
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Successfully extended fields across interface \n");
 

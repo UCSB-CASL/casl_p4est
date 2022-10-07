@@ -23,6 +23,9 @@ CONFIG(profile): {
     QMAKE_CXXFLAGS += -g
     QMAKE_CXXFLAGS += c++11
 }
+#QMAKE_CXXFLAGS+=-shared
+#QMAKE_CXXFLAGS+= -fPIC
+#QMAKE_CFLAGS+= -fPIC
 
 INCLUDEPATH += \
     $$BOOST_INCLUDES  \
@@ -71,9 +74,12 @@ DEPENDPATH  += $$PARCASL
 OBJECTS_DIR = .obj
 
 # enable C++11
-QMAKE_CXXFLAGS += -std=c++11
+#QMAKE_CXXFLAGS += -std=c++11
 #QMAKE_CFLAGS   += -std=c++11 # [Raphael] this is irrelevant for the C compiler...
 QMAKE_LFLAGS   += -std=c++11
+QMAKE_CXXFLAGS+= -fPIC
+QMAKE_CFLAGS+= -fPIC
+
 
 contains(DEFINES, STAMPEDE) { # i.e. if DEFINES += STAMPEDE was added to the user-specific .pri file
 QMAKE_CXXFLAGS  += "-xCORE-AVX2 -axCOMMON-AVX512,MIC-AVX512" # compiler issues were found when using the recommended $(TACC_VEC_FLAGS) with Intel 18 compilers
