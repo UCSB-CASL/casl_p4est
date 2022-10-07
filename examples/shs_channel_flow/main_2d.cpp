@@ -1678,6 +1678,8 @@ int main (int argc, char* argv[])
   my_p4est_poisson_faces_t* face_solver = nullptr;
   Vec dxyz_hodge_old[P4EST_DIM];
 
+  parStopWatch watch;
+  watch.start();
   while (!setup.done())
   {
     if (setup.iter > 0)
@@ -1830,6 +1832,9 @@ int main (int argc, char* argv[])
   for(auto& dir : external_acceleration)
     delete dir;
   delete profiler;
+
+  watch.stop();
+  watch.read_duration( true );
 
   return 0;
 }
