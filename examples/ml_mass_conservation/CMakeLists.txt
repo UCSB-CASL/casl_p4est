@@ -16,6 +16,8 @@ endif()
 add_compile_definitions( PRIVATE CASL_THROWS )
 add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=float )		# Frugally deep floating-point precision.
 add_compile_definitions( PRIVATE EIGEN_DONT_PARALLELIZE )		# Prevents parallelization in Eigen library.
+add_compile_definitions( PRIVATE CASL_NUM_SIMULTANEOUS_FIELD_COMPUT=4 )
+add_compile_definitions( PRIVATE CASL_NUM_SIMULTANEOUS_BLOCK_COMPUT=1 )
 
 ############################# Load paths to libraries and set compiler for current system ##############################
 

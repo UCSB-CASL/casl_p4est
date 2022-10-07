@@ -295,149 +295,7 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(DIM(double 
 #endif
   }
 #endif
-  return;
 }
-
-/*
-void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(DIM(node_linear_combination &Dxx, node_linear_combination &Dyy, node_linear_combination &Dzz)) const
-{
-  const double m12 = d_m00_m0*d_m00_p0/d_m00/(d_p00+d_m00) + d_p00_m0*d_p00_p0/d_p00/(d_p00+d_m00) ; // 9 flops
-#ifdef P4_TO_P8
-  const double m13 = d_m00_0m*d_m00_0p/d_m00/(d_p00+d_m00) + d_p00_0m*d_p00_0p/d_p00/(d_p00+d_m00) ; // 9 flops
-#endif
-  const double m21 = d_0m0_m0*d_0m0_p0/d_0m0/(d_0p0+d_0m0) + d_0p0_m0*d_0p0_p0/d_0p0/(d_0p0+d_0m0) ; // 9 flops
-#ifdef P4_TO_P8
-  const double m23 = d_0m0_0m*d_0m0_0p/d_0m0/(d_0p0+d_0m0) + d_0p0_0m*d_0p0_0p/d_0p0/(d_0p0+d_0m0) ; // 9 flops
-  const double m31 = d_00m_m0*d_00m_p0/d_00m/(d_00p+d_00m) + d_00p_m0*d_00p_p0/d_00p/(d_00p+d_00m) ; // 9 flops
-  const double m32 = d_00m_0m*d_00m_0p/d_00m/(d_00p+d_00m) + d_00p_0m*d_00p_0p/d_00p/(d_00p+d_00m) ; // 9 flops
-#ifdef CASL_LOG_FLOPS
-  PetscErrorCode ierr_flops = PetscLogFlops(54); CHKERRXX(ierr_flops);
-#endif
-  // naive_Dfxx = 1.0*fxx + m12*fyy + m13*fzz
-  // naive_Dfyy = m21*fxx + 1.0*fyy + m23*fzz
-  // naive_Dfzz = m31*fxx + m32*fyy + 1.0*fzz
-  // either (m12 and m13) are 0.0 or (m21 and m23) are 0.0 or (m31 and m32) are 0.0
-  P4EST_ASSERT((check_if_zero(m12) && check_if_zero(m13)) || (check_if_zero(m21) && check_if_zero(m23)) || (check_if_zero(m31) && check_if_zero(m32)));
-  if (check_if_zero(m12) && check_if_zero(m13))
-  {
-    // now, either m23 or m32 or both must 0.0
-    P4EST_ASSERT(check_if_zero(m23) || check_if_zero(m32));
-    if(check_if_zero(m23))
-    {
-      // Dxx unchanged
-      if(!check_if_zero(m21))
-        Dyy.add_terms(Dxx, -m21);
-      if(!check_if_zero(m31))
-        Dzz.add_terms(Dxx, -m31);
-      if(!check_if_zero(m32))
-        Dzz.add_terms(Dyy, -m32);
-    }
-    else if (check_if_zero(m32))
-    {
-      // Dxx unchanged
-      if(!check_if_zero(m31))
-        Dzz.add_terms(Dxx, -m31);
-      // m23 is non-zero, otherwise the if statement above would have been entered
-      Dyy.add_terms(Dzz, -m23);
-      if(!check_if_zero(m21))
-        Dyy.add_terms(Dxx, -m21);
-    }
-    else
-    {
-      // this is supposed to NEVER happen, would need additional copy of operators, might be too expensive and should never happen anyways
-      throw std::runtime_error("quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(): basic alignment hypothesis have been invalidated, statement a (operator construction).");
-    }
-  }
-  else if (check_if_zero(m21) && check_if_zero(m23))
-  {
-    // now, either m13 or m31 or both must 0.0
-    P4EST_ASSERT(check_if_zero(m13) || check_if_zero(m31));
-    if(check_if_zero(m13))
-    {
-      // Dyy unchanged
-      if(!check_if_zero(m12))
-        Dxx.add_terms(Dyy, -m12);
-      if(!check_if_zero(m31))
-        Dzz.add_terms(Dxx, -m31);
-      if(!check_if_zero(m32))
-        Dzz.add_terms(Dyy, -m32);
-    }
-    else if (check_if_zero(m31))
-    {
-      // Dyy unchanged
-      if(!check_if_zero(m32))
-        Dzz.add_terms(Dyy, -m32);
-      // m13 is non-zero, otherwise the if statement above would have been entered
-      Dxx.add_terms(Dzz, -m13);
-      if(!check_if_zero(m12))
-        Dxx.add_terms(Dyy, -m12);
-    }
-    else
-    {
-      // this is supposed to NEVER happen, would need additional copy of operators, might be too expensive and should never happen anyways
-      throw std::runtime_error("quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(): basic alignment hypothesis have been invalidated, statement b (operator construction).");
-    }
-  }
-  else if (check_if_zero(m31) && check_if_zero(m32))
-  {
-    // now, either m12 or m21 or both must 0.0
-    P4EST_ASSERT(check_if_zero(m12) || check_if_zero(m21));
-    if(check_if_zero(m12))
-    {
-      // Dzz unchanged
-      if(!check_if_zero(m13))
-        Dxx.add_terms(Dzz, -m13);
-      if(!check_if_zero(m21))
-        Dyy.add_terms(Dxx, -m21);
-      if(!check_if_zero(m23))
-        Dyy.add_terms(Dzz, -m23);
-    }
-    else if (check_if_zero(m21))
-    {
-      // Dzz unchanged
-      if(!check_if_zero(m23))
-        Dyy.add_terms(Dzz, -m23);
-      // m12 is non-zero, otherwise the if statement above would have been entered
-      Dxx.add_terms(Dyy, -m12);
-      if(!check_if_zero(m13))
-        Dxx.add_terms(Dzz, -m13);
-    }
-    else
-    {
-      // this is supposed to NEVER happen, would need additional copy of operators, might be too expensive and should never happen anyways
-      throw std::runtime_error("quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(): basic alignment hypothesis have been invalidated, statement c (operator construction).");
-    }
-  }
-  else
-  {
-    // this is supposed to NEVER happen, would need additional copy of operators, might be too expensive and should never happen anyways
-    throw std::runtime_error("quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(): basic alignment hypothesis have been invalidated, statement D, this really sucks! (operator construction).");
-  }
-#else
-  // naive_Dfxx = 1.0*fxx + m12*fyy
-  // naive_Dfyy = m21*fxx + 1.0*fyy
-  // either m12 or m21 MUST be 0
-  P4EST_ASSERT(check_if_zero(m12) || check_if_zero(m21));
-  if(check_if_zero(m12))
-  {
-    // Dxx unchanged
-    if(!check_if_zero(m21))
-      Dyy.add_terms(Dxx, -m21);
-  }
-  else if (check_if_zero(m21))
-  {
-    // Dyy unchanged
-    Dxx.add_terms(Dyy, -m12); // m12 is necessarily not 0.0, otherwise the above statement would have been activated
-  }
-  else
-  {
-    // this is supposed to NEVER happen, would need additional copy of operators, might be too expensive and should never happen anyways
-    throw std::runtime_error("quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(): basic alignment hypothesis have been invalidated, statement A (2D), this really sucks! (operator construction).");
-  }
-#endif
-  return;
-}
-*/
 
 void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation_all_components(const double *f[], double *f_m00, double *f_000, double *f_p00, const unsigned int &n_arrays, const unsigned int &bs) const
 {
@@ -445,20 +303,8 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation_all_comp
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  /*
-  if(quadratic_interpolators_are_set)
-  {
-    const unsigned int bs_node_000 = bs*node_000;
-    for (unsigned int k = 0; k < n_arrays; ++k){
-      const unsigned int kbs = k*bs;
-      for (unsigned int comp = 0; comp < bs; ++comp)
-        f_000[kbs+comp] = f[k][bs_node_000+comp];
-    }
-    quadratic_interpolator[dir::f_m00].calculate_all_components(f, f_m00, n_arrays, bs);
-    quadratic_interpolator[dir::f_p00].calculate_all_components(f, f_p00, n_arrays, bs);
-    return;
-  }
-  */
+  assert_fields_and_blocks( n_arrays, bs );
+
   if((check_if_zero(d_m00_m0*inverse_d_max) || check_if_zero(d_m00_p0*inverse_d_max)) && (check_if_zero(d_p00_m0*inverse_d_max) || check_if_zero(d_p00_p0*inverse_d_max))
    #ifdef P4_TO_P8
      && (check_if_zero(d_m00_0m*inverse_d_max) || check_if_zero(d_m00_0p*inverse_d_max)) && (check_if_zero(d_p00_0m*inverse_d_max) || check_if_zero(d_p00_0p*inverse_d_max))
@@ -477,13 +323,12 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation_all_comp
   }
   else
   {
-    std::vector<double> temp_0(n_arrays*bs), temp_1(n_arrays*bs) ONLY3D(COMMA temp_2(n_arrays*bs) COMMA temp_3(n_arrays*bs));
-    ngbd_with_quadratic_interpolation_all_components(f, f_000, f_m00, f_p00, temp_0.data(), temp_1.data() ONLY3D(COMMA temp_2.data() COMMA temp_3.data()), n_arrays, bs);
+    double temp_0[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], temp_1[CASL_NUM_SIMULTANEOUS_FxB_COMPUT] ONLY3D(COMMA temp_2[CASL_NUM_SIMULTANEOUS_FxB_COMPUT] COMMA temp_3[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
+    ngbd_with_quadratic_interpolation_all_components(f, f_000, f_m00, f_p00, temp_0, temp_1 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  return;
 }
 
 
@@ -494,17 +339,7 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation_componen
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  /*
-  if(quadratic_interpolators_are_set)
-  {
-    const unsigned int bs_node_000 = bs*node_000;
-    for (unsigned int k = 0; k < n_arrays; ++k)
-      f_000[k] = f[k][bs_node_000+comp];
-    quadratic_interpolator[dir::f_m00].calculate_component(f, f_m00, n_arrays, bs, comp);
-    quadratic_interpolator[dir::f_p00].calculate_component(f, f_p00, n_arrays, bs, comp);
-    return;
-  }
-  */
+  assert_fields_and_blocks( n_arrays, bs );
   if((check_if_zero(d_m00_m0*inverse_d_max) || check_if_zero(d_m00_p0*inverse_d_max)) && (check_if_zero(d_p00_m0*inverse_d_max) || check_if_zero(d_p00_p0*inverse_d_max))
    #ifdef P4_TO_P8
      && (check_if_zero(d_m00_0m*inverse_d_max) || check_if_zero(d_m00_0p*inverse_d_max)) && (check_if_zero(d_p00_0m*inverse_d_max) || check_if_zero(d_p00_0p*inverse_d_max))
@@ -519,13 +354,12 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation_componen
   }
   else
   {
-    std::vector<double> temp_0(n_arrays), temp_1(n_arrays) ONLY3D(COMMA temp_2(n_arrays) COMMA temp_3(n_arrays));
-    ngbd_with_quadratic_interpolation_component(f, f_000, f_m00, f_p00, temp_0.data(), temp_1.data() ONLY3D(COMMA temp_2.data() COMMA temp_3.data()), n_arrays, bs, comp);
+    double temp_0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], temp_1[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT] ONLY3D(COMMA temp_2[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT] COMMA temp_3[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    ngbd_with_quadratic_interpolation_component(f, f_000, f_m00, f_p00, temp_0, temp_1 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs, comp);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  return;
 }
 
 void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation(const double *f[], double *f_m00, double *f_000, double *f_p00, const unsigned int &n_arrays) const
@@ -533,16 +367,8 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation(const do
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  /*
-  if(quadratic_interpolators_are_set)
-  {
-    for (unsigned int k = 0; k < n_arrays; ++k)
-      f_000[k] = f[k][node_000];
-    quadratic_interpolator[dir::f_m00].calculate(f, f_m00, n_arrays);
-    quadratic_interpolator[dir::f_p00].calculate(f, f_p00, n_arrays);
-    return;
-  }
-  */
+  assert_fields_and_blocks( n_arrays );
+
   if((check_if_zero(d_m00_m0*inverse_d_max) || check_if_zero(d_m00_p0*inverse_d_max)) && (check_if_zero(d_p00_m0*inverse_d_max) || check_if_zero(d_p00_p0*inverse_d_max))
    #ifdef P4_TO_P8
      && (check_if_zero(d_m00_0m*inverse_d_max) || check_if_zero(d_m00_0p*inverse_d_max)) && (check_if_zero(d_p00_0m*inverse_d_max) || check_if_zero(d_p00_0p*inverse_d_max))
@@ -556,13 +382,12 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation(const do
   }
   else
   {
-    std::vector<double> temp_0(n_arrays), temp_1(n_arrays) ONLY3D(COMMA temp_2(n_arrays) COMMA temp_3(n_arrays));
-    ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, temp_0.data(), temp_1.data() ONLY3D(COMMA temp_2.data() COMMA temp_3.data()), n_arrays);
+    double temp_0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], temp_1[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT] ONLY3D(COMMA temp_2[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT] COMMA temp_3[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, temp_0, temp_1 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  return;
 }
 
 void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_all_components(const double *f[], double *f_0m0, double *f_000, double *f_0p0, const unsigned int &n_arrays, const unsigned int &bs) const
@@ -571,20 +396,8 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_all_comp
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  /*
-  if(quadratic_interpolators_are_set)
-  {
-    const unsigned int bs_node_000 = bs*node_000;
-    for (unsigned int k = 0; k < n_arrays; ++k){
-      const unsigned int kbs = k*bs;
-      for (unsigned int comp = 0; comp < bs; ++comp)
-        f_000[kbs+comp] = f[k][bs_node_000+comp];
-    }
-    quadratic_interpolator[dir::f_0m0].calculate_all_components(f, f_0m0, n_arrays, bs);
-    quadratic_interpolator[dir::f_0p0].calculate_all_components(f, f_0p0, n_arrays, bs);
-    return;
-  }
-  */
+  assert_fields_and_blocks( n_arrays, bs );
+
   if((check_if_zero(d_0m0_m0*inverse_d_max) || check_if_zero(d_0m0_p0*inverse_d_max)) && (check_if_zero(d_0p0_m0*inverse_d_max) || check_if_zero(d_0p0_p0*inverse_d_max))
    #ifdef P4_TO_P8
      && (check_if_zero(d_0m0_0m*inverse_d_max) || check_if_zero(d_0m0_0p*inverse_d_max)) && (check_if_zero(d_0p0_0m*inverse_d_max) || check_if_zero(d_0p0_0p*inverse_d_max))
@@ -603,13 +416,12 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_all_comp
   }
   else
   {
-    std::vector<double> temp_0(n_arrays*bs), temp_1(n_arrays*bs) ONLY3D(COMMA temp_2(n_arrays*bs) COMMA temp_3(n_arrays*bs));
-    ngbd_with_quadratic_interpolation_all_components(f, f_000, temp_0.data(), temp_1.data(), f_0m0, f_0p0 ONLY3D(COMMA temp_2.data() COMMA temp_3.data()), n_arrays, bs);
+    double temp_0[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], temp_1[CASL_NUM_SIMULTANEOUS_FxB_COMPUT] ONLY3D(COMMA temp_2[CASL_NUM_SIMULTANEOUS_FxB_COMPUT] COMMA temp_3[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
+    ngbd_with_quadratic_interpolation_all_components(f, f_000, temp_0, temp_1, f_0m0, f_0p0 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  return;
 }
 
 void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_component(const double *f[], double *f_0m0, double *f_000, double *f_0p0, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
@@ -619,17 +431,8 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_componen
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  /*
-  if(quadratic_interpolators_are_set)
-  {
-    const unsigned int bs_node_000 = bs*node_000;
-    for (unsigned int k = 0; k < n_arrays; ++k)
-      f_000[k] = f[k][bs_node_000+comp];
-    quadratic_interpolator[dir::f_0m0].calculate_component(f, f_0m0, n_arrays, bs, comp);
-    quadratic_interpolator[dir::f_0p0].calculate_component(f, f_0p0, n_arrays, bs, comp);
-    return;
-  }
-  */
+  assert_fields_and_blocks( n_arrays, bs );
+
   if((check_if_zero(d_0m0_m0*inverse_d_max) || check_if_zero(d_0m0_p0*inverse_d_max)) && (check_if_zero(d_0p0_m0*inverse_d_max) || check_if_zero(d_0p0_p0*inverse_d_max))
    #ifdef P4_TO_P8
      && (check_if_zero(d_0m0_0m*inverse_d_max) || check_if_zero(d_0m0_0p*inverse_d_max)) && (check_if_zero(d_0p0_0m*inverse_d_max) || check_if_zero(d_0p0_0p*inverse_d_max))
@@ -644,13 +447,12 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_componen
   }
   else
   {
-    std::vector<double> temp_0(n_arrays), temp_1(n_arrays) ONLY3D(COMMA temp_2(n_arrays) COMMA temp_3(n_arrays));
-    ngbd_with_quadratic_interpolation_component(f, f_000, temp_0.data(), temp_1.data(), f_0m0, f_0p0 ONLY3D(COMMA temp_2.data() COMMA temp_3.data()), n_arrays, bs, comp);
+    double temp_0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], temp_1[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT] ONLY3D(COMMA temp_2[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT] COMMA temp_3[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    ngbd_with_quadratic_interpolation_component(f, f_000, temp_0, temp_1, f_0m0, f_0p0 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs, comp);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  return;
 }
 
 void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation(const double *f[], double *f_0m0, double *f_000, double *f_0p0, const unsigned int &n_arrays) const
@@ -658,16 +460,8 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation(const do
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  /*
-  if(quadratic_interpolators_are_set)
-  {
-    for (unsigned int k = 0; k < n_arrays; ++k)
-      f_000[k] = f[k][node_000];
-    quadratic_interpolator[dir::f_0m0].calculate(f, f_0m0, n_arrays);
-    quadratic_interpolator[dir::f_0p0].calculate(f, f_0p0, n_arrays);
-    return;
-  }
-  */
+  assert_fields_and_blocks( n_arrays );
+
   if((check_if_zero(d_0m0_m0*inverse_d_max) || check_if_zero(d_0m0_p0*inverse_d_max)) && (check_if_zero(d_0p0_m0*inverse_d_max) || check_if_zero(d_0p0_p0*inverse_d_max))
    #ifdef P4_TO_P8
      && (check_if_zero(d_0m0_0m*inverse_d_max) || check_if_zero(d_0m0_0p*inverse_d_max)) && (check_if_zero(d_0p0_0m*inverse_d_max) || check_if_zero(d_0p0_0p*inverse_d_max))
@@ -681,13 +475,12 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation(const do
   }
   else
   {
-    std::vector<double> temp_0(n_arrays), temp_1(n_arrays) ONLY3D(COMMA temp_2(n_arrays) COMMA temp_3(n_arrays));
-    ngbd_with_quadratic_interpolation(f, f_000, temp_0.data(), temp_1.data(), f_0m0, f_0p0 ONLY3D(COMMA temp_2.data() COMMA temp_3.data()), n_arrays);
+    double temp_0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], temp_1[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT] ONLY3D(COMMA temp_2[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT] COMMA temp_3[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    ngbd_with_quadratic_interpolation(f, f_000, temp_0, temp_1, f_0m0, f_0p0 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  return;
 }
 
 #ifdef P4_TO_P8
@@ -697,20 +490,8 @@ void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation_all_comp
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  /*
-  if(quadratic_interpolators_are_set)
-  {
-    const unsigned int bs_node_000 = bs*node_000;
-    for (unsigned int k = 0; k < n_arrays; ++k){
-      const unsigned int kbs = k*bs;
-      for (unsigned int comp = 0; comp < bs; ++comp)
-        f_000[kbs+comp] = f[k][bs_node_000+comp];
-    }
-    quadratic_interpolator[dir::f_00m].calculate_all_components(f, f_00m, n_arrays, bs);
-    quadratic_interpolator[dir::f_00p].calculate_all_components(f, f_00p, n_arrays, bs);
-    return;
-  }
-  */
+  assert_fields_and_blocks( n_arrays, bs );
+
   if((check_if_zero(d_00m_m0*inverse_d_max) || check_if_zero(d_00m_p0*inverse_d_max)) && (check_if_zero(d_00p_m0*inverse_d_max) || check_if_zero(d_00p_p0*inverse_d_max))
      && (check_if_zero(d_00m_0m*inverse_d_max) || check_if_zero(d_00m_0p*inverse_d_max)) && (check_if_zero(d_00p_0m*inverse_d_max) || check_if_zero(d_00p_0p*inverse_d_max))
      )
@@ -727,14 +508,14 @@ void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation_all_comp
   }
   else
   {
-    std::vector<double> temp_0(n_arrays*bs), temp_1(n_arrays*bs), temp_2(n_arrays*bs), temp_3(n_arrays*bs);
-    ngbd_with_quadratic_interpolation_all_components(f, f_000, temp_0.data(), temp_1.data(), temp_2.data(), temp_3.data(), f_00m, f_00p, n_arrays, bs);
+    double temp_0[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], temp_1[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], temp_2[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], temp_3[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
+    ngbd_with_quadratic_interpolation_all_components(f, f_000, temp_0, temp_1, temp_2, temp_3, f_00m, f_00p, n_arrays, bs);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  return;
 }
+
 void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation_component(const double *f[], double *f_00m, double *f_000, double *f_00p, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
 {
   P4EST_ASSERT(bs>1);
@@ -742,17 +523,8 @@ void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation_componen
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  /*
-  if(quadratic_interpolators_are_set)
-  {
-    const unsigned int bs_node_000 = bs*node_000;
-    for (unsigned int k = 0; k < n_arrays; ++k)
-      f_000[k] = f[k][bs_node_000+comp];
-    quadratic_interpolator[dir::f_00m].calculate_component(f, f_00m, n_arrays, bs, comp);
-    quadratic_interpolator[dir::f_00p].calculate_component(f, f_00p, n_arrays, bs, comp);
-    return;
-  }
-  */
+  assert_fields_and_blocks( n_arrays, bs );
+
   if((check_if_zero(d_00m_m0*inverse_d_max) || check_if_zero(d_00m_p0*inverse_d_max)) && (check_if_zero(d_00p_m0*inverse_d_max) || check_if_zero(d_00p_p0*inverse_d_max))
      && (check_if_zero(d_00m_0m*inverse_d_max) || check_if_zero(d_00m_0p*inverse_d_max)) && (check_if_zero(d_00p_0m*inverse_d_max) || check_if_zero(d_00p_0p*inverse_d_max))
      )
@@ -765,29 +537,21 @@ void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation_componen
   }
   else
   {
-    std::vector<double> temp_0(n_arrays), temp_1(n_arrays), temp_2(n_arrays), temp_3(n_arrays);
-    ngbd_with_quadratic_interpolation_component(f, f_000, temp_0.data(), temp_1.data(), temp_2.data(), temp_3.data(), f_00m, f_00p, n_arrays, bs, comp);
+    double temp_0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], temp_1[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], temp_2[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], temp_3[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    ngbd_with_quadratic_interpolation_component(f, f_000, temp_0, temp_1, temp_2, temp_3, f_00m, f_00p, n_arrays, bs, comp);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  return;
 }
+
 void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation(const double *f[], double *f_00m, double *f_000, double *f_00p, const unsigned int &n_arrays) const
 {
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  /*
-  if(quadratic_interpolators_are_set)
-  {
-    for (unsigned int k = 0; k < n_arrays; ++k)
-      f_000[k] = f[k][node_000];
-    quadratic_interpolator[dir::f_00m].calculate(f, f_00m, n_arrays);
-    quadratic_interpolator[dir::f_00p].calculate(f, f_00p, n_arrays);
-    return;
-  }
-  */
+  assert_fields_and_blocks( n_arrays );
+
   if((check_if_zero(d_00m_m0*inverse_d_max) || check_if_zero(d_00m_p0*inverse_d_max)) && (check_if_zero(d_00p_m0*inverse_d_max) || check_if_zero(d_00p_p0*inverse_d_max))
      && (check_if_zero(d_00m_0m*inverse_d_max) || check_if_zero(d_00m_0p*inverse_d_max)) && (check_if_zero(d_00p_0m*inverse_d_max) || check_if_zero(d_00p_0p*inverse_d_max))
      )
@@ -799,19 +563,20 @@ void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation(const do
   }
   else
   {
-    std::vector<double> temp_0(n_arrays), temp_1(n_arrays), temp_2(n_arrays), temp_3(n_arrays);
-    ngbd_with_quadratic_interpolation(f, f_000, temp_0.data(), temp_1.data(), temp_2.data(), temp_3.data(), f_00m, f_00p, n_arrays);
+    double temp_0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], temp_1[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], temp_2[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], temp_3[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    ngbd_with_quadratic_interpolation(f, f_000, temp_0, temp_1, temp_2, temp_3, f_00m, f_00p, n_arrays);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-  return;
 }
 #endif
 
 void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double *f[], DIM(const double *naive_Dx, const double *naive_Dy, const double *naive_Dz),  DIM(double *Dx, double *Dy, double *Dz), const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
 {
   P4EST_ASSERT(comp <= bs);
+  assert_fields_and_blocks( n_arrays, bs );
+
   // comp == bs means "all components", comp < bs means, only one, comp > bs is not accepted
   const unsigned int nelements = n_arrays*(((bs>1) && (comp==bs))? bs : 1);
   for (unsigned int k = 0; k < nelements; ++k) {
@@ -828,7 +593,7 @@ void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double
 #endif
   // correct them if needed
   bool second_derivatives_needed = false;
-  const bool Dx_needs_yy_correction = naive_dx_needs_yy_correction(yy_correction_weight_to_naive_Dx); second_derivatives_needed = second_derivatives_needed || Dx_needs_yy_correction;
+  const bool Dx_needs_yy_correction = naive_dx_needs_yy_correction(yy_correction_weight_to_naive_Dx); second_derivatives_needed = Dx_needs_yy_correction;
 #ifdef P4_TO_P8
   const bool Dx_needs_zz_correction = naive_dx_needs_zz_correction(zz_correction_weight_to_naive_Dx); second_derivatives_needed = second_derivatives_needed || Dx_needs_zz_correction;
 #endif
@@ -841,7 +606,7 @@ void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double
 
   if(second_derivatives_needed)
   {
-    double DIM(fxx[nelements],fyy[nelements], fzz[nelements]);
+    double DIM(fxx[CASL_NUM_SIMULTANEOUS_FxB_COMPUT],fyy[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fzz[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
     if (bs == 1)
       laplace(f, DIM(fxx, fyy, fzz), n_arrays);
     else if (bs > 1 && comp < bs)
@@ -872,24 +637,12 @@ void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double
 
 void quad_neighbor_nodes_of_node_t::dx_central_internal(const double *f[], double *fx, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
 {
-  /*
-  if(gradient_operator_is_set)
-  {
-    if(bs > 1){
-      if(comp == bs)
-        gradient_operator[dir::x].calculate_all_components(f, fx, n_arrays, bs);
-      else
-        gradient_operator[dir::x].calculate_component(f, fx, n_arrays, bs, comp);
-    }
-    else
-      gradient_operator[dir::x].calculate(f, fx, n_arrays);
-    return;
-  }
-  */
   P4EST_ASSERT(comp <= bs);
+  assert_fields_and_blocks( n_arrays, bs );
+
   // comp == bs means "all components", comp < bs means, only one, comp > bs is not accepted
   const unsigned int nelements = n_arrays*(((bs>1) && (comp==bs))? bs : 1);
-  double f_000[nelements], f_p00[nelements], f_m00[nelements];
+  double f_000[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_p00[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_m00[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
   if (bs==1){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][node_000];
@@ -902,8 +655,8 @@ void quad_neighbor_nodes_of_node_t::dx_central_internal(const double *f[], doubl
     f_p00_linear_component(f, f_p00, n_arrays, bs, comp);
   } else {
     for (unsigned int k = 0; k < n_arrays; ++k)
-      for (unsigned int comp = 0; comp < bs; ++comp)
-        f_000[k*bs+comp] = f[k][bs*node_000+comp];
+      for (unsigned int c = 0; c < bs; ++c)
+        f_000[k*bs+c] = f[k][bs*node_000+c];
     f_m00_linear_all_components(f, f_m00, n_arrays, bs);
     f_p00_linear_all_components(f, f_p00, n_arrays, bs);
   }
@@ -916,14 +669,14 @@ void quad_neighbor_nodes_of_node_t::dx_central_internal(const double *f[], doubl
 #endif
   // correct it if needed
   bool second_derivatives_needed = false;
-  const bool Dx_needs_yy_correction = naive_dx_needs_yy_correction(yy_correction_weight_to_df_dx); second_derivatives_needed = second_derivatives_needed || Dx_needs_yy_correction;
+  const bool Dx_needs_yy_correction = naive_dx_needs_yy_correction(yy_correction_weight_to_df_dx); second_derivatives_needed = Dx_needs_yy_correction;
 #ifdef P4_TO_P8
   const bool Dx_needs_zz_correction = naive_dx_needs_zz_correction(zz_correction_weight_to_df_dx); second_derivatives_needed = second_derivatives_needed || Dx_needs_zz_correction;
 #endif
 
   if(second_derivatives_needed)
   {
-    double DIM(fxx[nelements],fyy[nelements], fzz[nelements]);
+    double DIM(fxx[CASL_NUM_SIMULTANEOUS_FxB_COMPUT],fyy[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fzz[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
     if (bs == 1)
       laplace(f, DIM(fxx, fyy, fzz), n_arrays);
     else if (bs > 1 && comp < bs)
@@ -944,24 +697,12 @@ void quad_neighbor_nodes_of_node_t::dx_central_internal(const double *f[], doubl
 
 void quad_neighbor_nodes_of_node_t::dy_central_internal(const double *f[], double *fy, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
 {
-  /*
-  if(gradient_operator_is_set)
-  {
-    if(bs > 1){
-      if(comp == bs)
-        gradient_operator[dir::y].calculate_all_components(f, fx, n_arrays, bs);
-      else
-        gradient_operator[dir::y].calculate_component(f, fx, n_arrays, bs, comp);
-    }
-    else
-      gradient_operator[dir::y].calculate(f, fx, n_arrays);
-    return;
-  }
-  */
   P4EST_ASSERT(comp <= bs);
+  assert_fields_and_blocks( n_arrays, bs );
+
   // comp == bs means "all components", comp < bs means, only one, comp > bs is not accepted
   const unsigned int nelements = n_arrays*(((bs>1) && (comp==bs))? bs : 1);
-  double f_000[nelements], f_0p0[nelements], f_0m0[nelements];
+  double f_000[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_0p0[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_0m0[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
   if (bs==1){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][node_000];
@@ -987,7 +728,7 @@ void quad_neighbor_nodes_of_node_t::dy_central_internal(const double *f[], doubl
   double zz_correction_weight_to_df_dy;
 #endif
   // correct it if needed
-  bool second_derivatives_needed = false;
+  bool second_derivatives_needed;
   const bool Dy_needs_xx_correction = naive_dy_needs_xx_correction(xx_correction_weight_to_df_dy); second_derivatives_needed = Dy_needs_xx_correction;
 #ifdef P4_TO_P8
   const bool Dy_needs_zz_correction = naive_dy_needs_zz_correction(zz_correction_weight_to_df_dy); second_derivatives_needed = second_derivatives_needed || Dy_needs_zz_correction;
@@ -995,7 +736,7 @@ void quad_neighbor_nodes_of_node_t::dy_central_internal(const double *f[], doubl
 
   if(second_derivatives_needed)
   {
-    double DIM(fxx[nelements], fyy[nelements], fzz[nelements]);
+    double DIM(fxx[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fyy[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fzz[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
     if (bs == 1)
       laplace(f, DIM(fxx, fyy, fzz), n_arrays);
     else if (bs > 1 && comp < bs)
@@ -1016,24 +757,12 @@ void quad_neighbor_nodes_of_node_t::dy_central_internal(const double *f[], doubl
 #ifdef P4_TO_P8
 void quad_neighbor_nodes_of_node_t::dz_central_internal(const double *f[], double *fz, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
 {
-  /*
-  if(gradient_operator_is_set)
-  {
-    if(bs > 1){
-      if(comp == bs)
-        gradient_operator[dir::z].calculate_all_components(f, fx, n_arrays, bs);
-      else
-        gradient_operator[dir::z].calculate_component(f, fx, n_arrays, bs, comp);
-    }
-    else
-      gradient_operator[dir::z].calculate(f, fx, n_arrays);
-    return;
-  }
-  */
   P4EST_ASSERT(comp <= bs);
+  assert_fields_and_blocks( n_arrays, bs );
+
   // comp == bs means "all components", comp < bs means, only one, comp > bs is not accepted
   const unsigned int nelements = n_arrays*(((bs>1) && (comp==bs))? bs : 1);
-  double f_000[nelements], f_00p[nelements], f_00m[nelements];
+  double f_000[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_00p[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_00m[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
   if (bs==1){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][node_000];
@@ -1062,7 +791,7 @@ void quad_neighbor_nodes_of_node_t::dz_central_internal(const double *f[], doubl
 
   if(second_derivatives_needed)
   {
-    double fxx[nelements], fyy[nelements], fzz[nelements];
+    double fxx[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fyy[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fzz[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
     if (bs==1)
       laplace(f, fxx, fyy, fzz, n_arrays);
     else if ((bs > 1) && (comp < bs))
@@ -1098,6 +827,7 @@ double quad_neighbor_nodes_of_node_t::dx_backward_quadratic(const double *f, con
   /*}*/
   return d_backward_quadratic(f_000, f_m00, d_m00, f_xx_000, f_xx_m00);
 }
+
 double quad_neighbor_nodes_of_node_t::dx_forward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors) const
 {
   double f_000, f_m00, f_p00;
@@ -1115,6 +845,7 @@ double quad_neighbor_nodes_of_node_t::dx_forward_quadratic(const double *f, cons
   /*}*/
   return d_forward_quadratic(f_p00, f_000, d_p00, f_xx_000, f_xx_p00);
 }
+
 double quad_neighbor_nodes_of_node_t::dy_backward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors) const
 {
   double f_000, f_0m0, f_0p0;
@@ -1132,6 +863,7 @@ double quad_neighbor_nodes_of_node_t::dy_backward_quadratic(const double *f, con
   /*}*/
   return d_backward_quadratic(f_000, f_0m0, d_0m0, f_yy_000, f_yy_0m0);
 }
+
 double quad_neighbor_nodes_of_node_t::dy_forward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors) const
 {
   double f_000, f_0m0, f_0p0;
@@ -1149,6 +881,7 @@ double quad_neighbor_nodes_of_node_t::dy_forward_quadratic(const double *f, cons
   /*}*/
   return d_forward_quadratic(f_0p0, f_000, d_0p0, f_yy_000, f_yy_0p0);
 }
+
 #ifdef P4_TO_P8
 double quad_neighbor_nodes_of_node_t::dz_backward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors) const
 {

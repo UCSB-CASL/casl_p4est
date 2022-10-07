@@ -1748,6 +1748,11 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], DIM(Vec
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_1st_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
   IPMLogRegionBegin("1st_derivatives");
 
+  if( n_vecs > CASL_NUM_SIMULTANEOUS_FIELD_COMPUT )
+    throw std::runtime_error( "[CASL_ERROR] You're requesting more simultaneous fields than specified in macro CASL_NUM_SIMULTANEOUS_FIELD_COMPUT" );
+  if( bs > CASL_NUM_SIMULTANEOUS_BLOCK_COMPUT )
+	throw std::runtime_error( "[CASL_ERROR] You're requesting more simultaneous blocks than specified in macro CASL_NUM_SIMULTANEOUS_BLOCK_COMPUT" );
+
 #ifdef CASL_THROWS
   {
     Vec f_l, fx_l, fy_l;
@@ -1850,8 +1855,8 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], DIM(Vec
   P4EST_ASSERT(bs > 0);
 
   // get access to the iternal data
-  const double *f_p[n_vecs];
-  double DIM(*fx_p[n_vecs], *fy_p[n_vecs], double *fz_p[n_vecs]);
+  const double *f_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+  double DIM(*fx_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], *fy_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], double *fz_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
   for (unsigned int k = 0; k < n_vecs; ++k) {
     ierr = VecGetArrayRead(f[k],  &f_p[k]  ); CHKERRXX(ierr);
     ierr = VecGetArray(fx[k],     &fx_p[k]); CHKERRXX(ierr);
@@ -1897,7 +1902,7 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], DIM(Vec
     // compute the derivaties for all internal nodes
     for (int node_idx : local_nodes){
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
-      (bs == 1) ? qnnn.gradient_insert_in_vectors(f_p, DIM(fx_p, fy_p, fz_p.data()),  n_vecs) : qnnn.gradient_all_components_insert_in_vectors(f_p, DIM(fx_p, fy_p, fz_p),  n_vecs, bs);
+      (bs == 1) ? qnnn.gradient_insert_in_vectors(f_p, DIM(fx_p, fy_p, fz_p), n_vecs) : qnnn.gradient_all_components_insert_in_vectors(f_p, DIM(fx_p, fy_p, fz_p), n_vecs, bs);
     }
   } else {
 
@@ -1906,7 +1911,7 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], DIM(Vec
     // compute the derivatives on the boundary nodes -- fxx
     for (int node_idx : layer_nodes){
       get_neighbors(node_idx, qnnn);
-      (bs == 1) ? qnnn.gradient_insert_in_vectors(f_p, DIM(fx_p, fy_p, fz_p),  n_vecs) : qnnn.gradient_all_components_insert_in_vectors(f_p, DIM(fx_p, fy_p, fz_p),  n_vecs, bs);
+      (bs == 1) ? qnnn.gradient_insert_in_vectors(f_p, DIM(fx_p, fy_p, fz_p), n_vecs) : qnnn.gradient_all_components_insert_in_vectors(f_p, DIM(fx_p, fy_p, fz_p), n_vecs, bs);
     }
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k) {
@@ -1920,7 +1925,7 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], DIM(Vec
     // compute the derivaties for all internal nodes
     for (int node_idx : local_nodes){
       get_neighbors(node_idx, qnnn);
-      (bs == 1) ? qnnn.gradient_insert_in_vectors(f_p, DIM(fx_p, fy_p, fz_p),  n_vecs) : qnnn.gradient_all_components_insert_in_vectors(f_p, DIM(fx_p, fy_p, fz_p),  n_vecs, bs);
+      (bs == 1) ? qnnn.gradient_insert_in_vectors(f_p, DIM(fx_p, fy_p, fz_p), n_vecs) : qnnn.gradient_all_components_insert_in_vectors(f_p, DIM(fx_p, fy_p, fz_p), n_vecs, bs);
     }
   }
 
