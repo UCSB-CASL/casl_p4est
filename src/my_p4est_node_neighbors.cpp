@@ -1853,7 +1853,7 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], DIM(Vec
 
   // get access to the iternal data
   const double *f_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
-  double DIM(*fx_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], *fy_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], double *fz_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+  double DIM(*fx_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], *fy_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], *fz_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
   for (unsigned int k = 0; k < n_vecs; ++k) {
     ierr = VecGetArrayRead(f[k],  &f_p[k]  ); CHKERRXX(ierr);
     ierr = VecGetArray(fx[k],     &fx_p[k]); CHKERRXX(ierr);
