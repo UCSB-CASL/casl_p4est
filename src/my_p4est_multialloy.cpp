@@ -14,6 +14,7 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_save_load.h>
 #include <src/my_p4est_semi_lagrangian.h>
+#include <src/my_p4est_stefan_with_fluids.h>
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_utils.h>
 #endif
@@ -598,6 +599,11 @@ void my_p4est_multialloy_t::update_grid()
   // (gonna use front_curvature_ as tmp, it will be destroyed later anyway)
   ierr = VecCopyGhost(front_phi_.vec, front_curvature_.vec); CHKERRXX(ierr);
 
+
+  // TO-DO W/FLUIDS: add an if statement here which prepares refinement fields using Elyce's tool, and uses 
+  // Elyce's version of update_p4est, since we need to refine and coarsen around more fields
+
+
   if (num_time_layers_ == 2) {
     sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
   } else {
@@ -631,6 +637,8 @@ void my_p4est_multialloy_t::update_grid()
   front_curvature_.create(front_phi_.vec);
   front_normal_.destroy();
   front_normal_.create(front_phi_dd_.vec);
+
+  // TO-DO W/FLUID: interpolate the fluid velocities onto the new grid
 
   /* temperature */
   for (int j = num_time_layers_-1; j > 0; --j)
@@ -1080,6 +1088,168 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
   return one_step_iterations;
 }
+
+
+int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max, double *bc_error_avg, std::vector<int> *num_pdes, std::vector<double> *bc_error_max_all, std::vector<double> *bc_error_avg_all)
+{
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
+  PetscPrintf(p4est_->mpicomm, "Solving nonlinear system:\n");
+
+  time_ += dt_[0];
+
+  // update time in interface and boundary conditions
+//  gibbs_thomson_->t = time_;
+  vol_heat_gen_ ->t = time_;
+
+  contr_bc_value_temp_->t = time_;
+  wall_bc_value_temp_ ->t = time_;
+
+  for (int i = 0; i < num_comps_; ++i)
+  {
+    contr_bc_value_conc_[i]->t = time_;
+    wall_bc_value_conc_ [i]->t = time_;
+  }
+
+  // compute right-hand sides
+  vec_and_ptr_t       rhs_tl(tl_[0].vec);
+  vec_and_ptr_t       rhs_ts(ts_[0].vec);
+  vec_and_ptr_array_t rhs_cl(num_comps_, cl_[0].vec.data());
+
+  rhs_tl.get_array();
+  rhs_ts.get_array();
+  rhs_cl.get_array();
+
+  for (int i = 0; i < num_time_layers_; ++i)
+  {
+    tl_[i].get_array();
+    ts_[i].get_array();
+    cl_[i].get_array();
+  }
+
+  double xyz[P4EST_DIM];
+  double heat_gen = 0;
+
+  // get coefficients for time discretization
+  std::vector<double> time_coeffs;
+
+  variable_step_BDF_implicit(num_time_layers_-1, dt_, time_coeffs);
+
+  foreach_node(n, nodes_)
+  {
+    if (vol_heat_gen_ != NULL)
+    {
+      node_xyz_fr_n(n, p4est_, nodes_, xyz);
+      heat_gen = vol_heat_gen_->value(xyz);
+    }
+
+    rhs_tl.ptr[n] = 0;
+    rhs_ts.ptr[n] = 0;
+
+    for (int j = 0; j < num_comps_; ++j)
+    {
+      rhs_cl.ptr[j][n] = 0;
+    }
+
+    for (int i = 1; i < num_time_layers_; ++i)
+    {
+      rhs_tl.ptr[n] -= time_coeffs[i]*tl_[i].ptr[n];
+      rhs_ts.ptr[n] -= time_coeffs[i]*ts_[i].ptr[n];
+
+      for (int j = 0; j < num_comps_; ++j)
+      {
+        rhs_cl.ptr[j][n] -= time_coeffs[i]*cl_[i].ptr[j][n];
+      }
+    }
+
+    rhs_tl.ptr[n] = rhs_tl.ptr[n]*density_l_*heat_capacity_l_/dt_[0] + heat_gen;
+    rhs_ts.ptr[n] = rhs_ts.ptr[n]*density_s_*heat_capacity_s_/dt_[0] + heat_gen;
+
+    for (int i = 0; i < num_comps_; ++i)
+    {
+      rhs_cl.ptr[i][n] = rhs_cl.ptr[i][n]/dt_[0];
+    }
+  }
+
+  rhs_tl.restore_array();
+  rhs_ts.restore_array();
+  rhs_cl.restore_array();
+
+  for (int i = 0; i < num_time_layers_; ++i)
+  {
+    tl_[i].restore_array();
+    ts_[i].restore_array();
+    cl_[i].restore_array();
+  }
+
+  vector<double> conc_diag(num_comps_, time_coeffs[0]/dt_[0]);
+
+  // solve coupled system of equations
+  my_p4est_poisson_nodes_multialloy_t solver_all_in_one(ngbd_, num_comps_);
+  solver_all_in_one.set_iteration_scheme(it_scheme);
+
+  solver_all_in_one.set_front(front_phi_.vec, front_phi_dd_.vec, front_normal_.vec, front_curvature_.vec);
+
+  solver_all_in_one.set_composition_parameters(conc_diag.data(), solute_diff_.data());
+  solver_all_in_one.set_thermal_parameters(latent_heat_,
+                                           density_l_*heat_capacity_l_*time_coeffs[0]/dt_[0], thermal_cond_l_,
+                                           density_s_*heat_capacity_s_*time_coeffs[0]/dt_[0], thermal_cond_s_);
+  solver_all_in_one.set_gibbs_thomson(zero_cf);
+  solver_all_in_one.set_liquidus(liquidus_value_, liquidus_slope_, part_coeff_);
+  solver_all_in_one.set_undercoolings(num_seeds_, seed_map_.vec, eps_v_.data(), eps_c_.data());
+
+  solver_all_in_one.set_rhs(rhs_tl.vec, rhs_ts.vec, rhs_cl.vec.data());
+
+  if (contr_phi_.vec != NULL)
+  {
+    solver_all_in_one.set_container(contr_phi_.vec, contr_phi_dd_.vec);
+    solver_all_in_one.set_container_conditions_thermal(contr_bc_type_temp_, *contr_bc_value_temp_);
+    solver_all_in_one.set_container_conditions_composition(contr_bc_type_conc_, contr_bc_value_conc_.data());
+  }
+
+  vector<CF_DIM *> zeros_cf(num_comps_, &zero_cf);
+
+  solver_all_in_one.set_front_conditions(zero_cf, zero_cf, zeros_cf.data());
+
+  solver_all_in_one.set_wall_conditions_thermal(wall_bc_type_temp_, *wall_bc_value_temp_);
+  solver_all_in_one.set_wall_conditions_composition(wall_bc_type_conc_, wall_bc_value_conc_.data());
+
+  solver_all_in_one.set_tolerance(bc_tolerance_, max_iterations_);
+  solver_all_in_one.set_use_points_on_interface(use_points_on_interface_);
+  solver_all_in_one.set_update_c0_robin(update_c0_robin_);
+  solver_all_in_one.set_use_superconvergent_robin(use_superconvergent_robin_);
+
+//  my_p4est_interpolation_nodes_t interp_c0_n(ngbd_);
+//  interp_c0_n.set_input(cl_[1].vec[0], linear);
+  solver_all_in_one.set_c0_guess(cl_[1].vec[0]);
+
+//  bc_error_.destroy();
+//  bc_error_.create(front_phi_.vec);
+
+//  cl0_grad_.destroy();
+//  cl0_grad_.create(p4est_, nodes_);
+
+//  solver_all_in_one.set_verbose_mode(1);
+
+  int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, true,
+      bc_error_.vec, bc_error_max, bc_error_avg,
+      num_pdes, bc_error_max_all, bc_error_avg_all,
+      psi_tl_.vec, psi_ts_.vec, psi_cl_.vec.data());
+
+
+  rhs_tl.destroy();
+  rhs_ts.destroy();
+  rhs_cl.destroy();
+
+  PetscPrintf(p4est_->mpicomm, "done!\n");
+
+  // compute velocity
+  compute_velocity();
+  compute_solid();
+
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
+  return one_step_iterations;
+}
+
 
 void my_p4est_multialloy_t::save_VTK(int iter)
 {

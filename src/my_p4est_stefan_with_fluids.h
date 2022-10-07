@@ -254,6 +254,68 @@ private:
   bool compute_pressure_;
 
 
+  // -----------------------------------------------
+  // Fields for assisting in the multicomponent problem 
+  // (whose main operations are handled by my_p4est_multialloy):
+  // -----------------------------------------------
+
+  // Concentration fields & backtraces
+  vec_and_ptr_array_t Cl_n;
+  vec_and_ptr_array_t Cl_nm1;
+
+  vec_and_ptr_array_t Cl_backtrace_n;
+  vec_and_ptr_array_t Cl_backtrace_nm1;
+
+  //TO-DO MULTICOMP: add a check to make sure new fields have been received from multialloy before doing the backtrace
+
+
+  // Fields called in multialloy initialize fxn:
+  // ----------------------
+  // Need to determine which of these we need our own version of, and what these all 
+  // correspond to, and when they need to be set for multialloy functionalities
+  // to work correctly  
+  
+  // Geom: 
+  // -
+  // front_phi_ --> assume this corresponds to the interface, should double check
+  // front_phi_dd_
+  // front_curvature_ --> "" kappa, ""
+  // front_normal_ --> "" normal, "" 
+  // contr_phi_ 
+  // contr_phi_dd_ 
+  
+  // Physical fields
+  // -
+  // tl_ --> our T_l_n and T_l_nm1
+  // ts_ --> our T_s_n
+  // cl_ --> we have defined above
+  // cl0_grad_ --> we have defined above
+  // seed_map_
+  // dendrite_number_
+  // dendrite_tip_
+  // bc_error_
+  // smoothed_nodes_
+  // front_phi_unsmooth_ 
+
+  // Lagrange multipliers
+  // - 
+  // psi_tl_
+  // psi_ts_
+  // psi_cl_
+
+  // solid_front_phi
+  // solid_front_phi_nm1
+  // solid_front_curvature_
+  // solid_front_velo_norm_
+  // solid_time_
+  // solid_tf_ 
+  // solid_cl_
+  // solid_part_coeff_
+  // solid_seed_
+  // solid_Smoothed_nodes_
+
+
+
   // ----------------------------------------------
   // Related to domain:
   // ----------------------------------------------
@@ -309,6 +371,14 @@ private:
   double min_volume_;
   double extension_band_use_;
   double extension_band_extend_;
+
+  void compute_extension_bands_and_dxyz_close_to_interface(){
+        dxyz_min(p4est_np1, dxyz_smallest);
+    min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
+    extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
+    extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
+    dxyz_close_to_interface = dxyz_close_to_interface_mult*MAX(dxyz_smallest[0],dxyz_smallest[1]);
+  }
 
   // ----------------------------------------------
   // Related to time/timestepping:
@@ -430,6 +500,10 @@ private:
 
   bool force_interfacial_velocity_to_zero;
 
+  bool solve_multicomponent; // This is for the multialloy problem, 
+  //                          or any other problem where there is temperature and at least
+  //                          one concentration field
+
   // ----------------------------------------------
   // Other misc parameters
   // ----------------------------------------------
@@ -493,6 +567,8 @@ private:
   CF_DIM* initial_NS_velocity_n[P4EST_DIM];
   CF_DIM* initial_NS_velocity_nm1[P4EST_DIM];
 
+  std::vector <CF_DIM*> initial_conc_n;
+  std::vector <CF_DIM*> initial_conc_nm1;
 
 
 
@@ -525,6 +601,15 @@ public:
    * Note: this function is intended for internal use by the fxn perform_initializations
   */
   void initialize_fields();
+
+  /*!
+  * \brief initialize_fields_multicomponent: This function initializes the fields Cl for i number concentration components
+  * It does so either by CF_DIM's provided by the user for each of these fields, or by vectors provided by the user (WIP)
+  * This is an internal fxn and is called by initialize_fields in the case when the solve_multicomponenet flag is turned on, indicating that
+  * the user wishes to solve the multicomponent problem (alloy or other, anything w temp and at least one concentration field)
+  */
+  void initialize_fields_multicomponent();
+
   void initialize_grids_and_fields_from_load_state();
   void perform_initializations();
 
@@ -533,10 +618,16 @@ public:
   // Functions related to scalar temp/conc problem:
   // -------------------------------------------------------
 
-  void do_backtrace_for_scalar_temp_conc_problem();
+  void do_backtrace_for_scalar_temp_conc_problem(bool do_multicomponent_fields, int num_conc_fields);
   void setup_rhs_for_scalar_temp_conc_problem();
   void poisson_nodes_step_for_scalar_temp_conc_problem();
   void setup_and_solve_poisson_nodes_problem_for_scalar_temp_conc();
+
+  // -------------------------------------------------------
+  // Functions related to the multicomponent problem:
+  // -------------------------------------------------------
+
+  void setup_and_solve_multicomponent_problem();
 
 
   // -------------------------------------------------------
@@ -545,6 +636,8 @@ public:
   void extend_relevant_fields();
   double interfacial_velocity_expression(double Tl_d, double Ts_d);
   bool compute_interfacial_velocity();
+  bool compute_interfacial_velocity_stefan();
+  bool compute_interfacial_velocity_multicomponent();
   void compute_timestep();
 
   // -------------------------------------------------------
@@ -749,6 +842,21 @@ public:
   vec_and_ptr_t get_T_l_n(){return T_l_n;}
   vec_and_ptr_t get_T_s_n(){return T_s_n;}
 
+  // TO-DO MULTICOMP: verify that the below does indeed work the way I think it works?
+  void set_T_l_n(vec_and_ptr_t &T_l_n_){
+    T_l_n = T_l_n_;
+  }
+  void set_T_l_nm1(vec_and_ptr_t &T_l_nm1_){
+    T_l_nm1 = T_l_nm1_;
+  }
+
+  void set_T_l_backtrace_n(vec_and_ptr_t &T_l_backtrace_n_){
+    T_l_backtrace_n = T_l_backtrace_n_;
+  }
+  void set_T_l_backtrace_nm1(vec_and_ptr_t &T_l_backtrace_nm1_){
+    T_l_backtrace_nm1 = T_l_backtrace_nm1_;
+  }
+
   // ------
   // Interface:
   // ------
@@ -810,6 +918,25 @@ public:
       user_provided_external_heat_source[i] = user_heat_source_[i];
     }
     there_is_user_provided_heat_source = true;
+  }
+
+
+  // ------
+  // Setting concentration-related fields used by multialloy:
+  // (You should not need fxns for getting these since they won't be destroyed/recreated, 
+  // so the address of any modified provided vec_and_ptr will be the same as original)
+  // ------
+  void set_Cl_n(vec_and_ptr_array_t &Cl_n_){
+    Cl_n = Cl_n_;
+  }
+  void set_Cl_nm1(vec_and_ptr_array_t &Cl_nm1_){
+    Cl_nm1 = Cl_nm1_;
+  }
+  void set_Cl_backtrace_n(vec_and_ptr_array_t &Cl_backtrace_n_){
+    Cl_backtrace_n = Cl_backtrace_n_;
+  }
+  void set_Cl_backtrace_nm1(vec_and_ptr_array_t &Cl_backtrace_nm1_){
+    Cl_backtrace_nm1 = Cl_backtrace_nm1_;
   }
 
   // ----------------------------------------------
@@ -1163,6 +1290,10 @@ public:
 
   void set_start_w_merged_grains(bool start_w_merged){start_w_merged_grains  = start_w_merged;}
 
+
+  void set_solve_multicomponent(bool solve_multi_){solve_multicomponent = solve_multi_;}
+  void set_number_components(int num_comp){num_conc_fields = num_comp;}
+
   // ----------------------------------------------
   // Other misc parameters
   // ----------------------------------------------
@@ -1221,10 +1352,6 @@ public:
     }
   }
 
-//  void set_initial_temp_n(CF_DIM &init_T, int domain_){
-//    initial_temp_n[domain_] = &init_T;
-//  }
-
   void set_initial_temp_nm1(CF_DIM* init_temp_nm1_[2]){
     for(unsigned char i=0; i<2; i++){
       initial_temp_nm1[i] = init_temp_nm1_[i];
@@ -1241,6 +1368,24 @@ public:
     foreach_dimension(d){
       initial_NS_velocity_nm1[d] = init_vel_nm1_[d];
     }
+  }
+
+  void set_initial_conc_n(std::vector<CF_DIM*> init_conc_n_){
+    int N = init_conc_n_.size();
+    initial_conc_n.resize(N);
+
+    for(int i = 0; i<N; i++){
+      initial_conc_n[i] = init_conc_n_[i];
+    }    
+  }
+
+  void set_initial_conc_nm1(std::vector<CF_DIM*> init_conc_nm1_){
+    int N = init_conc_nm1_.size();
+    initial_conc_nm1.resize(N);
+
+    for(int i = 0; i<N; i++){
+      initial_conc_nm1[i] = init_conc_nm1_[i];
+    }    
   }
 
 };

@@ -136,6 +136,12 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   // TO-DO: make sure compute_pressure_ handled correctly in main
 
   // ----------------------------------------------
+  // Multicomponenent problem:
+  // ----------------------------------------------
+  multialloy_solver = NULL;
+  poisson_nodes_multialloy_solver = NULL;
+  num_conc_fields = 0;
+  // ----------------------------------------------
   // Related to domain:
   // ----------------------------------------------
   // Set initial values (purposely unreasonable) for the domain info:
@@ -405,55 +411,24 @@ void my_p4est_stefan_with_fluids_t::initialize_fields(){
       sample_cf_on_nodes(p4est_np1, nodes_np1,*initial_temp_nm1[LIQUID_DOMAIN],T_l_nm1.vec);
     }
 
-    // Extend fields:
+    // Extend fields temperature fields :
     // TO-DO: if we change defn's/declarations of extension bands elsewhere, make sure they're changed here as well
     if(print_checkpoints) PetscPrintf(mpi->comm(),"Doing initial field extension  ... \n");
-    dxyz_min(p4est_np1, dxyz_smallest);
-    min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
-    extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
-    extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
-    dxyz_close_to_interface = dxyz_close_to_interface_mult*MAX(dxyz_smallest[0],dxyz_smallest[1]);
     extend_relevant_fields();
 
     // Compute vinterface:
     if(print_checkpoints) PetscPrintf(mpi->comm(),"Computing initial velocity ... \n");
     v_interface.create(p4est_np1, nodes_np1);
+    // TO-DO MULTICOMP: adjust this initial vel computation for the concentration case
     compute_interfacial_velocity();
-
-    // -------------
-    // TO-DO: commented out below, ,ake sure it's handled properly in main, then remove here
-//    for(unsigned char d=0;d<2;++d){
-//      if(analytical_IC_BC_forcing_term) delete analytical_temp[d];
-//      delete T_init_cf[d];
-//    }
   }
 
   // ---------------------------------
   // Navier-Stokes fields:
   // ---------------------------------
-//  INITIAL_VELOCITY *v_init_cf[P4EST_DIM];
-//  velocity_component* analytical_soln[P4EST_DIM];
 
   if(solve_navier_stokes){
     if(print_checkpoints) PetscPrintf(mpi->comm(),"Initializing the Navier-Stokes fields (s) ... \n");
-
-    // TO-DO: commented out below, make sure it is handled in main
-//    if(analytical_IC_BC_forcing_term)
-//    {
-//      for(unsigned char d=0;d<P4EST_DIM;++d){
-//        analytical_soln[d] = new velocity_component(d);
-//        analytical_soln[d]->t = tstart;
-//      }
-//    }
-//    for(unsigned char d=0;d<P4EST_DIM;++d){
-//      if(analytical_IC_BC_forcing_term){
-//        v_init_cf[d] = new INITIAL_VELOCITY(d,analytical_soln);
-//        v_init_cf[d]->t = tstart;
-//      }
-//      else {
-//        v_init_cf[d] = new INITIAL_VELOCITY(d);
-//      }
-//    }
 
     v_n.create(p4est_np1, nodes_np1);
     v_nm1.create(p4est_np1, nodes_np1);
@@ -480,6 +455,7 @@ void my_p4est_stefan_with_fluids_t::initialize_fields(){
   // TO-DO: make sure the NS norm is initialized elsewhere (or actually, see if this is even needed, I suspect it no longer is)
 
 } // end of "initialize_fields()"
+
 
 void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(){
 
@@ -545,13 +521,6 @@ void my_p4est_stefan_with_fluids_t::initialize_grids_and_fields_from_load_state(
   }
 
   // Extend fields:
-  // TO-DO : if defn of extension bands is generalized, make sure that is applied here (or maybe we should just make a function called "compute extension bands" and use that everywhere
-  dxyz_min(p4est_np1, dxyz_smallest);
-  min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
-  extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
-  extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
-  dxyz_close_to_interface = dxyz_close_to_interface_mult*MAX(dxyz_smallest[0],dxyz_smallest[1]);
-
   extend_relevant_fields();
 
   // Compute vinterface:
@@ -787,7 +756,7 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
 // -------------------------------------------------------
 // Functions related to scalar temp/conc problem: ( in order of their usage in the main step)
 // -------------------------------------------------------
-void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
+void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bool do_multicomponent_fields=false, int num_conc_fields=0){
   // -------------------
   // A note on notation:
   // -------------------
@@ -801,13 +770,78 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
   // Thus, while T_n is sampled on the grid np1, it is indeed still the field at time n, simply transferred to the grid used to solve for the np1 fields.
 
 
+  // NOTE FOR THE MULTICOMPONENT CASE:
+  // This function assumes that the user has already provided 
+  // --> The fields:
+  //         -Cl_n, Cl_nm1, Cl_n_backtrace, Cl_nm1_backtrace to the solver as vec_and_ptr_array_t objects sampled on the 
+  // grids p4est_np1 and p4est_n respectively. 
+  // --> The grids/grid objects:
+  //         - p4est_np1, nodes_np1, ngbd_np1, ngbd_n  
+  // This function will not create nor destroy those objects.
+
+  // Therefore, before the multicomponent user calls this fxn, they should call the following: 
+  // set_Cl_n
+  // set_Cl_nm1
+  // set_Cl_n_backtrace (this can just be a vec which will hold the values computed by this fxn)
+  // set_Cl_nm1_backtrace (" ")
+  // set_T_l
+
+
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning to do backtrace \n");
+
+  // If we are doing the multialloy case, verify that all the necessary things are defined:
+  if(do_multicomponent_fields){
+    bool conc_check = true;
+    for(int j=0; j<num_conc_fields; j++){
+      conc_check = conc_check && Cl_n.vec[j] != NULL;
+      conc_check = conc_check && Cl_nm1.vec[j] != NULL; 
+      conc_check = conc_check && Cl_backtrace_n.vec[j] != NULL; 
+      conc_check = conc_check && Cl_backtrace_nm1.vec[j] != NULL; 
+    }
+    if(!conc_check){
+      throw std::runtime_error("my_p4est_stefan_with_fluids:do_backtrace_for_scalar_temp_conc_problem():" 
+                               "The concentration check has failed for multicomponent usage." 
+                               "Please provide the necessary concentration vectors to the stefan_with_fluids solver before calling this fxn.");
+    }
+
+    bool temp_check = (T_l_n.vec!=NULL) && (T_l_nm1.vec!=NULL) && 
+                      (T_l_backtrace_n.vec!=NULL) && (T_l_backtrace_nm1.vec!=NULL);
+    if(!temp_check){
+      throw std::runtime_error("my_p4est_stefan_with_fluids:do_backtrace_for_scalar_temp_conc_problem():" 
+                               "The temperature check has failed for multicomponent usage." 
+                               "Please provide the necessary concentration vectors to the stefan_with_fluids solver before calling this fxn.");
+    }
+    bool grid_check = (p4est_np1!=NULL) && (nodes_np1!=NULL) && (ngbd_np1!=NULL) && (ngbd_n!=NULL);
+
+
+    if(!grid_check){
+      throw std::runtime_error("my_p4est_stefan_with_fluids:do_backtrace_for_scalar_temp_conc_problem():" 
+                               "The grid check has failed for multicomponent usage." 
+                               "Please provide the necessary concentration vectors to the stefan_with_fluids solver before calling this fxn.");
+    }
+
+    // Initialize the neighbors (just in case)
+    ngbd_np1->init_neighbors();
+    ngbd_n->init_neighbors();
+    
+  }
 
   // Initialize objects we will use in this function:
   // PETSC Vectors for second derivatives
   vec_and_ptr_dim_t T_l_dd, T_l_dd_nm1;
   Vec v_dd[P4EST_DIM][P4EST_DIM];
   Vec v_dd_nm1[P4EST_DIM][P4EST_DIM];
+
+  // Initialize for potential concentration fields from multialloy
+  std::vector<vec_and_ptr_dim_t> Cl_dd;
+  std::vector<vec_and_ptr_dim_t> Cl_dd_nm1;
+  if(do_multicomponent_fields){
+    Cl_dd.resize(num_conc_fields);
+    if(advection_sl_order == 2) Cl_dd_nm1.resize(num_conc_fields);
+    // ^ The above will be a [num_conc_fields]x[P4EST_DIM]x[num_nodes] object. 
+    // i.e.) Cl_dd[j].vec[d][n] will hold the derivative of the jth concentration field in the d Cartesian direction
+    // at node index n 
+  }
 
   // Create vector to hold back-trace points:
   vector <double> xyz_d[P4EST_DIM];
@@ -825,6 +859,19 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
     T_l_dd_nm1.create(p4est_n, nodes_n);
     ngbd_n->second_derivatives_central(T_l_nm1.vec,T_l_dd_nm1.vec);
   }
+
+  if(do_multicomponent_fields){
+    for(int j=0; j<num_conc_fields; j++){
+      Cl_dd[j].create(p4est_np1, nodes_np1);
+      ngbd_np1->second_derivatives_central(Cl_n.vec[j], Cl_dd[j].vec);
+
+      if(advection_sl_order==2){
+        Cl_dd_nm1[j].create(p4est_np1, nodes_np1);
+        ngbd_n->second_derivatives_central(Cl_nm1.vec[j], Cl_dd_nm1[j].vec);
+      }
+    }
+  }
+
 
   foreach_dimension(d){
     foreach_dimension(dd){
@@ -878,6 +925,20 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
     SL_backtrace_interp_nm1.interpolate(T_l_backtrace_nm1.vec);
   }
 
+  // Interpolate the concentration data to back-traced points:
+  if(do_multicomponent_fields){
+    for(int j=0; j<num_conc_fields; j++){
+      SL_backtrace_interp.set_input(Cl_n.vec[j], Cl_dd[j].vec[0], Cl_dd[j].vec[1], quadratic_non_oscillatory_continuous_v2);
+      SL_backtrace_interp.interpolate(Cl_backtrace_n.vec[j]);
+
+
+    if(advection_sl_order==2){
+      SL_backtrace_interp_nm1.set_input(Cl_nm1.vec[j], Cl_dd_nm1[j].vec[0], Cl_dd_nm1[j].vec[1], quadratic_non_oscillatory_continuous_v2);
+      SL_backtrace_interp_nm1.interpolate(Cl_backtrace_nm1.vec[j]);
+    }
+    }
+  }
+
   // Destroy velocity derivatives now that not needed:
   foreach_dimension(d){
     foreach_dimension(dd)
@@ -891,6 +952,22 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
   T_l_dd.destroy();
   if(advection_sl_order==2) {
     T_l_dd_nm1.destroy();
+  }
+
+  // Destroy multicomp derivatives:
+  if(do_multicomponent_fields){
+    for(int j=0; j<num_conc_fields; j++){
+      Cl_dd[j].destroy();
+      if(advection_sl_order==2){
+        Cl_dd_nm1[j].destroy();
+      }
+    }
+
+    Cl_dd.clear();
+    if(advection_sl_order == 2) Cl_dd_nm1.clear();
+    // ^ The above will be a [num_conc_fields]x[P4EST_DIM]x[num_nodes] object. 
+    // i.e.) Cl_dd[j].vec[d][n] will hold the derivative of the jth concentration field in the d Cartesian direction
+    // at node index n 
   }
 
   // Clear interp points:
@@ -1323,9 +1400,19 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_poisson_nodes_problem_for_sc
 
 
 // -------------------------------------------------------
+// Functions related to the multicomponent problem: ( in order of their usage in the main step)
+// -------------------------------------------------------
+// TO-DO MULTICOMP: flesh this out
+void my_p4est_stefan_with_fluids_t::setup_and_solve_multicomponent_problem(){}
+
+
+
+// -------------------------------------------------------
 // Functions related to computation of the interfacial velocity and timestep:
 // -------------------------------------------------------
 void my_p4est_stefan_with_fluids_t::extend_relevant_fields(){
+
+  compute_extension_bands_and_dxyz_close_to_interface();
 
   vec_and_ptr_t phi_solid, phi_solid_eff;
   vec_and_ptr_dim_t liquid_normals, solid_normals;
@@ -1420,21 +1507,27 @@ void my_p4est_stefan_with_fluids_t::extend_relevant_fields(){
   extension_band_extend_ = 4*diag_;
 
   // Extend liquid temperature:
-
-  ls->extend_Over_Interface_TVD_Full((there_is_a_substrate? phi_eff.vec : phi.vec)/*phi.vec*/, T_l_n.vec,
+  ls->extend_Over_Interface_TVD_Full((there_is_a_substrate? phi_eff.vec : phi.vec), T_l_n.vec,
                                     50, 2,
                                     extension_band_use_, extension_band_extend_,
-                                    liquid_normals.vec, NULL,
-                                    /*&Tl_bc*/NULL, false, NULL,NULL);
+                                    liquid_normals.vec, NULL,NULL, false, NULL,NULL);
 
   // Extend solid temperature:
   if(do_we_solve_for_Ts){
       ls->extend_Over_Interface_TVD_Full((there_is_a_substrate? phi_solid_eff.vec : phi_solid.vec), T_s_n.vec,
                                          50, 2,
                                          extension_band_use_, extension_band_extend_,
-                                         solid_normals.vec, NULL,
-                                         NULL, false, NULL, NULL);
+                                         solid_normals.vec, NULL, NULL, false, NULL, NULL);
+  }
 
+  // Extend conc fields (if doing multicomponent):
+  if(solve_multicomponent){
+    for(int i=0; i<num_conc_fields; i++){
+      ls->extend_Over_Interface_TVD_Full((there_is_a_substrate? phi_solid_eff.vec : phi_solid.vec), Cl_n.vec[i],
+                                         50, 2,
+                                         extension_band_use_, extension_band_extend_,
+                                         solid_normals.vec, NULL, NULL, false, NULL, NULL);
+    }
   }
 
   // -------------------------------
@@ -1448,7 +1541,6 @@ void my_p4est_stefan_with_fluids_t::extend_relevant_fields(){
     phi_solid_eff.destroy();
   }
 } // end of "extend_relevant_fields()"
-
 
 double my_p4est_stefan_with_fluids_t::interfacial_velocity_expression(double Tl_d, double Ts_d){
   switch(problem_dimensionalization_type){
@@ -3210,14 +3302,7 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
   dxyz_close_to_interface = dxyz_close_to_interface_mult*MAX(dxyz_smallest[0],dxyz_smallest[1]);
   ls->update(ngbd_np1);
   if(solve_stefan){
-    // ------------------------------------------------------------
-    // Define some variables needed to specify how to extend across the interface:
-    // ------------------------------------------------------------
-
-    // TO-DO: should probably allow the user to actually set these parameters, but for now I'll leave it
-    min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
-    extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
-    extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
+    // Extend fields across the interface:
 
     extend_relevant_fields();
 
@@ -3356,7 +3441,7 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
 
     }
   }
-;
+
   if(track_evolving_geometries && !is_crash){
     island_numbers.create(p4est_np1, nodes_np1);
     track_evolving_geometry();
