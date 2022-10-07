@@ -250,7 +250,7 @@ param_t<int>    seed_type              (pl, 0, "seed_type", "0 - aligned,"
 //param_t<double> box_size (pl, 0.08/sqrt(scale)/3./2., "box_size", "Physical width (in x) of the box in cm");
 param_t<double> box_size (pl, 0.0075, "box_size", "Physical width (in x) of the box in cm");
 
-param_t<int>    geometry (pl, -1, "geometry", "-3 - analytical spherical solidification,"
+param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidification,"
                                               "-2 - analytical cylindrical solidification,"
                                               "-1 - analytical planar solidification,"
                                               " 0 - directional solidification,"
@@ -1651,7 +1651,7 @@ bool is_y_wall(DIM(double x, double y, double z)){
 };
 // For velocity BCs/ICs
 double u0=0.;
-double v0=0.;
+double v0=-1.;
 double outflow_u=0.;
 double outflow_v=0.;
 // --------------------------------------------------------------------------------------------------------------
@@ -2257,38 +2257,38 @@ int main (int argc, char* argv[])
   std::vector<double> errors_max_over_time(2*num_comps.val+7, 0);
   int itn =1;
 
-  while(1){
-    PetscPrintf(mpi.comm(), "\n ------------------------- \n"
-                                 "Multialloy Main Iteration %d \n "
-                                 "------------------------- \n", iteration);
-    if (!keep_going) break;
-//    std::cout<<"line 2262\n";
-    // compute time step
-    mas.compute_dt();
-//    std::cout<<"line 2263\n";
-    if (tn + mas.get_dt() > time_limit.val) {
-      mas.set_dt(time_limit.val-tn);
-      keep_going = false;
-    }
-//    std::cout<<"line 2270\n";
-    //if (iteration==1){
-//    std::cout<<"line 2275\n";
-    // solve nonlinear system for temperature, concentration and velocity at t_n
-    bc_error_max = 0;
-    bc_error_avg = 0;
-//    std::cout<<"line 2279\n";
-    sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
-    PetscPrintf(mpi.comm(), "Onestep w fluids is complete \n");
-    mas.update_grid_w_fluids();
-//    std::cout<<"line 2280\n";
-    mas.update_grid_solid();
-//    std::cout<<"line 2282\n";
-    tn             += mas.get_dt();
-//    std::cout<<"line 2284\n";
-    keep_going = keep_going && (iteration < step_limit.val) && (total_growth < growth_limit.val);
-    iteration++;
-  }
-  /*
+//  while(1){
+//    PetscPrintf(mpi.comm(), "\n ------------------------- \n"
+//                                 "Multialloy Main Iteration %d \n "
+//                                 "------------------------- \n", iteration);
+//    if (!keep_going) break;
+////    std::cout<<"line 2262\n";
+//    // compute time step
+//    mas.compute_dt();
+////    std::cout<<"line 2263\n";
+//    if (tn + mas.get_dt() > time_limit.val) {
+//      mas.set_dt(time_limit.val-tn);
+//      keep_going = false;
+//    }
+////    std::cout<<"line 2270\n";
+//    //if (iteration==1){
+////    std::cout<<"line 2275\n";
+//    // solve nonlinear system for temperature, concentration and velocity at t_n
+//    bc_error_max = 0;
+//    bc_error_avg = 0;
+////    std::cout<<"line 2279\n";
+//    sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
+//    PetscPrintf(mpi.comm(), "Onestep w fluids is complete \n");
+//    mas.update_grid_w_fluids();
+////    std::cout<<"line 2280\n";
+//    mas.update_grid_solid();
+////    std::cout<<"line 2282\n";
+//    tn             += mas.get_dt();
+////    std::cout<<"line 2284\n";
+//    keep_going = keep_going && (iteration < step_limit.val) && (total_growth < growth_limit.val);
+//    iteration++;
+//  }
+
   while (1)
   {
     // determine to save or not
@@ -2303,21 +2303,16 @@ int main (int argc, char* argv[])
 
     // compute time step
     mas.compute_dt();
-    std::cout<<"main line 2298 ok \n";
+
     if (tn + mas.get_dt() > time_limit.val) {
       mas.set_dt(time_limit.val-tn);
       keep_going = false;
     }
 
-    if (iteration==1){
-      mas.update_grid();
-      mas.update_grid_solid();
-    }
-
     // solve nonlinear system for temperature, concentration and velocity at t_n
     bc_error_max = 0;
     bc_error_avg = 0;
-    std::cout<<"main line 2312 ok \n";
+
     sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     PetscPrintf(mpi.comm(), "Onestep w fluids is complete \n");
     tn             += mas.get_dt();
@@ -2346,7 +2341,7 @@ int main (int argc, char* argv[])
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
       ierr = PetscPrintf(mpi.comm(), "Step convergence saved in %s and %s\n", filename_error_max, filename_error_avg); CHKERRXX(ierr);
     }
-    std::cout<<"main line 2341 ok \n";
+
     // compute total growth
     total_growth = base;
 
@@ -2502,23 +2497,20 @@ int main (int argc, char* argv[])
     PetscPrintf(mpi.comm(), "Solve_with_fluids paramter has been set \n");
     //std::cout<<"main line 2464 ok \n";
     if(solve_w_fluids){
-      mas.update_grid_w_fluids_v2();
+      mas.update_grid_w_fluids();
     }else{
       mas.update_grid();
     }
 
 
     //mas.update_grid_w_fluids_v2();
-    std::cout<<"main line 2466 ok \n";
     PetscPrintf(mpi.comm(), "Update grid with fluids is complete \n");
    // std::cout<<"main line 2468 ok \n";
     mas.update_grid_solid();
-    std::cout<<"main line 2470 ok \n";
     keep_going = keep_going && (iteration < step_limit.val) && (total_growth < growth_limit.val);
-    std::cout<<"main line 2334 ok \n";
     iteration++;
 
-  }*/
+  }
 
   w1.stop(); w1.read_duration();
 

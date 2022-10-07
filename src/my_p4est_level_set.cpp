@@ -2763,8 +2763,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
            delete[] nz );
   }
   // Rochi fixing memory leak 01/04/2022
-  ierr = VecDestroy(b_qn_well_defined); CHKERRXX(ierr);
-  ierr = VecDestroy(b_qnn_well_defined); CHKERRXX(ierr);
+  //ierr = VecDestroy(b_qn_well_defined); CHKERRXX(ierr);
+  //ierr = VecDestroy(b_qnn_well_defined); CHKERRXX(ierr);
   // end of addition of Rochi
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
 }
