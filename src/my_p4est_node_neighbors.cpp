@@ -1205,6 +1205,9 @@ void my_p4est_node_neighbors_t::dd_central(const Vec f[], Vec fdd[], const unsig
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_dd_central, f, fdd, 0, 0); CHKERRXX(ierr);
   P4EST_ASSERT(n_vecs > 0);
+
+  quad_neighbor_nodes_of_node_t::assert_fields_and_blocks( n_vecs );
+
 #ifdef CASL_THROWS
   {
     Vec f_l, fdd_l;
@@ -1244,7 +1247,7 @@ void my_p4est_node_neighbors_t::dd_central(const Vec f[], Vec fdd[], const unsig
 #endif
 
   // get access to the iternal data
-  std::vector<double*> f_p(n_vecs), fdd_p(n_vecs);
+  double *f_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], *fdd_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
   for (unsigned int k = 0; k < n_vecs; ++k) {
     ierr = VecGetArray(f[k],   &f_p[k]  ); CHKERRXX(ierr);
     ierr = VecGetArray(fdd[k], &fdd_p[k]); CHKERRXX(ierr);
@@ -1252,26 +1255,26 @@ void my_p4est_node_neighbors_t::dd_central(const Vec f[], Vec fdd[], const unsig
 
   if (is_initialized){
     // compute the derivatives on the boundary nodes
-    for (size_t i = 0; i < layer_nodes.size(); i++)
+    for (int layer_node : layer_nodes)
       for (unsigned int k = 0; k < n_vecs; ++k)
-        fdd_p[k][layer_nodes[i]] = neighbors[layer_nodes[i]].dd_central(der, f_p[k]);
+        fdd_p[k][layer_node] = neighbors[layer_node].dd_central(der, f_p[k]);
 
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k)
       ierr = VecGhostUpdateBegin(fdd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     // compute the derivaties for all internal nodes
-    for (size_t i = 0; i < local_nodes.size(); i++)
+    for (int local_node : local_nodes)
       for (unsigned int k = 0; k < n_vecs; ++k)
-        fdd_p[k][local_nodes[i]] = neighbors[local_nodes[i]].dd_central(der, f_p[k]);
+        fdd_p[k][local_node] = neighbors[local_node].dd_central(der, f_p[k]);
   } else {
-    quad_neighbor_nodes_of_node_t qnnn;
+    quad_neighbor_nodes_of_node_t qnnn{};
 
     // compute the derivatives on the boundary nodes
-    for (size_t i = 0; i < layer_nodes.size(); i++){
-      get_neighbors(layer_nodes[i], qnnn);
+    for (int layer_node : layer_nodes){
+      get_neighbors(layer_node, qnnn);
       for (unsigned int k = 0; k < n_vecs; ++k)
-        fdd_p[k][layer_nodes[i]] = qnnn.dd_central(der, f_p[k]);
+        fdd_p[k][layer_node] = qnnn.dd_central(der, f_p[k]);
     }
 
     // start updating the ghost values
@@ -1279,10 +1282,10 @@ void my_p4est_node_neighbors_t::dd_central(const Vec f[], Vec fdd[], const unsig
       ierr = VecGhostUpdateBegin(fdd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     // compute the derivaties for all internal nodes
-    for (size_t i = 0; i < local_nodes.size(); i++){
-      get_neighbors(local_nodes[i], qnnn);
+    for (int local_node : local_nodes){
+      get_neighbors(local_node, qnnn);
       for (unsigned int k = 0; k < n_vecs; ++k)
-        fdd_p[k][local_nodes[i]] = qnnn.dd_central(der, f_p[k]);
+        fdd_p[k][local_node] = qnnn.dd_central(der, f_p[k]);
     }
   }
 
@@ -1303,6 +1306,9 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_2nd_derivatives_central_block, f, fdd, 0, 0); CHKERRXX(ierr);
+
+  quad_neighbor_nodes_of_node_t::assert_fields_and_blocks( n_vecs, bs_f );
+
 #ifdef CASL_THROWS
   {
 
@@ -1344,8 +1350,8 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
 
   P4EST_ASSERT(bs_f > 0);
   // get access to the iternal data
-  std::vector<const double *> f_p(n_vecs);
-  std::vector<double *> fdd_p(n_vecs);
+  const double *f_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+  double *fdd_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
   for (unsigned int k = 0; k < n_vecs; ++k) {
     ierr = VecGetArrayRead(f[k], &f_p[k]  ); CHKERRXX(ierr);
     ierr = VecGetArray(fdd[k], &fdd_p[k]); CHKERRXX(ierr);
@@ -1353,13 +1359,12 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
 
   if (is_initialized){
     // compute the derivatives on the boundary nodes
-    for (size_t i = 0; i < layer_nodes.size(); i++){
-      p4est_locidx_t node_idx = layer_nodes[i];
+    for (int node_idx : layer_nodes){
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
       if(bs_f == 1)
-        qnnn.laplace_insert_in_block_vectors(f_p.data(), fdd_p.data(), n_vecs);
+        qnnn.laplace_insert_in_block_vectors(f_p, fdd_p, n_vecs);
       else
-        qnnn.laplace_all_components_insert_in_block_vectors(f_p.data(), fdd_p.data(), n_vecs, bs_f);
+        qnnn.laplace_all_components_insert_in_block_vectors(f_p, fdd_p, n_vecs, bs_f);
     }
 
     // start updating the ghost values
@@ -1368,25 +1373,23 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
     }
 
     // compute the derivaties for all internal nodes
-    for (size_t i = 0; i < local_nodes.size(); i++){
-      p4est_locidx_t node_idx = local_nodes[i];
+    for (int node_idx : local_nodes){
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
       if(bs_f == 1)
-        qnnn.laplace_insert_in_block_vectors(f_p.data(), fdd_p.data(), n_vecs);
+        qnnn.laplace_insert_in_block_vectors(f_p, fdd_p, n_vecs);
       else
-        qnnn.laplace_all_components_insert_in_block_vectors(f_p.data(), fdd_p.data(), n_vecs, bs_f);
+        qnnn.laplace_all_components_insert_in_block_vectors(f_p, fdd_p, n_vecs, bs_f);
     }
   } else {
-    quad_neighbor_nodes_of_node_t qnnn;
+    quad_neighbor_nodes_of_node_t qnnn{};
 
     // compute the derivatives on the boundary nodes
-    for (size_t i = 0; i < layer_nodes.size(); i++){
-      p4est_locidx_t node_idx = layer_nodes[i];
+    for (int node_idx : layer_nodes){
       get_neighbors(node_idx, qnnn);
       if(bs_f == 1)
-        qnnn.laplace_insert_in_block_vectors(f_p.data(), fdd_p.data(), n_vecs);
+        qnnn.laplace_insert_in_block_vectors(f_p, fdd_p, n_vecs);
       else
-        qnnn.laplace_all_components_insert_in_block_vectors(f_p.data(), fdd_p.data(), n_vecs, bs_f);
+        qnnn.laplace_all_components_insert_in_block_vectors(f_p, fdd_p, n_vecs, bs_f);
     }
 
     // start updating the ghost values
@@ -1395,13 +1398,12 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
     }
 
     // compute the derivatives for all internal nodes
-    for (size_t i = 0; i < local_nodes.size(); i++){
-      p4est_locidx_t node_idx = local_nodes[i];
+    for (int node_idx : local_nodes){
       get_neighbors(node_idx, qnnn);
       if(bs_f == 1)
-        qnnn.laplace_insert_in_block_vectors(f_p.data(), fdd_p.data(), n_vecs);
+        qnnn.laplace_insert_in_block_vectors(f_p, fdd_p, n_vecs);
       else
-        qnnn.laplace_all_components_insert_in_block_vectors(f_p.data(), fdd_p.data(), n_vecs, bs_f);
+        qnnn.laplace_all_components_insert_in_block_vectors(f_p, fdd_p, n_vecs, bs_f);
     }
   }
 
@@ -1422,6 +1424,8 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_2nd_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
   IPMLogRegionBegin("2nd_derivatives");
+
+  quad_neighbor_nodes_of_node_t::assert_fields_and_blocks( n_vecs, bs );
 
 #ifdef CASL_THROWS
   {
@@ -1523,8 +1527,8 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
   second_derivatives_central_using_block(f, DIM(fxx, fyy, fzz), n_vecs, bs);
 #else // !DXX_USE_BLOCKS
   // get access to the internal data
-  std::vector<const double *> f_p(n_vecs);
-  std::vector<double *> DIM(fxx_p(n_vecs), fyy_p(n_vecs), fzz_p(n_vecs));
+  const double *f_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+  double DIM(*fxx_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], *fyy_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], *fzz_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
   for (unsigned int k = 0; k < n_vecs; ++k) {
     ierr = VecGetArrayRead(f[k],  &f_p[k]  ); CHKERRXX(ierr);
     ierr = VecGetArray(fxx[k],    &fxx_p[k]); CHKERRXX(ierr);
@@ -1535,28 +1539,26 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
   }
   if (is_initialized){
     // compute the derivatives on the boundary nodes -- fxx
-    for (size_t i = 0; i < layer_nodes.size(); i++)
+    for (int node_idx : layer_nodes)
     {
-      const p4est_locidx_t &node_idx = layer_nodes[i];
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
       if(bs == 1)
-        qnnn.dxx_central_insert_in_vectors(f_p.data(), fxx_p.data(), n_vecs);
+        qnnn.dxx_central_insert_in_vectors(f_p, fxx_p, n_vecs);
       else
-        qnnn.dxx_central_all_components_insert_in_vectors(f_p.data(), fxx_p.data(), n_vecs, bs);
+        qnnn.dxx_central_all_components_insert_in_vectors(f_p, fxx_p, n_vecs, bs);
     }
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k)
       ierr = VecGhostUpdateBegin(fxx[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     // compute the derivatives on the boundary nodes -- fyy
-    for (size_t i = 0; i < layer_nodes.size(); i++)
+    for (int node_idx : layer_nodes)
     {
-      const p4est_locidx_t &node_idx = layer_nodes[i];
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
       if(bs == 1)
-        qnnn.dyy_central_insert_in_vectors(f_p.data(), fyy_p.data(), n_vecs);
+        qnnn.dyy_central_insert_in_vectors(f_p, fyy_p, n_vecs);
       else
-        qnnn.dyy_central_all_components_insert_in_vectors(f_p.data(), fyy_p.data(), n_vecs, bs);
+        qnnn.dyy_central_all_components_insert_in_vectors(f_p, fyy_p, n_vecs, bs);
     }
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k)
@@ -1564,40 +1566,37 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
 
 #ifdef P4_TO_P8
     // compute the derivatives on the boundary nodes -- fzz
-    for (size_t i = 0; i < layer_nodes.size(); i++)
+    for (int node_idx : layer_nodes)
     {
-      const p4est_locidx_t &node_idx = layer_nodes[i];
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
       if(bs == 1)
-        qnnn.dzz_central_insert_in_vectors(f_p.data(), fzz_p.data(), n_vecs);
+        qnnn.dzz_central_insert_in_vectors(f_p, fzz_p, n_vecs);
       else
-        qnnn.dzz_central_all_components_insert_in_vectors(f_p.data(), fzz_p.data(), n_vecs, bs);
+        qnnn.dzz_central_all_components_insert_in_vectors(f_p, fzz_p, n_vecs, bs);
     }
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k)
       ierr = VecGhostUpdateBegin(fzz[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 #endif
     // compute the derivaties for all internal nodes
-    for (size_t i = 0; i < local_nodes.size(); i++){
-      const p4est_locidx_t &node_idx = local_nodes[i];
+    for (int node_idx : local_nodes){
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
       if(bs == 1)
-        qnnn.laplace_insert_in_vectors(f_p.data(), DIM(fxx_p.data(), fyy_p.data(), fzz_p.data()), n_vecs);
+        qnnn.laplace_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p), n_vecs);
       else
-        qnnn.laplace_all_components_insert_in_vectors(f_p.data(), DIM(fxx_p.data(), fyy_p.data(), fzz_p.data()), n_vecs, bs);
+        qnnn.laplace_all_components_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p), n_vecs, bs);
     }
   }
   else {
-    quad_neighbor_nodes_of_node_t qnnn;
+    quad_neighbor_nodes_of_node_t qnnn{};
 
     // compute the derivatives on the boundary nodes -- fxx
-    for (size_t i = 0; i < layer_nodes.size(); i++){
-      const p4est_locidx_t &node_idx = layer_nodes[i];
+    for (int node_idx : layer_nodes){
       get_neighbors(node_idx, qnnn);
       if(bs == 1)
-        qnnn.laplace_insert_in_vectors(f_p.data(), DIM(fxx_p.data(), fyy_p.data(), fzz_p.data()), n_vecs);
+        qnnn.laplace_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p), n_vecs);
       else
-        qnnn.laplace_all_components_insert_in_vectors(f_p.data(), DIM(fxx_p.data(), fyy_p.data(), fzz_p.data()), n_vecs, bs);
+        qnnn.laplace_all_components_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p), n_vecs, bs);
     }
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k) {
@@ -1609,13 +1608,12 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
     }
 
     // compute the derivaties for all internal nodes
-    for (size_t i = 0; i < local_nodes.size(); i++){
-      const p4est_locidx_t &node_idx = local_nodes[i];
+    for (int node_idx : local_nodes){
       get_neighbors(node_idx, qnnn);
       if(bs == 1)
-        qnnn.laplace_insert_in_vectors(f_p.data(), DIM(fxx_p.data(), fyy_p.data(), fzz_p.data()), n_vecs);
+        qnnn.laplace_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p), n_vecs);
       else
-        qnnn.laplace_all_components_insert_in_vectors(f_p.data(), DIM(fxx_p.data(), fyy_p.data(), fzz_p.data()), n_vecs, bs);
+        qnnn.laplace_all_components_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p), n_vecs, bs);
     }
   }
 
@@ -1646,13 +1644,16 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_1st_derivatives_central_block, f, fd, 0, 0); CHKERRXX(ierr);
-  std::vector<bool> fd_is_ghosted(n_vecs);
+
+  quad_neighbor_nodes_of_node_t::assert_fields_and_blocks( n_vecs, bs_f );
+
+  bool fd_is_ghosted[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
   bool no_fd_is_ghosted = true;
   for (unsigned int k = 0; k < n_vecs; ++k)
   {
     Vec fdk_loc;
     ierr = VecGhostGetLocalForm(fd[k], &fdk_loc); CHKERRXX(ierr);
-    fd_is_ghosted[k] = fdk_loc != NULL;
+    fd_is_ghosted[k] = fdk_loc != nullptr;
     no_fd_is_ghosted = no_fd_is_ghosted && !fd_is_ghosted[k];
     ierr = VecGhostRestoreLocalForm(fd[k], &fdk_loc); CHKERRXX(ierr);
 #ifdef P4EST_DEBUG
@@ -1666,8 +1667,8 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
   P4EST_ASSERT(bs_f > 0);
 
   // get access to the iternal data
-  std::vector<const double *> f_p(n_vecs);
-  std::vector<double *> fd_p(n_vecs);
+  const double *f_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+  double *fd_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
   for (unsigned int k = 0; k < n_vecs; ++k) {
     ierr = VecGetArrayRead(f[k],  &f_p[k]  ); CHKERRXX(ierr);
     ierr = VecGetArray(fd[k],     &fd_p[k]); CHKERRXX(ierr);
@@ -1675,13 +1676,12 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
 
   if (is_initialized){
     // compute the derivatives on the boundary nodes
-    for (size_t i = 0; i < layer_nodes.size(); i++){
-      p4est_locidx_t node_idx = layer_nodes[i];
+    for (int node_idx : layer_nodes){
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
       if(bs_f == 1)
-        qnnn.gradient_insert_in_block_vectors(f_p.data(), fd_p.data(), n_vecs);
+        qnnn.gradient_insert_in_block_vectors(f_p, fd_p, n_vecs);
       else
-        qnnn.gradient_all_components_insert_in_block_vectors(f_p.data(), fd_p.data(), n_vecs, bs_f);
+        qnnn.gradient_all_components_insert_in_block_vectors(f_p, fd_p, n_vecs, bs_f);
     }
 
     // start updating the ghost values
@@ -1691,25 +1691,23 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
           ierr = VecGhostUpdateBegin(fd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
 
     // compute the derivaties for all internal nodes
-    for (size_t i = 0; i < local_nodes.size(); i++){
-      p4est_locidx_t node_idx = local_nodes[i];
+    for (int node_idx : local_nodes){
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
       if(bs_f == 1)
-        qnnn.gradient_insert_in_block_vectors(f_p.data(), fd_p.data(), n_vecs);
+        qnnn.gradient_insert_in_block_vectors(f_p, fd_p, n_vecs);
       else
-        qnnn.gradient_all_components_insert_in_block_vectors(f_p.data(), fd_p.data(), n_vecs, bs_f);
+        qnnn.gradient_all_components_insert_in_block_vectors(f_p, fd_p, n_vecs, bs_f);
     }
   } else {
-    quad_neighbor_nodes_of_node_t qnnn;
+    quad_neighbor_nodes_of_node_t qnnn{};
 
     // compute the derivatives on the boundary nodes
-    for (size_t i = 0; i < layer_nodes.size(); i++){
-      p4est_locidx_t node_idx = layer_nodes[i];
+    for (int node_idx : layer_nodes){
       get_neighbors(node_idx, qnnn);
       if(bs_f == 1)
-        qnnn.gradient_insert_in_block_vectors(f_p.data(), fd_p.data(), n_vecs);
+        qnnn.gradient_insert_in_block_vectors(f_p, fd_p, n_vecs);
       else
-        qnnn.gradient_all_components_insert_in_block_vectors(f_p.data(), fd_p.data(), n_vecs, bs_f);
+        qnnn.gradient_all_components_insert_in_block_vectors(f_p, fd_p, n_vecs, bs_f);
     }
 
     // start updating the ghost values
@@ -1719,13 +1717,12 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
           ierr = VecGhostUpdateBegin(fd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
 
     // compute the derivaties for all internal nodes
-    for (size_t i = 0; i < local_nodes.size(); i++){
-      p4est_locidx_t node_idx = local_nodes[i];
+    for (int node_idx : local_nodes){
       get_neighbors(node_idx, qnnn);
       if(bs_f == 1)
-        qnnn.gradient_insert_in_block_vectors(f_p.data(), fd_p.data(), n_vecs);
+        qnnn.gradient_insert_in_block_vectors(f_p, fd_p, n_vecs);
       else
-        qnnn.gradient_all_components_insert_in_block_vectors(f_p.data(), fd_p.data(), n_vecs, bs_f);
+        qnnn.gradient_all_components_insert_in_block_vectors(f_p, fd_p, n_vecs, bs_f);
     }
   }
 
@@ -1952,18 +1949,21 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], DIM(Vec
 
 void my_p4est_node_neighbors_t::second_derivatives_central_using_block(const Vec f[], DIM(Vec fxx[], Vec fyy[], Vec fzz[]), const unsigned int& n_vecs, const unsigned int &bs) const
 {
+  quad_neighbor_nodes_of_node_t::assert_fields_and_blocks( n_vecs, bs );
+
   // create temporary block vector
   PetscErrorCode ierr;
-  std::vector<Vec> fdd(n_vecs);
+  Vec fdd[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
   for (unsigned int k = 0; k < n_vecs; ++k) {
-    ierr = VecCreateGhostNodesBlock(p4est, nodes, bs*P4EST_DIM, &fdd[k]); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodesBlock(p4est, nodes, int(bs)*P4EST_DIM, &fdd[k]); CHKERRXX(ierr);
   }
 
   // compute derivatives using block vector
-  second_derivatives_central(f, fdd.data(), n_vecs, bs);
+  second_derivatives_central(f, fdd, n_vecs, bs);
 
   // copy data back into original vectors
-  std::vector<double *> fdd_p(n_vecs), DIM(fxx_p(n_vecs), fyy_p(n_vecs), fzz_p(n_vecs));
+  double *fdd_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT],
+  	DIM(*fxx_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], *fyy_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], *fzz_p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
   for (unsigned int k = 0; k < n_vecs; ++k) {
     ierr = VecGetArray(fdd[k], &fdd_p[k]); CHKERRXX(ierr);
     ierr = VecGetArray(fxx[k], &fxx_p[k]); CHKERRXX(ierr);
