@@ -1905,7 +1905,12 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   PetscPrintf(mpi->comm(),"\n Max NS velocity norm: \n"
                         " - Computational value: %0.4f  "
                         " - Physical value: %0.3e [m/s]  "
-                        " - Physical value: %0.3f [mm/s] \n",NS_norm,NS_norm*vel_nondim_to_dim,NS_norm*vel_nondim_to_dim*1000.);
+                        " - Physical value: %0.3f [mm/s] \n"
+                           "- Effective Re: %0.3f "
+                           "\n",NS_norm,
+              NS_norm*vel_nondim_to_dim,
+              NS_norm*vel_nondim_to_dim*1000.,
+              NS_norm*vel_nondim_to_dim*rho_l*l_char/mu_l);
 
   // Stop simulation if things are blowing up
   bool did_crash;
@@ -2652,6 +2657,32 @@ void my_p4est_stefan_with_fluids_t::track_evolving_geometry(){
 
 void my_p4est_stefan_with_fluids_t::regularize_front()
 {
+  // -----------------------------------------------------------------
+  // TEMP BEGIN: save phi to vtk *before* merging alogirhtm is applied
+  // -----------------------------------------------------------------
+  if(1){
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi_before_reg"));
+
+
+    const char* out_dir = getenv("OUT_DIR_VTK");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_before_reg_front_%d", out_dir, tstep);
+    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+ }
+
+
+  // -----------------------------------------------------------------
+  // TEMP END
+  // -----------------------------------------------------------------
+
   // WIP
   // FUNCTION FOR REGULARIZING THE SOLIDIFICATION FRONT:
   // adapted from function in my_p4est_multialloy_t originally developed by Daniil Bochkov, adapted by Elyce Bayat 08/24/2020
@@ -2869,6 +2900,156 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
 
   ierr = PetscPrintf(mpi_comm, "done!\n"); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
+
+
+
+
+  // -----------------------------------------------------------------
+  // TEMP BEGIN: save phi to vtk *directly after* merging alogirhtm is applied
+  // -----------------------------------------------------------------
+  if(1){
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi_before_reg"));
+
+
+    const char* out_dir = getenv("OUT_DIR_VTK");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_after_reg_front_%d", out_dir, tstep);
+    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+  }
+
+
+  // -----------------------------------------------------------------
+  // TEMP END
+  // -----------------------------------------------------------------
+
+
+  // ----------------------------------
+  // NEW REG FRONT ADDITION WITH FACES:
+  // ----------------------------------
+  // ELYCE WIP
+  // ----------
+
+  // Set up the LSF interpolator:
+//  my_p4est_interpolation_nodes_t interp_phi(ngbd_np1);
+//  vec_and_ptr_dim_t phi_dd_(p4est_np1, nodes_np1);
+
+//  ngbd_np1->second_derivatives_central(phi.vec, phi_dd.vec);
+//  interp_phi.set_input(phi.vec, phi_dd_.vec[0], phi_dd_.vec[1], quadratic_non_oscillatory_continuous_v2);
+
+  // First, we will want to check each node that is within a specified band of the interface ...
+  phi.get_array();
+
+//  foreach_local_node(n, nodes_np1){}
+
+  //foreach_node(n, nodes_np1){
+  foreach_local_node(n, nodes_np1){
+    // Check only nodes in a small band around the interface:
+    if(fabs(phi.ptr[n]) /*> 0.2 */< dxyz_close_to_interface ){
+
+      // Get the node location:
+      double xyz_node_[P4EST_DIM];
+      node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz_node_);
+
+
+      // Get the neighbors:
+      quad_neighbor_nodes_of_node_t qnnn;
+      ngbd_np1->get_neighbors(n, qnnn);
+
+      // Get the neighbor locations to check
+//      std::vector<double> dist_to_neigh;
+//      std::vector<int> neigh_idx;
+
+      double dist_to_neigh[num_neighbors_cube] ;
+      p4est_locidx_t neigh_idx[num_neighbors_cube];
+      bool neigh_exists[num_neighbors_cube];
+
+      ngbd_np1->get_all_neighbors(n, neigh_idx, neigh_exists);
+
+      double xyz_neigh_[num_neighbors_cube][P4EST_DIM];
+      const char *neigh_names[] = {"mm0","0m0", "pm0",
+                                   "m00","000","p00",
+                                   "mp0", "0p0", "pp0"};
+
+      PetscPrintf(mpi->comm(),"Node %d with location (%0.4f, %0.4f) has the neighbors: \n", n, xyz_node_[0], xyz_node_[1]);
+      for(int i = 0; i< num_neighbors_cube; i++){
+        if(neigh_exists[i]){
+          node_xyz_fr_n(neigh_idx[i], p4est_np1, nodes_np1, xyz_neigh_[i]);
+          PetscPrintf(mpi->comm(), "(%d) %s - idx %d : (%0.4f, %0.4f) \n", i, neigh_names[i], neigh_idx[i], xyz_neigh_[i][0], xyz_neigh_[i][1]);
+        }
+        else{
+          PetscPrintf(mpi->comm(), "(%d) %s : does not exist \n", i, neigh_names[i], neigh_idx[i]);
+
+        }
+      }
+      PetscPrintf(mpi->comm(), "\n \n");
+
+
+      // Print out the neighborhood info given by qnnn for debugging purposes
+      if(0){
+        p4est_locidx_t node_m00_mm=qnnn.node_m00_mm; p4est_locidx_t node_m00_pm=qnnn.node_m00_pm;
+        p4est_locidx_t node_p00_mm=qnnn.node_p00_mm; p4est_locidx_t node_p00_pm=qnnn.node_p00_pm;
+        p4est_locidx_t node_0m0_mm=qnnn.node_0m0_mm; p4est_locidx_t node_0m0_pm=qnnn.node_0m0_pm;
+        p4est_locidx_t node_0p0_mm=qnnn.node_0p0_mm; p4est_locidx_t node_0p0_pm=qnnn.node_0p0_pm;
+        p4est_locidx_t node_000 = qnnn.node_000;
+
+        double xyz_000[P4EST_DIM]; node_xyz_fr_n(node_000, p4est_np1, nodes_np1, xyz_000);
+
+
+        double xyz_m00_mm[P4EST_DIM]; node_xyz_fr_n(node_m00_mm, p4est_np1, nodes_np1, xyz_m00_mm);
+        double xyz_m00_pm[P4EST_DIM]; node_xyz_fr_n(node_m00_pm, p4est_np1, nodes_np1, xyz_m00_pm);
+
+        double xyz_p00_mm[P4EST_DIM]; node_xyz_fr_n(node_p00_mm, p4est_np1, nodes_np1, xyz_p00_mm);
+        double xyz_p00_pm[P4EST_DIM]; node_xyz_fr_n(node_p00_pm, p4est_np1, nodes_np1, xyz_p00_pm);
+
+        double xyz_0m0_mm[P4EST_DIM]; node_xyz_fr_n(node_0m0_mm, p4est_np1, nodes_np1, xyz_0m0_mm);
+        double xyz_0m0_pm[P4EST_DIM]; node_xyz_fr_n(node_0m0_pm, p4est_np1, nodes_np1, xyz_0m0_pm);
+
+        double xyz_0p0_mm[P4EST_DIM]; node_xyz_fr_n(node_0p0_mm, p4est_np1, nodes_np1, xyz_0p0_mm);
+        double xyz_0p0_pm[P4EST_DIM]; node_xyz_fr_n(node_0p0_pm, p4est_np1, nodes_np1, xyz_0p0_pm);
+
+        PetscPrintf(mpi->comm(), "Node %d with location (%0.4f, %0.4f) has the neighbors: \n "
+                                 "m00_mm - node %d at (%0.4f, %0.4f) \n"
+                                 "0m0_pm - node %d at (%0.4f, %0.4f) \n"
+                                 "p00_mm - node %d at (%0.4f, %0.4f) \n"
+                                 "m00_pm - node %d at (%0.4f, %0.4f) \n"
+                                 "000 - node %d at (%0.4f, %0.4f) \n"
+                                 "p00_pm - node %d at (%0.4f, %0.4f) \n"
+
+                                 "0p0_mm - node %d at (%0.4f, %0.4f) \n"
+
+                                 "0p0_pm - node %d at (%0.4f, %0.4f) \n"
+                                 "0m0_mm - node %d at (%0.4f, %0.4f) \n"
+                                 " \n \n",
+                    n, xyz_node_[0], xyz_node_[1],
+                    node_m00_mm, xyz_m00_mm[0], xyz_m00_mm[1],
+                    node_0m0_pm, xyz_0m0_pm[0], xyz_0m0_pm[1],
+                    node_p00_mm, xyz_p00_mm[0], xyz_p00_mm[1],
+                    node_m00_pm, xyz_m00_pm[0], xyz_m00_pm[1],
+                    node_000, xyz_000[0], xyz_000[1],
+                    node_p00_pm, xyz_p00_pm[0], xyz_p00_pm[1],
+                    node_0p0_mm, xyz_0p0_mm[0], xyz_0p0_mm[1],
+                    node_0p0_pm, xyz_0p0_pm[0], xyz_0p0_pm[1],
+                    node_0m0_mm, xyz_0m0_mm[0], xyz_0m0_mm[1]);
+      }
+
+    }
+  }
+
+  phi.restore_array();
+//  phi_dd_.destroy();
+  // ---------
+
+
+
+
 } // end of "regularize_front()"
 
 
