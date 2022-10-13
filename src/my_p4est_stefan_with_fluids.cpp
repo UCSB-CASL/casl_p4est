@@ -2682,7 +2682,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
   // -----------------------------------------------------------------
   // TEMP END
   // -----------------------------------------------------------------
-
+  bool daniil_algorithm_on = true;
   // WIP
   // FUNCTION FOR REGULARIZING THE SOLIDIFICATION FRONT:
   // adapted from function in my_p4est_multialloy_t originally developed by Daniil Bochkov, adapted by Elyce Bayat 08/24/2020
@@ -2699,207 +2699,209 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
   PetscErrorCode ierr;
   int mpi_comm = p4est_np1->mpicomm;
 
-  ierr = PetscLogEventBegin(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi_comm, "Removing problem geometries... "); CHKERRXX(ierr);
+  if(daniil_algorithm_on){
+    ierr = PetscLogEventBegin(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi_comm, "Removing problem geometries... "); CHKERRXX(ierr);
 
-  int num_nodes_smoothed = 0;
-  if (fabs(proximity_smoothing_)>EPS) {
+    int num_nodes_smoothed = 0;
+    if (fabs(proximity_smoothing_)>EPS) {
 
 
-    // First pass -- shift LSF up, see if there are any islands, remove subpools if there. Then reinitialize, shift back. "Solidify" any nodes that changed sign.
-    // shift level-set upwards and reinitialize
+      // First pass -- shift LSF up, see if there are any islands, remove subpools if there. Then reinitialize, shift back. "Solidify" any nodes that changed sign.
+      // shift level-set upwards and reinitialize
 
-    // Updated Daniil comment:
-    // first pass: bridge too narrow regions by lifting level-set function, reinitializing,
-    // brigning it down and checking which nodes flipped sign
-    // (note that it also smooths out too sharp corners which are usually formed by
-    // solidifying front ``getting stuck'' on grid nodes)
-    my_p4est_level_set_t ls(ngbd_np1);
-    vec_and_ptr_t front_phi_tmp(phi.vec);
+      // Updated Daniil comment:
+      // first pass: bridge too narrow regions by lifting level-set function, reinitializing,
+      // brigning it down and checking which nodes flipped sign
+      // (note that it also smooths out too sharp corners which are usually formed by
+      // solidifying front ``getting stuck'' on grid nodes)
+      my_p4est_level_set_t ls(ngbd_np1);
+      vec_and_ptr_t front_phi_tmp(phi.vec);
 
-    // Shift the LSF:
-    double shift = dxyz_min_*proximity_smoothing_;
-    ierr = VecCopyGhost(phi.vec, front_phi_tmp.vec);CHKERRXX(ierr);
-    ierr = VecShiftGhost(front_phi_tmp.vec, shift);CHKERRXX(ierr);
+      // Shift the LSF:
+      double shift = dxyz_min_*proximity_smoothing_;
+      ierr = VecCopyGhost(phi.vec, front_phi_tmp.vec);CHKERRXX(ierr);
+      ierr = VecShiftGhost(front_phi_tmp.vec, shift);CHKERRXX(ierr);
 
-    // eliminate small pools created by lifting
-    int num_islands = 0;
-    vec_and_ptr_t island_number(phi.vec);
+      // eliminate small pools created by lifting
+      int num_islands = 0;
+      vec_and_ptr_t island_number(phi.vec);
 
-    VecScaleGhost(front_phi_tmp.vec, -1.);
-    compute_islands_numbers(*ngbd_np1, front_phi_tmp.vec, num_islands, island_number.vec);
-    VecScaleGhost(front_phi_tmp.vec, -1.);
+      VecScaleGhost(front_phi_tmp.vec, -1.);
+      compute_islands_numbers(*ngbd_np1, front_phi_tmp.vec, num_islands, island_number.vec);
+      VecScaleGhost(front_phi_tmp.vec, -1.);
 
-    if (num_islands > 1)
-    {
-      ierr = PetscPrintf(mpi_comm, "%d subpools removed... ", num_islands-1); CHKERRXX(ierr);
-      island_number.get_array();
+      if (num_islands > 1)
+      {
+        ierr = PetscPrintf(mpi_comm, "%d subpools removed... ", num_islands-1); CHKERRXX(ierr);
+        island_number.get_array();
+        front_phi_tmp.get_array();
+
+        // compute liquid pools areas
+        // TODO: make it real area instead of number of points
+        std::vector<double> island_area(num_islands, 0);
+
+        foreach_local_node(n, nodes_np1) {
+          if (island_number.ptr[n] >= 0) {
+            ++island_area[ (int) island_number.ptr[n] ];
+          }
+        }
+
+        int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
+
+        // find the biggest liquid pool
+        int main_island = 0;
+        int island_area_max = island_area[0];
+
+        for (int i = 1; i < num_islands; ++i) {
+          if (island_area[i] > island_area_max) {
+            main_island     = i;
+            island_area_max = island_area[i];
+          }
+        }
+
+        if (main_island < 0) throw;
+
+        // remove all but the biggest pool
+        foreach_node(n, nodes_np1) {
+          if (front_phi_tmp.ptr[n] < 0 && island_number.ptr[n] != main_island) {
+            front_phi_tmp.ptr[n] = new_phi_val;
+          }
+        }
+
+        island_number.restore_array();
+        front_phi_tmp.restore_array();
+
+        // TODO: make the decision whether to solidify a liquid pool or not independently
+        // for each pool based on its size and shape
+      }
+
+      island_number.destroy();
+      // reinitilize and bring it down
+
+      ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
+      ierr = VecShiftGhost(front_phi_tmp.vec, -shift); CHKERRXX(ierr);
+
+      // "solidify" nodes that changed sign
+      phi.get_array();
       front_phi_tmp.get_array();
 
-      // compute liquid pools areas
-      // TODO: make it real area instead of number of points
-      std::vector<double> island_area(num_islands, 0);
-
-      foreach_local_node(n, nodes_np1) {
-        if (island_number.ptr[n] >= 0) {
-          ++island_area[ (int) island_number.ptr[n] ];
-        }
-      }
-
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
-
-      // find the biggest liquid pool
-      int main_island = 0;
-      int island_area_max = island_area[0];
-
-      for (int i = 1; i < num_islands; ++i) {
-        if (island_area[i] > island_area_max) {
-          main_island     = i;
-          island_area_max = island_area[i];
-        }
-      }
-
-      if (main_island < 0) throw;
-
-      // remove all but the biggest pool
       foreach_node(n, nodes_np1) {
-        if (front_phi_tmp.ptr[n] < 0 && island_number.ptr[n] != main_island) {
-          front_phi_tmp.ptr[n] = new_phi_val;
+        if (phi.ptr[n] < 0 && front_phi_tmp.ptr[n] > 0) {
+          phi.ptr[n] = front_phi_tmp.ptr[n];
+          num_nodes_smoothed++;
         }
       }
 
-      island_number.restore_array();
-      front_phi_tmp.restore_array();
-
-      // TODO: make the decision whether to solidify a liquid pool or not independently
-      // for each pool based on its size and shape
-    }
-
-    island_number.destroy();
-    // reinitilize and bring it down
-
-    ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
-    ierr = VecShiftGhost(front_phi_tmp.vec, -shift); CHKERRXX(ierr);
-
-    // "solidify" nodes that changed sign
-    phi.get_array();
-    front_phi_tmp.get_array();
-
-    foreach_node(n, nodes_np1) {
-      if (phi.ptr[n] < 0 && front_phi_tmp.ptr[n] > 0) {
-        phi.ptr[n] = front_phi_tmp.ptr[n];
-        num_nodes_smoothed++;
-      }
-    }
-
-    phi.restore_array();
-    front_phi_tmp.restore_array();
-    front_phi_tmp.destroy();
-  }
-
-  if (fabs(proximity_smoothing_)>0.) {
-    // (Optional, not used anymore)
-    // Second pass --  we shift LSF down, reinitialize, shift back, and see if some of those nodes are still "stuck"
-    // shift level-set downwards and reinitialize
-    my_p4est_level_set_t ls(ngbd_np1);
-    vec_and_ptr_t front_phi_tmp(phi.vec);
-
-    // shift up
-    double shift = -0.1*dxyz_min_*proximity_smoothing_;
-    VecCopyGhost(phi.vec, front_phi_tmp.vec);
-    VecShiftGhost(front_phi_tmp.vec, shift);
-
-    // reinitialize
-    ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
-
-    // shift back
-    VecShiftGhost(front_phi_tmp.vec, -shift);
-
-    // "solidify" nodes that changed sign
-    phi.get_array();
-    front_phi_tmp.get_array();
-
-    foreach_node(n, nodes_np1) {
-      if (phi.ptr[n] > 0 && front_phi_tmp.ptr[n] < 0) {
-        phi.ptr[n] = front_phi_tmp.ptr[n];
-        num_nodes_smoothed++;
-      }
-    }
-
-    phi.restore_array();
-    front_phi_tmp.restore_array();
-    front_phi_tmp.destroy();
-  }
-  ierr = MPI_Allreduce(MPI_IN_PLACE, &num_nodes_smoothed, 1, MPI_INT, MPI_SUM, mpi_comm); SC_CHECK_MPI(ierr);
-
-  // ELYCE TO DO-- THIS THIRD PART DOES NOT GET USED, SHOULD PROBABLY BYPASS THIS --> jk, I think it does get used , i think set() makes the two things the same so it's actually updating phi
-  // third pass: look for isolated pools of liquid and remove them
-  if (num_nodes_smoothed > 0) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
-  {
-    ierr = PetscPrintf(mpi_comm, "%d nodes smoothed... ", num_nodes_smoothed); CHKERRXX(ierr);
-    int num_islands = 0;
-    vec_and_ptr_t island_number(phi.vec);
-
-    VecScaleGhost(phi.vec, -1.);
-    compute_islands_numbers(*ngbd_np1, phi.vec, num_islands, island_number.vec);
-    VecScaleGhost(phi.vec, -1.);
-
-    if (num_islands > 1)
-    {
-      ierr = PetscPrintf(mpi_comm, "%d pools removed... ", num_islands-1); CHKERRXX(ierr);
-      island_number.get_array();
-      phi.get_array();
-
-      // compute liquid pools areas
-      // TODO: make it real area instead of number of points
-      std::vector<double> island_area(num_islands, 0);
-
-      foreach_local_node(n, nodes_np1)
-      {
-        if (island_number.ptr[n] >= 0)
-        {
-          ++island_area[ (int) island_number.ptr[n] ];
-        }
-      }
-
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
-
-      // find the biggest liquid pool
-      int main_island = 0;
-      int island_area_max = island_area[0];
-
-      for (int i = 1; i < num_islands; ++i)
-      {
-        if (island_area[i] > island_area_max)
-        {
-          main_island     = i;
-          island_area_max = island_area[i];
-        }
-      }
-
-      if (main_island < 0) throw;
-
-      // solidify all but the biggest pool
-      foreach_node(n, nodes_np1)
-      {
-        if (phi.ptr[n] < 0 && island_number.ptr[n] != main_island)
-        {
-          phi.ptr[n] = new_phi_val;
-        }
-      }
-
-      island_number.restore_array();
       phi.restore_array();
-
-      // TODO: make the decision whether to solidify a liquid pool or not independently
-      // for each pool based on its size and shape
+      front_phi_tmp.restore_array();
+      front_phi_tmp.destroy();
     }
 
-    island_number.destroy();
-  }
+    if (fabs(proximity_smoothing_)>0.) {
+      // (Optional, not used anymore)
+      // Second pass --  we shift LSF down, reinitialize, shift back, and see if some of those nodes are still "stuck"
+      // shift level-set downwards and reinitialize
+      my_p4est_level_set_t ls(ngbd_np1);
+      vec_and_ptr_t front_phi_tmp(phi.vec);
 
-  ierr = PetscPrintf(mpi_comm, "done!\n"); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
+      // shift up
+      double shift = -0.1*dxyz_min_*proximity_smoothing_;
+      VecCopyGhost(phi.vec, front_phi_tmp.vec);
+      VecShiftGhost(front_phi_tmp.vec, shift);
+
+      // reinitialize
+      ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
+
+      // shift back
+      VecShiftGhost(front_phi_tmp.vec, -shift);
+
+      // "solidify" nodes that changed sign
+      phi.get_array();
+      front_phi_tmp.get_array();
+
+      foreach_node(n, nodes_np1) {
+        if (phi.ptr[n] > 0 && front_phi_tmp.ptr[n] < 0) {
+          phi.ptr[n] = front_phi_tmp.ptr[n];
+          num_nodes_smoothed++;
+        }
+      }
+
+      phi.restore_array();
+      front_phi_tmp.restore_array();
+      front_phi_tmp.destroy();
+    }
+    ierr = MPI_Allreduce(MPI_IN_PLACE, &num_nodes_smoothed, 1, MPI_INT, MPI_SUM, mpi_comm); SC_CHECK_MPI(ierr);
+
+    // ELYCE TO DO-- THIS THIRD PART DOES NOT GET USED, SHOULD PROBABLY BYPASS THIS --> jk, I think it does get used , i think set() makes the two things the same so it's actually updating phi
+    // third pass: look for isolated pools of liquid and remove them
+    if (num_nodes_smoothed > 0) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
+    {
+      ierr = PetscPrintf(mpi_comm, "%d nodes smoothed... ", num_nodes_smoothed); CHKERRXX(ierr);
+      int num_islands = 0;
+      vec_and_ptr_t island_number(phi.vec);
+
+      VecScaleGhost(phi.vec, -1.);
+      compute_islands_numbers(*ngbd_np1, phi.vec, num_islands, island_number.vec);
+      VecScaleGhost(phi.vec, -1.);
+
+      if (num_islands > 1)
+      {
+        ierr = PetscPrintf(mpi_comm, "%d pools removed... ", num_islands-1); CHKERRXX(ierr);
+        island_number.get_array();
+        phi.get_array();
+
+        // compute liquid pools areas
+        // TODO: make it real area instead of number of points
+        std::vector<double> island_area(num_islands, 0);
+
+        foreach_local_node(n, nodes_np1)
+        {
+          if (island_number.ptr[n] >= 0)
+          {
+            ++island_area[ (int) island_number.ptr[n] ];
+          }
+        }
+
+        int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
+
+        // find the biggest liquid pool
+        int main_island = 0;
+        int island_area_max = island_area[0];
+
+        for (int i = 1; i < num_islands; ++i)
+        {
+          if (island_area[i] > island_area_max)
+          {
+            main_island     = i;
+            island_area_max = island_area[i];
+          }
+        }
+
+        if (main_island < 0) throw;
+
+        // solidify all but the biggest pool
+        foreach_node(n, nodes_np1)
+        {
+          if (phi.ptr[n] < 0 && island_number.ptr[n] != main_island)
+          {
+            phi.ptr[n] = new_phi_val;
+          }
+        }
+
+        island_number.restore_array();
+        phi.restore_array();
+
+        // TODO: make the decision whether to solidify a liquid pool or not independently
+        // for each pool based on its size and shape
+      }
+
+      island_number.destroy();
+    }
+
+    ierr = PetscPrintf(mpi_comm, "done!\n"); CHKERRXX(ierr);
+    ierr = PetscLogEventEnd(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
+  }
 
 
 
@@ -2907,11 +2909,11 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
   // -----------------------------------------------------------------
   // TEMP BEGIN: save phi to vtk *directly after* merging alogirhtm is applied
   // -----------------------------------------------------------------
-  if(1){
+  if(1 && daniil_algorithm_on){
     std::vector<Vec_for_vtk_export_t> point_fields;
     std::vector<Vec_for_vtk_export_t> cell_fields = {};
 
-    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi_before_reg"));
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi_after_reg"));
 
 
     const char* out_dir = getenv("OUT_DIR_VTK");
@@ -2937,115 +2939,269 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
   // ELYCE WIP
   // ----------
 
-  // Set up the LSF interpolator:
-//  my_p4est_interpolation_nodes_t interp_phi(ngbd_np1);
-//  vec_and_ptr_dim_t phi_dd_(p4est_np1, nodes_np1);
+  if(tstep>=0){
+    dxyz_min(p4est_np1, &dxyz_min_);
 
-//  ngbd_np1->second_derivatives_central(phi.vec, phi_dd.vec);
-//  interp_phi.set_input(phi.vec, phi_dd_.vec[0], phi_dd_.vec[1], quadratic_non_oscillatory_continuous_v2);
+    // Set up the vint interpolator:
+//    my_p4est_interpolation_nodes_t interp_vint_x(ngbd_n);
+//    my_p4est_interpolation_nodes_t interp_vint_y(ngbd_n);
 
-  // First, we will want to check each node that is within a specified band of the interface ...
-  phi.get_array();
+//    interp_vint_x.set_input(v_interface.vec[0], linear);
+//    interp_vint_y.set_input(v_interface.vec[1], linear);
 
-//  foreach_local_node(n, nodes_np1){}
+    // Interpolate vinterface to the new grid:
+    vec_and_ptr_dim_t v_interface_new; v_interface_new.create(p4est_np1, nodes_np1);
 
-  //foreach_node(n, nodes_np1){
-  foreach_local_node(n, nodes_np1){
-    // Check only nodes in a small band around the interface:
-    if(fabs(phi.ptr[n]) /*> 0.2 */< dxyz_close_to_interface ){
-
-      // Get the node location:
-      double xyz_node_[P4EST_DIM];
-      node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz_node_);
-
-
-      // Get the neighbors:
-      quad_neighbor_nodes_of_node_t qnnn;
-      ngbd_np1->get_neighbors(n, qnnn);
-
-      // Get the neighbor locations to check
-//      std::vector<double> dist_to_neigh;
-//      std::vector<int> neigh_idx;
-
-      double dist_to_neigh[num_neighbors_cube] ;
-      p4est_locidx_t neigh_idx[num_neighbors_cube];
-      bool neigh_exists[num_neighbors_cube];
-
-      ngbd_np1->get_all_neighbors(n, neigh_idx, neigh_exists);
-
-      double xyz_neigh_[num_neighbors_cube][P4EST_DIM];
-      const char *neigh_names[] = {"mm0","0m0", "pm0",
-                                   "m00","000","p00",
-                                   "mp0", "0p0", "pp0"};
-
-      PetscPrintf(mpi->comm(),"Node %d with location (%0.4f, %0.4f) has the neighbors: \n", n, xyz_node_[0], xyz_node_[1]);
-      for(int i = 0; i< num_neighbors_cube; i++){
-        if(neigh_exists[i]){
-          node_xyz_fr_n(neigh_idx[i], p4est_np1, nodes_np1, xyz_neigh_[i]);
-          PetscPrintf(mpi->comm(), "(%d) %s - idx %d : (%0.4f, %0.4f) \n", i, neigh_names[i], neigh_idx[i], xyz_neigh_[i][0], xyz_neigh_[i][1]);
-        }
-        else{
-          PetscPrintf(mpi->comm(), "(%d) %s : does not exist \n", i, neigh_names[i], neigh_idx[i]);
-
-        }
-      }
-      PetscPrintf(mpi->comm(), "\n \n");
-
-
-      // Print out the neighborhood info given by qnnn for debugging purposes
-      if(0){
-        p4est_locidx_t node_m00_mm=qnnn.node_m00_mm; p4est_locidx_t node_m00_pm=qnnn.node_m00_pm;
-        p4est_locidx_t node_p00_mm=qnnn.node_p00_mm; p4est_locidx_t node_p00_pm=qnnn.node_p00_pm;
-        p4est_locidx_t node_0m0_mm=qnnn.node_0m0_mm; p4est_locidx_t node_0m0_pm=qnnn.node_0m0_pm;
-        p4est_locidx_t node_0p0_mm=qnnn.node_0p0_mm; p4est_locidx_t node_0p0_pm=qnnn.node_0p0_pm;
-        p4est_locidx_t node_000 = qnnn.node_000;
-
-        double xyz_000[P4EST_DIM]; node_xyz_fr_n(node_000, p4est_np1, nodes_np1, xyz_000);
-
-
-        double xyz_m00_mm[P4EST_DIM]; node_xyz_fr_n(node_m00_mm, p4est_np1, nodes_np1, xyz_m00_mm);
-        double xyz_m00_pm[P4EST_DIM]; node_xyz_fr_n(node_m00_pm, p4est_np1, nodes_np1, xyz_m00_pm);
-
-        double xyz_p00_mm[P4EST_DIM]; node_xyz_fr_n(node_p00_mm, p4est_np1, nodes_np1, xyz_p00_mm);
-        double xyz_p00_pm[P4EST_DIM]; node_xyz_fr_n(node_p00_pm, p4est_np1, nodes_np1, xyz_p00_pm);
-
-        double xyz_0m0_mm[P4EST_DIM]; node_xyz_fr_n(node_0m0_mm, p4est_np1, nodes_np1, xyz_0m0_mm);
-        double xyz_0m0_pm[P4EST_DIM]; node_xyz_fr_n(node_0m0_pm, p4est_np1, nodes_np1, xyz_0m0_pm);
-
-        double xyz_0p0_mm[P4EST_DIM]; node_xyz_fr_n(node_0p0_mm, p4est_np1, nodes_np1, xyz_0p0_mm);
-        double xyz_0p0_pm[P4EST_DIM]; node_xyz_fr_n(node_0p0_pm, p4est_np1, nodes_np1, xyz_0p0_pm);
-
-        PetscPrintf(mpi->comm(), "Node %d with location (%0.4f, %0.4f) has the neighbors: \n "
-                                 "m00_mm - node %d at (%0.4f, %0.4f) \n"
-                                 "0m0_pm - node %d at (%0.4f, %0.4f) \n"
-                                 "p00_mm - node %d at (%0.4f, %0.4f) \n"
-                                 "m00_pm - node %d at (%0.4f, %0.4f) \n"
-                                 "000 - node %d at (%0.4f, %0.4f) \n"
-                                 "p00_pm - node %d at (%0.4f, %0.4f) \n"
-
-                                 "0p0_mm - node %d at (%0.4f, %0.4f) \n"
-
-                                 "0p0_pm - node %d at (%0.4f, %0.4f) \n"
-                                 "0m0_mm - node %d at (%0.4f, %0.4f) \n"
-                                 " \n \n",
-                    n, xyz_node_[0], xyz_node_[1],
-                    node_m00_mm, xyz_m00_mm[0], xyz_m00_mm[1],
-                    node_0m0_pm, xyz_0m0_pm[0], xyz_0m0_pm[1],
-                    node_p00_mm, xyz_p00_mm[0], xyz_p00_mm[1],
-                    node_m00_pm, xyz_m00_pm[0], xyz_m00_pm[1],
-                    node_000, xyz_000[0], xyz_000[1],
-                    node_p00_pm, xyz_p00_pm[0], xyz_p00_pm[1],
-                    node_0p0_mm, xyz_0p0_mm[0], xyz_0p0_mm[1],
-                    node_0p0_pm, xyz_0p0_pm[0], xyz_0p0_pm[1],
-                    node_0m0_mm, xyz_0m0_mm[0], xyz_0m0_mm[1]);
-      }
-
+    my_p4est_interpolation_nodes_t interp_vint(ngbd_n);
+    interp_vint.set_input(v_interface.vec, interp_bw_grids, P4EST_DIM);
+    double xyz[P4EST_DIM];
+    foreach_node(n, nodes_np1){
+      node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+      interp_vint.add_point(n, xyz);
     }
-  }
+    interp_vint.interpolate(v_interface_new.vec);
+    interp_vint.clear();
 
-  phi.restore_array();
+
+    // First, we will want to check each node that is within a specified band of the interface ...
+    phi.get_array();
+
+    v_interface_new.get_array();
+    PetscPrintf(mpi->comm(),"warning: there is code written for a grain separation procedure, but it has not yet been tested. \n");
+
+    foreach_local_node(n, nodes_np1){
+      // Check only nodes in a small band around the interface:
+      if(fabs(phi.ptr[n]) < dxyz_close_to_interface ){
+        // Get the node location:
+        double xyz_node_[P4EST_DIM];
+        node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz_node_);
+
+        // Get the neighbors:
+        p4est_locidx_t neigh_idx[num_neighbors_cube];
+        bool neigh_exists[num_neighbors_cube];
+        double phi_neigh[num_neighbors_cube];
+
+
+        ngbd_np1->get_all_neighbors(n, neigh_idx, neigh_exists);
+
+        double xyz_neigh_[num_neighbors_cube][P4EST_DIM];
+
+
+        bool print_neigh_info = false;
+        const char *neigh_names[] = {"mm0","0m0", "pm0",
+                                     "m00","000","p00",
+                                     "mp0", "0p0", "pp0"};
+
+        if(print_neigh_info) PetscPrintf(mpi->comm(),"Node %d with location (%0.4f, %0.4f) has the neighbors: \n", n, xyz_node_[0], xyz_node_[1]);
+        for(int i = 0; i< num_neighbors_cube; i++){
+          if(neigh_exists[i]){
+            // Get the xyz location of the neighbor
+            node_xyz_fr_n(neigh_idx[i], p4est_np1, nodes_np1, xyz_neigh_[i]);
+
+            // Get LSF value at the neighbor
+            phi_neigh[i] = phi.ptr[neigh_idx[i]];
+
+            // Print out info if we want it
+            if(print_neigh_info)PetscPrintf(mpi->comm(), "(%d) %s - idx %d : (%0.4f, %0.4f) \n", i, neigh_names[i], neigh_idx[i], xyz_neigh_[i][0], xyz_neigh_[i][1]);
+
+          }
+          else{
+            if(print_neigh_info)PetscPrintf(mpi->comm(), "(%d) %s : does not exist \n", i, neigh_names[i], neigh_idx[i]);
+          }
+        }
+        if(print_neigh_info)PetscPrintf(mpi->comm(), "\n \n");
+
+        // Now we check for our special case:
+
+        // Up down and one side case:
+        // -----------------------------
+        // only consider if liquid domain
+  //      bool up_down_one_side = (phi.ptr[n] < 0.);
+        // can only have such a case if both up and down neighbors exist. If they do, it's valid if both up and down
+        // neighbors are in solid domain, while current node is in liquid domain
+//        bool up_down_one_side = (neigh_exists[nn_0p0] && neigh_exists[nn_0m0])?
+//                                ((phi.ptr[n] < 0.) && (phi_neigh[nn_0p0] > 0.) && (phi_neigh[nn_0m0]) > 0.) : false;
+
+//        // Now we check the sign of the right and left neighbors. It's true if either of them are in the positive domain
+//        bool right_side = neigh_exists[nn_p00] ? (phi_neigh[nn_p00] > 0.) : false;
+//        bool left_side = neigh_exists[nn_m00] ? (phi_neigh[nn_m00] > 0.) : false;
+
+//        // We trigger the case if we have a node which is liquid, but both up/down neighbors and at least one side neighbor are solid
+//        up_down_one_side = up_down_one_side && (right_side || left_side);
+
+        // Up-down case:
+        bool up_down_case = (neigh_exists[nn_0p0] && neigh_exists[nn_0m0])?
+                            ((phi.ptr[n] < 0.) && (phi_neigh[nn_0p0] > 0.) && (phi_neigh[nn_0m0]) > 0.) : false;
+
+        // If vint_y at top neighbor is pointing down and vint_y at bottom neighbor is pointing up, it's safe to merge these grains
+        // If ""                     is pointing up   and ""                        is pointing down, we separate the grains
+
+        double vint_y_0p0 = v_interface_new.ptr[1][neigh_idx[nn_0p0]];//(interp_vint_y)(xyz_neigh_[nn_0p0][0], xyz_neigh_[nn_0p0][1]);
+        double vint_y_0m0 = v_interface_new.ptr[1][neigh_idx[nn_0m0]];//(interp_vint_y)(xyz_neigh_[nn_0m0][0], xyz_neigh_[nn_0m0][1]);
+
+
+        bool merge_up_down = up_down_case && (vint_y_0p0 < -EPS) && (vint_y_0m0 > EPS); // top is moving down and bottom is moving up
+        bool separate_up_down = up_down_case && (vint_y_0p0 > EPS) && (vint_y_0m0 < -EPS); // top is moving up and bottom is moving down
+
+        // Case where the node is in the liquid domain, but the direct neighbors to the right and left are solid
+        bool side_side_case = (neigh_exists[nn_p00] && neigh_exists[nn_m00])?
+                              ((phi.ptr[n] < 0.) && (phi_neigh[nn_p00] > 0.) && (phi_neigh[nn_m00]) > 0.) : false;
+
+
+        double vint_x_p00 = v_interface_new.ptr[0][neigh_idx[nn_p00]];//(interp_vint_x)(xyz_neigh_[nn_p00][0], xyz_neigh_[nn_p00][1]);
+        double vint_x_m00 = v_interface_new.ptr[0][neigh_idx[nn_m00]];//(interp_vint_x)(xyz_neigh_[nn_m00][0], xyz_neigh_[nn_m00][1]);
+
+        bool merge_side_side = side_side_case && (vint_x_p00 < -EPS) && (vint_x_m00 > EPS); // right is moving left and left is moving right
+        bool separate_side_side = side_side_case && (vint_x_p00 > EPS) && (vint_x_m00 < -EPS); // right is moving right and left is moving left
+
+//        if(up_down_one_side){
+//          printf("\n \n(ALERT!!!!) On mpi rank %d, we have an up/down + one side case for \n "
+//                 "node %d at (%0.4f, %0.4f) with phi = %0.4f \n "
+//                 "It has the neighbors: "
+//                 "nn_0p0 : %d (%0.4f, %0.4f), phi = %0.4f \n"
+//                 "nn_0m0 : %d (%0.4f, %0.4f), phi = %0.4f \n",
+//                 mpi->rank(), n, xyz_node_[0], xyz_node_[1], phi.ptr[n],
+//                 neigh_idx[nn_0p0], xyz_neigh_[nn_0p0][0],xyz_neigh_[nn_0p0][1], phi_neigh[nn_0p0],
+//                 neigh_idx[nn_0m0], xyz_neigh_[nn_0m0][0],xyz_neigh_[nn_0m0][1], phi_neigh[nn_0m0]);
+
+//          phi.ptr[n]+= dxyz_min_*proximity_smoothing_ ;
+//          printf("Changed phi[n] to %0.4f \n", phi.ptr[n]);
+//        }
+
+        if(up_down_case){
+          printf("\n \n(ALERT!!!!) On mpi rank %d, we have an up/down case for \n "
+                 "node %d at (%0.4f, %0.4f) with phi = %0.4f \n "
+                 "It has the neighbors: "
+                 "nn_0p0 : %d (%0.4f, %0.4f), phi = %0.4f, vy = %0.4f \n"
+                 "nn_0m0 : %d (%0.4f, %0.4f), phi = %0.4f, vy = %0.4f \n"
+                 "Eligible for merging? %d \n"
+                 "Eligible for separation? %d \n \n",
+                 mpi->rank(), n, xyz_node_[0], xyz_node_[1], phi.ptr[n],
+                 neigh_idx[nn_0p0], xyz_neigh_[nn_0p0][0],xyz_neigh_[nn_0p0][1], phi_neigh[nn_0p0], vint_y_0p0,
+                 neigh_idx[nn_0m0], xyz_neigh_[nn_0m0][0],xyz_neigh_[nn_0m0][1], phi_neigh[nn_0m0], vint_y_0m0,
+                 merge_up_down, separate_up_down);
+
+          if(merge_up_down){
+            phi.ptr[n]+= dxyz_min_*proximity_smoothing_ ;
+            printf("Changed phi[n] to %0.4f \n", phi.ptr[n]);
+          }
+          else if(separate_up_down){
+            phi.ptr[n]-= dxyz_min_*proximity_smoothing_ ;
+            printf("Changed phi[n] to %0.4f \n", phi.ptr[n]);
+          }
+        }
+        if(side_side_case){
+          printf("\n \n(ALERT!!!!) On mpi rank %d, we have an side/side case for \n "
+                 "node %d at (%0.4f, %0.4f) with phi = %0.4f \n "
+                 "It has the neighbors: "
+                 "nn_p00 : %d (%0.4f, %0.4f), phi = %0.4f, vx = %0.4f \n"
+                 "nn_m00 : %d (%0.4f, %0.4f), phi = %0.4f, vx = %0.4f \n"
+                 "Eligible for merging? %d \n"
+                 "Eligible for separation? %d \n \n",
+                 mpi->rank(), n, xyz_node_[0], xyz_node_[1], phi.ptr[n],
+                 neigh_idx[nn_p00], xyz_neigh_[nn_p00][0],xyz_neigh_[nn_p00][1], phi_neigh[nn_p00], vint_x_p00,
+                 neigh_idx[nn_m00], xyz_neigh_[nn_m00][0],xyz_neigh_[nn_m00][1], phi_neigh[nn_m00], vint_x_m00,
+                 merge_side_side, separate_side_side);
+
+          if(merge_side_side){
+            phi.ptr[n]+= dxyz_min_*proximity_smoothing_ ;
+            printf("Changed phi[n] to %0.4f \n", phi.ptr[n]);
+          }
+          else if(separate_side_side){
+            phi.ptr[n]-= dxyz_min_*proximity_smoothing_ ;
+            printf("Changed phi[n] to %0.4f \n", phi.ptr[n]);
+          }
+        }
+
+        // Print out the neighborhood info given by qnnn for debugging purposes
+        if(0){
+
+
+          // Get the neighbors:
+          quad_neighbor_nodes_of_node_t qnnn;
+          ngbd_np1->get_neighbors(n, qnnn);
+
+          p4est_locidx_t node_m00_mm=qnnn.node_m00_mm; p4est_locidx_t node_m00_pm=qnnn.node_m00_pm;
+          p4est_locidx_t node_p00_mm=qnnn.node_p00_mm; p4est_locidx_t node_p00_pm=qnnn.node_p00_pm;
+          p4est_locidx_t node_0m0_mm=qnnn.node_0m0_mm; p4est_locidx_t node_0m0_pm=qnnn.node_0m0_pm;
+          p4est_locidx_t node_0p0_mm=qnnn.node_0p0_mm; p4est_locidx_t node_0p0_pm=qnnn.node_0p0_pm;
+          p4est_locidx_t node_000 = qnnn.node_000;
+
+          double xyz_000[P4EST_DIM]; node_xyz_fr_n(node_000, p4est_np1, nodes_np1, xyz_000);
+
+
+          double xyz_m00_mm[P4EST_DIM]; node_xyz_fr_n(node_m00_mm, p4est_np1, nodes_np1, xyz_m00_mm);
+          double xyz_m00_pm[P4EST_DIM]; node_xyz_fr_n(node_m00_pm, p4est_np1, nodes_np1, xyz_m00_pm);
+
+          double xyz_p00_mm[P4EST_DIM]; node_xyz_fr_n(node_p00_mm, p4est_np1, nodes_np1, xyz_p00_mm);
+          double xyz_p00_pm[P4EST_DIM]; node_xyz_fr_n(node_p00_pm, p4est_np1, nodes_np1, xyz_p00_pm);
+
+          double xyz_0m0_mm[P4EST_DIM]; node_xyz_fr_n(node_0m0_mm, p4est_np1, nodes_np1, xyz_0m0_mm);
+          double xyz_0m0_pm[P4EST_DIM]; node_xyz_fr_n(node_0m0_pm, p4est_np1, nodes_np1, xyz_0m0_pm);
+
+          double xyz_0p0_mm[P4EST_DIM]; node_xyz_fr_n(node_0p0_mm, p4est_np1, nodes_np1, xyz_0p0_mm);
+          double xyz_0p0_pm[P4EST_DIM]; node_xyz_fr_n(node_0p0_pm, p4est_np1, nodes_np1, xyz_0p0_pm);
+
+          PetscPrintf(mpi->comm(), "Node %d with location (%0.4f, %0.4f) has the neighbors: \n "
+                                   "m00_mm - node %d at (%0.4f, %0.4f) \n"
+                                   "0m0_pm - node %d at (%0.4f, %0.4f) \n"
+                                   "p00_mm - node %d at (%0.4f, %0.4f) \n"
+                                   "m00_pm - node %d at (%0.4f, %0.4f) \n"
+                                   "000 - node %d at (%0.4f, %0.4f) \n"
+                                   "p00_pm - node %d at (%0.4f, %0.4f) \n"
+
+                                   "0p0_mm - node %d at (%0.4f, %0.4f) \n"
+
+                                   "0p0_pm - node %d at (%0.4f, %0.4f) \n"
+                                   "0m0_mm - node %d at (%0.4f, %0.4f) \n"
+                                   " \n \n",
+                      n, xyz_node_[0], xyz_node_[1],
+                      node_m00_mm, xyz_m00_mm[0], xyz_m00_mm[1],
+                      node_0m0_pm, xyz_0m0_pm[0], xyz_0m0_pm[1],
+                      node_p00_mm, xyz_p00_mm[0], xyz_p00_mm[1],
+                      node_m00_pm, xyz_m00_pm[0], xyz_m00_pm[1],
+                      node_000, xyz_000[0], xyz_000[1],
+                      node_p00_pm, xyz_p00_pm[0], xyz_p00_pm[1],
+                      node_0p0_mm, xyz_0p0_mm[0], xyz_0p0_mm[1],
+                      node_0p0_pm, xyz_0p0_pm[0], xyz_0p0_pm[1],
+                      node_0m0_mm, xyz_0m0_mm[0], xyz_0m0_mm[1]);
+        }
+
+      }
+    }
+
+    phi.restore_array();
+
+    v_interface_new.restore_array();
+    v_interface_new.destroy();
+    ierr = VecGhostUpdateBegin(phi.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(phi.vec, INSERT_VALUES, SCATTER_FORWARD);CHKERRXX(ierr);
+    // TO-FIX: I'm totally ignoring ghost nodes rn
+
+
+
 //  phi_dd_.destroy();
   // ---------
+
+
+    if(1){
+      std::vector<Vec_for_vtk_export_t> point_fields;
+      std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+      point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi_after_uds"));
+
+
+      const char* out_dir = getenv("OUT_DIR_VTK");
+      if(!out_dir){
+        throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+      }
+
+      char filename[1000];
+      sprintf(filename, "%s/snapshot_after_new_algorithm_%d", out_dir, tstep);
+      my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+      point_fields.clear();
+    }
+  }
 
 
 

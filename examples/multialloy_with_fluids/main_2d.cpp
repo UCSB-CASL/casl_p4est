@@ -512,7 +512,7 @@ void set_geometry(){
 
       // Periodicity:
       px = 0;
-      py = 0;
+      py = 1;
 
       // Problem geometry:
       r0 = 0.1;     // Computational radius of the sphere // to-do: check this, p sure it gets ignored
