@@ -2464,6 +2464,18 @@ class BC_INTERFACE_VALUE_TEMP: public my_p4est_stefan_with_fluids_t::interfacial
       temperature_= analytical_T;
       dom = dom_;
     }
+
+    double dissolution_bc_expression() const {
+
+      // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
+      // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
+      if(fabs(deltaT/Tinfty) < EPS){
+        return 0.0;
+      }
+      else{
+        return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
+      }
+    }
     double operator()(DIM(double x, double y, double z)) const
     {
       switch(example_){
@@ -2481,15 +2493,7 @@ class BC_INTERFACE_VALUE_TEMP: public my_p4est_stefan_with_fluids_t::interfacial
       }
       case EVOLVING_POROUS_MEDIA:{
         if(is_dissolution_case){
-          // Dissolution case,
-          // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
-          // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
-          if(fabs(deltaT/Tinfty) < EPS){
-            return 0.0;
-          }
-          else{
-            return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
-          }
+          return dissolution_bc_expression();
         }
         else{
           // temperature case, go with usual Gibbs-Thomson
@@ -2523,14 +2527,7 @@ class BC_INTERFACE_VALUE_TEMP: public my_p4est_stefan_with_fluids_t::interfacial
         return temperature_[dom]->T(DIM(x,y,z));
       }
       case DISSOLVING_DISK_BENCHMARK:{
-        // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
-        // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
-        if(fabs(deltaT/Tinfty) < EPS){
-          return 0.0;
-        }
-        else{
-          return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
-        }
+        return dissolution_bc_expression();
       }
       default:
         throw std::runtime_error("BC INTERFACE VALUE TEMP: unrecognized example \n");
@@ -2577,7 +2574,7 @@ class BC_interface_coeff: public CF_DIM{
     switch(example_){
     case FRANK_SPHERE:
     case DENDRITE_TEST:
-    case EVOLVING_POROUS_MEDIA:
+
     case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
@@ -2585,6 +2582,14 @@ class BC_interface_coeff: public CF_DIM{
     case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:
       return 1.0;
+    case EVOLVING_POROUS_MEDIA:{
+      if(is_dissolution_case){
+        return Da;
+      }
+      else{
+        return 1.0;
+      }
+    }
     case DISSOLVING_DISK_BENCHMARK:
       // Elyce to-do 12/14/21: update this appropriately (may have to adjust depending on nondim type)
       //        double Da = k_diss*l_char/D;
