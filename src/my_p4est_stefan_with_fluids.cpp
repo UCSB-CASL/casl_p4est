@@ -2077,7 +2077,7 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   //std:: cout<< "Hello world ns 20\n";
 } // end of "navier_stokes_step()"
 
-void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(){
+void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool use_external_boussinesq_vec=false, Vec externally_defined_boussinesq_vec=NULL){
   //std:: cout<< "Hello world 1 \n";
 
 //  int vnsize;
@@ -2140,6 +2140,8 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(){
   // -------------------------------
   // Handle the Boussinesq case setup for the RHS, if relevant:
   // ---------------------------
+  // ALERT: at this time, we assume that if the boussinesq approx is activated, there cannot also be user defined external forces provided by a CF.
+  // To-do: fix this at some point
   if(use_boussinesq && (!there_is_user_provided_external_force_NS)){
     switch(problem_dimensionalization_type){
     case NONDIM_BY_FLUID_VELOCITY:{
@@ -2174,6 +2176,13 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(){
       throw std::runtime_error("setting natural convection -- unrecognized problem dimensionalization formulation \n");
     }
     }
+  }
+
+  // This case right now is only being used by the multialloy w/ fluids project
+  if(use_external_boussinesq_vec){
+    ns->boussinesq_approx=true;
+    ns->set_external_forces_using_vector(externally_defined_boussinesq_vec);
+
   }
 
 //  std:: cout<< "Hello world 7 \n";

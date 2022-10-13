@@ -164,6 +164,12 @@ double* initial_conc_all[] = { &initial_conc_0.val,
                                &initial_conc_2.val,
                                &initial_conc_3.val };
 
+param_t<double> eutectic_conc_0 (pl, 0.4, "eutectic_conc_0", "Initial concentration of component no. 0");
+param_t<double> eutectic_conc_1 (pl, 0.4, "eutectic_conc_1", "Initial concentration of component no. 1");
+param_t<double> eutectic_conc_2 (pl, 0.4, "eutectic_conc_2", "Initial concentration of component no. 2");
+param_t<double> eutectic_conc_3 (pl, 0.4, "eutectic_conc_3", "Initial concentration of component no. 3");
+
+
 param_t<double> solute_diff_0 (pl, 1.0e-5, "solute_diff_0", "Diffusivity of component no. 0 in liquid phase - cm2.s-1");
 param_t<double> solute_diff_1 (pl, 1.0e-5, "solute_diff_1", "Diffusivity of component no. 1 in liquid phase - cm2.s-1");
 param_t<double> solute_diff_2 (pl, 1.0e-5, "solute_diff_2", "Diffusivity of component no. 2 in liquid phase - cm2.s-1");
@@ -178,6 +184,16 @@ param_t<double> eps_c    (pl, 0, "eps_c",    "Curvature undercooling coefficient
 param_t<double> eps_v    (pl, 0, "eps_v",    "Kinetic undercooling coefficient - s.K.cm-1");
 param_t<double> eps_a    (pl, 0, "eps_a",    "Anisotropy coefficient");
 param_t<double> symmetry (pl, 4, "symmetry", "Symmetric of crystals");
+
+// parameters for the fluid flow problem:
+param_t<double> mu_l (pl, 1.0e-3, "mu_l", "viscosity of the fluid ");
+param_t<double> beta_T(pl, 1.0, "beta_T", "coefficient of thermal expansion - boussinesq");
+param_t<double> beta_C_0(pl, 1.0, "beta_C_0", "coefficient of concentration expansion for comp 0 -- boussinesq");
+param_t<double> beta_C_1(pl, 1.0, "beta_C_1", "coefficient of concentration expansion for comp 1 -- boussinesq");
+param_t<double> beta_C_2(pl, 1.0, "beta_C_2", "coefficient of concentration expansion for comp 2 -- boussinesq");
+param_t<double> beta_C_3(pl, 1.0, "beta_C_3", "coefficient of concentration expansion for comp 3 -- boussinesq");
+
+param_t<double> l_char(pl, 1.0, "l_char", "characteristic length scale of the problem - used to set nondimensional groups");
 
 // auxiliary variable for linearized phase diagram
 param_t<double> melting_temp (pl, 1728, "melting_temp", "Pure-substance melting point for linearized slope (pl, K");
@@ -834,6 +850,59 @@ double part_coeff(int which_comp, double *c)
   }
 }
 
+
+void compute_nondimensional_groups(int mpicomm, my_p4est_multialloy_t* multialloy_solver){
+// Pr, Le, St, RaT, RaC0, RaC1, RaC2, RaC3
+  double thermal_diff_l = thermal_cond_l.val/density_l.val/heat_capacity_l.val;
+  double thermal_diff_s = thermal_cond_s.val/density_s.val/heat_capacity_s.val;
+  double deltaT = temp_gradient.val * l_char.val;
+  double gravity = 9.81;
+  PetscPrintf(mpicomm, "RED ALERT: move the defn of gravity to somewhere more reasonable please \n");
+
+  // Prandtl
+  double Pr = mu_l.val/(density_l.val * thermal_diff_l);
+
+  // Lewis numbers
+  double Le_0 = thermal_diff_l/solute_diff_0.val;
+  double Le_1 = thermal_diff_l/solute_diff_1.val;
+  double Le_2 = thermal_diff_l/solute_diff_2.val;
+  double Le_3 = thermal_diff_l/solute_diff_3.val;
+
+  // Stefan
+  //RED ALERT: this definition of Stefan number assumes that the characteristic length scale *is* the
+  // length of the computational domain
+  PetscPrintf(mpicomm, "RED ALERT: Definition of Stefan number needs to be better refined \n");
+  double St = heat_capacity_l.val * (deltaT)/latent_heat.val;
+
+  // Rayleigh numbers
+  double RaT = density_l.val * beta_T.val * gravity * deltaT * pow(l_char.val, 3.0) / (mu_l.val * thermal_diff_l);
+  PetscPrintf(mpicomm, "RED ALERT: delta T definition of Rayleigh number has same assumption as Stefan number \n");
+
+  double deltaC_0 = initial_conc_0.val - eutectic_conc_0.val;
+  double deltaC_1 = initial_conc_1.val - eutectic_conc_1.val;
+  double deltaC_2 = initial_conc_2.val - eutectic_conc_2.val;
+  double deltaC_3 = initial_conc_3.val - eutectic_conc_3.val;
+
+
+  double RaC_0 = density_l.val * beta_C_0.val * gravity * (initial_conc_0.val - eutectic_conc_0.val) * pow(l_char.val, 3.0)/(mu_l.val * solute_diff_0.val);
+  double RaC_1 = density_l.val * beta_C_1.val * gravity * (initial_conc_1.val - eutectic_conc_1.val) * pow(l_char.val, 3.0)/(mu_l.val * solute_diff_1.val);
+  double RaC_2 = density_l.val * beta_C_2.val * gravity * (initial_conc_2.val - eutectic_conc_2.val) * pow(l_char.val, 3.0)/(mu_l.val * solute_diff_2.val);
+  double RaC_3 = density_l.val * beta_C_3.val * gravity * (initial_conc_3.val - eutectic_conc_3.val) * pow(l_char.val, 3.0)/(mu_l.val * solute_diff_3.val);
+  PetscPrintf(mpicomm, "RED ALERT: we gave absolutely no thought to how we defined the eutectic concentrations at this point in time \n");
+
+
+  PetscPrintf(mpicomm, "Nondimensional groups for fluids problem are: \n"
+                       "Pr = %g \n St = %g \n "
+                       "RaT = %g \n RaC_0 =%g, RaC_1 = %g, RaC_2 = %g, RaC_3 = %g"
+                       "Le_0 = %g, Le_1 = %g, Le_2 = %g, Le_3 = %g \n \n", Pr, St,
+              RaT, RaC_0, RaC_1, RaC_2, RaC_3,
+              Le_0, Le_1, Le_2, Le_3);
+
+  multialloy_solver->set_nondimensional_groups(Pr, St,
+                                               Le_0, Le_1, Le_2, Le_3,
+                                               RaT, RaC_0, RaC_1, RaC_2, RaC_3,
+                                               deltaT, deltaC_0, deltaC_1, deltaC_2, deltaC_3);
+}
 // ----------------------------------------
 // analytical solution
 // ----------------------------------------
@@ -2050,6 +2119,22 @@ int main (int argc, char* argv[])
     ierr = PetscPrintf(mpi.comm(), "solute_diff_3: %g\n", solute_diff_3.val); CHKERRXX(ierr);
     ierr = PetscPrintf(mpi.comm(), "temp_gradient: %g\n", temp_gradient.val); CHKERRXX(ierr);
     ierr = PetscPrintf(mpi.comm(), "cooling_velocity: %g\n", cooling_velocity.val); CHKERRXX(ierr);
+
+    ierr = PetscPrintf(mpi.comm(), "related to fluid flow problem : \n \n", cooling_velocity.val); CHKERRXX(ierr);
+
+    ierr = PetscPrintf(mpi.comm(), "viscosity_l: %g\n", mu_l.val); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "beta_T (bouss.): %g\n", beta_T.val); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "beta_C_0: %g\n", beta_C_0.val); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "beta_C_1: %g\n", beta_C_1.val); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "beta_C_2: %g\n\n", beta_C_2.val); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "beta_C_3: %g\n\n", beta_C_3.val); CHKERRXX(ierr);
+
+    ierr = PetscPrintf(mpi.comm(), "characteristic length scale: %g\n", l_char.val); CHKERRXX(ierr);
+
+
+    // Physical parameters to add:
+    // mu_l
+    // beta_T, beta_C (boussinesq)
   }
 
   parStopWatch w1;
@@ -2090,15 +2175,21 @@ int main (int argc, char* argv[])
 
   /* initialize the solver */
   my_p4est_multialloy_t mas(num_comps.val, order_in_time.val);
+
+
+  mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin_new, lmax_new, lip.val, band.val);
+  ierr = PetscPrintf(mpi.comm(), "initialize complete \n"); CHKERRXX(ierr);
+
   bool solve_w_fluids=true;
   if(solve_w_fluids){
     mas.set_mpi_env(&mpi);
     mas.set_solve_with_fluids();
     //std::cout<<"Hello world 2_1 main \n";
+
+    // Calculate nondimensional groups:
+    compute_nondimensional_groups(mpi.comm(), &mas);
   }
 
-  mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin_new, lmax_new, lip.val, band.val);
-  ierr = PetscPrintf(mpi.comm(), "initialize complete \n"); CHKERRXX(ierr);
   //std::cout<<"Hello world 3 main \n";
   if(solve_w_fluids){
     //std::cout<<"Hello world 3_1 main \n";

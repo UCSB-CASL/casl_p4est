@@ -493,9 +493,9 @@ void my_p4est_multialloy_t::initialize_for_fluids(){
   // TO-DO MULTICOMP: will make this more user friendly later, but this serves as a first pass
   stefan_w_fluids_solver->set_problem_dimensionalization_type(NONDIM_BY_SCALAR_DIFFUSIVITY);
 
-  stefan_w_fluids_solver->set_Re(1.);
+  // irrelevant since we don't know Re, we nondim by diffusivity stefan_w_fluids_solver->set_Re(1.);
 
-  stefan_w_fluids_solver->set_Pr(1.);
+  stefan_w_fluids_solver->set_Pr(Pr);
 
   stefan_w_fluids_solver->set_NS_advection_order(2);
 
@@ -2482,13 +2482,28 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // -
   // TO-DO: put these below in initialize (I think)
   // - boundary conditions (these can just be passed by multialloy once) (think it is sufficient to do this in our initialize_for_fluids() fxn)
-  // - any boussinesq options
+  // - any boussinesq options -- NEED TO PROVIDE THE BOUSSINESQ TERM
   // - problem dimensionalization type (did this in initialize)
   // - fluid velocity vectors, vorticity vector, pressure vector
   
   // (3) solve the NS 
+  vec_and_ptr_t boussinesq_terms_rhs_for_ns;
+  boussinesq_terms_rhs_for_ns.create(p4est_, nodes_);
+  stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(true, boussinesq_terms_rhs_for_ns.vec);
+  boussinesq_terms_rhs_for_ns.destroy(); // move this somewhere more appropriate later
 
-  stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem();
+
+  boussinesq_terms_rhs_for_ns.get_array();
+  tl_[0].get_array();
+  cl_[0].get_array();
+
+  foreach_node(n, nodes_){
+
+  }
+  boussinesq_terms_rhs_for_ns.restore_array();
+  tl_[0].restore_array();
+  cl_[0].get_array();
+
 //  std::cout<<"step_w_fluids line 2420\n";
   // (4) get out the velocities, pressure, vort, for visualization
   v_nm1 = stefan_w_fluids_solver->get_v_nm1();

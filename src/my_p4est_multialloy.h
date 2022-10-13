@@ -205,6 +205,19 @@ private:
   // simulation scale
   double scaling_;
 
+  // -------------------------------------------------
+  // Physical parameters and nondim groups for problem coupled with fluids
+  // -------------------------------------------------
+  double mu_l; // fluid viscosity
+  double Pr;
+  double Le_0, Le_1, Le_2, Le_3;
+  double St;
+  double deltaC_0, deltaC_1, deltaC_2, deltaC_3;
+  double deltaT;
+
+  double RaT, RaC_0, RaC_1, RaC_2, RaC_3;
+  double l_char; // characteristic length scale
+
   //--------------------------------------------------
   // solver parameters
   //--------------------------------------------------
@@ -380,8 +393,39 @@ public:
     interp.interpolate(solid_seed_.vec);
   }
 
+  // Setting functions for coupled problem with fluids:
+  // ---------------------------------------------------
   inline void set_solve_with_fluids(){solve_with_fluids=true;}
 
+  void set_mu_l(double mu_l_){mu_l = mu_l_;}
+  void set_nondimensional_groups(double Pr_, double St_,
+                                 double Le_0_, double Le_1_, double Le_2_, double Le_3_,
+                                 double RaT_,
+                                 double RaC_0_, double RaC_1_, double RaC_2_, double RaC_3_,
+                                 double deltaT_,
+                                 double deltaC_0_, double deltaC_1_, double deltaC_2_, double deltaC_3_){
+    Pr = Pr_;
+    St = St_;
+
+    Le_0 = Le_0_;
+    Le_1 = Le_1_;
+    Le_2 = Le_2_;
+    Le_3 = Le_3_;
+
+    RaT = RaT_;
+
+    RaC_0 = RaC_0_;
+    RaC_1 = RaC_1_;
+    RaC_2 = RaC_2_;
+    RaC_3 = RaC_3_;
+
+    deltaT = deltaT_;
+
+    deltaC_0 = deltaC_0_; deltaC_1 = deltaC_1_; deltaC_2 = deltaC_2_; deltaC_3 = deltaC_3_;
+  }
+
+
+  // ---------------------------------------------------
   inline void set_container_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
     contr_bc_type_temp_  =  bc_type;
