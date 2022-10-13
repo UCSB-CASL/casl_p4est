@@ -508,6 +508,7 @@ public:
   // -------------------------------------------------------
   // Auxiliary initialization fxns:
   // -------------------------------------------------------
+  void perform_ghost_expansions(p4est_t* p4est_, p4est_ghost_t* ghost_);
 
   /*!
    * \brief initialize_grids:This function initializes the grids p4est_n and p4est_np1 depending on the

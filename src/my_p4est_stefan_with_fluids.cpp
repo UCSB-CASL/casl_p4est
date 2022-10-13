@@ -312,6 +312,12 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
 
 } // end of constructor
 
+void my_p4est_stefan_with_fluids_t::perform_ghost_expansions(p4est_t* p4est_, p4est_ghost_t* ghost_){
+  int num_expansions = cfl_NS > 1. ? ceil(cfl_NS - 1) + 1: 1;
+  for(int i=0; i<num_expansions; i++){
+    my_p4est_ghost_expand(p4est_, ghost_);
+  }
+}
 void my_p4est_stefan_with_fluids_t::initialize_grids(){
 
   // Create the p4est at time n:
@@ -327,7 +333,8 @@ void my_p4est_stefan_with_fluids_t::initialize_grids(){
   my_p4est_partition(p4est_n,P4EST_FALSE,NULL);
 
   ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est_n,ghost_n);
+//  my_p4est_ghost_expand(p4est_n,ghost_n);
+  perform_ghost_expansions(p4est_n, ghost_n);
   nodes_n = my_p4est_nodes_new(p4est_n, ghost_n); //same
 
   hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, &brick);
@@ -340,7 +347,8 @@ void my_p4est_stefan_with_fluids_t::initialize_grids(){
   my_p4est_partition(p4est_np1,P4EST_FALSE,NULL);
 
   ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est_np1,ghost_np1);
+//  my_p4est_ghost_expand(p4est_np1,ghost_np1);
+  perform_ghost_expansions(p4est_np1, ghost_np1);
   nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
   // Get the new neighbors:
@@ -2326,7 +2334,8 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
 
         my_p4est_partition(p4est_np1,P4EST_FALSE,NULL);
         p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1,P4EST_CONNECT_FULL);
-        my_p4est_ghost_expand(p4est_np1,ghost_np1);
+//        my_p4est_ghost_expand(p4est_np1,ghost_np1);
+        perform_ghost_expansions(p4est_np1, ghost_np1);
         p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1,ghost_np1);
 
         // Destroy fields_new and create it on the new grid:
@@ -2416,7 +2425,8 @@ void my_p4est_stefan_with_fluids_t::update_the_grid(){
   // -------------------------------
   p4est_np1 = p4est_copy(p4est_n, P4EST_FALSE); // copy the grid but not the data
   ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est_np1,ghost_np1);
+//  my_p4est_ghost_expand(p4est_np1,ghost_np1);
+  perform_ghost_expansions(p4est_np1, ghost_np1);
   nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
   // Get the new neighbors: // TO-DO : no need to do this here, is there ?
