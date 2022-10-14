@@ -1185,6 +1185,25 @@ void my_p4est_poisson_nodes_multialloy_t::compute_psi_c0n()
 
 void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int num)
 {
+  // -----------------------------------------------
+  // TEMP: Elyce adding terms for eventual use in multialloy coupled with fluids:
+  // -----------------------------------------------
+  bool solving_with_nondim_for_fluid = false;
+
+  double Le_J[num_comps_];
+  double l_char = 1.;
+  double thermal_diff_l = 1.;
+  double delta_C_char[num_comps_];
+  double Cinf_char[num_comps_];
+
+  // initialize things to 1 for now so I don't break everything:
+  for(size_t k =0; k<num_comps_; k++){
+    Le_J[k] = 1.0;
+    delta_C_char[k] = 1.;
+    Cinf_char[k] = 0.;
+  }
+
+  // -----------------------------------------------
 //  ierr = PetscPrintf(p4est_->mpicomm, "Computing bc values... \n"); CHKERRXX(ierr);
 
   my_p4est_interpolation_nodes_local_t interp_local(node_neighbors_);
@@ -1221,6 +1240,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       interp_local.initialize(n);
       interp_initialized = true;
 
+      // E: Computing at the projection point: the interfacial velocity value from solute rejection, the jump in temperature value, and the jump in temperature flux (governed by the Stefan condition)
       // projection point
       idx = solver_temp_->pw_jc_idx_taylor_pt(0, n, 0);
       solver_temp_->pw_jc_xyz_taylor_pt(0, idx, xyz_pr);
@@ -1229,6 +1249,8 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       foreach_dimension(dim)
       {
         interp_local.set_input(front_normal_.ptr[dim], linear); normal[dim] = interp_local.value(xyz_pr);
+
+        // Compute dC0/dn and temporarily set it as "vn_pr"
         interp_local.set_input(c0d_.ptr[dim],          linear); vn_pr += normal[dim]*interp_local.value(xyz_pr);
       }
 
@@ -1239,11 +1261,24 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
         c_all[i] = interp_local.value(xyz_pr);
       }
 
+      // Compute actual interfacial velocity now as "vn_pr", as specified by the solute rejection equation
       vn_pr = (conc_diff_[0]*vn_pr - front_conc_flux_[0]->value(xyz_pr))/c_all[0]/(1.0-part_coeff_(0, c_all.data()));
+
+      // ---------------------
+      // Elyce Modification:
+      // ---------------------
+      if(solving_with_nondim_for_fluid) {
+        vn_pr = (Le_J[0]*vn_pr - (l_char/(thermal_diff_l*delta_C_char[0]))*front_conc_flux_[0]->value(xyz_pr))/
+                (c_all[0] + Cinf_char[0]/delta_C_char[0])/(1.0-part_coeff_(0, c_all.data()));
+      }
+      // ---------------------
 
       pw_t_sol_jump_taylor_[idx] = front_temp_value_jump_->value(xyz_pr);
       pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) - latent_heat_*vn_pr;
+      // ALERT ^ line above is not super compatible for modifying for nondimensionalization, I need to look into how front_temp_flux_jump_ is created
+      PetscPrintf(p4est_->mpicomm, "ALERT: multialloy: temp jump is nontrivial to modify for nondimensionalization. Need to address this. \n");
 
+      // E: Computing at the centroid point: the interfacial velocity value from solute rejection, the jump in temperature value, and the jump in temperature flux (governed by the Stefan condition)
       // centroid
       idx = solver_temp_->pw_jc_idx_integr_pt(0, n, 0);
       solver_temp_->pw_jc_xyz_integr_pt(0, idx, xyz_cd);
@@ -1264,8 +1299,20 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       }
 
       vn_cd = (conc_diff_[0]*vn_cd - front_conc_flux_[0]->value(xyz_cd))/c_all[0]/(1.0-part_coeff_(0, c_all.data()));
+      // ---------------------
+      // Elyce Modification:
+      // ---------------------
+      if(solving_with_nondim_for_fluid) {
+        vn_pr = (Le_J[0]*vn_pr - (l_char/(thermal_diff_l*delta_C_char[0]))*front_conc_flux_[0]->value(xyz_pr))/
+                (c_all[0] + Cinf_char[0]/delta_C_char[0])/(1.0-part_coeff_(0, c_all.data()));
+      }
+      // ---------------------
+
 
       pw_t_flx_jump_integr_[idx] = front_temp_flux_jump_->value(xyz_cd) - latent_heat_*vn_cd;
+      // ALERT: need to modify the above ^ in the same way I address the other one
+      PetscPrintf(p4est_->mpicomm, "ALERT: multialloy: temp jump is nontrivial to modify for nondimensionalization. Need to address this. \n");
+
     }
 
     // iterate through points that impose robin boundary conditions for concentrations
