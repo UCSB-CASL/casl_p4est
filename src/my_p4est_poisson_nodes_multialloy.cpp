@@ -1277,6 +1277,19 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) - latent_heat_*vn_pr;
       // ALERT ^ line above is not super compatible for modifying for nondimensionalization, I need to look into how front_temp_flux_jump_ is created
       PetscPrintf(p4est_->mpicomm, "ALERT: multialloy: temp jump is nontrivial to modify for nondimensionalization. Need to address this. \n");
+      // Note: Looks like front_temp_flux_jump and front_temp_value_jump are set in "set_front_conditions", and are provided as CF's .
+      // I need to look into how multialloy provides these
+      // Perhaps these are how the external jumps are provided, i.e the external source terms?
+
+      // If Daniil's condition is [kl dTl/dn - ks dTs/dn] = hS + vn*L, then our analogous one
+      // that could match his format would be:
+      // [kl dTl/dn - ks dTs/dn] = (hS)/St * (alphal/alphas)*thermal_cond_s + vn/St*(alphal/alphas)*thermal_cond_s
+
+      // BUT, if our system is nondimensionalized, then actually we will want to prescribe
+      //[dTl/dn - dTs/dn], which is going to be trickier to do ...
+
+      // OUR actual condition is given by:
+      // [(kl/ks)*dTl/dn - dTs/dn] = vn*(1/St)*(alphal/alphas) (neglecting that source term)
 
       // E: Computing at the centroid point: the interfacial velocity value from solute rejection, the jump in temperature value, and the jump in temperature flux (governed by the Stefan condition)
       // centroid
@@ -1303,7 +1316,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       // Elyce Modification:
       // ---------------------
       if(solving_with_nondim_for_fluid) {
-        vn_pr = (Le_J[0]*vn_pr - (l_char/(thermal_diff_l*delta_C_char[0]))*front_conc_flux_[0]->value(xyz_pr))/
+        vn_cd = (Le_J[0]*vn_cd - (l_char/(thermal_diff_l*delta_C_char[0]))*front_conc_flux_[0]->value(xyz_cd))/
                 (c_all[0] + Cinf_char[0]/delta_C_char[0])/(1.0-part_coeff_(0, c_all.data()));
       }
       // ---------------------
@@ -1347,10 +1360,31 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
         }
 
         vn_cd = (conc_diff_[0]*vn_cd - front_conc_flux_[0]->value(xyz_cd))/c_all[0]/(1.0-part_coeff_(0, c_all.data()));
+        // ---------------------
+        // Elyce Modification:
+        // ---------------------
+        if(solving_with_nondim_for_fluid) {
+          vn_cd = (Le_J[0]*vn_cd - (l_char/(thermal_diff_l*delta_C_char[0]))*front_conc_flux_[0]->value(xyz_cd))/
+                  (c_all[0] + Cinf_char[0]/delta_C_char[0])/(1.0-part_coeff_(0, c_all.data()));
+        }
+        // ---------------------
 
 //        vn_cd = vn_exact_->value(xyz_cd);
         pw_c_values_robin_[i][idx] = front_conc_flux_[i]->value(xyz_cd);
         pw_c_coeffs_robin_[i][idx] = -(1.0-part_coeff_(i, c_all.data()))*vn_cd;
+
+        // ---------------------
+        // Elyce Modification:
+        // ---------------------
+        if(solving_with_nondim_for_fluid){
+          pw_c_values_robin_[i][idx] = (1./Le_J[i])*(l_char/(thermal_diff_l*delta_C_char[i]))*front_conc_flux_[i]->value(xyz_cd) +
+                                       (1./Le_J[i])*(vn_cd)*(1.0 - part_coeff_(i, c_all.data()))*(Cinf_char[i]/delta_C_char[i]) ;
+
+          pw_c_coeffs_robin_[i][idx] = -(1./Le_J[i])*(1.0-part_coeff_(i, c_all.data()))*vn_cd;
+
+        }
+        // ---------------------
+
       }
     }
   }
@@ -1369,6 +1403,8 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
 //  ierr = PetscPrintf(p4est_->mpicomm, "Done.\n"); CHKERRXX(ierr);
 }
 
+
+// Elyce note: I believe we will have to modify the below as well, to reflect adjustments we made to the above fxn for BCs
 void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values(int start, int num)
 {
 //  ierr = PetscPrintf(p4est_->mpicomm, "Computing bc psi values... \n"); CHKERRXX(ierr);
@@ -1617,6 +1653,8 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values(int start, in
 //  ierr = PetscPrintf(p4est_->mpicomm, "Done.\n"); CHKERRXX(ierr);
 }
 
+
+// ELYCe NOTE: need to modify the below fxn, I believe that's where the Gibbs error gets calculated?
 void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_adjust_c0, 0, 0, 0, 0); CHKERRXX(ierr);
