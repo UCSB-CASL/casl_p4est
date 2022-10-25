@@ -1045,8 +1045,6 @@ void my_p4est_stefan_with_fluids_t::poisson_nodes_step_for_scalar_temp_conc_prob
                           phi_dd.vec[0], phi_dd.vec[1],
                           *bc_interface_type_temp[LIQUID_DOMAIN],
                           *bc_interface_val_temp[LIQUID_DOMAIN], *bc_interface_robin_coeff_temp[LIQUID_DOMAIN]);
-//  PetscPrintf(mpi->comm(), "bc interface type = %d, bc interface val = %f, robin coeff = %f \n",
-//              *bc_interface_type_temp[LIQUID_DOMAIN], (*bc_interface_val_temp[LIQUID_DOMAIN])(1.,1.), *bc_interface_robin_coeff_temp[LIQUID_DOMAIN]);
 
   if(do_we_solve_for_Ts){
     solver_Ts->add_boundary(MLS_INTERSECTION, phi_solid.vec,
@@ -1072,7 +1070,6 @@ void my_p4est_stefan_with_fluids_t::poisson_nodes_step_for_scalar_temp_conc_prob
                               *bc_interface_robin_coeff_temp_substrate[SOLID_DOMAIN]);
     }
   }
-
   // Set diagonal for Tl:
   if(solve_navier_stokes){ // Cases with advection use semi lagrangian advection discretization in time
     if(advection_sl_order ==2){ // 2nd order semi lagrangian (BDF2 coefficients)
@@ -1132,7 +1129,6 @@ void my_p4est_stefan_with_fluids_t::poisson_nodes_step_for_scalar_temp_conc_prob
   }
   }
 
-
   // Set RHS:
   solver_Tl->set_rhs(rhs_Tl.vec);
   if(do_we_solve_for_Ts) solver_Ts->set_rhs(rhs_Ts.vec);
@@ -1156,9 +1152,31 @@ void my_p4est_stefan_with_fluids_t::poisson_nodes_step_for_scalar_temp_conc_prob
   solver_Tl->set_wc(*bc_wall_type_temp[LIQUID_DOMAIN], *bc_wall_value_temp[LIQUID_DOMAIN]);
   if(do_we_solve_for_Ts) solver_Ts->set_wc(*bc_wall_type_temp[SOLID_DOMAIN], *bc_wall_value_temp[SOLID_DOMAIN]);
 
+//  // TEMPORARY: output the grid and LSF that the poisson solver is seeing
+//  // -------------------------------------------------
+//  if(1){
+//    std::vector<Vec_for_vtk_export_t> point_fields;
+//    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+//    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi_poiss"));
+
+
+//    const char* out_dir = getenv("OUT_DIR_VTK");
+//    if(!out_dir){
+//      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+//    }
+
+//    char filename[1000];
+//    sprintf(filename, "%s/snapshot_for_poisson_Tl_%d", out_dir, tstep);
+//    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+//    point_fields.clear();
+//  }
+
+//  // --------------------------------------------------
+
+
   // Preassemble the linear system
   solver_Tl->preassemble_linear_system();
-
   if(do_we_solve_for_Ts) solver_Ts->preassemble_linear_system();
 
   // Solve the system:
@@ -2670,7 +2688,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
   // -----------------------------------------------------------------
   // TEMP BEGIN: save phi to vtk *before* merging alogirhtm is applied
   // -----------------------------------------------------------------
-  if(1){
+  if(0){
     std::vector<Vec_for_vtk_export_t> point_fields;
     std::vector<Vec_for_vtk_export_t> cell_fields = {};
 
@@ -2919,7 +2937,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
   // -----------------------------------------------------------------
   // TEMP BEGIN: save phi to vtk *directly after* merging alogirhtm is applied
   // -----------------------------------------------------------------
-  if(1 && daniil_algorithm_on){
+  if(0 && daniil_algorithm_on){
     std::vector<Vec_for_vtk_export_t> point_fields;
     std::vector<Vec_for_vtk_export_t> cell_fields = {};
 
@@ -3175,10 +3193,108 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
                       node_0p0_mm, xyz_0p0_mm[0], xyz_0p0_mm[1],
                       node_0p0_pm, xyz_0p0_pm[0], xyz_0p0_pm[1],
                       node_0m0_mm, xyz_0m0_mm[0], xyz_0m0_mm[1]);
+
+//          PetscPrintf(mpi->comm(), "Also, you could consider: \n \n"
+//                                   "node_m00 = %d , with d_m00 = %0.4f \n"
+//                                   "node_p00 = %d, with d_p00 = %0.4f \n"
+//                                   "node_0m0 = %d, with d_0m0 = %0.4f \n"
+//                                   "node_0p0 = %d, with d_0p0 = %0.4f \n ",
+//                      qnnn.neighbor_m00(), qnnn.d_m00,
+//                      qnnn.neighbor_p00(), qnnn.d_p00,
+//                      qnnn.neighbor_0m0(), qnnn.d_0m0,
+//                      qnnn.neighbor_0p0(), qnnn.d_0p0);
+
+//          if(qnnn.d_m00 < 0. || qnnn.d_p00 < 0. || qnnn.d_0m0 < 0. || qnnn.d_0p0 < 0.){
+//            printf("Also, you could consider (on rank %d) : \n \n"
+//                   "node_m00 = %d , with d_m00 = %0.4f \n"
+//                   "node_p00 = %d, with d_p00 = %0.4f \n"
+//                   "node_0m0 = %d, with d_0m0 = %0.4f \n"
+//                   "node_0p0 = %d, with d_0p0 = %0.4f \n ", mpi->comm(),
+//                   qnnn.neighbor_m00(), qnnn.d_m00,
+//                   qnnn.neighbor_p00(), qnnn.d_p00,
+//                   qnnn.neighbor_0m0(), qnnn.d_0m0,
+//                   qnnn.neighbor_0p0(), qnnn.d_0p0);
+//          }
+
         }
+
 
       }
     }
+
+//    foreach_local_node(n, nodes_np1){
+//      double xyz_node_[P4EST_DIM];
+//      node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz_node_);
+
+//      // Get the neighbors:
+//      quad_neighbor_nodes_of_node_t qnnn;
+//      ngbd_np1->get_neighbors(n, qnnn);
+
+//      p4est_locidx_t node_m00_mm=qnnn.node_m00_mm; p4est_locidx_t node_m00_pm=qnnn.node_m00_pm;
+//      p4est_locidx_t node_p00_mm=qnnn.node_p00_mm; p4est_locidx_t node_p00_pm=qnnn.node_p00_pm;
+//      p4est_locidx_t node_0m0_mm=qnnn.node_0m0_mm; p4est_locidx_t node_0m0_pm=qnnn.node_0m0_pm;
+//      p4est_locidx_t node_0p0_mm=qnnn.node_0p0_mm; p4est_locidx_t node_0p0_pm=qnnn.node_0p0_pm;
+//      p4est_locidx_t node_000 = qnnn.node_000;
+
+//      double xyz_000[P4EST_DIM]; node_xyz_fr_n(node_000, p4est_np1, nodes_np1, xyz_000);
+
+
+//      double xyz_m00_mm[P4EST_DIM]; node_xyz_fr_n(node_m00_mm, p4est_np1, nodes_np1, xyz_m00_mm);
+//      double xyz_m00_pm[P4EST_DIM]; node_xyz_fr_n(node_m00_pm, p4est_np1, nodes_np1, xyz_m00_pm);
+
+//      double xyz_p00_mm[P4EST_DIM]; node_xyz_fr_n(node_p00_mm, p4est_np1, nodes_np1, xyz_p00_mm);
+//      double xyz_p00_pm[P4EST_DIM]; node_xyz_fr_n(node_p00_pm, p4est_np1, nodes_np1, xyz_p00_pm);
+
+//      double xyz_0m0_mm[P4EST_DIM]; node_xyz_fr_n(node_0m0_mm, p4est_np1, nodes_np1, xyz_0m0_mm);
+//      double xyz_0m0_pm[P4EST_DIM]; node_xyz_fr_n(node_0m0_pm, p4est_np1, nodes_np1, xyz_0m0_pm);
+
+//      double xyz_0p0_mm[P4EST_DIM]; node_xyz_fr_n(node_0p0_mm, p4est_np1, nodes_np1, xyz_0p0_mm);
+//      double xyz_0p0_pm[P4EST_DIM]; node_xyz_fr_n(node_0p0_pm, p4est_np1, nodes_np1, xyz_0p0_pm);
+
+
+
+
+//      if((qnnn.d_m00 < 0. || qnnn.d_p00 < 0. || qnnn.d_0m0 < 0. || qnnn.d_0p0 < 0.) && xyz_node_[0]<1.99){
+//        printf("Also, you could consider (on rank %d) : \n \n"
+//               "node_m00 = %d , with d_m00 = %0.4f \n"
+//               "node_p00 = %d, with d_p00 = %0.4f \n"
+//               "node_0m0 = %d, with d_0m0 = %0.4f \n"
+//               "node_0p0 = %d, with d_0p0 = %0.4f \n ", mpi->rank(),
+//               qnnn.neighbor_m00(), qnnn.d_m00,
+//               qnnn.neighbor_p00(), qnnn.d_p00,
+//               qnnn.neighbor_0m0(), qnnn.d_0m0,
+//               qnnn.neighbor_0p0(), qnnn.d_0p0);
+
+
+
+
+//        printf("Node %d with location (%0.4f, %0.4f) has the neighbors: \n "
+//                                 "m00_mm - node %d at (%0.4f, %0.4f) \n"
+//                                 "0m0_pm - node %d at (%0.4f, %0.4f) \n"
+//                                 "p00_mm - node %d at (%0.4f, %0.4f) \n"
+//                                 "m00_pm - node %d at (%0.4f, %0.4f) \n"
+//                                 "000 - node %d at (%0.4f, %0.4f) \n"
+//                                 "p00_pm - node %d at (%0.4f, %0.4f) \n"
+
+//                                 "0p0_mm - node %d at (%0.4f, %0.4f) \n"
+
+//                                 "0p0_pm - node %d at (%0.4f, %0.4f) \n"
+//                                 "0m0_mm - node %d at (%0.4f, %0.4f) \n"
+//                                 " \n \n",
+//                    n, xyz_node_[0], xyz_node_[1],
+//                    node_m00_mm, xyz_m00_mm[0], xyz_m00_mm[1],
+//                    node_0m0_pm, xyz_0m0_pm[0], xyz_0m0_pm[1],
+//                    node_p00_mm, xyz_p00_mm[0], xyz_p00_mm[1],
+//                    node_m00_pm, xyz_m00_pm[0], xyz_m00_pm[1],
+//                    node_000, xyz_000[0], xyz_000[1],
+//                    node_p00_pm, xyz_p00_pm[0], xyz_p00_pm[1],
+//                    node_0p0_mm, xyz_0p0_mm[0], xyz_0p0_mm[1],
+//                    node_0p0_pm, xyz_0p0_pm[0], xyz_0p0_pm[1],
+//                    node_0m0_mm, xyz_0m0_mm[0], xyz_0m0_mm[1]);
+
+
+//      }
+//    }
 
     phi.restore_array();
 
@@ -3193,8 +3309,9 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
 //  phi_dd_.destroy();
   // ---------
 
-
-    if(1){
+    // TEMP BEGIN :
+    // --------------------------
+    if(0){
       std::vector<Vec_for_vtk_export_t> point_fields;
       std::vector<Vec_for_vtk_export_t> cell_fields = {};
 
@@ -3212,6 +3329,8 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
       point_fields.clear();
     }
   }
+  // TEMP END
+  // --------------
 
 
 
@@ -3528,7 +3647,7 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
 
     point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
     point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "T_l"));
-
+    point_fields.push_back(Vec_for_vtk_export_t(T_s_n.vec, "T_s"));
 
     const char* out_dir = getenv("OUT_DIR_VTK");
     if(!out_dir){
@@ -3536,7 +3655,7 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
     }
     //          char output[] = "/home/elyce/workspace/projects/multialloy_with_fluids/output_two_grain_clogging/gradP_0pt01_St_0pt07/grid57_flush_no_collapse_after_extension_bc_added";
     char filename[1000];
-    sprintf(filename, "%s/snapshot_after_poisson_%d", out_dir, tstep);
+    sprintf(filename, "%s/grid_lmin%d_lint%d_lmax%d/snapshot_after_poisson_%d", out_dir, lmin, lint, lmax,tstep);
     my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
     point_fields.clear();
 

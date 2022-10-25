@@ -487,7 +487,6 @@ void my_p4est_poisson_nodes_mls_t::solve(Vec solution, bool use_nonzero_guess, b
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_setup_linear_system, 0, 0, 0, 0); CHKERRXX(ierr);
 
   invert_linear_system(solution, use_nonzero_guess, update_ghost, ksp_type, pc_type);
-
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_solve, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -849,6 +848,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
         bool is_ngbd_crossed_immersed  = false;
 
         // check if neighbourhood is crossed by the domain boundary
+        // Elyce: this case is in the region close to the interface, so it's safe to assume a uniform grid in this region (below)
         if (fabs(bdry_phi_eff_000) < lip_*diag_min_ && bdry_.num_phi != 0)
         {
           ngbd_->get_all_neighbors(n, neighbors, neighbors_exist);
@@ -1149,6 +1149,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     interp.set_input(node_numbers, linear);
     interp.interpolate(gf_nodes.data());
 
+
     ierr = VecDestroy(node_numbers); CHKERRXX(ierr);
   }
 
@@ -1160,6 +1161,8 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   std::vector<mat_entry_t> *row_gf;
   std::vector<mat_entry_t> *row_gf_ghost;
 
+  // (10/25/22) Elyce side note -- Okay so I'm pretty sure the below code has some duplication, in that the "find_interface_points" gets called again inside the function "discretize_dirichlet_sw_ext" ...
+  // Not really going to address that right now, but we might want to remove some of that duplication if possible to speed up the code.
   // prepare stuff for extended Shortley-Weller
   if (assembling_main && there_is_dirichlet_ && dirichlet_scheme_ == 2) {
 
@@ -1258,6 +1261,32 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     double xyz_C[P4EST_DIM];
     node_xyz_fr_n(n, p4est_, nodes_, xyz_C);
 
+    // To-clean
+    // Elyce (10/25/22): The below block commented out is just printing information for a bug that I was investigating. I'm leaving this in here for now in case something pops up again, but it can eventually be removed
+    /*
+    bool print_info = false;//(fabs(xyz_C[0]-2.)<EPS) && (xyz_C[1]>1.93358) && (xyz_C[1]<1.96095);
+    if(print_info) printf("\n\n Node %d at (%0.4f, %0.4f) near wall with node_scheme = %d \n", n, xyz_C[0], xyz_C[1], node_scheme_[n]);
+
+    if(print_info){
+      p4est_locidx_t node_m00 = qnnn.neighbor_m00(); p4est_locidx_t node_p00 = qnnn.neighbor_p00();
+      p4est_locidx_t node_0m0 = qnnn.neighbor_0m0(); p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
+      double xyz_m00[P4EST_DIM] = {-100., -100.};
+      double xyz_p00[P4EST_DIM]= {-100., -100.};
+      double xyz_0m0[P4EST_DIM]= {-100., -100.};
+      double xyz_0p0[P4EST_DIM]= {-100., -100.};
+
+      if(node_m00>-1) node_xyz_fr_n(node_m00, p4est_, nodes_, xyz_m00);
+      if(node_p00>-1) node_xyz_fr_n(node_p00, p4est_, nodes_, xyz_p00);
+      if(node_0m0>-1) node_xyz_fr_n(node_0m0, p4est_, nodes_, xyz_0m0);
+      if(node_0p0>-1) node_xyz_fr_n(node_0p0, p4est_, nodes_, xyz_0p0);
+
+
+      printf("node_m00 = %d, (%0.4f, %0.4f), d_m00 = %0.4f, d_m00_ \n", node_m00, xyz_m00[0], xyz_m00[1], qnnn.d_m00);
+      printf("node_p00 = %d, (%0.4f, %0.4f), d_p00 = %0.4f \n", node_p00, xyz_p00[0], xyz_p00[1], qnnn.d_p00);
+      printf("node_0m0 = %d, (%0.4f, %0.4f), d_0m0 = %0.4f \n \n", node_0m0, xyz_0m0[0], xyz_0m0[1], qnnn.d_0m0);
+      printf("node_0p0 = %d, (%0.4f, %0.4f), d_0p0 = %0.4f \n", node_0p0, xyz_0p0[0], xyz_0p0[1], qnnn.d_0p0);
+    }
+    */
 //    double DIM( x_C = xyz_C[0],
 //                y_C = xyz_C[1],
 //                z_C = xyz_C[2] );
@@ -1275,6 +1304,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     // discretize
     switch (node_scheme_[n])
     {
+
       case DOMAIN_OUTSIDE:
       {
         if (assembling_main) {
@@ -1394,7 +1424,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
   // interpolators
   interpolators_finalize();
-
 
   if (there_is_dirichlet_ && dirichlet_scheme_ == 2) {
     ierr = VecRestoreArray(extended_sw_, &extended_sw_ptr);   CHKERRXX(ierr);
@@ -3963,6 +3992,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
   double *mask_ptr;
   double *rhs_loc_ptr;
 
+  // Elyce: check which domain (pos or neg) we are in, and set the RHS, mu, etc. accordingly
   if (infc_phi_eff_000 < 0) {
     mu          = mu_m_;
     mue_ptr     = mue_m_ptr;
@@ -3983,6 +4013,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
     rhs_loc_ptr = rhs_p_ptr;
   }
 
+  // Elyce: get the value of the effective LSF at the current node we are considering (node_000)
   double bdry_phi_eff_000 = bdry_.num_phi == 0 ? -1. : bdry_.phi_eff_ptr[n];
 
   if (new_submat_main_) {
@@ -3991,31 +4022,58 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
 
   // far away from the boundary
   if (extended_sw_ptr[n] > 0) {
-
     if (new_submat_main_) {
       row_main->push_back(mat_entry_t(petsc_gloidx_[n], 1));
       mask_ptr[n] = 1.;
     }
-
     if (setup_rhs) {
       rhs_ptr[n] = 0;
     }
-
     return;
   }
 
   double xyz_C[P4EST_DIM];
   node_xyz_fr_n(n, p4est_, nodes_, xyz_C);
 
+  // To-clean: Elyce (10/25/22) - had these print statements while investigating a bug, leaving for now but can eventually be removed
+  /*
+  bool print_info = (p4est_->mpirank ==5) && ((fabs(xyz_C[0] - 2.0)<EPS) ||(fabs(xyz_C[1] - 2.0)<EPS));
+  if(print_info) printf("\n\n Node %d at (%0.4f, %0.4f) near wall inside dirichlet_sw_ext \n", n, xyz_C[0], xyz_C[1]);
+  */
+
   double DIM( x_C = xyz_C[0],
               y_C = xyz_C[1],
               z_C = xyz_C[2] );
 
+  // Elyce: get the neighborhood of node_000, so we can see which neighbors are in the interface direction, wall direction, etc.
   p4est_locidx_t node_m00 = qnnn.neighbor_m00(); p4est_locidx_t node_p00 = qnnn.neighbor_p00();
   p4est_locidx_t node_0m0 = qnnn.neighbor_0m0(); p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
 #ifdef P4_TO_P8
   p4est_locidx_t node_00m = qnnn.neighbor_00m(); p4est_locidx_t node_00p = qnnn.neighbor_00p();
 #endif
+
+  // To-clean: Elyce (10/25/22) - had these print statements while investigating a bug, leaving for now but can eventually be removed
+  /*
+  if(print_info){
+//    p4est_locidx_t node_m00 = qnnn.neighbor_m00(); p4est_locidx_t node_p00 = qnnn.neighbor_p00();
+//    p4est_locidx_t node_0m0 = qnnn.neighbor_0m0(); p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
+    double xyz_m00[P4EST_DIM] = {-100., -100.};
+    double xyz_p00[P4EST_DIM]= {-100., -100.};
+    double xyz_0m0[P4EST_DIM]= {-100., -100.};
+    double xyz_0p0[P4EST_DIM]= {-100., -100.};
+
+    if(node_m00>-1) node_xyz_fr_n(node_m00, p4est_, nodes_, xyz_m00);
+    if(node_p00>-1) node_xyz_fr_n(node_p00, p4est_, nodes_, xyz_p00);
+    if(node_0m0>-1) node_xyz_fr_n(node_0m0, p4est_, nodes_, xyz_0m0);
+    if(node_0p0>-1) node_xyz_fr_n(node_0p0, p4est_, nodes_, xyz_0p0);
+
+
+    printf("node_m00 = %d, (%0.4f, %0.4f), d_m00 = %0.4f, d_m00_ \n", node_m00, xyz_m00[0], xyz_m00[1], qnnn.d_m00);
+    printf("node_p00 = %d, (%0.4f, %0.4f), d_p00 = %0.4f \n", node_p00, xyz_p00[0], xyz_p00[1], qnnn.d_p00);
+    printf("node_0m0 = %d, (%0.4f, %0.4f), d_0m0 = %0.4f \n \n", node_0m0, xyz_0m0[0], xyz_0m0[1], qnnn.d_0m0);
+    printf("node_0p0 = %d, (%0.4f, %0.4f), d_0p0 = %0.4f \n", node_0p0, xyz_0p0[0], xyz_0p0[1], qnnn.d_0p0);
+  }
+  */
 
   // check if any boundary crosses ngbd
   std::vector<bool>   is_interface     (P4EST_FACES, false);
@@ -4025,6 +4083,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
 
   if (new_submat_main_) {
     find_interface_points(n, ngbd_, bdry_.opn, bdry_.phi_ptr, DIM(bdry_.phi_xx_ptr, bdry_.phi_yy_ptr, bdry_.phi_zz_ptr), bdry_point_id.data(), bdry_point_dist.data());
+
 
     if (bdry_phi_eff_000 < 0) {
       int num_interfaces = 0;
@@ -4051,6 +4110,21 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
     load_cart_points(n, is_interface, bdry_point_id, bdry_point_dist, bdry_point_weight);
   }
 
+  // To-clean: Elyce (10/25/22) - had these print statements while investigating a bug, leaving for now but can eventually be removed
+  /*
+  if(print_info){
+    printf("is_wall[fm00] = %d, is_wall[fp00] = %d, is_wall[f0m0] = %d, is_wall[f0p0] = %d \n",
+           is_wall[dir::f_m00], is_wall[dir::f_p00], is_wall[dir::f_0m0], is_wall[dir::f_0p0]);
+    printf("is_interface[fm00] = %d, is_interface[fp00] = %d, is_interface[f0m0] = %d, is_interface[f0p0] = %d \n",
+           static_cast<int>(is_interface[dir::f_m00]), static_cast<int>(is_interface[dir::f_p00]), static_cast<int>(is_interface[dir::f_0m0]), static_cast<int>(is_interface[dir::f_0p0]));
+
+
+    printf("bdry_point_dist[f_m00] = %0.4f \n", bdry_point_dist[dir::f_m00]);
+    printf("bdry_point_dist[f_p00] = %0.4f \n", bdry_point_dist[dir::f_p00]);
+    printf("bdry_point_dist[f_0m0] = %0.4f \n", bdry_point_dist[dir::f_0m0]);
+    printf("bdry_point_dist[f_0p0] = %0.4f \n", bdry_point_dist[dir::f_0p0]);
+  }
+  */
   // check whether boundary goes exactly through the node
   int node_on_boundary_phi_id = -1;
   foreach_direction(dim) {
@@ -4061,7 +4135,6 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
 
   // interface boundary
   if (node_on_boundary_phi_id != -1) {
-
     // compute submat_main
     if (new_submat_main_) {
       // re-asssign boundary points data
@@ -4074,18 +4147,14 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
       row_main->push_back(mat_entry_t(n, 1));
       nullspace_main_ = false;
     }
-
     // compute submat_rhs
     if (setup_rhs) {
       boundary_conditions_t *bc = &bc_[node_on_boundary_phi_id];
       rhs_ptr[n] = bc->pointwise ? bc->get_value_pw(n,0) :
                                    bc->get_value_cf(xyz_C);
     }
-
   } else {
-
     double mue_000 = var_mu_ ? mue_ptr[n] : mu;
-
     //---------------------------------------------------------------------
     // compute submat_diag
     //---------------------------------------------------------------------
@@ -4097,7 +4166,6 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
         nullspace_diag_ = false;
       }
     }
-
     //---------------------------------------------------------------------
     // compute submat_main
     //---------------------------------------------------------------------
@@ -4333,7 +4401,6 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
         }
       }
     }
-
     //---------------------------------------------------------------------
     // compute rhs
     //---------------------------------------------------------------------
@@ -4343,7 +4410,6 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
 
       // sample boundary conditions
       std::vector<double> bc_values(P4EST_FACES, 0);
-
       // first get pointwise given values
       for (size_t i = 0; i < bc_.size(); ++i) {
         if (bc_[i].type == DIRICHLET && bc_[i].pointwise) {
@@ -4355,24 +4421,67 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
         }
       }
 
+      // ELYCE NOTE: This is the location where the bug I'm getting is coming from. Sometimes the bdry_point_dist does not
+      // get correclty computed and gives something nonsensical instead, and as a result the interpolation throws an error.
+
+      // To-clean: Elyce (10/25/22) - I added this try/catch statement while I was investigating a bug coming from here.
+      // I'm leaving it here for now because it's not really hurting anyone to be here and will give info if we crash here
+      // again, but it can probably eventually be removed
+
       // second get function-given values
-      if (is_interface[dir::f_m00] && (!bc_[bdry_point_id[dir::f_m00]].pointwise)) bc_values[dir::f_m00] = (*bc_[bdry_point_id[dir::f_m00]].value_cf)( DIM(x_C - bdry_point_dist[dir::f_m00], y_C, z_C) );
-      if (is_interface[dir::f_p00] && (!bc_[bdry_point_id[dir::f_p00]].pointwise)) bc_values[dir::f_p00] = (*bc_[bdry_point_id[dir::f_p00]].value_cf)( DIM(x_C + bdry_point_dist[dir::f_p00], y_C, z_C) );
+      try {
+        if (is_interface[dir::f_m00] && (!bc_[bdry_point_id[dir::f_m00]].pointwise)) bc_values[dir::f_m00] = (*bc_[bdry_point_id[dir::f_m00]].value_cf)( DIM(x_C - bdry_point_dist[dir::f_m00], y_C, z_C) );
+        if (is_interface[dir::f_p00] && (!bc_[bdry_point_id[dir::f_p00]].pointwise)) bc_values[dir::f_p00] = (*bc_[bdry_point_id[dir::f_p00]].value_cf)( DIM(x_C + bdry_point_dist[dir::f_p00], y_C, z_C) );
 
-      if (is_interface[dir::f_0m0] && (!bc_[bdry_point_id[dir::f_0m0]].pointwise)) bc_values[dir::f_0m0] = (*bc_[bdry_point_id[dir::f_0m0]].value_cf)( DIM(x_C, y_C - bdry_point_dist[dir::f_0m0], z_C) );
-      if (is_interface[dir::f_0p0] && (!bc_[bdry_point_id[dir::f_0p0]].pointwise)) bc_values[dir::f_0p0] = (*bc_[bdry_point_id[dir::f_0p0]].value_cf)( DIM(x_C, y_C + bdry_point_dist[dir::f_0p0], z_C) );
+        if (is_interface[dir::f_0m0] && (!bc_[bdry_point_id[dir::f_0m0]].pointwise)) bc_values[dir::f_0m0] = (*bc_[bdry_point_id[dir::f_0m0]].value_cf)( DIM(x_C, y_C - bdry_point_dist[dir::f_0m0], z_C) );
+        if (is_interface[dir::f_0p0] && (!bc_[bdry_point_id[dir::f_0p0]].pointwise)) bc_values[dir::f_0p0] = (*bc_[bdry_point_id[dir::f_0p0]].value_cf)( DIM(x_C, y_C + bdry_point_dist[dir::f_0p0], z_C) );
 #ifdef P4_TO_P8
-      if (is_interface[dir::f_00m] && (!bc_[bdry_point_id[dir::f_00m]].pointwise)) bc_values[dir::f_00m] = (*bc_[bdry_point_id[dir::f_00m]].value_cf)( DIM(x_C, y_C, z_C - bdry_point_dist[dir::f_00m]) );
-      if (is_interface[dir::f_00p] && (!bc_[bdry_point_id[dir::f_00p]].pointwise)) bc_values[dir::f_00p] = (*bc_[bdry_point_id[dir::f_00p]].value_cf)( DIM(x_C, y_C, z_C + bdry_point_dist[dir::f_00p]) );
+        if (is_interface[dir::f_00m] && (!bc_[bdry_point_id[dir::f_00m]].pointwise)) bc_values[dir::f_00m] = (*bc_[bdry_point_id[dir::f_00m]].value_cf)( DIM(x_C, y_C, z_C - bdry_point_dist[dir::f_00m]) );
+        if (is_interface[dir::f_00p] && (!bc_[bdry_point_id[dir::f_00p]].pointwise)) bc_values[dir::f_00p] = (*bc_[bdry_point_id[dir::f_00p]].value_cf)( DIM(x_C, y_C, z_C + bdry_point_dist[dir::f_00p]) );
 #endif
+      }
+      catch(std::invalid_argument& e){
+        // The bc point likely had an issue, let's print out information about the neighborhood for the user.
+        std::ostringstream oss;
 
+        oss << "my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext : The point provided to the BC CF for evaluation is causing an issue, it may not be inside the domain. We are having the issue for node " << n << "on rank " << p4est_->mpirank;
+
+        double xyz_m00[P4EST_DIM] = {-100., -100.};
+        double xyz_p00[P4EST_DIM]= {-100., -100.};
+        double xyz_0m0[P4EST_DIM]= {-100., -100.};
+        double xyz_0p0[P4EST_DIM]= {-100., -100.};
+
+        if(node_m00>-1) node_xyz_fr_n(node_m00, p4est_, nodes_, xyz_m00);
+        if(node_p00>-1) node_xyz_fr_n(node_p00, p4est_, nodes_, xyz_p00);
+        if(node_0m0>-1) node_xyz_fr_n(node_0m0, p4est_, nodes_, xyz_0m0);
+        if(node_0p0>-1) node_xyz_fr_n(node_0p0, p4est_, nodes_, xyz_0p0);
+
+        printf("\n \n WARNING: About to throw an error from poisson_nodes_mls ... \n \nProblem point neighborhood information: \n");
+
+        printf("Node %d at (%0.4f, %0.4f) on rank %d ... \n", n, xyz_C[0], xyz_C[1], p4est_->mpirank);
+        printf("node_m00 = %d, (%0.4f, %0.4f) \n", node_m00, xyz_m00[0], xyz_m00[1]);
+        printf("node_p00 = %d, (%0.4f, %0.4f) \n", node_p00, xyz_p00[0], xyz_p00[1]);
+        printf("node_0m0 = %d, (%0.4f, %0.4f) \n", node_0m0, xyz_0m0[0], xyz_0m0[1]);
+        printf("node_0p0 = %d, (%0.4f, %0.4f) \n", node_0p0, xyz_0p0[0], xyz_0p0[1]);
+
+        printf("is_wall[fm00] = %d, is_wall[fp00] = %d, is_wall[f0m0] = %d, is_wall[f0p0] = %d \n",
+               is_wall[dir::f_m00], is_wall[dir::f_p00], is_wall[dir::f_0m0], is_wall[dir::f_0p0]);
+        printf("is_interface[fm00] = %d, is_interface[fp00] = %d, is_interface[f0m0] = %d, is_interface[f0p0] = %d \n",
+               static_cast<int>(is_interface[dir::f_m00]), static_cast<int>(is_interface[dir::f_p00]), static_cast<int>(is_interface[dir::f_0m0]), static_cast<int>(is_interface[dir::f_0p0]));
+
+        printf("bdry_point_dist[f_m00] = %0.4f \n", bdry_point_dist[dir::f_m00]);
+        printf("bdry_point_dist[f_p00] = %0.4f \n", bdry_point_dist[dir::f_p00]);
+        printf("bdry_point_dist[f_0m0] = %0.4f \n", bdry_point_dist[dir::f_0m0]);
+        printf("bdry_point_dist[f_0p0] = %0.4f \n", bdry_point_dist[dir::f_0p0]);
+
+        throw std::invalid_argument(oss.str());
+      }
       // add to rhs boundary conditions
       foreach_direction(i) {
         if (is_interface[i]) {
           rhs_ptr[n] -= bdry_point_weight[i] * bc_values[i];
         }
       }
-
       // add to rhs wall conditions
       XCODE( double eps_x = is_wall[dir::f_m00] ? 2.*EPS*diag_min_ : (is_wall[dir::f_p00] ? -2.*EPS*diag_min_ : 0) );
       YCODE( double eps_y = is_wall[dir::f_0m0] ? 2.*EPS*diag_min_ : (is_wall[dir::f_0p0] ? -2.*EPS*diag_min_ : 0) );

@@ -3089,14 +3089,26 @@ void find_closest_interface_location(int &phi_idx, double &dist, double d, std::
         phi_idx = -1;
       }
     } else {
-      double dist_new = interface_Location_With_Second_Order_Derivative(0., d, phi_a[i], phi_b[i], phi_a_xx[i], phi_b_xx[i]);
+      // ELYCE BUG FIX (10/21/22 -- When d<0, if you provide (0, d) as the interval to the below function, it gives you super unreasonable / nonphysical results. When you provide the interval that makes physical sense, it gives you the correct result.
+      // Thus for example, if the distance d is smaller than 0, we need to provide the interval as (d, 0) for this to give us the correct answer
+      // I've modified the definition of "dist_new" to account for the possibility that the provided d is a negative value, which is only the case for 2nd degree neighbors of wall nodes (to my best understanding).
+      // I have correspondingly modified the if statements inside the switch case to compare absolute values instead of strict values, since I think the original function assumes that d and dist are always positive, but we need to account for the case where that may not be true.
+
+      double dist_new = (d>0.) ?
+                        interface_Location_With_Second_Order_Derivative(0., d, phi_a[i], phi_b[i], phi_a_xx[i], phi_b_xx[i]):
+                        interface_Location_With_Second_Order_Derivative(d, 0., phi_a[i], phi_b[i], phi_a_xx[i], phi_b_xx[i]);
+
+//      // OLD WAY BELOW:
+//      double dist_new = interface_Location_With_Second_Order_Derivative(0., d, phi_a[i], phi_b[i], phi_a_xx[i], phi_b_xx[i]);
+
 
       switch (opn[i])
       {
+        // Elyce note: I also changes all the distance comparisons to be aboslute values, bc I think that's the spirit that Daniil intended
       case MLS_INTERSECTION:
         if (phi_a[i] < 0.)
         {
-          if (dist_new < dist)
+          if (/*dist_new < dist*/ fabs(dist_new) < fabs(dist))
           {
             dist    = dist_new;
             phi_idx = i;
@@ -3109,13 +3121,13 @@ void find_closest_interface_location(int &phi_idx, double &dist, double d, std::
       case MLS_ADDITION:
         if (phi_a[i] < 0.)
         {
-          if (dist_new > dist)
+          if (/*dist_new > dist*/ fabs(dist_new) > fabs(dist))
           {
             dist    = dist_new;
             phi_idx = i;
           }
         } else {
-          if (dist_new < dist)
+          if (/*dist_new < dist*/ fabs(dist_new) < fabs(dist))
           {
             dist    =  d;
             phi_idx = -1;
