@@ -706,16 +706,26 @@ void make_LSF_for_porous_media(mpi_environment_t &mpi){
 
 double return_LSF_porous_media(DIM(double x, double y, double z), bool is_inner_){
   // bool is_inner_ corresponds to whether or not the LSF we are returning is for the inner or the outer LSF, in the case that we are using an inner and outer LSF (aka initial deposit layer, etc)
-  double radius_multiplier=1.0;
+//  double radius_multiplier=1.0;
 
-  if(!is_inner_) radius_multiplier = porous_media_initial_thickness_multiplier;
+  double radius_addition = 0.0;
+//  if(!is_inner_) radius_multiplier = porous_media_initial_thickness_multiplier;
 
+
+  double tree_size = (xmax-xmin)/nx; // assuming only square trees
+  double dxyz_min = tree_size/(pow(2.0, lmax));
+  if(!is_inner_) radius_addition = 4.*dxyz_min;
 
   double lsf_vals[num_grains];
   // First, grab all the relevant LSF values for each grain:
   for(int n=0; n<num_grains; n++){
     double r = sqrt(SQR(x - xshifts[n]) + SQR(y - yshifts[n]));
-    lsf_vals[n] = radius_multiplier*rvals[n] - r;
+    //lsf_vals[n] = radius_multiplier*rvals[n] - r;
+    // above wasn't working, I want the initial thickness to be the same (regardless of radius), so I'm gonna just try and add the distance of approx 4 grid cells and see where that lands us
+
+    lsf_vals[n] = (rvals[n] + radius_addition) - r;
+
+
   }
 
   // Now, loop back over and return the value which has the min magnitude:
@@ -2144,8 +2154,17 @@ class INITIAL_TEMP: public CF_DIM
         return theta_interface;
       }
     }
-    case EVOLVING_POROUS_MEDIA:
-      return theta_interface;
+    case EVOLVING_POROUS_MEDIA:{
+      //      return theta_interface;
+      switch(dom){
+      case LIQUID_DOMAIN:
+        return theta_infty;
+      case SOLID_DOMAIN:
+        return theta_interface;
+      default:
+        throw std::invalid_argument("Initial temp: domain unrecognized (needs to be solid or liquid)");
+      }
+    }
     case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:{
       switch(dom){
