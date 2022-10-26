@@ -378,10 +378,22 @@ void my_p4est_stefan_with_fluids_t::initialize_fields(){
   ls->perturb_level_set_function(phi.vec, EPS);
   if(solve_stefan)ls->reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
 
-  if(start_w_merged_grains) {regularize_front();}
+  if(print_checkpoints) PetscPrintf(mpi->comm(),"Done. \n");
+
+  if(start_w_merged_grains) {
+    if(print_checkpoints) PetscPrintf(mpi->comm(),"Regularizing front ... \n");
+
+    regularize_front();
+    if(print_checkpoints) PetscPrintf(mpi->comm(),"Done. \n");
+
+  }
 
   if(there_is_a_substrate){
+    if(print_checkpoints) PetscPrintf(mpi->comm(),"Accounting for initial substrate for phi eff ... \n");
+
     create_and_compute_phi_sub_and_phi_eff();
+    if(print_checkpoints) PetscPrintf(mpi->comm(),"Done. \n");
+
   }
 
   if(solve_navier_stokes){
@@ -2597,6 +2609,7 @@ void my_p4est_stefan_with_fluids_t::perform_lsf_advection_grid_update_and_interp
     check_collapse_on_substrate();
   }
 
+
   //------------------------------------------------------
   // (4/5d) Destroy substrate LSF and phi_eff (if used) and re-create for upcoming timestep:
   //------------------------------------------------------
@@ -2688,7 +2701,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
   // -----------------------------------------------------------------
   // TEMP BEGIN: save phi to vtk *before* merging alogirhtm is applied
   // -----------------------------------------------------------------
-  if(0){
+  if(0 && tstep>=0){
     std::vector<Vec_for_vtk_export_t> point_fields;
     std::vector<Vec_for_vtk_export_t> cell_fields = {};
 
@@ -2701,7 +2714,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
     }
 
     char filename[1000];
-    sprintf(filename, "%s/snapshot_before_reg_front_%d", out_dir, tstep);
+    sprintf(filename, "%s/grid_lmin%d_lint%d_lmax%d/snapshot_before_reg_front_%d", out_dir, lmin, lint, lmax, tstep);
     my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
     point_fields.clear();
  }
@@ -2826,7 +2839,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
       front_phi_tmp.destroy();
     }
 
-    if (fabs(proximity_smoothing_)>0.) {
+    if ( false && fabs(proximity_smoothing_)>0.) {
       // (Optional, not used anymore)
       // Second pass --  we shift LSF down, reinitialize, shift back, and see if some of those nodes are still "stuck"
       // shift level-set downwards and reinitialize
@@ -2863,7 +2876,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
 
     // ELYCE TO DO-- THIS THIRD PART DOES NOT GET USED, SHOULD PROBABLY BYPASS THIS --> jk, I think it does get used , i think set() makes the two things the same so it's actually updating phi
     // third pass: look for isolated pools of liquid and remove them
-    if (num_nodes_smoothed > 0) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
+    if ( num_nodes_smoothed > 0) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
     {
       ierr = PetscPrintf(mpi_comm, "%d nodes smoothed... ", num_nodes_smoothed); CHKERRXX(ierr);
       int num_islands = 0;
@@ -2931,13 +2944,10 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
     ierr = PetscLogEventEnd(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
   }
 
-
-
-
   // -----------------------------------------------------------------
   // TEMP BEGIN: save phi to vtk *directly after* merging alogirhtm is applied
   // -----------------------------------------------------------------
-  if(0 && daniil_algorithm_on){
+  if(0 && daniil_algorithm_on && tstep>=0){
     std::vector<Vec_for_vtk_export_t> point_fields;
     std::vector<Vec_for_vtk_export_t> cell_fields = {};
 
@@ -2950,7 +2960,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
     }
 
     char filename[1000];
-    sprintf(filename, "%s/snapshot_after_reg_front_%d", out_dir, tstep);
+    sprintf(filename, "%s/grid_lmin%d_lint%d_lmax%d/snapshot_after_reg_front_%d", out_dir, lmin, lint, lmax, tstep);
     my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
     point_fields.clear();
   }
@@ -3324,13 +3334,15 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
       }
 
       char filename[1000];
-      sprintf(filename, "%s/snapshot_after_new_algorithm_%d", out_dir, tstep);
+      sprintf(filename, "%s/grid_lmin%d_lint%d_lmax%d/snapshot_after_merge_or_separate_%d", out_dir, lmin, lint, lmax, tstep);
       my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
       point_fields.clear();
-    }
-  }
-  // TEMP END
-  // --------------
+    }  // TEMP END
+    // --------------
+
+
+  } // end if tstep>=0
+
 
 
 

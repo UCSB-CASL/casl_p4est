@@ -668,6 +668,10 @@ void make_LSF_for_porous_media(mpi_environment_t &mpi){
           xshifts[count] = curr_val;
           count+=1;
         }
+
+        if(count!=num_grains){
+          throw std::invalid_argument("The number of grains inputted does not match the number provided in the input file \n");
+        }
       }
       std::ifstream infile_y(geom_y);
 
@@ -678,6 +682,9 @@ void make_LSF_for_porous_media(mpi_environment_t &mpi){
         while(infile_y >> curr_val){
           yshifts[count] = curr_val;
           count+=1;
+        }
+        if(count!=num_grains){
+          throw std::invalid_argument("The number of grains inputted does not match the number provided in the input file \n");
         }
       }
       std::ifstream infile_r(geom_r);
@@ -691,6 +698,9 @@ void make_LSF_for_porous_media(mpi_environment_t &mpi){
          rvals[count]=curr_val;
          count+=1;
 
+        }
+        if(count!=num_grains){
+          throw std::invalid_argument("The number of grains inputted does not match the number provided in the input file \n");
         }
       }
       printf("end of operation on rank 0 \n");
@@ -706,14 +716,15 @@ void make_LSF_for_porous_media(mpi_environment_t &mpi){
 
 double return_LSF_porous_media(DIM(double x, double y, double z), bool is_inner_){
   // bool is_inner_ corresponds to whether or not the LSF we are returning is for the inner or the outer LSF, in the case that we are using an inner and outer LSF (aka initial deposit layer, etc)
-//  double radius_multiplier=1.0;
 
-  double radius_addition = 0.0;
+  //  double radius_multiplier=1.0;
 //  if(!is_inner_) radius_multiplier = porous_media_initial_thickness_multiplier;
 
 
   double tree_size = (xmax-xmin)/nx; // assuming only square trees
   double dxyz_min = tree_size/(pow(2.0, lmax));
+
+  double radius_addition = 0.0;
   if(!is_inner_) radius_addition = 4.*dxyz_min;
 
   double lsf_vals[num_grains];
@@ -724,7 +735,6 @@ double return_LSF_porous_media(DIM(double x, double y, double z), bool is_inner_
     // above wasn't working, I want the initial thickness to be the same (regardless of radius), so I'm gonna just try and add the distance of approx 4 grid cells and see where that lands us
 
     lsf_vals[n] = (rvals[n] + radius_addition) - r;
-
 
   }
 
