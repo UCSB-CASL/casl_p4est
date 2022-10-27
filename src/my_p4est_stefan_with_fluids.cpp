@@ -241,7 +241,7 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   Dl = Ds = 1;
 
   // ----------------------------------------------
-  // Booleans related to what kind of physics we are solving
+  // Booleans (or enum, or int) related to what kind of physics we are solving
   // ---------------------------------------------
   solve_stefan = false;
   solve_navier_stokes = false;
@@ -252,6 +252,9 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   is_dissolution_case = false;
   force_interfacial_velocity_to_zero = false;
 
+  precip_disso_vgamma_calc_type = COMPUTE_BY_VALUE;
+
+  disso_interface_condition_added_term = -1.;
   // ----------------------------------------------
   // Other misc parameters
   // ---------------------------------------------
@@ -1512,6 +1515,7 @@ double my_p4est_stefan_with_fluids_t::interfacial_velocity_expression(double Tl_
       return (k_s*Ts_d -k_l*Tl_d)/(L*rho_s);
     }
     else{
+      // TO-DO: clean this, it's not quite correct depending on what case we are running
       return -1.*molar_volume_diss*(Dl/stoich_coeff_diss)*Tl_d;
     }
   }
@@ -1528,106 +1532,115 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
 
   // Begin calculation:
   if(!force_interfacial_velocity_to_zero){
-    // Cut the extension band in half for region to actually compute vgamma:
-    extension_band_extend_/=2;
 
-
-    // Get the first derivatives to compute the jump
-    T_l_d.create(p4est_np1, nodes_np1);
-    ngbd_np1->first_derivatives_central(T_l_n.vec, T_l_d.vec);
-
-    if(do_we_solve_for_Ts){
-      T_s_d.create(T_l_d.vec);
-      ngbd_np1->first_derivatives_central(T_s_n.vec, T_s_d.vec);
+    // Compute by value in the dissolution case where we want that
+    if(is_dissolution_case && precip_disso_vgamma_calc_type == COMPUTE_BY_VALUE){
+      compute_interfacial_velocity_conc_problem_by_value();
     }
+    else {
+      // Otherwise, proceed!
 
-    // Create vgamma and normals, and compute normals:
-    vgamma_n.create(p4est_np1, nodes_np1);
-    normal.create(p4est_np1, nodes_np1);
-    // TO-DO: not sure how important this is, but it's possible we compute normals 2x per timestep in some cases which is not very efficient. Consider changing this later. Would need to be handled in main loop.
-    // Could add a boolean flag for (are_normals_computed) or something
-    compute_normals(*ngbd_np1, phi.vec, normal.vec);
+      // Cut the extension band in half for region to actually compute vgamma:
+      extension_band_extend_/=2;
 
-    // Create vector to hold the jump values:
-    jump.create(p4est_np1, nodes_np1);
+      // Get the first derivatives to compute the jump
+      T_l_d.create(p4est_np1, nodes_np1);
+      ngbd_np1->first_derivatives_central(T_l_n.vec, T_l_d.vec);
 
-    // Get arrays:
-    normal.get_array();
-    vgamma_n.get_array();
-    jump.get_array();
-    T_l_d.get_array();
-    if(do_we_solve_for_Ts) T_s_d.get_array();
-    phi.get_array();
+      if(do_we_solve_for_Ts){
+        T_s_d.create(T_l_d.vec);
+        ngbd_np1->first_derivatives_central(T_s_n.vec, T_s_d.vec);
+      }
 
-    // First, compute jump in the layer nodes:
-    for(size_t i=0; i<ngbd_np1->get_layer_size();i++){
-      p4est_locidx_t n = ngbd_np1->get_layer_node(i);
+      // Create vgamma and normals, and compute normals:
+      vgamma_n.create(p4est_np1, nodes_np1);
+      normal.create(p4est_np1, nodes_np1);
+      // TO-DO: not sure how important this is, but it's possible we compute normals 2x per timestep in some cases which is not very efficient. Consider changing this later. Would need to be handled in main loop.
+      // Could add a boolean flag for (are_normals_computed) or something
+      compute_normals(*ngbd_np1, phi.vec, normal.vec);
 
-      if(fabs(phi.ptr[n])<extension_band_extend_){ // TO-DO: should be nondim for ALL cases
+      // Create vector to hold the jump values:
+      jump.create(p4est_np1, nodes_np1);
 
-        vgamma_n.ptr[n] = 0.; // Initialize
-        foreach_dimension(d){
-          jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n], do_we_solve_for_Ts?T_s_d.ptr[d][n]:0.);
+      // Get arrays:
+      normal.get_array();
+      vgamma_n.get_array();
+      jump.get_array();
+      T_l_d.get_array();
+      if(do_we_solve_for_Ts) T_s_d.get_array();
+      phi.get_array();
 
-          // Calculate V_gamma,n using dot product:
-          vgamma_n.ptr[n] += jump.ptr[d][n] * normal.ptr[d][n];
-        } // end of loop over dimensions
+      // First, compute jump in the layer nodes:
+      for(size_t i=0; i<ngbd_np1->get_layer_size();i++){
+        p4est_locidx_t n = ngbd_np1->get_layer_node(i);
 
-        // Now, go back and set jump equal to the enforced normal velocity (a scalar) multiplied by the normal --> to get a velocity vector:
-        foreach_dimension(d){
-          jump.ptr[d][n] = vgamma_n.ptr[n] * normal.ptr[d][n];
+        if(fabs(phi.ptr[n])<extension_band_extend_){ // TO-DO: should be nondim for ALL cases
+
+          vgamma_n.ptr[n] = 0.; // Initialize
+          foreach_dimension(d){
+            jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n], do_we_solve_for_Ts?T_s_d.ptr[d][n]:0.);
+
+            // Calculate V_gamma,n using dot product:
+            vgamma_n.ptr[n] += jump.ptr[d][n] * normal.ptr[d][n];
+          } // end of loop over dimensions
+
+          // Now, go back and set jump equal to the enforced normal velocity (a scalar) multiplied by the normal --> to get a velocity vector:
+          foreach_dimension(d){
+            jump.ptr[d][n] = vgamma_n.ptr[n] * normal.ptr[d][n];
+          }
         }
       }
-    }
 
-    // Begin updating the ghost values of the layer nodes:
-    foreach_dimension(d){
-      VecGhostUpdateBegin(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);
-    }
+      // Begin updating the ghost values of the layer nodes:
+      foreach_dimension(d){
+        VecGhostUpdateBegin(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);CHKERRXX(ierr);
+      }
 
-    // Compute the jump in the local nodes:
-    for(size_t i = 0; i<ngbd_np1->get_local_size();i++){
-      p4est_locidx_t n = ngbd_np1->get_local_node(i);
-      if(fabs(phi.ptr[n])<extension_band_extend_){
-        vgamma_n.ptr[n] = 0.; // initialize
-        foreach_dimension(d){
-          jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n], do_we_solve_for_Ts?T_s_d.ptr[d][n]:0.);
+      // Compute the jump in the local nodes:
+      for(size_t i = 0; i<ngbd_np1->get_local_size();i++){
+        p4est_locidx_t n = ngbd_np1->get_local_node(i);
+        if(fabs(phi.ptr[n])<extension_band_extend_){
+          vgamma_n.ptr[n] = 0.; // initialize
+          foreach_dimension(d){
+            jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n], do_we_solve_for_Ts?T_s_d.ptr[d][n]:0.);
 
-          // calculate the dot product to find V_gamma,n
-          vgamma_n.ptr[n] += jump.ptr[d][n] * normal.ptr[d][n];
+            // calculate the dot product to find V_gamma,n
+            vgamma_n.ptr[n] += jump.ptr[d][n] * normal.ptr[d][n];
 
-        } // end over loop on dimensions
+          } // end over loop on dimensions
 
-        // Now, go back and set jump equal to the enforced normal velocity (a scalar) multiplied by the normal --> to get a velocity vector:
-        foreach_dimension(d){
-          jump.ptr[d][n] = vgamma_n.ptr[n] * normal.ptr[d][n];
+          // Now, go back and set jump equal to the enforced normal velocity (a scalar) multiplied by the normal --> to get a velocity vector:
+          foreach_dimension(d){
+            jump.ptr[d][n] = vgamma_n.ptr[n] * normal.ptr[d][n];
+          }
         }
       }
-    }
 
-    // Finish updating the ghost values of the layer nodes:
-    foreach_dimension(d){
-      VecGhostUpdateEnd(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);
-    }
+      // Finish updating the ghost values of the layer nodes:
+      foreach_dimension(d){
+        VecGhostUpdateEnd(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+      }
 
-    // Restore arrays:
-    jump.restore_array();
-    T_l_d.restore_array();
-    if(do_we_solve_for_Ts) T_s_d.restore_array();
+      // Restore arrays:
+      jump.restore_array();
+      T_l_d.restore_array();
+      if(do_we_solve_for_Ts) T_s_d.restore_array();
 
-    // Elyce trying something:
-    normal.restore_array();
-    normal.destroy();
-    vgamma_n.restore_array();
-    vgamma_n.destroy();
+      // Elyce trying something:
+      normal.restore_array();
+      normal.destroy();
+      vgamma_n.restore_array();
+      vgamma_n.destroy();
 
 
-    // Extend the interfacial velocity to the whole domain for advection of the LSF:
-    foreach_dimension(d){
-      ls->extend_from_interface_to_whole_domain_TVD((there_is_a_substrate? phi_eff.vec : phi.vec),
-                                                   jump.vec[d], v_interface.vec[d]); // , 20/*, NULL, 2., 4.*/);
-    }
-
+      // Extend the interfacial velocity to the whole domain for advection of the LSF:
+      foreach_dimension(d){
+        ls->extend_from_interface_to_whole_domain_TVD((there_is_a_substrate? phi_eff.vec : phi.vec),
+                                                     jump.vec[d], v_interface.vec[d]); // , 20/*, NULL, 2., 4.*/);
+      }
+      // Restore the extension band to its correct value:
+      extension_band_extend_*=2.;
+  } // end of computation in compute by flux case for either temp or conc
 
     // Set to zero if we are inside the substrate:
     if(there_is_a_substrate){
@@ -1646,7 +1659,6 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
       }
 
       // Begin communication:
-      // Finish updating the ghost values of the layer nodes:
       foreach_dimension(d){
         VecGhostUpdateBegin(v_interface.vec[d],INSERT_VALUES,SCATTER_FORWARD);
       }
@@ -1660,7 +1672,6 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
         }
       }
       // End communication:
-      // Finish updating the ghost values of the layer nodes:
       foreach_dimension(d){
         VecGhostUpdateEnd(v_interface.vec[d],INSERT_VALUES,SCATTER_FORWARD);
       }
@@ -1687,15 +1698,94 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
     }
   }
 
-
   bool did_crash = false;
   if(v_interface_max_norm>v_interface_max_allowed){
     did_crash=true;
   }
   return did_crash;
 
-
 } // end of "compute_interfacial_velocity()"
+
+double my_p4est_stefan_with_fluids_t::interfacial_velocity_conc_by_value_expression(double C){
+
+  switch(problem_dimensionalization_type){
+  case NONDIM_BY_SCALAR_DIFFUSIVITY:
+    return gamma_diss * Da * (C + disso_interface_condition_added_term);
+  default:
+      throw std::invalid_argument("my_p4est_stefan_with_fluids_t::interfacial_velocity_conc_by_value_expression. This interface condition is only implemented for nondim by scalar diffusivity at the moment");
+  }
+
+}
+
+void my_p4est_stefan_with_fluids_t::compute_interfacial_velocity_conc_problem_by_value(){
+  // Cut extension band in half for region to compute vgamma:
+  extension_band_extend_/=2.;
+
+  // Create normals, compute normals:
+  normal.create(p4est_np1, nodes_np1);
+
+  compute_normals(*ngbd_np1, phi.vec, normal.vec); // TO-DO: Again note, we may compute normals 2x per timestep, could reduce this to make more efficient later
+
+  // Get arrays:
+  normal.get_array();
+  v_interface.get_array();
+  phi.get_array();
+  T_l_n.get_array();
+
+  // First, compute the value in the layer nodes:
+  for(size_t i=0; i<ngbd_np1->get_layer_size(); i++){
+    p4est_locidx_t n = ngbd_np1->get_layer_node(i);
+
+    if(fabs(phi.ptr[n]) < extension_band_extend_){
+      double vgamma = interfacial_velocity_conc_by_value_expression(T_l_n.ptr[n]);
+
+      foreach_dimension(d){
+        v_interface.ptr[d][n] = vgamma * normal.ptr[d][n];
+      }
+    }
+  }
+
+  // Begin updating the ghost values of the layer nodes:
+  foreach_dimension(d){
+    ierr = VecGhostUpdateBegin(v_interface.vec[d], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  // Now compute the value in the local nodes:
+  for(size_t i=0; i<ngbd_np1->get_local_size(); i++){
+    p4est_locidx_t n = ngbd_np1->get_local_node(i);
+
+    if(fabs(phi.ptr[n]) < extension_band_extend_){
+      double vgamma = interfacial_velocity_conc_by_value_expression(T_l_n.ptr[n]);
+
+      foreach_dimension(d){
+        v_interface.ptr[d][n] = vgamma * normal.ptr[d][n];
+      }
+    }
+  }
+
+  // Finish updating the ghost values:
+  foreach_dimension(d){
+    ierr = VecGhostUpdateEnd(v_interface.vec[d], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  // Restore arrays:
+  normal.restore_array();
+  v_interface.restore_array();
+  phi.restore_array();
+  T_l_n.restore_array();
+
+  // Destroy vgamma and normals:
+  normal.destroy();
+
+  // Restore extension band:
+  extension_band_extend_*=2.;
+
+  // Extend the interfacial velocity to the whole domain for advection of the LSF:
+  foreach_dimension(d){
+    ls->extend_from_interface_to_whole_domain_TVD((there_is_a_substrate? phi_eff.vec : phi.vec),
+                                                  v_interface.vec[d], v_interface.vec[d]); // , 20/*, NULL, 2., 4.*/);
+  }
+}
 
 void my_p4est_stefan_with_fluids_t::compute_timestep(){
 

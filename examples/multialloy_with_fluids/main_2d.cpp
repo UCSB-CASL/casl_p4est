@@ -183,6 +183,9 @@ DEFINE_PARAMETER(pl, bool, is_dissolution_case, false, "True/false to describe w
 DEFINE_PARAMETER(pl, int, nondim_type_used, -1., "Integer value to overwrite the nondimensionalization type used for a given problem. The default is -1. If this is specified to a nonnegative number, it will overwrite the particular example's default. 0 - nondim by fluid velocity, 1 - nondim by diffusivity (thermal or conc), 2 - dimensional.  \n");
 
 
+// Set the method for calculationg the dissolution/precipitation interfacial velocity:
+DEFINE_PARAMETER(pl, int, precip_disso_vgamma_calc, 0, "The type of calculation used for the interface velocity in precipitation/dissolution problems. 0 - compute by concentration value. 1- compute by concentration flux.");
+//precipitation_dissolution_interface_velocity_calc_type_t precip_disso_vgamma_calc_type = (precipitation_dissolution_interface_velocity_calc_type_t) precip_disso_vgamma_calc;
 
 // Related to LSF reinitialization:
 DEFINE_PARAMETER(pl, int, reinit_every_iter, 1, "An integer option for how many iterations we wait "
@@ -798,11 +801,11 @@ DEFINE_PARAMETER(pl, double, beta_T, 1.0, "Thermal expansion coefficient for the
 DEFINE_PARAMETER(pl, double, beta_C, 1.0, "Concentration expansion coefficient for the boussinesq approx. default: 1 . This gets set inside specific examples. \n ");
 
 // For dissolution problem:
-DEFINE_PARAMETER(pl, double, gamma_diss, 1.0, "The parameter dictates some dissolution behavior, default value is 1. This gets calculated internally. ");
+DEFINE_PARAMETER(pl, double, gamma_diss, 1.0, "The parameter dictates some dissolution behavior, default value is 1. This gets calculated internally for the dissolution benchmark problem, otherwise it's up to the user to set. ");
 
-DEFINE_PARAMETER(pl, double, stoich_coeff_diss, 1.0, "The stoichiometric coefficient of the dissolution reaction. Default is 1.");
+DEFINE_PARAMETER(pl, double, stoich_coeff_diss, 1.0, "The stoichiometric coefficient of the dissolution reaction. Default is 1. Used to compute gamma_diss for dissolution benchmark problem. ");
 
-DEFINE_PARAMETER(pl, double, molar_volume_diss, 1.0, "The molar volume of the dissolving solid. Default is for gypsum, ");
+DEFINE_PARAMETER(pl, double, molar_volume_diss, 1.0, "The molar volume of the dissolving solid. Default is 1. Used to compute gamma_diss for dissolution benchmark problem. ");
 
 DEFINE_PARAMETER(pl, double , Dl, 1., "Liquid phase diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s ");
 DEFINE_PARAMETER(pl, double , Ds, 0., "Solid phase diffusion coefficient m^2/s, default is : 0");
@@ -817,6 +820,8 @@ DEFINE_PARAMETER(pl, double, T0, 0., "Characteristic solid temperature of the pr
 DEFINE_PARAMETER(pl, double, Tinterface, 0.5, "The interface temperature (or concentration) in K (or INSERT HERE), i.e. the melt temperature. (default: 0.5 This needs to be set by the user to run a meaningful example).");
 
 DEFINE_PARAMETER(pl, double, Tinfty, 1., "The freestream fluid temperature T_infty in K. (default: 1. This needs to be set by the user to run a meaningful example).");
+
+DEFINE_PARAMETER(pl, double, theta_infty, 1., "The freestream temp or concentration, nondimensional. Default:1 . This may not be used, but in the dissolution porous media case allows the user to control this as an input variable. ");
 
 DEFINE_PARAMETER(pl, double, Tflush, -1.0, "The flush temperature (K) or concentration that the inlet BC is changed to if flush_dim_time is activated. Default: -1.0. \n");
 
@@ -902,14 +907,7 @@ void set_physical_properties(){
       rho_l = 1000.0;
       rho_s = 2710.0;
 
-
-      // Elyce to-do 12/14/21: commented out below bc no longer necessary. Delete once verified it's working
-
-//      theta_infty = 1.0; // wall undersaturation
-//      theta0 = 0.0; // aka fully saturated at the disk
-
-//      back_wall_temp_flux = 0.0;
-//      // No need to set theta_interface --> we have a robin BC there, not Dirichlet
+      gamma_diss = molar_volume_diss*Tinfty/stoich_coeff_diss;
       break;
     }
     case PLANE_POIS_FLOW:{
@@ -1031,7 +1029,7 @@ double time_nondim_to_dim = 1.;
 double vel_nondim_to_dim = 1.;
 
 // Nondimensional temperature values (computed in set_physical_properties)
-double theta_infty=0.;
+//double theta_infty=0.; // I've allowed the user to set this
 double theta_interface=0.;
 double theta0=0.;
 double deltaT=0.;
@@ -1098,9 +1096,15 @@ void set_temp_conc_nondim_defns(){
   case EVOLVING_POROUS_MEDIA:{
 
     if(is_dissolution_case){
-      // Using the nondim setup theta = C/Cinf
-      theta_infty=1.0; // wall undersaturation
-      theta0 = 0.0; // used for IC -- initial concentration of ions in solid is zero -- verified by Molins benchmark paper
+//      // Using the nondim setup theta = C/Cinf
+//      theta_infty=1.0; // wall undersaturation
+//      theta0 = 0.0; // used for IC -- initial concentration of ions in solid is zero -- verified by Molins benchmark paper
+
+      // Using nondim theta = C/Csat
+//      theta_infty = theta_inf_prescribed;
+      // We allow this to be set by the user
+
+
     }
     else{
       deltaT = fabs(Tinfty - T0);
@@ -2496,13 +2500,18 @@ class BC_INTERFACE_VALUE_TEMP: public my_p4est_stefan_with_fluids_t::interfacial
 
     double dissolution_bc_expression() const {
 
-      // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
-      // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
-      if(fabs(deltaT/Tinfty) < EPS){
-        return 0.0;
+      if(example_ == DISSOLVING_DISK_BENCHMARK){
+        // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
+        // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
+        if(fabs(deltaT/Tinfty) < EPS){
+          return 0.0;
+        }
+        else{
+          return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
+        }
       }
       else{
-        return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
+        return Da; // this corresponds to the Robin BC condition (dC/dn + Da(C-1) = 0) --> (dC/dn + Da(C) = Da)
       }
     }
     double operator()(DIM(double x, double y, double z)) const
@@ -2625,6 +2634,7 @@ class BC_interface_coeff: public CF_DIM{
       //return Da/Pe;//(k_diss*l_diss/D_diss);//(k_diss/u_inf); // Coefficient in front of C
       // ^^^ 12/17/21 why on earth did i have an effing peclet number there ???? aahhhhhhh
 //      return 1.0;
+
       return Da;
     }
   }
@@ -4265,17 +4275,33 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   stefan_w_fluids_solver->set_beta_T(beta_T);
   stefan_w_fluids_solver->set_beta_C(beta_C);
 
-//  stefan_w_fluids_solver->set_gamma_diss(gamma_diss); // this one gets computed in the solver
+  stefan_w_fluids_solver->set_gamma_diss(gamma_diss); // this one gets computed in the solver
   stefan_w_fluids_solver->set_stoich_coeff_diss(stoich_coeff_diss);
   stefan_w_fluids_solver->set_molar_volume_diss(molar_volume_diss);
   stefan_w_fluids_solver->set_k_diss(k_diss);
+  stefan_w_fluids_solver->set_precip_disso_vgamma_calc_type(
+      (precipitation_dissolution_interface_velocity_calc_type_t)precip_disso_vgamma_calc);
+  if(is_dissolution_case){
+    stefan_w_fluids_solver->set_gamma_diss(gamma_diss); // this one gets computed in the solver
+    stefan_w_fluids_solver->set_stoich_coeff_diss(stoich_coeff_diss);
+    stefan_w_fluids_solver->set_molar_volume_diss(molar_volume_diss);
+    stefan_w_fluids_solver->set_k_diss(k_diss);
+    stefan_w_fluids_solver->set_precip_disso_vgamma_calc_type(
+        (precipitation_dissolution_interface_velocity_calc_type_t)precip_disso_vgamma_calc);
 
-  stefan_w_fluids_solver->set_Dl(Dl);
-  stefan_w_fluids_solver->set_Ds(Ds);
+    if(example_ == DISSOLVING_DISK_BENCHMARK) {
+      stefan_w_fluids_solver->set_disso_interface_condition_added_term(0.);
+    }
+    else {
+      stefan_w_fluids_solver->set_disso_interface_condition_added_term(-1.);
+    }
+
+    stefan_w_fluids_solver->set_Dl(Dl);
+    stefan_w_fluids_solver->set_Ds(Ds);
+  }
 
   // Check that the parameters were set:
   stefan_w_fluids_solver->print_physical_parameters();
-
 
   // Set nondim groups (if they've been prescribed, a.k.a not the default of -1):
   if(Re>=0.) stefan_w_fluids_solver->set_Re(Re);

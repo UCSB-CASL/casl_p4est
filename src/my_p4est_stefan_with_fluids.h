@@ -48,6 +48,12 @@ enum domain_phase_t{
   LIQUID_DOMAIN=0, SOLID_DOMAIN=1
 };
 
+enum precipitation_dissolution_interface_velocity_calc_type_t{ // there are two ways you can compute the interface velocity in conc driven problems
+  COMPUTE_BY_VALUE, // by the concentration value at the interface
+  COMPUTE_BY_FLUX // by the flux of concentration at the interface
+};
+
+
 class my_p4est_stefan_with_fluids_t
 {
 
@@ -415,7 +421,7 @@ private:
 
 
   // ----------------------------------------------
-  // Booleans related to what kind of physics we are solving
+  // Booleans (or enum) related to what kind of physics we are solving
   // ----------------------------------------------
   bool solve_stefan;
   bool solve_navier_stokes;
@@ -429,6 +435,11 @@ private:
   bool is_dissolution_case;
 
   bool force_interfacial_velocity_to_zero;
+
+  precipitation_dissolution_interface_velocity_calc_type_t precip_disso_vgamma_calc_type;
+  int disso_interface_condition_added_term; // this is relevant for the interface velocity calculation by value.
+  // For the condition (gamma_diss * Da * C) (used for the dissolution benchmark), we set disso_interface_condition_added_term = 0.
+  // For the condition (gamma_diss * Da * (C-1)), (used more generally), we set disso_interface_condition_added_term = -1.
 
   // ----------------------------------------------
   // Other misc parameters
@@ -545,7 +556,12 @@ public:
   // -------------------------------------------------------
   void extend_relevant_fields();
   double interfacial_velocity_expression(double Tl_d, double Ts_d);
+  double interfacial_velocity_conc_by_value_expression(double C);
   bool compute_interfacial_velocity();
+
+  // Compute_interfacial_velocity_conc_problem_vy_value -- exists specifically to compute the vgamma governed by
+  // concentration *value* at the interface rather than flux, and that's why it has its own fxn. Unfortunately, there may be some code duplication with the other compute_interfacial_velocity fxn. compute_interfacial_velocity will call this funtion in the appropriate case.
+  void compute_interfacial_velocity_conc_problem_by_value();
   void compute_timestep();
 
   // -------------------------------------------------------
@@ -1019,12 +1035,13 @@ public:
     if(is_dissolution_case){
       // if deltaT is set to zero, we are using the C/Cinf nondim and set gamma_diss = Vm * Cinf/stoic_coeff. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set gamma_diss = Vm * deltaC/stoic_coeff
       // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
-      if(fabs(deltaT/Tinfty) < EPS){
-        gamma_diss = molar_volume_diss*Tinfty/stoich_coeff_diss;
-      }
-      else{
-        gamma_diss = molar_volume_diss*deltaT/stoich_coeff_diss;
-      }
+      // Elyce 10/27/22 -- I commented this out because I want to have us just set gamma_diss from main from now on, it simplifies things. It's not hard to compute in main if needed.
+//      if(fabs(deltaT/Tinfty) < EPS){
+//        gamma_diss = molar_volume_diss*Tinfty/stoich_coeff_diss;
+//      }
+//      else{
+//        gamma_diss = molar_volume_diss*deltaT/stoich_coeff_diss;
+//      }
       if(Da<0.) Da = k_diss*l_char/Dl;
     }
 
@@ -1164,6 +1181,10 @@ public:
 
   void set_start_w_merged_grains(bool start_w_merged){start_w_merged_grains  = start_w_merged;}
 
+  void set_precip_disso_vgamma_calc_type(precipitation_dissolution_interface_velocity_calc_type_t type_){precip_disso_vgamma_calc_type = type_;}
+  void set_disso_interface_condition_added_term(int added_term_){
+    disso_interface_condition_added_term = added_term_;
+  }
   // ----------------------------------------------
   // Other misc parameters
   // ----------------------------------------------
