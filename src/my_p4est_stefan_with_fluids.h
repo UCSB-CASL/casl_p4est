@@ -1028,6 +1028,12 @@ public:
     if(Pr<0.) Pr = mu_l/(alpha_l * rho_l);
 
     if(Sc<0.) Sc = mu_l/(Dl*rho_l);
+//    // Either compute Sc by a provided Dl, or compute Dl by a provided Sc
+//    if(Sc<0. && Dl>0.) {Sc = mu_l/(Dl*rho_l);}
+//    else if (Sc>0. && Dl<0.) { Dl = mu_l /(rho_l * Sc);}
+//    else{
+//      throw std::invalid_argument("Neither Sc nor Dl has been prescribed. You must provide at least one to run nondim_by_Scalar_diffusivity");
+//    }
 
     if(St<0.) St = cp_s * deltaT/L;
 

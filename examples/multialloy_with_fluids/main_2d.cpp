@@ -184,7 +184,7 @@ DEFINE_PARAMETER(pl, int, nondim_type_used, -1., "Integer value to overwrite the
 
 
 // Set the method for calculationg the dissolution/precipitation interfacial velocity:
-DEFINE_PARAMETER(pl, int, precip_disso_vgamma_calc, 0, "The type of calculation used for the interface velocity in precipitation/dissolution problems. 0 - compute by concentration value. 1- compute by concentration flux.");
+DEFINE_PARAMETER(pl, int, precip_disso_vgamma_calc, 1, "The type of calculation used for the interface velocity in precipitation/dissolution problems. 0 - compute by concentration value. 1- compute by concentration flux.");
 //precipitation_dissolution_interface_velocity_calc_type_t precip_disso_vgamma_calc_type = (precipitation_dissolution_interface_velocity_calc_type_t) precip_disso_vgamma_calc;
 
 // Related to LSF reinitialization:
@@ -350,9 +350,9 @@ void select_solvers(){
                                         (example_ == MELTING_ICE_SPHERE_NAT_CONV) ||
                                         (example_  ==DISSOLVING_DISK_BENCHMARK) || save_area_data; // change to just option to compute and save area?
 
-    do_we_solve_for_Ts = (example_ != DISSOLVING_DISK_BENCHMARK);
+    is_dissolution_case = (example_ == DISSOLVING_DISK_BENCHMARK) || is_dissolution_case; // allows for user to externally set it
 
-    is_dissolution_case = (example_ == DISSOLVING_DISK_BENCHMARK);
+    do_we_solve_for_Ts = (!is_dissolution_case); /*(example_ != DISSOLVING_DISK_BENCHMARK)*/;
 
     example_has_known_max_vint = ((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)
                                   || (example_ == COUPLED_TEST_2) || (example_ == FRANK_SPHERE));
@@ -807,7 +807,7 @@ DEFINE_PARAMETER(pl, double, stoich_coeff_diss, 1.0, "The stoichiometric coeffic
 
 DEFINE_PARAMETER(pl, double, molar_volume_diss, 1.0, "The molar volume of the dissolving solid. Default is 1. Used to compute gamma_diss for dissolution benchmark problem. ");
 
-DEFINE_PARAMETER(pl, double , Dl, 1., "Liquid phase diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s ");
+DEFINE_PARAMETER(pl, double , Dl, -1., "Liquid phase diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s ");
 DEFINE_PARAMETER(pl, double , Ds, 0., "Solid phase diffusion coefficient m^2/s, default is : 0");
 // Elyce commented out 12/14/21: the below parameter is now obselete
 //DEFINE_PARAMETER(pl, double, l_diss, 2.0e-4, "Dissolution length scale. The physical length (in m) that corresponds to a length of 1 in the computational domain. Default: 20e-3 m (20 mm), since the initial diameter of the disk is 20 mm \n");
@@ -824,6 +824,12 @@ DEFINE_PARAMETER(pl, double, Tinfty, 1., "The freestream fluid temperature T_inf
 DEFINE_PARAMETER(pl, double, theta_infty, 1., "The freestream temp or concentration, nondimensional. Default:1 . This may not be used, but in the dissolution porous media case allows the user to control this as an input variable. ");
 
 DEFINE_PARAMETER(pl, double, Tflush, -1.0, "The flush temperature (K) or concentration that the inlet BC is changed to if flush_dim_time is activated. Default: -1.0. \n");
+
+DEFINE_PARAMETER(pl, double, theta_flush, -1.0, "The nondim flush temperature or concentration that the inlet BC is changed to if flush_dim_time is activated. Default: -1.0. \n");
+
+DEFINE_PARAMETER(pl, double, flush_every_dt, -1.0, "Flush domain with theta_flush every X amount of dimensional time \n ");
+
+DEFINE_PARAMETER(pl, double, flush_duration, -1.0, "Duration of each flush \n");
 
 // Function to setup the physical properties (for diff examples):
 void set_physical_properties(){
@@ -2499,7 +2505,6 @@ class BC_INTERFACE_VALUE_TEMP: public my_p4est_stefan_with_fluids_t::interfacial
     }
 
     double dissolution_bc_expression() const {
-
       if(example_ == DISSOLVING_DISK_BENCHMARK){
         // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
         // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
@@ -2732,6 +2737,10 @@ class BC_interface_value_inner: public CF_DIM{
   {
     switch(example_){
     case EVOLVING_POROUS_MEDIA:
+      if(is_dissolution_case){
+        return 0.; // if we are at the substrate, prescribe homogeneous neumann (no penetration)
+      }
+      // if not dissolution case, intentionally waterfall the case into the same settings as ice around cylinder
     case ICE_AROUND_CYLINDER:
       if(ramp_bcs){
         return ramp_BC(theta_infty,theta0);
@@ -2746,7 +2755,13 @@ BoundaryConditionType inner_interface_bc_type_temp;
 void inner_interface_bc_temp(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
   switch(example_){
   case EVOLVING_POROUS_MEDIA:
-    inner_interface_bc_type_temp = DIRICHLET;
+    if(is_dissolution_case){
+      inner_interface_bc_type_temp = NEUMANN;
+      // if we are at the substrate, prescribe homogeneous neumann (no penetration)
+    }
+    else{
+      inner_interface_bc_type_temp = DIRICHLET;
+    }
     break;
   case FLOW_PAST_CYLINDER:
   case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
@@ -2771,6 +2786,11 @@ public:
   {
     switch(example_){
       case EVOLVING_POROUS_MEDIA:
+        if(is_dissolution_case){// if we are at the substrate, prescribe homogeneous neumann (no penetration)
+          return 0.;
+        }
+        // if not dissolution, intentionally waterfall into the ice around cylinder case
+
       case ICE_AROUND_CYLINDER:
         return 1.0;
       }
@@ -2803,7 +2823,17 @@ class BC_interface_value_velocity: public my_p4est_stefan_with_fluids_t::interfa
       case PLANE_POIS_FLOW:
         return 0.; // homogeneous dirichlet no slip
       case FLOW_PAST_CYLINDER:
-      case EVOLVING_POROUS_MEDIA:
+        return 0.;
+      case EVOLVING_POROUS_MEDIA:{
+        //        if(is_dissolution_case) {
+        //          return 0.; // not strict no slip
+        //        }
+        //        else{
+        //          return Conservation_of_Mass(DIM(x,y,z));
+        //        }
+        return Conservation_of_Mass(DIM(x,y,z));
+      }
+
       case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case DISSOLVING_DISK_BENCHMARK:
@@ -3102,9 +3132,11 @@ class BC_WALL_VALUE_PRESSURE: public CF_DIM
           break;
         }
         case NONDIM_BY_SCALAR_DIFFUSIVITY:{
+
           pressure_drop_nondim = is_dissolution_case?
                                                      (pressure_drop*l_char*l_char/rho_l/Dl/Dl):
                                                      (pressure_drop*l_char*l_char/rho_l/alpha_l/alpha_l);
+//          printf("Prescribed pressure drop is %0.3e using Dl = %0.3e, l_char = %0.3e, rho_l = %0.3e, pressure_drop_presc = %0.3e \n", pressure_drop_nondim, Dl, l_char, rho_l, pressure_drop);
 
           break;
         }
@@ -4289,11 +4321,28 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
     stefan_w_fluids_solver->set_precip_disso_vgamma_calc_type(
         (precipitation_dissolution_interface_velocity_calc_type_t)precip_disso_vgamma_calc);
 
+    // This governs the expression of the RObin BC (and possibly interface velocity expression) in the
+    // precipitation/dissolution problem. For the dissolving disk benchmark, we want to match their
+    // specific rate law so the added term is 0. However for more general cases, we use the k(C-Csat) formulation, so we
+    // will need an added -1 in the nondimensional expression
+    // TO-DO: probably need to add an argument to throw if we do this dimensionally, since we don't have that implemented at the moment
     if(example_ == DISSOLVING_DISK_BENCHMARK) {
       stefan_w_fluids_solver->set_disso_interface_condition_added_term(0.);
     }
     else {
       stefan_w_fluids_solver->set_disso_interface_condition_added_term(-1.);
+    }
+
+    // If we only prescribe Sc, we gotta compute some effective "Dl" for us to use for boundary conditions, and for the stefan solver to use for vel_nondim_to_dim
+    if(Dl<0.){
+      if(Sc>0.){
+        Dl = mu_l / (rho_l * Sc);
+        PetscPrintf(mpi.comm(), "\n \n ---------- \n Warning!! \n ---------- \n : No physical Dl was provided, we computed Dl = %0.3e using rho_l = %0.3e, mu_l = %0.3e, and Sc = %0.2e. Please modify this if this is not the desired outcome. \n \n", Dl, rho_l, mu_l, Sc);
+      }
+      else{
+        throw std::invalid_argument("main_2d.cpp: You must provide either a valid Dl or Sc in order to run this problem with nondim_by_scalar_diffusivity \n");
+
+      }
     }
 
     stefan_w_fluids_solver->set_Dl(Dl);

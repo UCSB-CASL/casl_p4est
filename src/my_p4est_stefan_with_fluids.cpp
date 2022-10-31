@@ -238,7 +238,9 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   grav = beta_T = beta_C = 1;
 
   gamma_diss = stoich_coeff_diss = molar_volume_diss = k_diss = 1;
-  Dl = Ds = 1;
+//  // Set Dl and Ds equal to -1 because we need the user to either provide Dl or Sc to run something reasonable
+//  Dl = Ds = -1.;
+  Dl = Ds = 1.;
 
   // ----------------------------------------------
   // Booleans (or enum, or int) related to what kind of physics we are solving
@@ -661,9 +663,12 @@ void my_p4est_stefan_with_fluids_t::perform_initializations(){
                           "With: \n"
                           "u_inf = %0.3e [m/s]\n"
                           "delta T = %0.2f [K]\n"
-                          "sigma = %0.3e, l_char = %0.3e, sigma/l_char = %0.3e \n \n",
+                          "sigma = %0.3e, l_char = %0.3e, sigma/l_char = %0.3e \n \n"
+                           "vel_nondim_to_dim = %0.3e \n"
+                           "time_nondim_to_dim = %0.3e \n",
               Re, Pr, Sc, Pe, St, Da, gamma_diss,
-              u_inf,deltaT,sigma,l_char,sigma/l_char);
+              u_inf,deltaT,sigma,l_char,sigma/l_char,
+              vel_nondim_to_dim, time_nondim_to_dim);
 
 
 // TO-DO: commented out below, make sure it's handled in main
@@ -1070,6 +1075,7 @@ void my_p4est_stefan_with_fluids_t::poisson_nodes_step_for_scalar_temp_conc_prob
   }
 
   if(there_is_a_substrate){
+    // TO-DO: not sure if this is entirely necessary but keep it for now
     // Need to add this is the event that phi collapses onto the substrate and we need the phi_substrate BC to take over in that region
     solver_Tl->add_boundary(MLS_INTERSECTION, phi_substrate.vec,
                             phi_substrate_dd.vec[0], phi_substrate_dd.vec[1],
@@ -1219,7 +1225,7 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_poisson_nodes_problem_for_sc
 
   //Curvature and normal for BC's and setting up solver:
   if(interfacial_temp_bc_requires_normal || interfacial_temp_bc_requires_curvature) normal.create(p4est_np1,nodes_np1);
-  if(interfacial_temp_bc_requires_curvature)curvature.create(p4est_np1,nodes_np1);
+  if(interfacial_temp_bc_requires_curvature) curvature.create(p4est_np1,nodes_np1);
 
   // Second derivatives of LSF's (for solver):
   phi_solid_dd.create(p4est_np1,nodes_np1);
@@ -1593,7 +1599,7 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
 
       // Begin updating the ghost values of the layer nodes:
       foreach_dimension(d){
-        VecGhostUpdateBegin(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);CHKERRXX(ierr);
+        ierr = VecGhostUpdateBegin(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);CHKERRXX(ierr);
       }
 
       // Compute the jump in the local nodes:
@@ -1618,7 +1624,7 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
 
       // Finish updating the ghost values of the layer nodes:
       foreach_dimension(d){
-        VecGhostUpdateEnd(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+        ierr = VecGhostUpdateEnd(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);CHKERRXX(ierr);
       }
 
       // Restore arrays:
@@ -1632,12 +1638,12 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
       vgamma_n.restore_array();
       vgamma_n.destroy();
 
-
       // Extend the interfacial velocity to the whole domain for advection of the LSF:
       foreach_dimension(d){
         ls->extend_from_interface_to_whole_domain_TVD((there_is_a_substrate? phi_eff.vec : phi.vec),
                                                      jump.vec[d], v_interface.vec[d]); // , 20/*, NULL, 2., 4.*/);
       }
+
       // Restore the extension band to its correct value:
       extension_band_extend_*=2.;
   } // end of computation in compute by flux case for either temp or conc
@@ -1704,13 +1710,14 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
   }
   return did_crash;
 
+
 } // end of "compute_interfacial_velocity()"
 
 double my_p4est_stefan_with_fluids_t::interfacial_velocity_conc_by_value_expression(double C){
 
   switch(problem_dimensionalization_type){
   case NONDIM_BY_SCALAR_DIFFUSIVITY:
-    return gamma_diss * Da * (C + disso_interface_condition_added_term);
+    return -1.0 * gamma_diss * Da * (C + disso_interface_condition_added_term);
   default:
       throw std::invalid_argument("my_p4est_stefan_with_fluids_t::interfacial_velocity_conc_by_value_expression. This interface condition is only implemented for nondim by scalar diffusivity at the moment");
   }
@@ -1736,7 +1743,7 @@ void my_p4est_stefan_with_fluids_t::compute_interfacial_velocity_conc_problem_by
   for(size_t i=0; i<ngbd_np1->get_layer_size(); i++){
     p4est_locidx_t n = ngbd_np1->get_layer_node(i);
 
-    if(fabs(phi.ptr[n]) < extension_band_extend_){
+    if((fabs(phi.ptr[n]) < extension_band_extend_) && (phi.ptr[n] < 0.)){
       double vgamma = interfacial_velocity_conc_by_value_expression(T_l_n.ptr[n]);
 
       foreach_dimension(d){
@@ -1754,7 +1761,7 @@ void my_p4est_stefan_with_fluids_t::compute_interfacial_velocity_conc_problem_by
   for(size_t i=0; i<ngbd_np1->get_local_size(); i++){
     p4est_locidx_t n = ngbd_np1->get_local_node(i);
 
-    if(fabs(phi.ptr[n]) < extension_band_extend_){
+    if((fabs(phi.ptr[n]) < extension_band_extend_) && (phi.ptr[n] < 0.)){
       double vgamma = interfacial_velocity_conc_by_value_expression(T_l_n.ptr[n]);
 
       foreach_dimension(d){
@@ -2034,11 +2041,12 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
                         " - Computational value: %0.4f  "
                         " - Physical value: %0.3e [m/s]  "
                         " - Physical value: %0.3f [mm/s] \n"
-                           "- Effective Re: %0.3f "
+                           "- Effective Re: %0.3f, Effective Pe: %0.3f "
                            "\n",NS_norm,
               NS_norm*vel_nondim_to_dim,
               NS_norm*vel_nondim_to_dim*1000.,
-              NS_norm*vel_nondim_to_dim*rho_l*l_char/mu_l);
+              NS_norm*vel_nondim_to_dim*rho_l*l_char/mu_l,
+              is_dissolution_case? NS_norm*vel_nondim_to_dim*l_char/Dl : NS_norm*vel_nondim_to_dim*l_char/alpha_l);
 
   // Stop simulation if things are blowing up
   bool did_crash;
