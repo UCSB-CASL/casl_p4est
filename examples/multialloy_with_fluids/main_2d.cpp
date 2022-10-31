@@ -2487,6 +2487,7 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
 // --------------------------------------------------------------------------------------------------------------
 // Boundary conditions for scalar temp/conc problem:
 // --------------------------------------------------------------------------------------------------------------
+//----------------
 // Interface:
 //----------------
 // Value:
@@ -2648,8 +2649,26 @@ class BC_interface_coeff: public CF_DIM{
 //----------------
 // Wall:
 //----------------
-// Value:
 
+// Function for handling the flushing scenarios:
+// For this function, we assume that the flush times are given as dimensional time in seconds
+int flush_idx = 0;
+double theta_wall_flushing_scenario(){
+  flush_idx = (int) floor(tn*time_nondim_to_dim / flush_every_dt);
+
+  // We flush every given dt for a certain duration, but we ignore the first flush cycle to give some startup time (since by this formula, the first flush cycle would be at t=0)
+  bool do_flush = ((tn*time_nondim_to_dim - flush_idx * flush_every_dt) < flush_duration) && (flush_idx > 1);
+
+  if(do_flush){
+    return theta_flush;
+  }
+  else {
+    return theta_infty;
+  }
+
+}
+
+// Value:
 class BC_WALL_VALUE_TEMP: public CF_DIM
 {
   public:
@@ -2671,6 +2690,19 @@ class BC_WALL_VALUE_TEMP: public CF_DIM
     }
     case DENDRITE_TEST:
     case EVOLVING_POROUS_MEDIA:
+    {
+      if(dirichlet_temperature_walls(DIM(x,y,z))){
+        if(flush_every_dt>0. && flush_duration>0.){
+          return theta_wall_flushing_scenario();
+        }
+        else {
+          return theta_infty;
+        }
+      }
+      else{
+        return back_wall_temp_flux;
+      }
+    }
     case MELTING_ICE_SPHERE:
     case MELTING_ICE_SPHERE_NAT_CONV:
     case ICE_AROUND_CYLINDER:{
@@ -4376,7 +4408,6 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   RaT = stefan_w_fluids_solver->get_RaT();
   RaC = stefan_w_fluids_solver->get_RaC();
 
-
   if(solve_navier_stokes){
     set_NS_info();
   }
@@ -4403,6 +4434,7 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   // -----------------------------------------------
 
   time_nondim_to_dim = stefan_w_fluids_solver->get_time_nondim_to_dim();
+  vel_nondim_to_dim = stefan_w_fluids_solver->get_vel_nondim_to_dim();
 
   simulation_time_info(); // INSERT HERE: update in solver as necessary
   stefan_w_fluids_solver->set_tn(tstart);
@@ -5211,6 +5243,19 @@ int main(int argc, char** argv) {
                          dt, dt*(time_nondim_to_dim),
                          ((tn-t_original_start)/(tfinal-t_original_start))*100.0,num_nodes);
 
+      // check out the flushing situation:
+      flush_idx = (int) floor(tn*time_nondim_to_dim / flush_every_dt);
+
+      // We flush every given dt for a certain duration, but we ignore the first flush cycle to give some startup time (since by this formula, the first flush cycle would be at t=0)
+      bool do_flush = ((tn*time_nondim_to_dim - flush_idx * flush_every_dt) < flush_duration) && (flush_idx > 1);
+
+      PetscPrintf(mpi.comm(), "Flushing info: \n"
+                              "tn = %0.3e, tn_dim = %0.3e, \n flush_every_dt = %0.3e, flush_dur = %0.3e, \n "
+                              "tnew = %0.3e, flush_idx = %d, do_flush = %d, theta_wall = %0.2f \n \n",
+                  tn, tn*time_nondim_to_dim,
+                  flush_every_dt, flush_duration,
+                  (tn*time_nondim_to_dim - flush_idx * flush_every_dt),
+                  flush_idx, do_flush, theta_wall_flushing_scenario() );
 
 
       // -------------------------------
