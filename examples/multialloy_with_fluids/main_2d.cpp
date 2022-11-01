@@ -224,7 +224,7 @@ DEFINE_PARAMETER(pl, bool, use_inner_surface_porous_media, false, "If true, will
 
 DEFINE_PARAMETER(pl, bool, start_w_merged_grains, false, "If true, we assume the LSF provided contains geometry for grains that are already merged, and the regularize front procedure will be called after initializing the level set to remove problem geometry. Default: false. For use in porous media project. \n");
 
-DEFINE_PARAMETER(pl, double, porous_media_initial_thickness_multiplier, 1.05, "The initial thickness multiplier of the outer interface in relation to the inner interface, in the case when you are using both inner and outer interfaces for the porous media case. i.e. if there is an initial ice thickness on a porous media, then the media structure will have the geometry as defined in the provided files, and the ice will sit on the porous media geometry with an initial radius of porous_media_initial_thickness_multiplier*r_porous_media \n. Default value: 1.05 ");
+DEFINE_PARAMETER(pl, double, porous_media_initial_thickness, 4.0 , "The initial thickness outer interface in relation to the inner interface, in number of smallest grid cells. Default value: 4.0 ");
 
 // ---------------------------------------
 // Booleans that we select to simplify logic in the main program for different processes that are required for different examples:
@@ -506,12 +506,13 @@ void set_geometry(){
     }
     case EVOLVING_POROUS_MEDIA:{
       // EASIER TO DO LOCALLY:
-      xmin = 0.0; xmax = 2.0;
-      ymin = 0.0; ymax = 2.0;
+//      xmin = 0.0; xmax = 2.0;
+//      ymin = 0.0; ymax = 2.0;
+      // ALLOW THE USER TO DECIDE VIA INPUT
 
-      // Number of trees:
-      nx = 1.0;
-      ny = 1.0;
+//      // Number of trees:
+//      nx = 1.0;
+//      ny = 1.0;
 
       // Periodicity:
       px = 0;
@@ -728,7 +729,7 @@ double return_LSF_porous_media(DIM(double x, double y, double z), bool is_inner_
   double dxyz_min = tree_size/(pow(2.0, lmax));
 
   double radius_addition = 0.0;
-  if(!is_inner_) radius_addition = 4.*dxyz_min;
+  if(!is_inner_) radius_addition = porous_media_initial_thickness*dxyz_min;
 
   double lsf_vals[num_grains];
   // First, grab all the relevant LSF values for each grain:
@@ -1170,7 +1171,7 @@ DEFINE_PARAMETER(pl, double, u_inf, 0., "Freestream velocity value (in m/s). Def
 DEFINE_PARAMETER(pl, double, pressure_drop, 1.0, "The dimensional pressure drop value you are using, in Pa. This value will be used in conjunction with the nondim length scale to compute wall Reynolds number for relevant examples using a channel flow-type setup(i.e. melting porous media). Default: 1.0.");
 
 // For setting hodge criteria:
-DEFINE_PARAMETER(pl, double, hodge_percentage_of_max_u, 1.e-2, "Percentage of the max NS norm that hodge variable has to converge within. Default: 1.e-2.");
+DEFINE_PARAMETER(pl, double, hodge_percentage_of_max_u, 1.e-3, "Percentage of the max NS norm that hodge variable has to converge within. Default: 1.e-2.");
 
 // For keeping track of hodge error:
 double hodge_global_error;

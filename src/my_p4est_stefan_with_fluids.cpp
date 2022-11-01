@@ -1958,7 +1958,7 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
   set_ns_parameters();
 
   // Set an initial norm for the first hodge iteration
-  NS_norm = NS_max_allowed;
+  NS_norm = NS_max_allowed/100.; //TO-DO: make this not something that's hard coded, but for now I'm leaving it, bc if you set the initial NS_norm to the max allowed value, you're going to get wonky values for the first iteration (sometimes way too big or etc)
 
   PetscPrintf(mpi->comm(), "NS norm max allowed = %f, NS norm = %f \n", NS_max_allowed, NS_norm);
 
