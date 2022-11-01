@@ -823,6 +823,8 @@ DEFINE_PARAMETER(pl, double, Tinfty, 1., "The freestream fluid temperature T_inf
 
 DEFINE_PARAMETER(pl, double, theta_infty, 1., "The freestream temp or concentration, nondimensional. Default:1 . This may not be used, but in the dissolution porous media case allows the user to control this as an input variable. ");
 
+DEFINE_PARAMETER(pl, double, theta_initial, 0., "This allows you to set the initial nondim C value for the evolving porous media disso/precip problem in the fluid. Default: 0. \n ");
+
 DEFINE_PARAMETER(pl, double, Tflush, -1.0, "The flush temperature (K) or concentration that the inlet BC is changed to if flush_dim_time is activated. Default: -1.0. \n");
 
 DEFINE_PARAMETER(pl, double, theta_flush, -1.0, "The nondim flush temperature or concentration that the inlet BC is changed to if flush_dim_time is activated. Default: -1.0. \n");
@@ -1186,7 +1188,7 @@ void set_NS_info(){
   switch(example_){
     case FRANK_SPHERE:throw std::invalid_argument("NS isnt setup for this example");
     case EVOLVING_POROUS_MEDIA:{
-      u0 = 1.0;
+      u0 = 0.0;
       v0 = 0.;
 
 //      G_press = 1.0; // Pressure drop of order 1
@@ -2178,7 +2180,12 @@ class INITIAL_TEMP: public CF_DIM
       //      return theta_interface;
       switch(dom){
       case LIQUID_DOMAIN:
-        return theta_infty;
+        if(is_dissolution_case){
+          return theta_initial;
+        }
+        else{
+          return theta_infty;
+        }
       case SOLID_DOMAIN:
         return theta_interface;
       default:
@@ -2657,7 +2664,7 @@ double theta_wall_flushing_scenario(){
   flush_idx = (int) floor(tn*time_nondim_to_dim / flush_every_dt);
 
   // We flush every given dt for a certain duration, but we ignore the first flush cycle to give some startup time (since by this formula, the first flush cycle would be at t=0)
-  bool do_flush = ((tn*time_nondim_to_dim - flush_idx * flush_every_dt) < flush_duration) && (flush_idx > 1);
+  bool do_flush = ((tn*time_nondim_to_dim - flush_idx * flush_every_dt) < flush_duration) && (flush_idx > 0);
 
   if(do_flush){
     return theta_flush;
@@ -4436,6 +4443,11 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   time_nondim_to_dim = stefan_w_fluids_solver->get_time_nondim_to_dim();
   vel_nondim_to_dim = stefan_w_fluids_solver->get_vel_nondim_to_dim();
 
+  PetscPrintf(mpi.comm(), "Values in main are: \n "
+                          "time_nondim_to_dim = %0.3e \n"
+                          "vel_nondim_to_dim = %0.3e \n "
+                          "pressure_drop_nondim = %0.3e \n", time_nondim_to_dim, vel_nondim_to_dim, (pressure_drop*l_char*l_char/rho_l/Dl/Dl) );
+
   simulation_time_info(); // INSERT HERE: update in solver as necessary
   stefan_w_fluids_solver->set_tn(tstart);
   stefan_w_fluids_solver->set_tfinal(tfinal);
@@ -5247,7 +5259,7 @@ int main(int argc, char** argv) {
       flush_idx = (int) floor(tn*time_nondim_to_dim / flush_every_dt);
 
       // We flush every given dt for a certain duration, but we ignore the first flush cycle to give some startup time (since by this formula, the first flush cycle would be at t=0)
-      bool do_flush = ((tn*time_nondim_to_dim - flush_idx * flush_every_dt) < flush_duration) && (flush_idx > 1);
+      bool do_flush = ((tn*time_nondim_to_dim - flush_idx * flush_every_dt) < flush_duration) && (flush_idx > 0);
 
       PetscPrintf(mpi.comm(), "Flushing info: \n"
                               "tn = %0.3e, tn_dim = %0.3e, \n flush_every_dt = %0.3e, flush_dur = %0.3e, \n "
