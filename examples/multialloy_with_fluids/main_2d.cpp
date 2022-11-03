@@ -206,7 +206,7 @@ DEFINE_PARAMETER(pl, bool, force_interfacial_velocity_to_zero, false, "Force the
 
 // Related to the Navier-Stokes problem:
 //DEFINE_PARAMETER(pl, double, Re_overwrite, -100.0, "Overwrite the examples set Reynolds number (works if set to a positive number, default:-100.00");
-DEFINE_PARAMETER(pl, int, NS_advection_sl_order, 2, "Integer for advection solution order (can choose 1 or 2) for the fluid velocity fields (default:1)");
+DEFINE_PARAMETER(pl, int, NS_advection_sl_order, 2, "Integer for advection solution order (can choose 1 or 2) for the fluid velocity fields (default:2)");
 DEFINE_PARAMETER(pl, double, cfl_NS, 1.0, "CFL number for Navier-Stokes problem (default:1.0)");
 DEFINE_PARAMETER(pl, double, hodge_tolerance, 1.e-3, "Tolerance on hodge for error convergence (default:1.e-3)");
 
@@ -871,7 +871,14 @@ void set_physical_properties(){
       sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
       break;
       }
-    case EVOLVING_POROUS_MEDIA: // TO-DO: intentionally waterfalling for now, will change once i fine tune the example more
+    case EVOLVING_POROUS_MEDIA:
+      // TO-DO: intentionally waterfalling for now, will change once i fine tune the example more
+      if(is_dissolution_case){
+        rho_l = 1000; // kg/m^3
+        mu_l = 1.00160e-3; // Pa s
+        rho_s = 2700; // kg/m^3
+      }
+      //otherwise waterfall
     case MELTING_ICE_SPHERE:{
 
       // Using properties of water at 20 C: (engineering toolbox)
@@ -2865,12 +2872,12 @@ class BC_interface_value_velocity: public my_p4est_stefan_with_fluids_t::interfa
       case FLOW_PAST_CYLINDER:
         return 0.;
       case EVOLVING_POROUS_MEDIA:{
-        //        if(is_dissolution_case) {
-        //          return 0.; // not strict no slip
-        //        }
-        //        else{
-        //          return Conservation_of_Mass(DIM(x,y,z));
-        //        }
+//        if(is_dissolution_case) {
+//          return 0.; // not strict no slip
+//        }
+//        else{
+//          return Conservation_of_Mass(DIM(x,y,z));
+//        }
         return Conservation_of_Mass(DIM(x,y,z));
       }
 
@@ -4260,14 +4267,13 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
 
   stefan_w_fluids_solver->set_loading_from_previous_state(loading_from_previous_state);
 
-
   stefan_w_fluids_solver->set_proximity_smoothing(proximity_smoothing);
   stefan_w_fluids_solver->set_proximity_collapse(proximity_collapse);
 
-
-
-
   stefan_w_fluids_solver->set_v_interface_max_allowed(v_int_max_allowed);
+
+  stefan_w_fluids_solver->set_NS_adv_order(NS_advection_sl_order);
+  stefan_w_fluids_solver->set_advection_sl_order(advection_sl_order);
   // ------------------------------
   // Make sure your flags are set to solve at least one of the problems:
   // ------------------------------

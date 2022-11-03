@@ -648,10 +648,11 @@ void my_p4est_stefan_with_fluids_t::perform_initializations(){
   PetscPrintf(mpi->comm(), "Nondim = %d \n"
                           "lmin = %d, lmax = %d \n"
                           "Number of mpi tasks: %d \n"
-                          "Stefan = %d, NS = %d \n \n ", problem_dimensionalization_type,
+                          "Stefan = %d, NS = %d "
+                           "NS_adv_order = %d, Sl_adv_order = %d \n \n ", problem_dimensionalization_type,
               lmin, lmax,
               mpi->size(),
-              solve_stefan, solve_navier_stokes);
+              solve_stefan, solve_navier_stokes, NS_advection_sl_order, advection_sl_order);
   PetscPrintf(mpi->comm(),"The nondimensional groups are: \n"
                           "Re = %f \n"
                           "Pr = %f \n"

@@ -1191,6 +1191,14 @@ public:
   void set_disso_interface_condition_added_term(int added_term_){
     disso_interface_condition_added_term = added_term_;
   }
+
+  void set_NS_adv_order(int order_){
+    NS_advection_sl_order = order_;
+  }
+  void set_advection_sl_order(int order_){
+    advection_sl_order = order_;
+  }
+
   // ----------------------------------------------
   // Other misc parameters
   // ----------------------------------------------
