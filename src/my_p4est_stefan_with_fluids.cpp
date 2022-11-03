@@ -3945,6 +3945,7 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
   std::vector<Vec_for_vtk_export_t> cell_fields = {};
   MPI_Barrier(mpi->comm());
   PetscPrintf(mpi->comm(), "ddd \n");
+  PetscPrintf(mpi->comm(), "output = %s \n", output);
 
   my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ghost_np1,
                                P4EST_TRUE,P4EST_TRUE, output,
