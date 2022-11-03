@@ -3887,6 +3887,9 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
   vec_and_ptr_t kappa;
   vec_and_ptr_dim_t normal;
 
+  MPI_Barrier(mpi->comm());
+  PetscPrintf(mpi->comm(), "aaa \n");
+
   kappa.create(p4est_np1, nodes_np1);
   normal.create(p4est_np1, nodes_np1);
 
@@ -3896,12 +3899,15 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
 
   VecScaleGhost(phi.vec,-1.0);
 
+  MPI_Barrier(mpi->comm());
+  PetscPrintf(mpi->comm(), "bbb \n");
   // Save data:
   std::vector<Vec_for_vtk_export_t> point_fields;
   point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
   point_fields.push_back(Vec_for_vtk_export_t(kappa.vec, "kappa"));
 
-
+  MPI_Barrier(mpi->comm());
+  PetscPrintf(mpi->comm(), "ccc \n");
   //phi substrate and phi eff
   if(there_is_a_substrate){
     point_fields.push_back(Vec_for_vtk_export_t(phi_eff.vec, "phi_eff"));
@@ -3937,13 +3943,15 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
   }
 
   std::vector<Vec_for_vtk_export_t> cell_fields = {};
-
+  MPI_Barrier(mpi->comm());
+  PetscPrintf(mpi->comm(), "ddd \n");
 
   my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ghost_np1,
                                P4EST_TRUE,P4EST_TRUE, output,
                                point_fields, cell_fields);
 
-
+  MPI_Barrier(mpi->comm());
+  PetscPrintf(mpi->comm(), "eee \n");
   point_fields.clear();
   cell_fields.clear();
 
