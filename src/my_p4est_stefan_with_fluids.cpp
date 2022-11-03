@@ -3848,6 +3848,7 @@ void my_p4est_stefan_with_fluids_t::solve_all_fields_for_one_timestep(){
 void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_crash, char crash_type[]){
 
   char output[1000];
+  char output2[1000]; // have to add this one bc Pod does not support sprintf'ing into a char that already has stuff? idk it's weird
 
   const char* out_dir = getenv("OUT_DIR_VTK");
   if(!out_dir){
@@ -3876,11 +3877,11 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
   //    }
 
   if(is_crash){
-    sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_%s_CRASH", output, lmin, lmax, crash_type);
+    sprintf(output2,"%s/snapshot_lmin_%d_lmax_%d_%s_CRASH", output, lmin, lmax, crash_type);
 
   }
   else{
-    sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outidx_%d", output, lmin, lmax, out_idx);
+    sprintf(output2,"%s/snapshot_lmin_%d_lmax_%d_outidx_%d", output, lmin, lmax, out_idx);
   }
 
   // Calculate curvature:
@@ -3945,10 +3946,10 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
   std::vector<Vec_for_vtk_export_t> cell_fields = {};
   MPI_Barrier(mpi->comm());
   PetscPrintf(mpi->comm(), "ddd \n");
-  PetscPrintf(mpi->comm(), "output = %s \n", output);
+  PetscPrintf(mpi->comm(), "output = %s \n", output2);
 
   my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ghost_np1,
-                               P4EST_TRUE,P4EST_TRUE, output,
+                               P4EST_TRUE,P4EST_TRUE, output2,
                                point_fields, cell_fields);
 
   MPI_Barrier(mpi->comm());
