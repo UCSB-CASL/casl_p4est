@@ -90,6 +90,7 @@ private:
   double temp_diag_l_, temp_diff_l_;
   double temp_diag_s_, temp_diff_s_;
   double latent_heat_;
+  double density_l_, density_s_;
 
   // front conditions
   Vec               c0_guess_;
@@ -138,6 +139,11 @@ public:
       conc_diag_ [i] = conc_diag [i];
       conc_diff_ [i] = conc_diff [i];
     }
+  }
+
+  inline void set_density_parameters( double density_l, double desnity_s){
+    density_l_=density_l;
+    density_s_=desnity_s;
   }
 
   inline void set_thermal_parameters(double latent_heat,

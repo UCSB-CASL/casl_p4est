@@ -993,8 +993,9 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0(int scheme)
 
           pw_psi_c0_values_[idx] =
               -( conc_term + eps_v
-                 + latent_heat_*psi_tl_pw[idx]
+                 + latent_heat_*density_s_*psi_tl_pw[idx]
                  ) /(1.-part_coeff_(0, c_all.data()))/pw_c0_values_[idx];
+          // Rochi:: updating this because the stefan condition for temp flux was modified to include density_s_ by Rochi and Elyce
         }
         break;
 
@@ -1190,18 +1191,18 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
   // -----------------------------------------------
   bool solving_with_nondim_for_fluid = false;
 
-  double Le_J[num_comps_];
-  double l_char = 1.;
-  double thermal_diff_l = 1.;
-  double delta_C_char[num_comps_];
-  double Cinf_char[num_comps_];
+//  double Le_J[num_comps_];
+//  double l_char = 1.;
+//  double thermal_diff_l = 1.;
+//  double delta_C_char[num_comps_];
+//  double Cinf_char[num_comps_];
 
-  // initialize things to 1 for now so I don't break everything:
-  for(size_t k =0; k<num_comps_; k++){
-    Le_J[k] = 1.0;
-    delta_C_char[k] = 1.;
-    Cinf_char[k] = 0.;
-  }
+//  // initialize things to 1 for now so I don't break everything:
+//  for(size_t k =0; k<num_comps_; k++){
+//    Le_J[k] = 1.0;
+//    delta_C_char[k] = 1.;
+//    Cinf_char[k] = 0.;
+//  }
 
   // -----------------------------------------------
 //  ierr = PetscPrintf(p4est_->mpicomm, "Computing bc values... \n"); CHKERRXX(ierr);
@@ -1264,19 +1265,21 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       // Compute actual interfacial velocity now as "vn_pr", as specified by the solute rejection equation
       vn_pr = (conc_diff_[0]*vn_pr - front_conc_flux_[0]->value(xyz_pr))/c_all[0]/(1.0-part_coeff_(0, c_all.data()));
 
-      // ---------------------
-      // Elyce Modification:
-      // ---------------------
-      if(solving_with_nondim_for_fluid) {
-        vn_pr = (Le_J[0]*vn_pr - (l_char/(thermal_diff_l*delta_C_char[0]))*front_conc_flux_[0]->value(xyz_pr))/
-                (c_all[0] + Cinf_char[0]/delta_C_char[0])/(1.0-part_coeff_(0, c_all.data()));
-      }
-      // ---------------------
+//      // ---------------------
+//      // Elyce Modification:
+//      // ---------------------
+//      if(solving_with_nondim_for_fluid) {
+//        vn_pr = (Le_J[0]*vn_pr - (l_char/(thermal_diff_l*delta_C_char[0]))*front_conc_flux_[0]->value(xyz_pr))/
+//                (c_all[0] + Cinf_char[0]/delta_C_char[0])/(1.0-part_coeff_(0, c_all.data()));
+//      }
+//      // ---------------------
 
       pw_t_sol_jump_taylor_[idx] = front_temp_value_jump_->value(xyz_pr);
-      pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) - latent_heat_*vn_pr;
+      pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) - latent_heat_*density_s_*vn_pr;
+      // TO FIX !! NEED TO MULTIPLY LATENT_HEAT_*VN*DENSITY_S --> NOTE : THIS CODE IS DUPLICATED IN ABOUT 100X PLACES SO MAKE SURE THEYRE ALL CHANGED
+
       // ALERT ^ line above is not super compatible for modifying for nondimensionalization, I need to look into how front_temp_flux_jump_ is created
-      PetscPrintf(p4est_->mpicomm, "ALERT: multialloy: temp jump is nontrivial to modify for nondimensionalization. Need to address this. \n");
+      //PetscPrintf(p4est_->mpicomm, "ALERT: multialloy: temp jump is nontrivial to modify for nondimensionalization. Need to address this. \n");
       // Note: Looks like front_temp_flux_jump and front_temp_value_jump are set in "set_front_conditions", and are provided as CF's .
       // I need to look into how multialloy provides these
       // Perhaps these are how the external jumps are provided, i.e the external source terms?
@@ -1312,19 +1315,20 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       }
 
       vn_cd = (conc_diff_[0]*vn_cd - front_conc_flux_[0]->value(xyz_cd))/c_all[0]/(1.0-part_coeff_(0, c_all.data()));
-      // ---------------------
-      // Elyce Modification:
-      // ---------------------
-      if(solving_with_nondim_for_fluid) {
-        vn_cd = (Le_J[0]*vn_cd - (l_char/(thermal_diff_l*delta_C_char[0]))*front_conc_flux_[0]->value(xyz_cd))/
-                (c_all[0] + Cinf_char[0]/delta_C_char[0])/(1.0-part_coeff_(0, c_all.data()));
-      }
-      // ---------------------
+//      // ---------------------
+//      // Elyce Modification:
+//      // ---------------------
+//      if(solving_with_nondim_for_fluid) {
+//        vn_cd = (Le_J[0]*vn_cd - (l_char/(thermal_diff_l*delta_C_char[0]))*front_conc_flux_[0]->value(xyz_cd))/
+//                (c_all[0] + Cinf_char[0]/delta_C_char[0])/(1.0-part_coeff_(0, c_all.data()));
+//      }
+//      // ---------------------
 
 
-      pw_t_flx_jump_integr_[idx] = front_temp_flux_jump_->value(xyz_cd) - latent_heat_*vn_cd;
+      pw_t_flx_jump_integr_[idx] = front_temp_flux_jump_->value(xyz_cd) - latent_heat_*density_s_*vn_cd;
+      // Rochi:: updating this because the stefan condition for temp flux was modified to include density_s_ by Rochi and Elyce
       // ALERT: need to modify the above ^ in the same way I address the other one
-      PetscPrintf(p4est_->mpicomm, "ALERT: multialloy: temp jump is nontrivial to modify for nondimensionalization. Need to address this. \n");
+      //PetscPrintf(p4est_->mpicomm, "ALERT: multialloy: temp jump is nontrivial to modify for nondimensionalization. Need to address this. \n");
 
     }
 
@@ -1360,30 +1364,30 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
         }
 
         vn_cd = (conc_diff_[0]*vn_cd - front_conc_flux_[0]->value(xyz_cd))/c_all[0]/(1.0-part_coeff_(0, c_all.data()));
-        // ---------------------
-        // Elyce Modification:
-        // ---------------------
-        if(solving_with_nondim_for_fluid) {
-          vn_cd = (Le_J[0]*vn_cd - (l_char/(thermal_diff_l*delta_C_char[0]))*front_conc_flux_[0]->value(xyz_cd))/
-                  (c_all[0] + Cinf_char[0]/delta_C_char[0])/(1.0-part_coeff_(0, c_all.data()));
-        }
-        // ---------------------
+//        // ---------------------
+//        // Elyce Modification:
+//        // ---------------------
+//        if(solving_with_nondim_for_fluid) {
+//          vn_cd = (Le_J[0]*vn_cd - (l_char/(thermal_diff_l*delta_C_char[0]))*front_conc_flux_[0]->value(xyz_cd))/
+//                  (c_all[0] + Cinf_char[0]/delta_C_char[0])/(1.0-part_coeff_(0, c_all.data()));
+//        }
+//        // ---------------------
 
 //        vn_cd = vn_exact_->value(xyz_cd);
         pw_c_values_robin_[i][idx] = front_conc_flux_[i]->value(xyz_cd);
         pw_c_coeffs_robin_[i][idx] = -(1.0-part_coeff_(i, c_all.data()))*vn_cd;
 
-        // ---------------------
-        // Elyce Modification:
-        // ---------------------
-        if(solving_with_nondim_for_fluid){
-          pw_c_values_robin_[i][idx] = (1./Le_J[i])*(l_char/(thermal_diff_l*delta_C_char[i]))*front_conc_flux_[i]->value(xyz_cd) +
-                                       (1./Le_J[i])*(vn_cd)*(1.0 - part_coeff_(i, c_all.data()))*(Cinf_char[i]/delta_C_char[i]) ;
+//        // ---------------------
+//        // Elyce Modification:
+//        // ---------------------
+//        if(solving_with_nondim_for_fluid){
+//          pw_c_values_robin_[i][idx] = (1./Le_J[i])*(l_char/(thermal_diff_l*delta_C_char[i]))*front_conc_flux_[i]->value(xyz_cd) +
+//                                       (1./Le_J[i])*(vn_cd)*(1.0 - part_coeff_(i, c_all.data()))*(Cinf_char[i]/delta_C_char[i]) ;
 
-          pw_c_coeffs_robin_[i][idx] = -(1./Le_J[i])*(1.0-part_coeff_(i, c_all.data()))*vn_cd;
+//          pw_c_coeffs_robin_[i][idx] = -(1./Le_J[i])*(1.0-part_coeff_(i, c_all.data()))*vn_cd;
 
-        }
-        // ---------------------
+//        }
+//        // ---------------------
 
       }
     }
@@ -1513,6 +1517,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values(int start, in
 
           del_vn = 0;
           vn     = 0;
+          // Rochi comment :: PW BC for psi_t problem is defined here
           foreach_dimension(dim)
           {
             interp_local.set_input(front_normal_.vec[dim], linear); normal[dim] = interp_local.value(xyz);
@@ -1532,7 +1537,8 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values(int start, in
               /c_all[0]/(1.0-part_coeff_(0, c_all.data()));
 
           pw_psi_t_sol_jump_taylor_[idx] = 0;
-          pw_psi_t_flx_jump_taylor_[idx] = del_vn*latent_heat_;
+          pw_psi_t_flx_jump_taylor_[idx] = del_vn*latent_heat_*density_s_;
+          // Rochi:: updating this because the stefan condition for temp flux was modified to include density_s_ by Rochi and Elyce
 
           // centroid
           idx = solver_temp_->pw_jc_idx_integr_pt(0, n, 0);
@@ -1558,7 +1564,8 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values(int start, in
           del_vn = (vn*(1.0-part_coeff_(0, c_all.data()))*interp_local.value(xyz) - conc_diff_[0]*del_vn)
               /c_all[0]/(1.0-part_coeff_(0, c_all.data()));
 
-          pw_psi_t_flx_jump_integr_[idx] = del_vn*latent_heat_;
+          pw_psi_t_flx_jump_integr_[idx] = del_vn*latent_heat_*density_s_;
+          // Rochi:: updating this because the stefan condition for temp flux was modified to include density_s_ by Rochi and Elyce
         }
 
         if (num_comps_ > start)

@@ -147,7 +147,7 @@ private:
   vec_and_ptr_t       solid_front_phi_nm1_;
   vec_and_ptr_t       solid_front_curvature_;
   vec_and_ptr_t       solid_front_velo_norm_;
-  vec_and_ptr_t       solid_time_; // temperature at which alloy solidified
+  vec_and_ptr_t       solid_time_; // time at which alloy solidified
   vec_and_ptr_t       solid_tf_; // temperature at which alloy solidified
   vec_and_ptr_array_t solid_cl_; // composition of solidified region
   vec_and_ptr_array_t solid_part_coeff_; // partition coefficient at freezing
@@ -194,6 +194,10 @@ private:
   // boundary condtions at walls
   BoundaryConditionType wall_bc_type_temp_;
   BoundaryConditionType wall_bc_type_conc_;
+
+//  WallBCDIM* wall_bc_type_temp_;
+//  WallBCDIM* wall_bc_type_conc_;
+
   //BoundaryConditionType wall_bc_type_vel_;
   //BoundaryConditionType wall_bc_type_pres_;
 

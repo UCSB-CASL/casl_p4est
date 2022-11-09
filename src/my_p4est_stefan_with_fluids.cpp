@@ -795,6 +795,16 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   // set_Cl_nm1_backtrace (" ")
   // set_T_l
 
+  if(do_multicomponent_fields){
+    // In this case, we need dimensional fluid velocities (bc the multialloy problem is solved dimensionally)
+
+    foreach_dimension(d){
+      ierr = VecScaleGhost(v_n.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
+      ierr = VecScaleGhost(v_nm1.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
+    }
+  }
+
+
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning to do backtrace \n");
 
 //  PetscPrintf(p4est_np1->mpicomm, "v_n vec inside backtrace = %p \n", v_n.vec[0]);
@@ -1014,6 +1024,16 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   // Clear and delete interpolators:
   SL_backtrace_interp.clear();
   SL_backtrace_interp_nm1.clear();
+
+
+  if(do_multicomponent_fields){
+    // In this case, we converted to dimensional, so we need to convert back
+    foreach_dimension(d){
+      ierr = VecScaleGhost(v_n.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
+      ierr = VecScaleGhost(v_nm1.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
+    }
+  }
+
 
   if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace \n");
 } // end of "do_backtrace_for_scalar_temp_conc_problem"

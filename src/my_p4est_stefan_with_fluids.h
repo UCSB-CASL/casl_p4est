@@ -1009,6 +1009,14 @@ public:
   my_p4est_navier_stokes_t* get_ns_solver(){return ns;}
   vec_and_ptr_dim_t get_v_n(){return v_n;}
   vec_and_ptr_dim_t get_v_nm1(){return v_nm1;}
+
+  // The below function is for use in conjunction with multialloy, which solves a dimensional problem
+  // we set the scaling from nondim to dim that we want the NS to use, and this is the value that the backtrace function
+  // will scale the fluid velocity by before it computes the temperature and concentration backtraces
+  void set_vel_nondim_to_dim(double vel_nd2d){
+    vel_nondim_to_dim = vel_nd2d;
+  }
+
   void set_v_n(vec_and_ptr_dim_t& v_n_){ v_n = v_n_;}
   void set_v_nm1(vec_and_ptr_dim_t& v_nm1_){v_nm1 = v_nm1_;}
   vec_and_ptr_t get_vorticity(){return vorticity;}

@@ -475,6 +475,11 @@ void my_p4est_multialloy_t::initialize_for_fluids(){
 
   stefan_w_fluids_solver->set_v_nm1(v_nm1);
 
+  double thermal_diff_l = thermal_cond_l_/(density_l_*heat_capacity_l_);
+  stefan_w_fluids_solver->set_vel_nondim_to_dim(thermal_diff_l/SQR(l_char));
+  // NOTE -- If you want to visualize dimensional velocities, pressure, and vorticity, you will need to do the appropriate
+  // scaling by hand before outputting to vtk
+
   // -------------
   // (3) pass along the level set function:
   // -------------
@@ -2130,6 +2135,7 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
   solver_all_in_one.set_thermal_parameters(latent_heat_,
                                            density_l_*heat_capacity_l_*time_coeffs[0]/dt_[0], thermal_cond_l_,
                                            density_s_*heat_capacity_s_*time_coeffs[0]/dt_[0], thermal_cond_s_);
+  solver_all_in_one.set_density_parameters(density_l_,density_s_);
   solver_all_in_one.set_gibbs_thomson(zero_cf);
   solver_all_in_one.set_liquidus(liquidus_value_, liquidus_slope_, part_coeff_);
   solver_all_in_one.set_undercoolings(num_seeds_, seed_map_.vec, eps_v_.data(), eps_c_.data());
@@ -2381,6 +2387,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   solver_all_in_one.set_thermal_parameters(latent_heat_,
                                            density_l_*heat_capacity_l_*SL_alpha/dt_[0], thermal_cond_l_,
                                            density_s_*heat_capacity_s_*time_coeffs[0]/dt_[0], thermal_cond_s_);
+  solver_all_in_one.set_density_parameters(density_l_,density_s_);
   solver_all_in_one.set_gibbs_thomson(zero_cf);
   solver_all_in_one.set_liquidus(liquidus_value_, liquidus_slope_, part_coeff_);
   solver_all_in_one.set_undercoolings(num_seeds_, seed_map_.vec, eps_v_.data(), eps_c_.data());
@@ -2506,8 +2513,10 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
 //  std::cout<<"step_w_fluids line 2420\n";
   // (4) get out the velocities, pressure, vort, for visualization
-  v_nm1 = stefan_w_fluids_solver->get_v_nm1();
-  v_n = stefan_w_fluids_solver->get_v_n();
+//  v_nm1 = stefan_w_fluids_solver->get_v_nm1_dimensional();
+//  v_n = stefan_w_fluids_solver->get_v_n_dimensional();
+
+// I don't think we actually need to "get" the velocities bc we already have the address for them... but we can double check
 
 //  int vnsize2;
 //  VecGetSize(v_n.vec[0], &vnsize2);

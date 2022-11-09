@@ -275,7 +275,9 @@ param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidifi
                                               " 3 - radial directional solidification in,"
                                               " 4 - radial directional solidification out,"
                                               " 5 - three spherical seeds,"
-                                              " 6 - planar front and three spherical seeds");
+                                              " 6 - planar front and three spherical seeds,"
+                                              " 7 - daniil has not defined this case - no comments - need to see what it is,"
+                                              " 8 - single dendrite growth <new addition>");
 
 
 
@@ -1033,6 +1035,7 @@ bool periodicity(int dir)
     case  5: return true;
     case  6: return (dir == 0 ? 1 : 0);
     case  7: return (dir == 0 ? 1 : 0);
+    case  8: return (dir == 0 ? 1 : 0);
     default: throw;
   }
 }
@@ -1082,6 +1085,16 @@ public:
 
         return MAX(front, seed_radius() - MIN(dist0, dist1));
       }
+      case 8:
+      {
+        // <Note make sure xmax = 3200 and ymax= 3200> // RochiNewExample
+        double noise = 0.001;
+        double x_center = xmax()/2.0;
+        double y_center = ymax()/2.0;
+        double theta = atan2(y-y_center, x- x_center);
+        double r0 = 30.0;
+        return r0*(1.0 - noise*fabs(pow(sin(2.*theta),2))) - sqrt(SQR(x- x_center) + SQR(y - y_center));
+      }
       default: throw;
     }
   }
@@ -1111,6 +1124,7 @@ public:
       case  5: return -1;
       case  6: return -1;
       case  7: return -1;
+      case  8: return -1; // RochiNewExample
       default: throw;
     }
   }
@@ -1174,6 +1188,7 @@ public:
         if (dist1 <= MIN(dist0, front)) return 1;
         return 2;
       }
+      case 8 : return 0;
       default: throw;
     }
   }
@@ -1196,6 +1211,7 @@ int num_seeds()
     case 5: return 3;
     case 6: return 4;
     case 7: return 3;
+    case 8: return 1;
     default: throw;
   }
 }
@@ -1248,6 +1264,7 @@ double theta0(int seed)
           case 2: return 0.;
           default: throw;
         }
+      case 8: return crystal_orientation.val;
       default: throw;
     }
   }
@@ -1290,6 +1307,7 @@ public:
 // ----------------------------------------
 // define initial fields and boundary conditions
 // ----------------------------------------
+// FLuid concentration
 class cl_cf_t : public CF_DIM
 {
   int idx;
@@ -1315,6 +1333,7 @@ public:
       case  5:
       case  6:
       case  7:
+      case  8:
         if (start_from_moving_front.val) {
           return (*initial_conc_all[idx])*(1. + (1.-analytic::kp[idx])/analytic::kp[idx]*
                                            exp(-cooling_velocity.val/(*solute_diff_all[idx])*(-front_phi_cf(DIM(x,y,z)-0*cooling_velocity.val*t))));
@@ -1334,7 +1353,7 @@ CF_DIM* cl_cf_all[] = { &cl_cf_0,
                         &cl_cf_1,
                         &cl_cf_2,
                         &cl_cf_3 };
-
+// Solid concentration
 class cs_cf_t : public CF_DIM
 {
   int idx;
@@ -1353,7 +1372,8 @@ public:
       case  4:
       case  5:
       case  6:
-      case  7: return analytic::Cstar[idx];
+      case  7:
+      case  8: return analytic::Cstar[idx];
       default: throw;
     }
   }
@@ -1368,7 +1388,7 @@ CF_DIM* cs_cf_all[] = { &cs_cf_0,
                         &cs_cf_1,
                         &cs_cf_2,
                         &cs_cf_3 };
-
+// Liquid temp:
 class tl_cf_t : public CF_DIM
 {
 public:
@@ -1389,11 +1409,13 @@ public:
       case  5: return analytic::Tstar;
       case  6: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
       case  7: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
+      case  8: return analytic::Tstar;
       default: throw;
     }
   }
 } tl_cf;
 
+// Solid temp:
 class ts_cf_t : public CF_DIM
 {
 public:
@@ -1414,11 +1436,13 @@ public:
       case  5: return analytic::Tstar;
       case  6: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
       case  7: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
+      case  8: return analytic::Tstar;
       default: throw;
     }
   }
 } ts_cf;
 
+// Solid tf: (temperature at which alloy solidified)
 class tf_cf_t : public CF_DIM
 {
 public:
@@ -1437,12 +1461,14 @@ public:
       case  4:
       case  5:
       case  6:
-      case  7: return analytic::Tstar;
+      case  7:
+      case  8: return analytic::Tstar;
       default: throw;
     }
   }
 } tf_cf;
 
+// Front velo norm:
 class v_cf_t : public CF_DIM
 {
   cf_value_type_t what;
@@ -1492,6 +1518,7 @@ v_cf_t vx_cf(DDX);
 v_cf_t vy_cf(DDY);
 v_cf_t vz_cf(DDZ);
 
+// Solid front velo norm:
 class vf_cf_t : public CF_DIM
 {
 public:
@@ -1512,6 +1539,7 @@ public:
   }
 } vf_cf;
 
+// Time at which solid solidified?
 class ft_cf_t : public CF_DIM
 {
 public:
@@ -1560,6 +1588,7 @@ public:
           case  5:
           case  6:
           case  7: return 0;
+          case 8:
           default: throw;
         }
       case NEUMANN:
@@ -2180,7 +2209,7 @@ int main (int argc, char* argv[])
   mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin_new, lmax_new, lip.val, band.val);
   ierr = PetscPrintf(mpi.comm(), "initialize complete \n"); CHKERRXX(ierr);
 
-  bool solve_w_fluids=true;
+  bool solve_w_fluids=false;
   if(solve_w_fluids){
     mas.set_mpi_env(&mpi);
     mas.set_solve_with_fluids();
@@ -2404,8 +2433,8 @@ int main (int argc, char* argv[])
     bc_error_max = 0;
     bc_error_avg = 0;
 
-    sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
-    PetscPrintf(mpi.comm(), "Onestep w fluids is complete \n");
+    sub_iterations += mas.one_step(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
+    PetscPrintf(mpi.comm(), "Onestep is complete \n");
     tn             += mas.get_dt();
 
     if (save_step_convergence()) {
