@@ -1708,6 +1708,7 @@ bool my_p4est_stefan_with_fluids_t::compute_interfacial_velocity(){
   bool did_crash = false;
   if(v_interface_max_norm>v_interface_max_allowed){
     did_crash=true;
+    PetscPrintf(mpi->comm(), "The interfacial velocity has exceed its maximum allowable value ... A crash output vtu file will be saved shortly. \n");
   }
   return did_crash;
 
