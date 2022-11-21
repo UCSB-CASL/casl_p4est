@@ -279,7 +279,7 @@ param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidifi
                                               " 7 - daniil has not defined this case - no comments - need to see what it is,"
                                               " 8 - single dendrite growth <new addition>");
 
-
+param_t<bool> solve_w_fluids           (pl, 0, "solve_w_fluids flag", "default : false");
 
 // ----------------------------------------
 // alloy parameters
@@ -1035,7 +1035,7 @@ bool periodicity(int dir)
     case  5: return true;
     case  6: return (dir == 0 ? 1 : 0);
     case  7: return (dir == 0 ? 1 : 0);
-    case  8: return (dir == 0 ? 1 : 0);
+    case  8: return true;
     default: throw;
   }
 }
@@ -1067,6 +1067,7 @@ public:
         double dist2 = ABS2(x-(xc()+seed_dist()*cos(2.*PI/3.*2. + seed_rot())), y-(yc()+seed_dist()*sin(2.*PI/3.*2. + seed_rot())));
 
         return seed_radius() - MIN(dist0, dist1, dist2);
+        //return -(ABS2(x-xc(), y-yc())-seed_radius());
       }
       case 6:
       {
@@ -1087,13 +1088,7 @@ public:
       }
       case 8:
       {
-        // <Note make sure xmax = 3200 and ymax= 3200> // RochiNewExample
-        double noise = 0.001;
-        double x_center = xmax()/2.0;
-        double y_center = ymax()/2.0;
-        double theta = atan2(y-y_center, x- x_center);
-        double r0 = 30.0;
-        return r0*(1.0 - noise*fabs(pow(sin(2.*theta),2))) - sqrt(SQR(x- x_center) + SQR(y - y_center));
+        return -(ABS2(x-xc(), y-yc())-seed_radius());
       }
       default: throw;
     }
@@ -1562,11 +1557,68 @@ public:
 
 double smooth_start(double t) { return smoothstep(smoothstep_order.val, (t+EPS)/(starting_time.val+EPS)); }
 
+// --------------------------
+// Type:
+class BC_WALL_TYPE_TEMP: public WallBCDIM
+{
+  public:
+  BoundaryConditionType operator()(DIM(double x, double y, double z )) const
+  {
+    switch(geometry.val){
+      case 8:{
+        if((fabs(y-ymax.val) < EPS)){
+          return DIRICHLET;
+        }
+        else{
+          return NEUMANN;
+        }
+      }
+      default:{
+        return bc_type_temp.val;
+      }
+    }
+  }
+}bc_wall_type_temp_;
+
+
+class BC_WALL_TYPE_CONC: public WallBCDIM
+{
+  public:
+  BoundaryConditionType operator()(DIM(double x, double y, double z )) const
+  {
+    switch(geometry.val){
+      case 8:{
+        if((fabs(y-ymax.val) < EPS)){
+          return DIRICHLET;
+        }
+        else{
+          return NEUMANN;
+        }
+      }
+      default:{
+        return bc_type_conc.val;
+      }
+    } // end of switch case
+  }
+}bc_wall_type_conc_;
+
+
+
+// -------------------
 class bc_value_temp_t : public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
+    // case 8 is treated seperately because we need different BC on different walls
+    if (geometry.val==8){
+      if((fabs(y-ymax.val) < EPS)){
+        return 0.0; // for DIRICHLET case
+      }
+      else{
+        return 0.0; // for NEUMANN case
+      }
+    }
     switch (bc_type_temp.val) {
       case DIRICHLET:
         switch (geometry.val) {
@@ -1587,8 +1639,8 @@ public:
           case  4:
           case  5:
           case  6:
-          case  7: return 0;
-          case 8:
+          case  7:
+          case  8: return 0;
           default: throw;
         }
       case NEUMANN:
@@ -1638,6 +1690,14 @@ public:
   bc_value_conc_t(int idx) : idx(idx) {}
   double operator()(DIM(double x, double y, double z)) const
   {
+    if (geometry.val==8){
+      if((fabs(y-ymax.val) < EPS)){
+        return *initial_conc_all[idx]; // for DIRICHLET case
+      }
+      else{
+        return 0.0; // for NEUMANN case
+      }
+    }
     switch (bc_type_conc.val) {
       case DIRICHLET:
         switch (geometry.val) {
@@ -2209,8 +2269,7 @@ int main (int argc, char* argv[])
   mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin_new, lmax_new, lip.val, band.val);
   ierr = PetscPrintf(mpi.comm(), "initialize complete \n"); CHKERRXX(ierr);
 
-  bool solve_w_fluids=false;
-  if(solve_w_fluids){
+  if(solve_w_fluids.val){
     mas.set_mpi_env(&mpi);
     mas.set_solve_with_fluids();
     //std::cout<<"Hello world 2_1 main \n";
@@ -2220,7 +2279,7 @@ int main (int argc, char* argv[])
   }
 
   //std::cout<<"Hello world 3 main \n";
-  if(solve_w_fluids){
+  if(solve_w_fluids.val){
     //std::cout<<"Hello world 3_1 main \n";
     mas.initialize_for_fluids();
     //std::cout<<"Hello world 3_2 main \n";
@@ -2307,8 +2366,12 @@ int main (int argc, char* argv[])
   mas.set_container_conditions_thermal(bc_type_temp.val, bc_value_temp);
   mas.set_container_conditions_composition(bc_type_conc.val, bc_value_conc_all);
 
-  mas.set_wall_conditions_thermal(bc_type_temp.val, bc_value_temp);
-  mas.set_wall_conditions_composition(bc_type_conc.val, bc_value_conc_all);
+//  CF_DIM* bc_wall_type_temp = bc_wall_type_temp_;
+  WallBCDIM* bc_wall_type_temp = &bc_wall_type_temp_;
+  WallBCDIM* bc_wall_type_conc = &bc_wall_type_conc_;
+
+  mas.set_wall_conditions_thermal(bc_wall_type_temp/*bc_type_temp.val*/, bc_value_temp);
+  mas.set_wall_conditions_composition(bc_wall_type_conc, bc_value_conc_all);
   mas.set_volumetric_heat(volumetric_heat_cf);
 
   // set time steps
@@ -2325,7 +2388,7 @@ int main (int argc, char* argv[])
 
 
   // initialize for fluids if required
-  if(solve_w_fluids){
+  if(solve_w_fluids.val){
     mas.initialize_for_fluids();
   }
 
@@ -2432,8 +2495,11 @@ int main (int argc, char* argv[])
     // solve nonlinear system for temperature, concentration and velocity at t_n
     bc_error_max = 0;
     bc_error_avg = 0;
-
+    if (!solve_w_fluids.val){
     sub_iterations += mas.one_step(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
+    }else{
+    sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
+    }
     PetscPrintf(mpi.comm(), "Onestep is complete \n");
     tn             += mas.get_dt();
 
@@ -2597,7 +2663,6 @@ int main (int argc, char* argv[])
       ones.destroy();
       phi_liquid.destroy();
     }
-    std::cout<<"main line 2327 ok \n";
     // save field data
     if (save_now)
     { //std::cout<<"main line 2330 ok \n";
@@ -2616,7 +2681,7 @@ int main (int argc, char* argv[])
     //std::cout<<"main line 2462 ok \n";
     PetscPrintf(mpi.comm(), "Solve_with_fluids paramter has been set \n");
     //std::cout<<"main line 2464 ok \n";
-    if(solve_w_fluids){
+    if(solve_w_fluids.val){
       mas.update_grid_w_fluids();
     }else{
       mas.update_grid();

@@ -93,8 +93,11 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
   contr_bc_value_temp_ = NULL;
   contr_bc_value_conc_.assign(num_comps_, NULL);
 
-  wall_bc_type_temp_ = NEUMANN;
-  wall_bc_type_conc_ = NEUMANN;
+//  wall_bc_type_temp_ = NEUMANN;
+//  wall_bc_type_conc_ = NEUMANN;
+
+  wall_bc_type_temp_ = NULL;
+  wall_bc_type_conc_ = NULL; // changed to NULL bc we changed the wall bc types to be WallBCDIM, which is a class (instead of just a BoundaryConditionType)
 
   wall_bc_value_temp_ = NULL;
   wall_bc_value_conc_.assign(num_comps_, NULL);
@@ -499,7 +502,9 @@ void my_p4est_multialloy_t::initialize_for_fluids(){
   stefan_w_fluids_solver->set_problem_dimensionalization_type(NONDIM_BY_SCALAR_DIFFUSIVITY);
 
   // irrelevant since we don't know Re, we nondim by diffusivity stefan_w_fluids_solver->set_Re(1.);
-
+  // ALERT :: Pr hard coded and set here
+  Pr=23.1;
+  PetscPrintf(p4est_->mpicomm, "ALERT ALERT: PRANDTL NUMBER IS HARD CODED AND SET TO 23.1. THIS IS A SHORT TERM FIX AND MUST BE UPDATED \n");
   stefan_w_fluids_solver->set_Pr(Pr);
 
   stefan_w_fluids_solver->set_NS_advection_order(2);

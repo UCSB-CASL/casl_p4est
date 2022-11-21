@@ -192,11 +192,11 @@ private:
   CF_DIM           *contr_bc_value_vel_[P4EST_DIM];
 
   // boundary condtions at walls
-  BoundaryConditionType wall_bc_type_temp_;
-  BoundaryConditionType wall_bc_type_conc_;
+//  BoundaryConditionType wall_bc_type_temp_;
+//  BoundaryConditionType wall_bc_type_conc_;
 
-//  WallBCDIM* wall_bc_type_temp_;
-//  WallBCDIM* wall_bc_type_conc_;
+  WallBCDIM* wall_bc_type_temp_;
+  WallBCDIM* wall_bc_type_conc_;
 
   //BoundaryConditionType wall_bc_type_vel_;
   //BoundaryConditionType wall_bc_type_pres_;
@@ -553,13 +553,27 @@ public:
 
   }*/
 
-  inline void set_wall_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
+//  inline void set_wall_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
+//  {
+//    wall_bc_type_temp_  =  bc_type;
+//    wall_bc_value_temp_ = &bc_value;
+//  }
+  inline void set_wall_conditions_thermal(WallBCDIM* bc_type, CF_DIM &bc_value)
   {
     wall_bc_type_temp_  =  bc_type;
     wall_bc_value_temp_ = &bc_value;
   }
 
-  inline void set_wall_conditions_composition(BoundaryConditionType bc_type, CF_DIM *bc_value[])
+//  inline void set_wall_conditions_composition(BoundaryConditionType bc_type, CF_DIM *bc_value[])
+//  {
+//    wall_bc_type_conc_ = bc_type;
+//    for (int i = 0; i < num_comps_; ++i)
+//    {
+//      wall_bc_value_conc_[i] = bc_value[i];
+//    }
+//  }
+
+  inline void set_wall_conditions_composition(WallBCDIM* bc_type, CF_DIM *bc_value[])
   {
     wall_bc_type_conc_ = bc_type;
     for (int i = 0; i < num_comps_; ++i)
@@ -567,6 +581,7 @@ public:
       wall_bc_value_conc_[i] = bc_value[i];
     }
   }
+
   /*
   inline void set_wall_conditions_velocity(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
