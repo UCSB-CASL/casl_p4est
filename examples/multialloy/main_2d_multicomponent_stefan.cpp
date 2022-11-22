@@ -279,7 +279,7 @@ param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidifi
                                               " 7 - daniil has not defined this case - no comments - need to see what it is,"
                                               " 8 - single dendrite growth <new addition>");
 
-param_t<bool> solve_w_fluids           (pl, 0, "solve_w_fluids flag", "default : false");
+param_t<bool> solve_w_fluids (pl, 1, "solve_w_fluids", "");
 
 // ----------------------------------------
 // alloy parameters
@@ -1066,8 +1066,8 @@ public:
         double dist1 = ABS2(x-(xc()+seed_dist()*cos(2.*PI/3.*1. + seed_rot())), y-(yc()+seed_dist()*sin(2.*PI/3.*1. + seed_rot())));
         double dist2 = ABS2(x-(xc()+seed_dist()*cos(2.*PI/3.*2. + seed_rot())), y-(yc()+seed_dist()*sin(2.*PI/3.*2. + seed_rot())));
 
-        return seed_radius() - MIN(dist0, dist1, dist2);
-        //return -(ABS2(x-xc(), y-yc())-seed_radius());
+        //return seed_radius() - MIN(dist0, dist1, dist2);
+        return -(ABS2(x-xc(), y-yc())-seed_radius());
       }
       case 6:
       {
@@ -1119,7 +1119,7 @@ public:
       case  5: return -1;
       case  6: return -1;
       case  7: return -1;
-      case  8: return -1; // RochiNewExample
+      case  8: return -1*(xmax()); // RochiNewExample
       default: throw;
     }
   }
@@ -1826,8 +1826,10 @@ struct INITIAL_VELOCITY : CF_DIM
   double operator() (DIM(double x, double y,double z)) const{
       switch(dir){
       case dir::x:
+        //printf("sets u0 = %0.2e \n", u0);
         return u0;
       case dir::y:
+        //printf("sets v0 = %0.2e \n", v0);
         return v0;
       default:
         throw std::runtime_error("initial velocity direction unrecognized \n");
@@ -1933,7 +1935,7 @@ public:
     }
   }
 };
-void initialize_all_relevant_ics_and_bcs_for_fluids(BC_INTERFACE_VALUE_VELOCITY* bc_interface_value_velocity[P4EST_DIM],
+void initialize_all_relevant_ics_and_bcs_for_fluids(my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver,BC_INTERFACE_VALUE_VELOCITY* bc_interface_value_velocity[P4EST_DIM],
                                                     BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
                                                     BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM],
                                                     BC_INTERFACE_VALUE_PRESSURE& bc_interface_value_pressure,
@@ -1942,23 +1944,30 @@ void initialize_all_relevant_ics_and_bcs_for_fluids(BC_INTERFACE_VALUE_VELOCITY*
                                                     my_p4est_multialloy_t* mas,
                                                     INITIAL_VELOCITY* v_init_cf[P4EST_DIM])
 {
-  my_p4est_stefan_with_fluids_t* stefan_w_fluid_solver;
-  stefan_w_fluid_solver=mas->return_stefan_solver();
+  std :: cout << " Hello -1\n";
+ // my_p4est_stefan_with_fluids_t* stefan_w_fluid_solver;
+  // stefan_w_fluid_solver=mas->return_stefan_solver();
+  //std :: cout << " pointer to stefan solver :: " << stefan_w_fluid_solver << "\n";
+  printf("pointer to SWF solver: %p \n", stefan_w_fluids_solver);
   for(unsigned char d=0;d<P4EST_DIM;d++){
         // Set the BC types:
-        //std::cout<<"fn 1 \n";
-        bc_interface_value_velocity[d] = new BC_INTERFACE_VALUE_VELOCITY(stefan_w_fluid_solver,true);
-        //std::cout<<"fn 2 \n";
+        std::cout<<"fn 1 \n";
+        bc_interface_value_velocity[d] = new BC_INTERFACE_VALUE_VELOCITY(stefan_w_fluids_solver,true);
+        std::cout<<"fn 2 \n";
         BC_INTERFACE_TYPE_VELOCITY(d);
-        //std::cout<<"fn 3 \n";
+        std::cout<<"fn 3 \n";
         bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
         bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d);
+        std::cout<<"fn 4 \n";
         v_init_cf[d]= new INITIAL_VELOCITY(d);
+        std::cout<<"fn 5 \n";
     }
         interface_bc_pressure();
     CF_DIM* initial_velocity[P4EST_DIM] = {DIM(v_init_cf[0], v_init_cf[1], v_init_cf[2])};
+    std :: cout << " Hello 1\n";
     mas->set_initial_NS_velocity_n_(initial_velocity);
     mas->set_initial_NS_velocity_nm1_(initial_velocity);
+
     mas->set_bc_interface_value_pressure(&bc_interface_value_pressure);
     mas->set_bc_interface_type_pressure(interface_bc_type_pressure);
     my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t* bc_interface_value_velocity_[P4EST_DIM];
@@ -2269,11 +2278,13 @@ int main (int argc, char* argv[])
   mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin_new, lmax_new, lip.val, band.val);
   ierr = PetscPrintf(mpi.comm(), "initialize complete \n"); CHKERRXX(ierr);
 
+  my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver;
   if(solve_w_fluids.val){
+    stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(&mpi);
+    printf("pointer to SWF solver: %p \n", stefan_w_fluids_solver);
     mas.set_mpi_env(&mpi);
     mas.set_solve_with_fluids();
-    //std::cout<<"Hello world 2_1 main \n";
-
+    ierr = PetscPrintf(mpi.comm(), "setting solve w fluids \n"); CHKERRXX(ierr);
     // Calculate nondimensional groups:
     compute_nondimensional_groups(mpi.comm(), &mas);
   }
@@ -2281,15 +2292,18 @@ int main (int argc, char* argv[])
   //std::cout<<"Hello world 3 main \n";
   if(solve_w_fluids.val){
     //std::cout<<"Hello world 3_1 main \n";
-    mas.initialize_for_fluids();
+
     //std::cout<<"Hello world 3_2 main \n";
-    initialize_all_relevant_ics_and_bcs_for_fluids(bc_interface_value_velocity,
+    printf("pointer to SWF solver: %p \n", stefan_w_fluids_solver);
+    initialize_all_relevant_ics_and_bcs_for_fluids(stefan_w_fluids_solver,
+                                                   bc_interface_value_velocity,
                                                  bc_wall_value_velocity,
                                                  bc_wall_type_velocity,
                                                  bc_interface_value_pressure,
                                                  bc_wall_value_pressure,
                                                  bc_wall_type_pressure,
                                                  &mas,v_init_cf);
+    mas.initialize_for_fluids(stefan_w_fluids_solver);
     //std::cout<<"Hello world 3_3 main \n";
   }
   ierr = PetscPrintf(mpi.comm(), "initialize for fluids complete \n"); CHKERRXX(ierr);
@@ -2384,13 +2398,6 @@ int main (int argc, char* argv[])
   mas.set_concentration(cl_cf_all, cs_cf_all);
   mas.set_ft(ft_cf);
 
-  // Give the bc object back to the solver:
-
-
-  // initialize for fluids if required
-  if(solve_w_fluids.val){
-    mas.initialize_for_fluids();
-  }
 
   // set solver parameters
   mas.set_bc_tolerance             (bc_tolerance.val);
@@ -2692,7 +2699,11 @@ int main (int argc, char* argv[])
     PetscPrintf(mpi.comm(), "Update grid with fluids is complete \n");
    // std::cout<<"main line 2468 ok \n";
     mas.update_grid_solid();
+
+    //std::cout << "Total growth :: "<< total_growth << " ; Growth Limit :: " << growth_limit.val << "\n";
     keep_going = keep_going && (iteration < step_limit.val) && (total_growth < growth_limit.val);
+    //std :: cout << "Keep going flag :: " << keep_going << "\n";
+    //std::cout<< "time_limit" << time_limit.val << "\n";
     iteration++;
 
   }

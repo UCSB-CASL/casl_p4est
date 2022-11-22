@@ -331,7 +331,7 @@ public:
     mpi_ = mpi_in;
   }
 
-  void initialize_for_fluids();
+  void initialize_for_fluids(my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver_);
   inline void set_scaling(double value) { scaling_ = value; }
   inline void set_composition_parameters(double solute_diff[])
   {
@@ -342,15 +342,22 @@ public:
   }
 
   void set_initial_NS_velocity_n_(CF_DIM* init_vel_n_[P4EST_DIM]){
+
     foreach_dimension(d){
+      //printf("cf address (provided) : %p, value before setting : %p \n", init_vel_n_[d], initial_NS_velocity_n[d]);
       initial_NS_velocity_n[d] = init_vel_n_[d];
+      //printf("cf address (after setting) : %p \n ", initial_NS_velocity_n[d]);
     }
+    //std::cout << "initial ns velocity n is set\n";
+
+
   }
 
   void set_initial_NS_velocity_nm1_(CF_DIM* init_vel_nm1_[P4EST_DIM]){
     foreach_dimension(d){
       initial_NS_velocity_nm1[d] = init_vel_nm1_[d];
     }
+    //std::cout << "initial ns velocity nm1 is set\n";
   }
 
   inline void set_thermal_parameters(double latent_heat,

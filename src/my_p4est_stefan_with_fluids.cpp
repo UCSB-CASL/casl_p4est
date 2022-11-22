@@ -798,11 +798,17 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   if(do_multicomponent_fields){
     // In this case, we need dimensional fluid velocities (bc the multialloy problem is solved dimensionally)
 
+    printf("vel_nondim_to_dim in stefan_w_fluids= %0.2e \n", vel_nondim_to_dim);
     foreach_dimension(d){
       ierr = VecScaleGhost(v_n.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
       ierr = VecScaleGhost(v_nm1.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
     }
   }
+
+  PetscPrintf(mpi->comm(), "VECVIEW OF V_N: \n \n \n ");
+  VecView(v_n.vec[1], PETSC_VIEWER_STDOUT_WORLD);
+  PetscPrintf(mpi->comm(), "---------------------------- \n \n \n ");
+
 
 
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning to do backtrace \n");
@@ -881,7 +887,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   // Create the necessary interpolators
   my_p4est_interpolation_nodes_t SL_backtrace_interp(ngbd_np1); /*= NULL;*/
   my_p4est_interpolation_nodes_t SL_backtrace_interp_nm1(ngbd_n);/* = NULL;*/
-//  std::cout<<"backtrace line 864 ok \n";
+  PetscPrintf(mpi->comm(),"backtrace line 872 ok \n");
   // Get the relevant second derivatives
   T_l_dd.create(p4est_np1, nodes_np1);
   ngbd_np1->second_derivatives_central(T_l_n.vec, T_l_dd.vec);
@@ -890,7 +896,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     T_l_dd_nm1.create(p4est_n, nodes_n);
     ngbd_n->second_derivatives_central(T_l_nm1.vec,T_l_dd_nm1.vec);
   }
-//  std::cout<<"backtrace line 873 ok \n";
+  PetscPrintf(mpi->comm(),"backtrace line 873 ok \n");
   if(do_multicomponent_fields){
     for(int j=0; j<num_conc_fields; j++){
       Cl_dd[j].create(p4est_np1, nodes_np1);
@@ -903,7 +909,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     }
   }
 
-//  std::cout<<"backtrace line 886 ok \n";
+  PetscPrintf(mpi->comm(),"backtrace line 874 ok \n");
   foreach_dimension(d){
     foreach_dimension(dd){
       ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &v_dd[d][dd]); CHKERRXX(ierr); // v_n_dd will be a dxdxn object --> will hold the dxd derivative info at each node n
@@ -929,11 +935,11 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   // v_dd_nm1[k] is the second derivative of the velocity components nm1 along cartesian direction k
 
   ngbd_np1->second_derivatives_central(v_n.vec,v_dd[0],v_dd[1],P4EST_DIM);
-//  std::cout<<"backtrace line 900 ok \n";
+  PetscPrintf(mpi->comm(),"backtrace line 875 ok \n");
   if(advection_sl_order ==2){
     ngbd_n->second_derivatives_central(v_nm1.vec, DIM(v_dd_nm1[0], v_dd_nm1[1], v_dd_nm1[2]), P4EST_DIM);
   }
-//  std::cout<<"backtrace line 903 ok \n";
+  PetscPrintf(mpi->comm(),"backtrace line 902 ok \n");
   // Do the Semi-Lagrangian backtrace:
   if(advection_sl_order ==2){
     trajectory_from_np1_to_nm1(p4est_np1, nodes_np1, ngbd_n, ngbd_np1, v_nm1.vec, v_dd_nm1, v_n.vec, v_dd, dt_nm1, dt, xyz_d_nm1, xyz_d);
@@ -942,7 +948,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   else{
     trajectory_from_np1_to_n(p4est_np1, nodes_np1, ngbd_np1, dt, v_n.vec, v_dd, xyz_d);
   }
-//  std::cout<<"backtrace line 912 ok \n";
+  PetscPrintf(mpi->comm(),"backtrace line 912 ok \n");
   // Add backtrace points to the interpolator(s):
   foreach_local_node(n, nodes_np1){
     double xyz_temp[P4EST_DIM];

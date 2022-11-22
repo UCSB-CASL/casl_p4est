@@ -210,7 +210,7 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
 
   my_p4est_brick_destroy(connectivity_, &brick_);
   if(solve_with_fluids){
-    delete stefan_w_fluids_solver;
+    if(stefan_w_fluids_solver!=nullptr) delete stefan_w_fluids_solver;
 
     foreach_dimension(d){
       // Interface:
@@ -379,7 +379,7 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
 }
 
 
-void my_p4est_multialloy_t::initialize_for_fluids(){
+void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver_){
 
   // NOTE: calling this fxn assumes that initialize for multialloy
   // has already been performed
@@ -387,7 +387,8 @@ void my_p4est_multialloy_t::initialize_for_fluids(){
   if(mpi_ == NULL){
     throw std::runtime_error("You must set the mpi environment via multialloy:set_mpi_env() in order to create the stefan w fluids solver \n");
   }
-  stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(mpi_);
+  //stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(mpi_);
+  stefan_w_fluids_solver = stefan_w_fluids_solver_;
   //std::cout<<"hello world \n";
   // Set up the initial nm1 grids that we will need:
   p4est_nm1 = p4est_copy(p4est_, P4EST_FALSE); // copy the grid but not the data
@@ -407,12 +408,26 @@ void my_p4est_multialloy_t::initialize_for_fluids(){
   ngbd_nm1->init_neighbors();
   v_n.create(p4est_, nodes_);
   v_nm1.create(p4est_, nodes_);
-  //std::cout<<"hello world 4\n";
+  std::cout<<"upset before sampling\n";
   //Rochi:: temporarily setting v_n and v_nm1 to zero; will be user defined later
-  /*foreach_dimension(d){
-    sample_cf_on_nodes(p4est_,nodes_,zero_cf,v_n.vec[d]);
-    sample_cf_on_nodes(p4est_,nodes_,zero_cf,v_nm1.vec[d]);
-  }*/
+  foreach_dimension(d){
+    std::cout << "\n \n \n SETTING VN, DIM = " << d << "\n \n";
+    printf("cf address : %p \n", initial_NS_velocity_nm1[d]);
+    sample_cf_on_nodes(p4est_,nodes_,*initial_NS_velocity_n[d],v_n.vec[d]);
+
+
+
+    std::cout << "\n \n \n SETTING VNM1, DIM = " << d << "\n \n";
+    sample_cf_on_nodes(p4est_,nodes_,*initial_NS_velocity_nm1[d],v_nm1.vec[d]);
+
+    /*PetscPrintf(p4est_->mpicomm, "VECVIEW OF V_NM1: \n \n \n ");
+    VecView(v_nm1.vec[d], PETSC_VIEWER_STDOUT_WORLD);
+    PetscPrintf(p4est_->mpicomm, "---------------------------- \n \n \n ");*/
+    //sample_cf_on_nodes(p4est_,nodes_,zero_cf,v_n.vec[d]);
+   // sample_cf_on_nodes(p4est_,nodes_,zero_cf,v_nm1.vec[d]);
+  }
+  //VecView(v_n.vec[1], PETSC_VIEWER_STDOUT_WORLD)
+  std::cout<<"fine after sampling\n";
   //std::cout<<"hello world 5\n";
   stefan_w_fluids_solver->set_use_boussinesq(true);
   stefan_w_fluids_solver->set_print_checkpoints(true);
@@ -478,8 +493,15 @@ void my_p4est_multialloy_t::initialize_for_fluids(){
 
   stefan_w_fluids_solver->set_v_nm1(v_nm1);
 
+  l_char=1.0;
+  PetscPrintf(p4est_->mpicomm, "WARNING: RED ALERT: LCHAR MANUALLY SET INSIDE INITIALIZE_FOR_FLUIDS \n");
   double thermal_diff_l = thermal_cond_l_/(density_l_*heat_capacity_l_);
+  //printf("thermal cond l = %0.2e, density_l = %0.2e, "
+    //     "heat_capacity_l = %0.2e, thermal diff = %0.2e, l_char = %0.2e \n",
+      //   thermal_cond_l_, density_l_, heat_capacity_l_, thermal_diff_l, l_char);
   stefan_w_fluids_solver->set_vel_nondim_to_dim(thermal_diff_l/SQR(l_char));
+  PetscPrintf(p4est_->mpicomm, "RED ALERT: ns max allowed is manually hard coded for now \n");
+  stefan_w_fluids_solver->set_NS_max_allowed(1000.0);
   // NOTE -- If you want to visualize dimensional velocities, pressure, and vorticity, you will need to do the appropriate
   // scaling by hand before outputting to vtk
 
@@ -2039,6 +2061,13 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
   PetscPrintf(p4est_->mpicomm, "Solving nonlinear system:\n");
   time_ += dt_[0];
 
+  int num_nodes = nodes_->num_owned_indeps;
+  MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
+
+  PetscPrintf(p4est_->mpicomm, "\n ------------------------- \n Time = %3e, Number of Nodes = %d "
+                               "\n -------------------------- \n", time_,num_nodes);
+
+  PetscPrintf(p4est_->mpicomm, "dxyz_close_to_interface %3e \n \n", dxyz_close_interface_);
   // update time in interface and boundary conditions
 //  gibbs_thomson_->t = time_;
   vol_heat_gen_ ->t = time_;
@@ -2551,6 +2580,10 @@ void my_p4est_multialloy_t::save_VTK(int iter)
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
   //std:: cout<<"mas line 2017 \n";
+  if(solve_with_fluids)
+  {
+    ierr = PetscPrintf(p4est_->mpicomm, " solve_w_fluids \n");
+  }
   const char* out_dir = getenv("OUT_DIR");
   if (!out_dir)
   {
@@ -2653,7 +2686,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   //std:: cout<<"mas line 2117\n";
   // if solving with fluids , output fluid velocity
   if (solve_with_fluids){
-        //std:: cout<<"mas line 2120\n";
+        std:: cout<<"we are here \n";
         point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "u"));
         //std:: cout<<"mas line 2122\n";
         point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "v"));
