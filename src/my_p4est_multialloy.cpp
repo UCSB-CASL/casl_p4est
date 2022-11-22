@@ -387,48 +387,37 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   if(mpi_ == NULL){
     throw std::runtime_error("You must set the mpi environment via multialloy:set_mpi_env() in order to create the stefan w fluids solver \n");
   }
+
   //stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(mpi_);
   stefan_w_fluids_solver = stefan_w_fluids_solver_;
   //std::cout<<"hello world \n";
+
   // Set up the initial nm1 grids that we will need:
   p4est_nm1 = p4est_copy(p4est_, P4EST_FALSE); // copy the grid but not the data
   p4est_nm1->user_pointer = sp_crit_; // CHECK
   my_p4est_partition(p4est_nm1,P4EST_FALSE,NULL);
-  //std::cout<<"hello world 1\n";
+
   ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
+
   // TO-DO MULTICOMP: eventually add extra expansions for ghost layer for CFL larger than 2
   nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
-  //std::cout<<"hello world 2\n";
+
   // Get the new neighbors:
   hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, &brick_);
   ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1,nodes_nm1);
-  //std::cout<<"hello world 3\n";
+
   // Initialize the neigbors:
   ngbd_nm1->init_neighbors();
   v_n.create(p4est_, nodes_);
   v_nm1.create(p4est_, nodes_);
-  std::cout<<"upset before sampling\n";
+
   //Rochi:: temporarily setting v_n and v_nm1 to zero; will be user defined later
   foreach_dimension(d){
-    std::cout << "\n \n \n SETTING VN, DIM = " << d << "\n \n";
-    printf("cf address : %p \n", initial_NS_velocity_nm1[d]);
     sample_cf_on_nodes(p4est_,nodes_,*initial_NS_velocity_n[d],v_n.vec[d]);
-
-
-
-    std::cout << "\n \n \n SETTING VNM1, DIM = " << d << "\n \n";
     sample_cf_on_nodes(p4est_,nodes_,*initial_NS_velocity_nm1[d],v_nm1.vec[d]);
-
-    /*PetscPrintf(p4est_->mpicomm, "VECVIEW OF V_NM1: \n \n \n ");
-    VecView(v_nm1.vec[d], PETSC_VIEWER_STDOUT_WORLD);
-    PetscPrintf(p4est_->mpicomm, "---------------------------- \n \n \n ");*/
-    //sample_cf_on_nodes(p4est_,nodes_,zero_cf,v_n.vec[d]);
-   // sample_cf_on_nodes(p4est_,nodes_,zero_cf,v_nm1.vec[d]);
   }
-  //VecView(v_n.vec[1], PETSC_VIEWER_STDOUT_WORLD)
-  std::cout<<"fine after sampling\n";
-  //std::cout<<"hello world 5\n";
+
   stefan_w_fluids_solver->set_use_boussinesq(true);
   stefan_w_fluids_solver->set_print_checkpoints(true);
   // ----------------------------------------------
@@ -490,7 +479,6 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // Rochi :: passing along initial velocities
 //  PetscPrintf(p4est_->mpicomm, " Before setting, in multialloy: \n - vn = %p \n - vnm1 = %p \n", v_n.vec[0], v_nm1.vec[0]);
   stefan_w_fluids_solver->set_v_n(v_n);
-
   stefan_w_fluids_solver->set_v_nm1(v_nm1);
 
   l_char=1.0;
@@ -502,6 +490,7 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   stefan_w_fluids_solver->set_vel_nondim_to_dim(thermal_diff_l/SQR(l_char));
   PetscPrintf(p4est_->mpicomm, "RED ALERT: ns max allowed is manually hard coded for now \n");
   stefan_w_fluids_solver->set_NS_max_allowed(1000.0);
+
   // NOTE -- If you want to visualize dimensional velocities, pressure, and vorticity, you will need to do the appropriate
   // scaling by hand before outputting to vtk
 
@@ -513,8 +502,8 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // -------------
   // (4) pass along timestep
   // -------------
+  PetscPrintf(p4est_->mpicomm, "RED ALERT: dt's passed in here are likely blank, restructure later, for now we pass in one_Step w fluids \n");
   stefan_w_fluids_solver->set_dt(dt_[0]);
-
   stefan_w_fluids_solver->set_dt_nm1(dt_[1]);
 
   // -------------
@@ -549,6 +538,8 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // Initialize the ns solver:
   // -------------
 
+  printf("\n \n [!!] inside multialloy initialize for fluids: vnm1.vec = %p , vn.vec = %p ",
+         v_nm1.vec, v_n.vec);
   stefan_w_fluids_solver->initialize_ns_solver();
 
   // -------------
@@ -1425,7 +1416,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids_v2(){
 void my_p4est_multialloy_t::update_grid_w_fluids(){
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  PetscPrintf(p4est_->mpicomm, "Updating grid... ");
+  PetscPrintf(p4est_->mpicomm, "Updating grid (with fluids)... \n ");
   int num_nodes = nodes_->num_owned_indeps;
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
   PetscPrintf(p4est_->mpicomm, "Number of nodes before: %d \n", num_nodes);
@@ -1811,6 +1802,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
 
 //  std::cout<<"line 1790 ok \n";
   //interpolating velocity fields to the new grid
+
   int num_velocity_fields=2; // vNSx, vNSy
   Vec velocity_fields_old[num_velocity_fields];
   Vec velocity_fields_new[num_velocity_fields];
@@ -1850,8 +1842,13 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   //std::cout<<"cause of concern\n";
   // update vn in the stefan class
   stefan_w_fluids_solver->set_v_n(v_n);
+  printf("GETS TO HERE! \n");
+//  stefan_w_fluids_solver->set_v_nm1(v_nm1);
 
   // update the ns grid (this will handle updating with our new vn inside the NS class)
+  printf("\n Addresses of vns vectors (multialloy, before passing to NS for grid update): \n "
+         "v_n.vec = %p, v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
+
   ns->update_from_tn_to_tnp1_grid_external(front_phi_.vec, front_phi_old.vec,
                                            v_n.vec, v_nm1.vec,
                                            p4est_, nodes_, ghost_,
@@ -2064,7 +2061,7 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
   int num_nodes = nodes_->num_owned_indeps;
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
 
-  PetscPrintf(p4est_->mpicomm, "\n ------------------------- \n Time = %3e, Number of Nodes = %d "
+  PetscPrintf(p4est_->mpicomm, "\n Time = %3e, Number of Nodes = %d "
                                "\n -------------------------- \n", time_,num_nodes);
 
   PetscPrintf(p4est_->mpicomm, "dxyz_close_to_interface %3e \n \n", dxyz_close_interface_);
@@ -2309,7 +2306,111 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 //  PetscPrintf(p4est_->mpicomm, "v_n vec = %p \n ", v_n.vec[0]);
 //  PetscPrintf(p4est_->mpicomm, "v_nm1 vec = %p \n ", v_nm1.vec[0]);
 
+   if(0){
+     // -------------------------------
+    // TEMPORARY: save fields before backtrace
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[0].vec[0], "cl_tn_0"));
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[0].vec[1], "cl_tn_1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[1].vec[0], "cl_tnm1_0"));
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[1].vec[1], "cl_tnm1_1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(tl_[0].vec, "tl_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(tl_[1].vec, "tl_tnm1_1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(cl_backtrace_n.vec[0], "cl_dn_0"));
+    point_fields.push_back(Vec_for_vtk_export_t(cl_backtrace_nm1.vec[0], "cl_dnm1_0"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(cl_backtrace_n.vec[1], "cl_dn_1"));
+    point_fields.push_back(Vec_for_vtk_export_t(cl_backtrace_nm1.vec[1], "cl_dnm1_1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(tl_backtrace_n.vec, "tl_dn"));
+    point_fields.push_back(Vec_for_vtk_export_t(tl_backtrace_nm1.vec, "tl_dnm1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "vx_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "vy_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[0], "vx_nm1"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_nm1"));
+
+//    point_fields.push_back(Vec_for_vtk_export_t(phi_eff.vec, "phi_solid"));
+//    point_fields.push_back(Vec_for_vtk_export_t(phi_eff.vec, "phi_eff"));
+//    point_fields.push_back(Vec_for_vtk_export_t(phi_solid_eff.vec, "phi_solid_eff"));
+
+
+    const char* out_dir = getenv("OUT_DIR");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_before_backtrace", out_dir);
+    my_p4est_vtk_write_all_lists(p4est_, nodes_, ngbd_->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+  }
+
+//  printf(" Addresses for grid objects in multialloy: "
+//         "p4est_ : %p , "
+//         "nodes_ : %p , "
+//         "ngbd_ : %p \n"
+//         "p4est_nm1: %p, nodes_nm1 : %p, ngbd_nm1 : %p \n", p4est_, nodes_, ngbd_,
+//         p4est_nm1, nodes_nm1, ngbd_nm1);
+
+  stefan_w_fluids_solver->set_dt_nm1(dt_[1]);
+  stefan_w_fluids_solver->set_dt(dt_[0]);
   stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_);
+
+
+  if(0){
+    // -------------------------------
+    // TEMPORARY: save fields before backtrace
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[0].vec[0], "cl_tn_0"));
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[0].vec[1], "cl_tn_1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[1].vec[0], "cl_tnm1_0"));
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[1].vec[1], "cl_tnm1_1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(tl_[0].vec, "tl_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(tl_[1].vec, "tl_tnm1_1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(cl_backtrace_n.vec[0], "cl_dn_0"));
+    point_fields.push_back(Vec_for_vtk_export_t(cl_backtrace_nm1.vec[0], "cl_dnm1_0"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(cl_backtrace_n.vec[1], "cl_dn_1"));
+    point_fields.push_back(Vec_for_vtk_export_t(cl_backtrace_nm1.vec[1], "cl_dnm1_1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(tl_backtrace_n.vec, "tl_dn"));
+    point_fields.push_back(Vec_for_vtk_export_t(tl_backtrace_nm1.vec, "tl_dnm1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "vx_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "vy_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[0], "vx_nm1"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_nm1"));
+
+    //    point_fields.push_back(Vec_for_vtk_export_t(phi_eff.vec, "phi_solid"));
+    //    point_fields.push_back(Vec_for_vtk_export_t(phi_eff.vec, "phi_eff"));
+    //    point_fields.push_back(Vec_for_vtk_export_t(phi_solid_eff.vec, "phi_solid_eff"));
+
+
+    const char* out_dir = getenv("OUT_DIR");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_after_backtrace", out_dir);
+    my_p4est_vtk_write_all_lists(p4est_, nodes_, ngbd_->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+  }
 
   // ----------------------
 
@@ -2529,11 +2630,8 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   
   // (3) solve the NS 
   vec_and_ptr_t boussinesq_terms_rhs_for_ns;
+  /*
   boussinesq_terms_rhs_for_ns.create(p4est_, nodes_);
-  stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(true, boussinesq_terms_rhs_for_ns.vec);
-  boussinesq_terms_rhs_for_ns.destroy(); // move this somewhere more appropriate later
-
-
   boussinesq_terms_rhs_for_ns.get_array();
   tl_[0].get_array();
   cl_[0].get_array();
@@ -2544,6 +2642,28 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   boussinesq_terms_rhs_for_ns.restore_array();
   tl_[0].restore_array();
   cl_[0].get_array();
+
+
+  stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(true, boussinesq_terms_rhs_for_ns.vec);
+
+  boussinesq_terms_rhs_for_ns.destroy(); // move this somewhere more appropriate later
+
+*/
+  PetscPrintf(p4est_->mpicomm, "RED ALERT: Boussinesq is currently non-operational. We will want to fix this later \n");
+
+  printf("addresses of vns vectors (inside Multialloy): \n "
+         "v_n.vec = %p, v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
+
+  stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(false, nullptr);
+
+  // TO-DO:
+  // (1) need to handle scaling the fluid velocities back and forth between dim and nondim for
+  // the NS solution
+
+  // (2) need to actually get the vn and vnm1 result out of the navier stokes
+
+  // -- note: want to handle scaling from dim to nondim here, not inside SWF
+  // --> to be consistent, we want to modify the backtrace appropach too
 
 //  std::cout<<"step_w_fluids line 2420\n";
   // (4) get out the velocities, pressure, vort, for visualization

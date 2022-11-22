@@ -2203,6 +2203,10 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
   ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
 
+
+  printf("\n Addresses of vns vectors (NS, before grid update): \n "
+         "v_n (NS), v_nm1 (NS) = %p, %p \n", vn_nodes[0], vnm1_nodes[0]);
+
   // Create new faces and ngbd_c for NS to use based on new grid provided: (old ones will be deleted when we slide the fields)
   // Get the new cell neighbors:
   ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
@@ -2384,6 +2388,13 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
     ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   }
+
+  printf("\n Addresses of vns vectors (NS, after grid update): \n "
+         "v_n (provided), v_nm1 (provided) = %p, %p \n"
+         "v_n (NS), v_nm1 (NS) = %p, %p \n",
+         v_n_nodes_[0], v_nm1_nodes_[0], vn_nodes[0], vnm1_nodes[0]);
+
+
   //------------------------------------------------------
   //(7) Slide the grid objects
   //------------------------------------------------------

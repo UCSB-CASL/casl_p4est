@@ -308,6 +308,10 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
     initial_NS_velocity_nm1[d] = NULL;
   }
 
+
+  // TO-DO: Initialize vectors to NULL in the constructor
+
+
   // That's all she wrote!
 
 } // end of constructor
@@ -805,9 +809,9 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     }
   }
 
-  PetscPrintf(mpi->comm(), "VECVIEW OF V_N: \n \n \n ");
-  VecView(v_n.vec[1], PETSC_VIEWER_STDOUT_WORLD);
-  PetscPrintf(mpi->comm(), "---------------------------- \n \n \n ");
+//  PetscPrintf(mpi->comm(), "VECVIEW OF V_N: \n \n \n ");
+//  VecView(v_n.vec[1], PETSC_VIEWER_STDOUT_WORLD);
+//  PetscPrintf(mpi->comm(), "---------------------------- \n \n \n ");
 
 
 
@@ -823,7 +827,75 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 //  VecGetSize(v_nm1.vec[0], &vnm1size0);
 //  PetscPrintf(p4est_np1->mpicomm, "vnm1 size0 = %d \n", vnm1size0);
   // If we are doing the multialloy case, verify that all the necessary things are defined:
+
+
+  if(0){
+    // -------------------------------
+    // TEMPORARY: save fields before backtrace
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_n.vec[0], "Cl0_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_n.vec[1], "Cl1_tn"));
+
+
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "vx_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "vy_n"));
+
+    const char* out_dir = getenv("OUT_DIR");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_inside_backtrace_np1_fields", out_dir);
+    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+  }
+
+  if(0){
+    // -------------------------------
+    // TEMPORARY: save fields before backtrace
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_nm1.vec, "Tl_tnm1"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_nm1.vec[0], "Cl0_tnm1"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_nm1.vec[1], "Cl1_tnm1"));
+
+
+    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[0], "vx_nm1"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_nm1"));
+
+    const char* out_dir = getenv("OUT_DIR");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_inside_backtrace_nm1_fields", out_dir);
+    my_p4est_vtk_write_all_lists(p4est_n, nodes_n, ngbd_n->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+  }
+
+
   if(do_multicomponent_fields){
+
+//    printf(" Addresses for grid objects in stefan with fluids: "
+//           "p4est_np1 : %p , "
+//           "nodes_np1 : %p , "
+//           "ngbd_np1 : %p \n"
+//           "p4est_n: %p, nodes_n : %p, ngbd_n : %p \n",
+//           p4est_np1, nodes_np1, ngbd_np1,
+//           p4est_n, nodes_n, ngbd_n);
+
+
+
     bool conc_check = true;
 
 
@@ -861,7 +933,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     ngbd_n->init_neighbors();
     
   }
-//  std::cout<<"backtrace line 838 ok \n";
+
   // Initialize objects we will use in this function:
   // PETSC Vectors for second derivatives
   vec_and_ptr_dim_t T_l_dd, T_l_dd_nm1;
@@ -871,15 +943,16 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   // Initialize for potential concentration fields from multialloy
   std::vector<vec_and_ptr_dim_t> Cl_dd;
   std::vector<vec_and_ptr_dim_t> Cl_dd_nm1;
-//  std::cout<<"backtrace line 848 ok \n";
+
   if(do_multicomponent_fields){
     Cl_dd.resize(num_conc_fields);
     if(advection_sl_order == 2) Cl_dd_nm1.resize(num_conc_fields);
+
     // ^ The above will be a [num_conc_fields]x[P4EST_DIM]x[num_nodes] object. 
     // i.e.) Cl_dd[j].vec[d][n] will hold the derivative of the jth concentration field in the d Cartesian direction
     // at node index n 
   }
-//  std::cout<<"backtrace line 856 ok \n";
+
   // Create vector to hold back-trace points:
   vector <double> xyz_d[P4EST_DIM];
   vector <double> xyz_d_nm1[P4EST_DIM];
@@ -887,7 +960,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   // Create the necessary interpolators
   my_p4est_interpolation_nodes_t SL_backtrace_interp(ngbd_np1); /*= NULL;*/
   my_p4est_interpolation_nodes_t SL_backtrace_interp_nm1(ngbd_n);/* = NULL;*/
-  PetscPrintf(mpi->comm(),"backtrace line 872 ok \n");
+
   // Get the relevant second derivatives
   T_l_dd.create(p4est_np1, nodes_np1);
   ngbd_np1->second_derivatives_central(T_l_n.vec, T_l_dd.vec);
@@ -896,7 +969,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     T_l_dd_nm1.create(p4est_n, nodes_n);
     ngbd_n->second_derivatives_central(T_l_nm1.vec,T_l_dd_nm1.vec);
   }
-  PetscPrintf(mpi->comm(),"backtrace line 873 ok \n");
+
   if(do_multicomponent_fields){
     for(int j=0; j<num_conc_fields; j++){
       Cl_dd[j].create(p4est_np1, nodes_np1);
@@ -909,7 +982,6 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     }
   }
 
-  PetscPrintf(mpi->comm(),"backtrace line 874 ok \n");
   foreach_dimension(d){
     foreach_dimension(dd){
       ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &v_dd[d][dd]); CHKERRXX(ierr); // v_n_dd will be a dxdxn object --> will hold the dxd derivative info at each node n
@@ -919,36 +991,24 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     }
   }
 
-//  int num_nodes = nodes_np1->num_owned_indeps;
-//  MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_np1->mpicomm);
-//  PetscPrintf(p4est_np1->mpicomm, "Number of nodes before problem: %d \n", num_nodes);
-
-//  int vnsize;
-//  VecGetSize(v_n.vec[0], &vnsize);
-//  PetscPrintf(p4est_np1->mpicomm, "vn size = %d \n", vnsize);
-
-//  int vnddsize;
-//  VecGetSize(v_dd[0][0], &vnddsize);
-//  PetscPrintf(p4est_np1->mpicomm, "vnddnm1 size = %d \n", vnddsize);
-//  std::cout<<"backtrace line 895 ok \n";
   // v_dd[k] is the second derivative of the velocity components n along cartesian direction k
   // v_dd_nm1[k] is the second derivative of the velocity components nm1 along cartesian direction k
 
   ngbd_np1->second_derivatives_central(v_n.vec,v_dd[0],v_dd[1],P4EST_DIM);
-  PetscPrintf(mpi->comm(),"backtrace line 875 ok \n");
   if(advection_sl_order ==2){
     ngbd_n->second_derivatives_central(v_nm1.vec, DIM(v_dd_nm1[0], v_dd_nm1[1], v_dd_nm1[2]), P4EST_DIM);
   }
-  PetscPrintf(mpi->comm(),"backtrace line 902 ok \n");
+
   // Do the Semi-Lagrangian backtrace:
   if(advection_sl_order ==2){
     trajectory_from_np1_to_nm1(p4est_np1, nodes_np1, ngbd_n, ngbd_np1, v_nm1.vec, v_dd_nm1, v_n.vec, v_dd, dt_nm1, dt, xyz_d_nm1, xyz_d);
+
     if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace trajectory \n");
   }
   else{
     trajectory_from_np1_to_n(p4est_np1, nodes_np1, ngbd_np1, dt, v_n.vec, v_dd, xyz_d);
   }
-  PetscPrintf(mpi->comm(),"backtrace line 912 ok \n");
+
   // Add backtrace points to the interpolator(s):
   foreach_local_node(n, nodes_np1){
     double xyz_temp[P4EST_DIM];
@@ -1956,14 +2016,11 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
   ns->set_phi((there_is_a_substrate ? phi_eff.vec:phi.vec));
 
   ns->set_dt(dt_nm1,dt);
-//  int vnsize0;
-//  VecGetSize(v_n.vec[0], &vnsize0);
-//  PetscPrintf(p4est_np1->mpicomm, "vn size before ns->set_velocities = %d \n", vnsize0);
+
+  printf("[Inside initialize ns solver]: vnm1_.vec = %p, v_n.vec = %p ", v_nm1.vec, v_n.vec);
 
   ns->set_velocities(v_nm1.vec, v_n.vec);
-//  int vnsize1;
-//  VecGetSize(v_n.vec[0], &vnsize1);
-//  PetscPrintf(p4est_np1->mpicomm, "vn size after ns->set_velocities = %d \n \n", vnsize1);
+
 
   /*
   // To-do: move this switch case to the set parameters fxn since it makes more sense to have it there
@@ -2217,12 +2274,12 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
   // -------------------------------
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning Navier-Stokes solution step... \n");
 
-//  std:: cout<< "Hello world 8 \n";
+  printf("\n Addresses of vns vectors (inside SWF): \n "
+         "v_n.vec = %p, v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
+
   // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
 
   bool did_crash = navier_stokes_step();
-
-//  std:: cout<< "Hello world 9 \n";
   // -------------------------------
   // Clear out the interfacial BC for the next timestep, if needed
   // -------------------------------

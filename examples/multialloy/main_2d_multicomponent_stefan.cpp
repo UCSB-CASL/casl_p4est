@@ -1948,23 +1948,23 @@ void initialize_all_relevant_ics_and_bcs_for_fluids(my_p4est_stefan_with_fluids_
  // my_p4est_stefan_with_fluids_t* stefan_w_fluid_solver;
   // stefan_w_fluid_solver=mas->return_stefan_solver();
   //std :: cout << " pointer to stefan solver :: " << stefan_w_fluid_solver << "\n";
-  printf("pointer to SWF solver: %p \n", stefan_w_fluids_solver);
+//  printf("pointer to SWF solver: %p \n", stefan_w_fluids_solver);
   for(unsigned char d=0;d<P4EST_DIM;d++){
         // Set the BC types:
-        std::cout<<"fn 1 \n";
+//        std::cout<<"fn 1 \n";
         bc_interface_value_velocity[d] = new BC_INTERFACE_VALUE_VELOCITY(stefan_w_fluids_solver,true);
-        std::cout<<"fn 2 \n";
+//        std::cout<<"fn 2 \n";
         BC_INTERFACE_TYPE_VELOCITY(d);
-        std::cout<<"fn 3 \n";
+//        std::cout<<"fn 3 \n";
         bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
         bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d);
-        std::cout<<"fn 4 \n";
+//        std::cout<<"fn 4 \n";
         v_init_cf[d]= new INITIAL_VELOCITY(d);
-        std::cout<<"fn 5 \n";
+//        std::cout<<"fn 5 \n";
     }
         interface_bc_pressure();
     CF_DIM* initial_velocity[P4EST_DIM] = {DIM(v_init_cf[0], v_init_cf[1], v_init_cf[2])};
-    std :: cout << " Hello 1\n";
+//    std :: cout << " Hello 1\n";
     mas->set_initial_NS_velocity_n_(initial_velocity);
     mas->set_initial_NS_velocity_nm1_(initial_velocity);
 
@@ -2281,7 +2281,7 @@ int main (int argc, char* argv[])
   my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver;
   if(solve_w_fluids.val){
     stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(&mpi);
-    printf("pointer to SWF solver: %p \n", stefan_w_fluids_solver);
+//    printf("pointer to SWF solver: %p \n", stefan_w_fluids_solver);
     mas.set_mpi_env(&mpi);
     mas.set_solve_with_fluids();
     ierr = PetscPrintf(mpi.comm(), "setting solve w fluids \n"); CHKERRXX(ierr);
@@ -2294,7 +2294,7 @@ int main (int argc, char* argv[])
     //std::cout<<"Hello world 3_1 main \n";
 
     //std::cout<<"Hello world 3_2 main \n";
-    printf("pointer to SWF solver: %p \n", stefan_w_fluids_solver);
+//    printf("pointer to SWF solver: %p \n", stefan_w_fluids_solver);
     initialize_all_relevant_ics_and_bcs_for_fluids(stefan_w_fluids_solver,
                                                    bc_interface_value_velocity,
                                                  bc_wall_value_velocity,
@@ -2481,13 +2481,12 @@ int main (int argc, char* argv[])
 
   while (1)
   {
+    PetscPrintf(mpi.comm(), "\n ------- \n Iteration: %d \n --------------- \n", iteration);
     // determine to save or not
     bool save_now =
         (save_type.val == 0 && iteration    >= vtk_idx*save_every_dn.val) ||
         (save_type.val == 1 && total_growth >= vtk_idx*save_every_dl.val) ||
         (save_type.val == 2 && tn           >= vtk_idx*save_every_dt.val);
-
-
 
     if (!keep_going) break;
 
@@ -2507,7 +2506,7 @@ int main (int argc, char* argv[])
     }else{
     sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     }
-    PetscPrintf(mpi.comm(), "Onestep is complete \n");
+    PetscPrintf(mpi.comm(), "One step is complete \n");
     tn             += mas.get_dt();
 
     if (save_step_convergence()) {

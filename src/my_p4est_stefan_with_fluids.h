@@ -1017,8 +1017,23 @@ public:
     vel_nondim_to_dim = vel_nd2d;
   }
 
-  void set_v_n(vec_and_ptr_dim_t& v_n_){ v_n = v_n_;}
-  void set_v_nm1(vec_and_ptr_dim_t& v_nm1_){v_nm1 = v_nm1_;}
+  void set_v_n(vec_and_ptr_dim_t& v_n_){
+//    printf(" \n \n INSIDE set_vn(): \n"
+//           "--> vn provided = %p, \n "
+//           "--> vn(inside)= %p \n", v_n_.vec[0], v_n.vec[0]);
+    v_n = v_n_;
+//    foreach_dimension(d){
+//      v_n.vec[d] = v_n_.vec[d];
+//    }
+
+//    printf(" --> after update: vn(inside) = %p \n", v_n.vec[0]);
+  }
+  void set_v_nm1(vec_and_ptr_dim_t& v_nm1_){
+    v_nm1 = v_nm1_;
+//    foreach_dimension(d){
+//      v_nm1.vec[d] = v_nm1_.vec[d];
+//    }
+  }
   vec_and_ptr_t get_vorticity(){return vorticity;}
   vec_and_ptr_t get_press_nodes(){return press_nodes;}
 
