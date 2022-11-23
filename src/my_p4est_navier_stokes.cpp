@@ -5093,7 +5093,7 @@ void my_p4est_navier_stokes_t::compute_and_save_nodal_running_statistics_average
 	CHKERRXX( VecGhostUpdateEnd( pressureVar, INSERT_VALUES, SCATTER_FORWARD ) );
 
 	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &idx, 1, MPI_INT, MPI_SUM, p4est_n->mpicomm ) );
-	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Computed average running statistics for %i nodes for a time interval of %.8f across the forest.\n", T, idx ) );
+	CHKERRXX( PetscPrintf( p4est_n->mpicomm, "Computed average running statistics for %i nodes for a time interval of %.8f across the forest.\n", idx, T ) );
 	_runningStatisticsStartTime = _runningStatisticsLastTime = 0;
 
 	////////////////////////////////////////////////////// Now save VTK with averages //////////////////////////////////////////////////////

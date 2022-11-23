@@ -644,7 +644,7 @@ public:
 		splitting_criteria_cf_and_uniform_band_t( minLvl, maxLvl, phi, uniformBand, lip ),
 		DELTA( delta ), LMID_DELTA_PERCENT( lmidDeltaPercent ), GF( gf ),  P( pitch ), XYZ_DIM{DIM( xyzDim[0], xyzDim[1], xyzDim[2] )},
 		XYZ_MIN{DIM( -xyzDim[0]/2, -xyzDim[1]/2, -xyzDim[2]/2 )}, XYZ_MAX{DIM( xyzDim[0]/2, xyzDim[1]/2, xyzDim[2]/2 )},
-		N_TREES{DIM( nTrees[0], nTrees[1], nTrees[2] )}, SPECIAL_REFINEMENT( spRef ), PLASTRON_MAX_LVL( spRef? (maxLvl - 2) : maxLvl )
+		N_TREES{DIM( nTrees[0], nTrees[1], nTrees[2] )}, SPECIAL_REFINEMENT( spRef ), PLASTRON_MAX_LVL( spRef? (maxLvl - 1) : maxLvl )
 		ONLY3D(COMMA SPANWISE( spanwise ))
 	{
 		std::string errorPrefix = "[CASL_ERROR] splitting_criteria_cf_and_uniform_band_shs_t::constructor: ";
