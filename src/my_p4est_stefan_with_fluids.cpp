@@ -817,6 +817,9 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 
   // If we are doing the multialloy case, verify that all the necessary things are defined:
 
+  printf("\n[SWF] do_backtrace: \n"
+         "v_n.vec[0] = %p \n"
+         "v_nm1.vec[0] = %p \n", v_n.vec[0], v_nm1.vec[0]);
 
   if(0){
     // -------------------------------
@@ -1996,8 +1999,9 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(bool convert_to_nondim_
 
   ns->set_dt(dt_nm1,dt);
 
-  printf("[Inside initialize ns solver]: vnm1_.vec = %p, v_n.vec = %p ", v_nm1.vec, v_n.vec);
-
+  printf("\n[SWF]:initialize_ns_solver -- \n"
+         "v_n.vec[0] = %p \n "
+         "v_nm1.vec[0] = %p \n", v_n.vec[0], v_nm1.vec[0] );
 
   if(convert_to_nondim_for_multialloy){
     // Convert dimensional to nondimensional
@@ -2116,6 +2120,8 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   // (a) get rid of old vnm1, now vn becomes the new vnm1
   // (b) no need to destroy vn, bc now we put vnp1 into vn's slot
   v_nm1.destroy();
+
+
   foreach_dimension(d){
     ns->get_node_velocities_n(v_nm1.vec[d], d);
     ns->get_node_velocities_np1(v_n.vec[d], d);

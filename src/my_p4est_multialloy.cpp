@@ -418,6 +418,13 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
     sample_cf_on_nodes(p4est_,nodes_,*initial_NS_velocity_nm1[d],v_nm1.vec[d]);
   }
 
+  printf("\n[MULTI]:initialize_for_fluids -- after sampling velocities on nodes: \n "
+         "v_n.vec[0] = %p \n"
+         "v_nm1.vec[0] = %p \n", v_n.vec[0], v_nm1.vec[0]);
+
+  stefan_w_fluids_solver->set_v_n(v_n);
+  stefan_w_fluids_solver->set_v_nm1(v_nm1);
+
   stefan_w_fluids_solver->set_use_boussinesq(true);
   stefan_w_fluids_solver->set_print_checkpoints(true);
   // ----------------------------------------------
@@ -478,8 +485,6 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
 
   // Rochi :: passing along initial velocities
 //  PetscPrintf(p4est_->mpicomm, " Before setting, in multialloy: \n - vn = %p \n - vnm1 = %p \n", v_n.vec[0], v_nm1.vec[0]);
-  stefan_w_fluids_solver->set_v_n(v_n);
-  stefan_w_fluids_solver->set_v_nm1(v_nm1);
 
   l_char=1.0;
   PetscPrintf(p4est_->mpicomm, "WARNING: RED ALERT: LCHAR MANUALLY SET INSIDE INITIALIZE_FOR_FLUIDS \n");
@@ -1205,9 +1210,19 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     }
 
     P4EST_ASSERT(fields_idx ==num_fields);
-    double lint= stefan_w_fluids_solver->get_lint();
-    double lmin= stefan_w_fluids_solver->get_lmin();
-    double lmax= stefan_w_fluids_solver->get_lmax();
+//    int lint= stefan_w_fluids_solver->get_lint();
+//    int lmin= stefan_w_fluids_solver->get_lmin();
+//    int lmax= stefan_w_fluids_solver->get_lmax();
+    splitting_criteria_t* sp_new = (splitting_criteria_t*) p4est_->user_pointer;
+    int lmin = sp_new->min_lvl;
+    int lmax = sp_new->max_lvl;
+    int lint = -1;
+    PetscPrintf(p4est_->mpicomm, "Warning: for refinement, the lint option is not implemented. You might want this later. \n");
+    printf("INSIDE MULTI GRID UPDATE: "
+           "lmin = %d, lmax = %d, lint = %d \n", lmin, lmax, lint);
+
+
+
     double NS_norm= stefan_w_fluids_solver->get_NS_norm();
 
     // ------------------------------------------------------------
@@ -1277,9 +1292,11 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
   sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
 
-  sl.update_p4est(front_velo_[num_time_layers_-1].vec,dt_[num_time_layers_-1],front_phi_.vec,front_phi_dd_.vec,
-                  NULL,num_fields,use_block,true,uniform_band,uniform_band*1.5,fields_,NULL,criteria,
-                  compare_opn,diag_opn,custom_lmax,expand_ghost_layer);
+  sl.update_p4est(front_velo_[/*num_time_layers_-1*/0].vec, dt_[/*num_time_layers_-1*/0],
+                  front_phi_.vec, front_phi_dd_.vec,
+                  NULL, num_fields, use_block, true, uniform_band, uniform_band*1.5,
+                  fields_, NULL, criteria,
+                  compare_opn, diag_opn, custom_lmax, expand_ghost_layer);
   //front_phi_dd_.destroy();
   if(refine_by_vorticity){
     vorticity_refine.destroy();
@@ -1307,6 +1324,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
 
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_, nodes_);
+  ngbd_->init_neighbors();
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
   //end of update grid
@@ -1448,36 +1466,39 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
 //  std::cout<<"line 1790 ok \n";
   //interpolating velocity fields to the new grid
 
-  int num_velocity_fields=2; // vNSx, vNSy
-  Vec velocity_fields_old[num_velocity_fields];
-  Vec velocity_fields_new[num_velocity_fields];
+//  int num_velocity_fields=P4EST_DIM; // vNSx, vNSy
+  Vec velocity_fields_old[P4EST_DIM];
+  Vec velocity_fields_new[P4EST_DIM];
   unsigned int i=0;
   foreach_dimension(d){
     velocity_fields_old[i++]=v_n.vec[d];
   }
   //std::cout<<"line 1799 ok \n";
   PetscErrorCode ierr;
-  for(unsigned int j = 0;j<num_velocity_fields;j++){
+  for(unsigned int j = 0;j<P4EST_DIM;j++){
     ierr = VecCreateGhostNodes(p4est_, nodes_, &velocity_fields_new[j]);CHKERRXX(ierr);
   }
   //std::cout<<"line 1804 ok \n";
-  interp.set_input(velocity_fields_old,linear,num_velocity_fields);
+  interp.set_input(velocity_fields_old, quadratic_non_oscillatory_continuous_v2,P4EST_DIM);
+
   double xyz_[P4EST_DIM];
   foreach_node(n, nodes_){
     node_xyz_fr_n(n, p4est_, nodes_,  xyz_);
     interp.add_point(n,xyz_);
   }
   //std::cout<<"line 1806 ok \n";
+
   interp.interpolate(velocity_fields_new);
+
   //std::cout<<"line 1808 ok \n";
   interp.clear();
-  for(unsigned int k=0;k<num_velocity_fields;k++){
+  for(unsigned int k=0;k<P4EST_DIM;k++){
     ierr = VecDestroy(velocity_fields_old[k]); CHKERRXX(ierr); // Destroy objects where the old vectors were
   }
   //std::cout<<"line 1813 ok \n";
-  i=0;
+//  i=0;
   foreach_dimension(d){
-    v_n.vec[d] = velocity_fields_new[i++];
+    v_n.vec[d] = velocity_fields_new[d];
   }
 //  int vnsize;
 //  VecGetSize(v_n.vec[0], &vnsize);
@@ -1485,8 +1506,11 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
 //  PetscPrintf(p4est_->mpicomm, "vn address after interp: %p \n", v_n.vec[0]);
 
   //std::cout<<"cause of concern\n";
+
   // update vn in the stefan class
   stefan_w_fluids_solver->set_v_n(v_n);
+
+
   printf("GETS TO HERE! \n");
 //  stefan_w_fluids_solver->set_v_nm1(v_nm1);
 
@@ -2370,13 +2394,15 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   // Now, get the velocity results back out of SWF (or do we need to? ) :
 
-//  printf("\n [MULTI] -- right after solving NS : v_n.vec = %p, v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
+  printf("\n [MULTI]:one_step_w_fluids -- right after solving NS:\n"
+         " v_n.vec = %p, \n"
+         "v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
 
   // Slide and get things out of stefan with fluids:
 //  v_nm1.destroy();
   // the old v_nm1 has already been destroyed by stefan with fluids
 
-  if(1){
+  if(0){
     printf(" \n \n \n saving fields after ns solution \n");
     // -------------------------------
     // TEMPORARY: save fields after grid update
@@ -2409,7 +2435,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   v_n = stefan_w_fluids_solver->get_v_n();
   v_nm1 = stefan_w_fluids_solver->get_v_nm1();
 
-  if(1){
+  if(0){
     printf(" \n \n \n saving fields after grid update \n");
     // -------------------------------
     // TEMPORARY: save fields after grid update
@@ -2434,7 +2460,8 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   }
 
 
-//  printf("\n [MULTI] -- right after sliding velocities : v_n.vec = %p, v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
+  printf("\n [MULTI]:one_step_w_fluids -- right after sliding velocities:\n "
+         "v_n.vec = %p \n v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
 
 
   // TO-DO:
