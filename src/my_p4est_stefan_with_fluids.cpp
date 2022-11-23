@@ -799,33 +799,22 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   // set_Cl_nm1_backtrace (" ")
   // set_T_l
 
-  if(do_multicomponent_fields){
-    // In this case, we need dimensional fluid velocities (bc the multialloy problem is solved dimensionally)
+  // Commenting out below because we will assume that multialloy has provided *dimensional* velocities to begin with
+//  if(do_multicomponent_fields){
+//    // In this case, we need dimensional fluid velocities (bc the multialloy problem is solved dimensionally)
 
-    printf("vel_nondim_to_dim in stefan_w_fluids= %0.2e \n", vel_nondim_to_dim);
-    foreach_dimension(d){
-      ierr = VecScaleGhost(v_n.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
-      ierr = VecScaleGhost(v_nm1.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
-    }
-  }
+//    printf("vel_nondim_to_dim in stefan_w_fluids= %0.2e \n", vel_nondim_to_dim);
+//    foreach_dimension(d){
+//      ierr = VecScaleGhost(v_n.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
+//      ierr = VecScaleGhost(v_nm1.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
+//    }
+//  }
 
-//  PetscPrintf(mpi->comm(), "VECVIEW OF V_N: \n \n \n ");
-//  VecView(v_n.vec[1], PETSC_VIEWER_STDOUT_WORLD);
-//  PetscPrintf(mpi->comm(), "---------------------------- \n \n \n ");
 
 
 
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning to do backtrace \n");
 
-//  PetscPrintf(p4est_np1->mpicomm, "v_n vec inside backtrace = %p \n", v_n.vec[0]);
-//  PetscPrintf(p4est_np1->mpicomm, "v_nm1 vec inside backtrace = %p \n", v_nm1.vec[0]);
-
-//  int vnsize0;
-//  VecGetSize(v_n.vec[0], &vnsize0);
-//  PetscPrintf(p4est_np1->mpicomm, "vn size0 = %d \n", vnsize0);
-//  int vnm1size0;
-//  VecGetSize(v_nm1.vec[0], &vnm1size0);
-//  PetscPrintf(p4est_np1->mpicomm, "vnm1 size0 = %d \n", vnm1size0);
   // If we are doing the multialloy case, verify that all the necessary things are defined:
 
 
@@ -885,16 +874,6 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 
 
   if(do_multicomponent_fields){
-
-//    printf(" Addresses for grid objects in stefan with fluids: "
-//           "p4est_np1 : %p , "
-//           "nodes_np1 : %p , "
-//           "ngbd_np1 : %p \n"
-//           "p4est_n: %p, nodes_n : %p, ngbd_n : %p \n",
-//           p4est_np1, nodes_np1, ngbd_np1,
-//           p4est_n, nodes_n, ngbd_n);
-
-
 
     bool conc_check = true;
 
@@ -1091,14 +1070,14 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   SL_backtrace_interp.clear();
   SL_backtrace_interp_nm1.clear();
 
-
-  if(do_multicomponent_fields){
-    // In this case, we converted to dimensional, so we need to convert back
-    foreach_dimension(d){
-      ierr = VecScaleGhost(v_n.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
-      ierr = VecScaleGhost(v_nm1.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
-    }
-  }
+  // Commenting out below because we will assume that multialloy has provided *dimensional* velocities to begin with
+//  if(do_multicomponent_fields){
+//    // In this case, we converted to dimensional, so we need to convert back
+//    foreach_dimension(d){
+//      ierr = VecScaleGhost(v_n.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
+//      ierr = VecScaleGhost(v_nm1.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
+//    }
+//  }
 
 
   if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace \n");
@@ -2001,7 +1980,7 @@ void my_p4est_stefan_with_fluids_t::set_ns_parameters(){
 
 } // end of "set_ns_parameters()"
 
-void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
+void my_p4est_stefan_with_fluids_t::initialize_ns_solver(bool convert_to_nondim_for_multialloy){
 
   // Create the initial neigbhors and faces (after first step, NS grid update will handle this internally
   ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
@@ -2019,8 +1998,24 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
 
   printf("[Inside initialize ns solver]: vnm1_.vec = %p, v_n.vec = %p ", v_nm1.vec, v_n.vec);
 
+
+  if(convert_to_nondim_for_multialloy){
+    // Convert dimensional to nondimensional
+    foreach_dimension(d){
+      ierr = VecScaleGhost(v_n.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
+      ierr = VecScaleGhost(v_nm1.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
+    }
+  }
+
   ns->set_velocities(v_nm1.vec, v_n.vec);
 
+  if(convert_to_nondim_for_multialloy){
+    // Convert dimensional to nondimensional
+    foreach_dimension(d){
+      ierr = VecScaleGhost(v_n.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
+      ierr = VecScaleGhost(v_nm1.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
+    }
+  }
 
   /*
   // To-do: move this switch case to the set parameters fxn since it makes more sense to have it there
@@ -2051,11 +2046,11 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
 
 bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
 
-  //std:: cout<< "Hello world ns 1 \n";
+  std:: cout<< "Hello world ns 1 \n";
   // Destroy old pressure at nodes (if it exists) and create vector to hold new solns:
   press_nodes.destroy(); press_nodes.create(p4est_np1, nodes_np1);
 
-  //std:: cout<< "Hello world ns 2 \n";
+  std:: cout<< "Hello world ns 2 \n";
   // Create vector to store old dxyz hodge:
 //  printf("(!!!!!) beginning of ns step, faces_np1 = %p \n", faces_np1);
   for (unsigned char d=0; d<P4EST_DIM; d++){
@@ -2064,7 +2059,7 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   //std:: cout<< "Hello world ns 3 \n";
   //std:: cout<< "Hello world ns 4 NS norm: " << NS_norm<<"\n";
   //std:: cout<< "Hello world ns 4 NS hodge% of max: " << hodge_percentage_of_max_u<<"\n";
-  //std:: cout<< "Hello world ns 4 NS hodge tolerance: " << hodge_tolerance<<"\n";
+  std:: cout<< "Hello world ns 4 NS hodge tolerance: " << hodge_tolerance<<"\n";
   hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
   //std:: cout<< "Hello world ns 4 NS hodge tolerance: " << hodge_tolerance<<"\n";
   //qPetscPrintf(mpi->comm(),"Hodge tolerance is %e \n",hodge_tolerance);
@@ -2084,16 +2079,16 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   // Enter the loop on the hodge variable and solve the NS equations
   while((hodge_iteration<hodge_max_it) && (convergence_check_on_dxyz_hodge>hodge_tolerance)){
 //    std:: cout<< "Hello world ns 8 HODGE iteration " << hodge_iteration<<" \n";
-    //std:: cout<< "Hello world ns 8 CONVERGENCE CHECK ON DXYZ HODGE" << hodge_tolerance<<" \n";
+    std:: cout<< "Hello world ns 8 CONVERGENCE CHECK ON DXYZ HODGE" << hodge_tolerance<<" \n";
     ns->copy_dxyz_hodge(dxyz_hodge_old);
-//    std:: cout<< "Hello world ns 8_1 \n";
+    std:: cout<< "Hello world ns 8_1 \n";
     ns->solve_viscosity(face_solver,(face_solver!=NULL),face_solver_type,pc_face);
-    //std:: cout<< "Hello world ns 8_2 \n";
+    std:: cout<< "Hello world ns 8_2 \n";
     //std:: cout<< "Hello world ns 9 \n";
     convergence_check_on_dxyz_hodge=
         ns->solve_projection(cell_solver,(cell_solver!=NULL),cell_solver_type,pc_cell,
                              false,NULL,dxyz_hodge_old,uvw_components);
-//    std:: cout<< "Hello world ns 10 \n";
+    std:: cout<< "Hello world ns 10 \n";
     //std:: cout << "Hodge iteration :: " << hodge_iteration <<"\n";
     //std:: cout << "convergence check :: " << convergence_check_on_dxyz_hodge <<"\n";
     //std:: cout << " NS_norm :: "<< NS_norm <<"\n";
@@ -2101,21 +2096,20 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
     ierr= PetscPrintf(mpi->comm(),"Hodge iteration : %d, (hodge error)/(NS_max): %0.3e \n",hodge_iteration,convergence_check_on_dxyz_hodge/NS_norm);CHKERRXX(ierr);
     hodge_iteration++;
   }
-  //std:: cout<< "Hello world ns 11 \n";
+  std:: cout<< "Hello world ns 11 \n";
   //ierr = PetscPrintf(mpi->comm(), "Hodge loop exited \n");
   //std:: cout<< "Hello world ns 12 \n";
   for (unsigned char d=0;d<P4EST_DIM;d++){
     ierr = VecDestroy(dxyz_hodge_old[d]); CHKERRXX(ierr);
   }
-  //std:: cout<< "Hello world ns 13 \n";
+  std:: cout<< "Hello world ns 13 \n";
   // Delete solvers:
   delete face_solver;
   delete cell_solver;
 
-  //std:: cout<< "Hello world ns 14\n";
+  std:: cout<< "Hello world ns 14\n";
   // Compute velocity at the nodes
   ns->compute_velocity_at_nodes();
-  //std:: cout<< "Hello world ns 15 \n";
   // ------------------------
   // Slide velocity fields (for our use):
   // ------------------------
@@ -2126,7 +2120,6 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
     ns->get_node_velocities_n(v_nm1.vec[d], d);
     ns->get_node_velocities_np1(v_n.vec[d], d);
   }
-  //std:: cout<< "Hello world ns 16 \n";
 
   // ------------------------
   // Compute the pressure
@@ -2134,18 +2127,18 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
     ns->compute_pressure(); // note: only compute pressure at nodes when we are saving to VTK (or evaluating some errors)
     ns->compute_pressure_at_nodes(&press_nodes.vec);
   }
-  //std:: cout<< "Hello world ns 17 \n";
   // Get the computed values of vorticity
   vorticity.vec = ns->get_vorticity();
-  //std:: cout<< "Hello world ns 18 \n";
+
   // Check the L2 norm of u to make sure nothing is blowing up
   NS_norm = ns->get_max_L2_norm_u();
-  //std:: cout<< "Hello world ns 19 \n";
   PetscPrintf(mpi->comm(),"\n Max NS velocity norm: \n"
                         " - Computational value: %0.4f  "
                         " - Physical value: %0.3e [m/s]  "
                         " - Physical value: %0.3f [mm/s] \n",NS_norm,NS_norm*vel_nondim_to_dim,NS_norm*vel_nondim_to_dim*1000.);
-  //std:: cout<< "Hello world ns 20 \n";
+
+  printf("\n[SWF] -- end of NS step: v_n.vec = %p, v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
+
   // Stop simulation if things are blowing up
   bool did_crash;
   if(NS_norm>NS_max_allowed){
@@ -2157,10 +2150,11 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
     did_crash = false;
   }
   return did_crash;
-  //std:: cout<< "Hello world ns 20\n";
+
+
 } // end of "navier_stokes_step()"
 
-void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool use_external_boussinesq_vec=false, Vec externally_defined_boussinesq_vec=NULL){
+void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool use_external_boussinesq_vec, Vec externally_defined_boussinesq_vec, bool convert_to_nondim_for_multialloy){
   //std:: cout<< "Hello world 1 \n";
 
 //  int vnsize;
@@ -2174,6 +2168,14 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
 //  int num_nodesnp1 = nodes_np1->num_owned_indeps;
 //  MPI_Allreduce(MPI_IN_PLACE,&num_nodesnp1,1,MPI_INT,MPI_SUM, p4est_np1->mpicomm);
 //  PetscPrintf(p4est_np1->mpicomm, "!!! stefan w fluids nodes_np1: %d \n", num_nodesnp1);
+
+  if(convert_to_nondim_for_multialloy){
+    // Convert dimensional to nondimensional
+    foreach_dimension(d){
+      ierr = VecScaleGhost(v_n.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
+      ierr = VecScaleGhost(v_nm1.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
+    }
+  }
 
   // -------------------------------
   // Set the NS timestep:
@@ -2290,6 +2292,15 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
   }
 //  std:: cout<< "Hello world 10 \n";
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Completed Navier-Stokes step \n");
+
+  // Convert back to dimensional units for multialloy if relevant
+  if(convert_to_nondim_for_multialloy){
+    // Convert nondimensional result back to dimensional
+    foreach_dimension(d){
+      ierr = VecScaleGhost(v_n.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
+      ierr = VecScaleGhost(v_nm1.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
+    }
+  }
 
   if(did_crash){
     char crash_tag[10];

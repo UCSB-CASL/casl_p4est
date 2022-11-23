@@ -643,9 +643,9 @@ public:
   // Functions related to Navier-Stokes problem:
   // -------------------------------------------------------
   void set_ns_parameters();
-  void initialize_ns_solver();
+  void initialize_ns_solver(bool convert_to_nondim_for_multialloy=false);
   bool navier_stokes_step(); // output is whether or not it crashed, if it crashes we save a vtk crash file
-  void setup_and_solve_navier_stokes_problem(bool use_external_boussinesq_vec, Vec externally_defined_boussinesq_vec);
+  void setup_and_solve_navier_stokes_problem(bool use_external_boussinesq_vec=false, Vec externally_defined_boussinesq_vec=nullptr, bool convert_to_nondim_for_multialloy=false);
 
   // -------------------------------------------------------
   // Functions related to LSF advection/grid update:

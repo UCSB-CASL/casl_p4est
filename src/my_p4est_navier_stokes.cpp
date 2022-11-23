@@ -2417,6 +2417,22 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
   semi_lagrangian_backtrace_is_done         = false;
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
+
+
+  // Check the sizes of everything to see if it makes sense:
+  int num_nodes_n = nodes_n->num_owned_indeps;
+  MPI_Allreduce(MPI_IN_PLACE,&num_nodes_n,1,MPI_INT,MPI_SUM, p4est_n->mpicomm);
+
+  int num_nodes_nm1 = nodes_nm1->num_owned_indeps;
+  MPI_Allreduce(MPI_IN_PLACE,&num_nodes_nm1,1,MPI_INT,MPI_SUM, p4est_n->mpicomm);
+
+  int vn_size; VecGetSize(vn_nodes[0], &vn_size);
+  int vnm1_size; VecGetSize(vnm1_nodes[0], &vnm1_size);
+
+  printf("\n \n END OF UPDATE NS GRID, SIZES \n: nodes_n = %d, nodes_nm1 = %d, "
+         "vn = %d, vnm1 = %d \n", num_nodes_n, num_nodes_nm1, vn_size, vnm1_size);
+
+
 }
 
 // DONE ELYCE TRYING SOMETHING.
