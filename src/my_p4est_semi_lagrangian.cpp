@@ -687,7 +687,6 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt,
     if(additional_phi_is_used){
         ierr = VecDestroy(phi_np1_eff); CHKERRXX(ierr);
       }
-
     if (is_grid_changing) {
       PetscPrintf(p4est->mpicomm, "Grid changed\n");
       my_p4est_partition(p4est, P4EST_TRUE, NULL);
@@ -714,6 +713,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt,
           } //end of "if use block, else"
       }
     } // end of "if grid changing"
+
     ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
     counter++;
   } // end of "while grid is changing"

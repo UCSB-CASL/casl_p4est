@@ -814,12 +814,11 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 
 
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning to do backtrace \n");
+  PetscPrintf(mpi->comm(), "[SWF] Addresses for ngbd objects: \n"
+                           "ngbd_np1 = %p \n"
+                           "ngbd_n = %p \n", ngbd_np1, ngbd_n);
 
   // If we are doing the multialloy case, verify that all the necessary things are defined:
-
-  printf("\n[SWF] do_backtrace: \n"
-         "v_n.vec[0] = %p \n"
-         "v_nm1.vec[0] = %p \n", v_n.vec[0], v_nm1.vec[0]);
 
   if(0){
     // -------------------------------
@@ -848,38 +847,9 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     point_fields.clear();
   }
 
-  if(0){
-    // -------------------------------
-    // TEMPORARY: save fields before backtrace
-    // -------------------------------
-    std::vector<Vec_for_vtk_export_t> point_fields;
-    std::vector<Vec_for_vtk_export_t> cell_fields = {};
-
-
-    point_fields.push_back(Vec_for_vtk_export_t(T_l_nm1.vec, "Tl_tnm1"));
-    point_fields.push_back(Vec_for_vtk_export_t(Cl_nm1.vec[0], "Cl0_tnm1"));
-    point_fields.push_back(Vec_for_vtk_export_t(Cl_nm1.vec[1], "Cl1_tnm1"));
-
-
-    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[0], "vx_nm1"));
-    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_nm1"));
-
-    const char* out_dir = getenv("OUT_DIR");
-    if(!out_dir){
-      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
-    }
-
-    char filename[1000];
-    sprintf(filename, "%s/snapshot_inside_backtrace_nm1_fields", out_dir);
-    my_p4est_vtk_write_all_lists(p4est_n, nodes_n, ngbd_n->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
-    point_fields.clear();
-  }
-
-
   if(do_multicomponent_fields){
 
     bool conc_check = true;
-
 
     for(int j=0; j<num_conc_fields; j++){
 
@@ -992,9 +962,17 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   }
 
   // Add backtrace points to the interpolator(s):
-  foreach_local_node(n, nodes_np1){
+//  foreach_local_node(n, nodes_np1){
+//  VecView(v_n.vec[1], PETSC_VIEWER_STDOUT_WORLD);
+  foreach_node(n, nodes_np1){
     double xyz_temp[P4EST_DIM];
     double xyz_temp_nm1[P4EST_DIM];
+
+    double xyz_[P4EST_DIM];
+    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz_);
+//    printf("\n node %d, (x,y) = (%0.2f, %0.2f) has (xdn, ydn) = (%0.2f, %0.2f) and (xdnm1, ydnm1) = (%0.2f, %0.2f) \n",
+//           n, xyz_[0], xyz_[1], xyz_d[0][n], xyz_d[1][n], xyz_d_nm1[0][n], xyz_d_nm1[1][n]);
+
 
     foreach_dimension(d){
       xyz_temp[d] = xyz_d[d][n];
@@ -1022,9 +1000,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     for(int j=0; j<num_conc_fields; j++){
 
       SL_backtrace_interp.set_input(Cl_n.vec[j], Cl_dd[j].vec[0], Cl_dd[j].vec[1], quadratic_non_oscillatory_continuous_v2);
-
       SL_backtrace_interp.interpolate(Cl_backtrace_n.vec[j]);
-
 
     if(advection_sl_order==2){
       SL_backtrace_interp_nm1.set_input(Cl_nm1.vec[j], Cl_dd_nm1[j].vec[0], Cl_dd_nm1[j].vec[1], quadratic_non_oscillatory_continuous_v2);
@@ -1999,10 +1975,6 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(bool convert_to_nondim_
 
   ns->set_dt(dt_nm1,dt);
 
-  printf("\n[SWF]:initialize_ns_solver -- \n"
-         "v_n.vec[0] = %p \n "
-         "v_nm1.vec[0] = %p \n", v_n.vec[0], v_nm1.vec[0] );
-
   if(convert_to_nondim_for_multialloy){
     // Convert dimensional to nondimensional
     foreach_dimension(d){
@@ -2050,20 +2022,20 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(bool convert_to_nondim_
 
 bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
 
-  std:: cout<< "Hello world ns 1 \n";
+//  std:: cout<< "Hello world ns 1 \n";
   // Destroy old pressure at nodes (if it exists) and create vector to hold new solns:
   press_nodes.destroy(); press_nodes.create(p4est_np1, nodes_np1);
 
-  std:: cout<< "Hello world ns 2 \n";
+//  std:: cout<< "Hello world ns 2 \n";
+
   // Create vector to store old dxyz hodge:
-//  printf("(!!!!!) beginning of ns step, faces_np1 = %p \n", faces_np1);
   for (unsigned char d=0; d<P4EST_DIM; d++){
     ierr = VecCreateNoGhostFaces(p4est_np1, faces_np1, &dxyz_hodge_old[d], d); CHKERRXX(ierr);
   }
   //std:: cout<< "Hello world ns 3 \n";
   //std:: cout<< "Hello world ns 4 NS norm: " << NS_norm<<"\n";
   //std:: cout<< "Hello world ns 4 NS hodge% of max: " << hodge_percentage_of_max_u<<"\n";
-  std:: cout<< "Hello world ns 4 NS hodge tolerance: " << hodge_tolerance<<"\n";
+//  std:: cout<< "Hello world ns 4 NS hodge tolerance: " << hodge_tolerance<<"\n";
   hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
   //std:: cout<< "Hello world ns 4 NS hodge tolerance: " << hodge_tolerance<<"\n";
   //qPetscPrintf(mpi->comm(),"Hodge tolerance is %e \n",hodge_tolerance);
@@ -2083,16 +2055,16 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   // Enter the loop on the hodge variable and solve the NS equations
   while((hodge_iteration<hodge_max_it) && (convergence_check_on_dxyz_hodge>hodge_tolerance)){
 //    std:: cout<< "Hello world ns 8 HODGE iteration " << hodge_iteration<<" \n";
-    std:: cout<< "Hello world ns 8 CONVERGENCE CHECK ON DXYZ HODGE" << hodge_tolerance<<" \n";
+//    std:: cout<< "Hello world ns 8 CONVERGENCE CHECK ON DXYZ HODGE" << hodge_tolerance<<" \n";
     ns->copy_dxyz_hodge(dxyz_hodge_old);
-    std:: cout<< "Hello world ns 8_1 \n";
+//    std:: cout<< "Hello world ns 8_1 \n";
     ns->solve_viscosity(face_solver,(face_solver!=NULL),face_solver_type,pc_face);
-    std:: cout<< "Hello world ns 8_2 \n";
+//    std:: cout<< "Hello world ns 8_2 \n";
     //std:: cout<< "Hello world ns 9 \n";
     convergence_check_on_dxyz_hodge=
         ns->solve_projection(cell_solver,(cell_solver!=NULL),cell_solver_type,pc_cell,
                              false,NULL,dxyz_hodge_old,uvw_components);
-    std:: cout<< "Hello world ns 10 \n";
+//    std:: cout<< "Hello world ns 10 \n";
     //std:: cout << "Hodge iteration :: " << hodge_iteration <<"\n";
     //std:: cout << "convergence check :: " << convergence_check_on_dxyz_hodge <<"\n";
     //std:: cout << " NS_norm :: "<< NS_norm <<"\n";
@@ -2100,18 +2072,18 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
     ierr= PetscPrintf(mpi->comm(),"Hodge iteration : %d, (hodge error)/(NS_max): %0.3e \n",hodge_iteration,convergence_check_on_dxyz_hodge/NS_norm);CHKERRXX(ierr);
     hodge_iteration++;
   }
-  std:: cout<< "Hello world ns 11 \n";
+//  std:: cout<< "Hello world ns 11 \n";
   //ierr = PetscPrintf(mpi->comm(), "Hodge loop exited \n");
   //std:: cout<< "Hello world ns 12 \n";
   for (unsigned char d=0;d<P4EST_DIM;d++){
     ierr = VecDestroy(dxyz_hodge_old[d]); CHKERRXX(ierr);
   }
-  std:: cout<< "Hello world ns 13 \n";
+//  std:: cout<< "Hello world ns 13 \n";
   // Delete solvers:
   delete face_solver;
   delete cell_solver;
 
-  std:: cout<< "Hello world ns 14\n";
+//  std:: cout<< "Hello world ns 14\n";
   // Compute velocity at the nodes
   ns->compute_velocity_at_nodes();
   // ------------------------
@@ -2120,7 +2092,6 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   // (a) get rid of old vnm1, now vn becomes the new vnm1
   // (b) no need to destroy vn, bc now we put vnp1 into vn's slot
   v_nm1.destroy();
-
 
   foreach_dimension(d){
     ns->get_node_velocities_n(v_nm1.vec[d], d);
@@ -2142,8 +2113,6 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
                         " - Computational value: %0.4f  "
                         " - Physical value: %0.3e [m/s]  "
                         " - Physical value: %0.3f [mm/s] \n",NS_norm,NS_norm*vel_nondim_to_dim,NS_norm*vel_nondim_to_dim*1000.);
-
-  printf("\n[SWF] -- end of NS step: v_n.vec = %p, v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
 
   // Stop simulation if things are blowing up
   bool did_crash;
@@ -2282,8 +2251,8 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
   // -------------------------------
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning Navier-Stokes solution step... \n");
 
-  printf("\n Addresses of vns vectors (inside SWF): \n "
-         "v_n.vec = %p, v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
+//  printf("\n Addresses of vns vectors (inside SWF): \n "
+//         "v_n.vec = %p, v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
 
   // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
 
