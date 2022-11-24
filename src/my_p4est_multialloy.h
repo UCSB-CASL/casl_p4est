@@ -263,6 +263,8 @@ private:
   vec_and_ptr_t  smoothed_nodes_; // is used to track nodes that were artificially solidified during front regularization
   vec_and_ptr_t  front_phi_unsmooth_; // is used to track nodes that were artificially solidified during front regularization
 
+  int iteration_w_fluids;
+
   static my_p4est_node_neighbors_t *v_ngbd;
   static double **v_c_p, **v_c0_d_p, **v_c0_dd_p, **v_normal_p;
   static double v_factor;
@@ -325,7 +327,7 @@ public:
   my_p4est_multialloy_t(int num_comps, int time_order);
   ~my_p4est_multialloy_t();
 
-  void initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip, double band);
+  void initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip, double band, bool solve_w_fluids=false);
 
   inline void set_mpi_env(mpi_environment_t* mpi_in){
     mpi_ = mpi_in;
@@ -632,6 +634,34 @@ public:
     sample_cf_on_nodes(solid_p4est_, solid_nodes_, tf, solid_tf_.vec);
   }
 
+  inline void set_temperature_solve_w_fluids(CF_DIM &tl, CF_DIM &ts, CF_DIM &tf)
+  {
+
+    if(num_time_layers_ <=2){
+
+      tl.t = 0.;
+      ts.t = 0.;
+      sample_cf_on_nodes(p4est_, nodes_, tl, tl_[0].vec);
+      sample_cf_on_nodes(p4est_, nodes_, ts, ts_[0].vec);
+
+      if(num_time_layers_>1){
+        tl.t = -dt_[0];
+        ts.t = -dt_[0];
+
+        sample_cf_on_nodes(p4est_nm1, nodes_nm1, tl, tl_[0].vec);
+        sample_cf_on_nodes(p4est_nm1, nodes_nm1, ts, ts_[0].vec);
+
+      }
+      sample_cf_on_nodes(solid_p4est_, solid_nodes_, tf, solid_tf_.vec);
+
+    }
+    else{
+      throw std::invalid_argument("my_p4est_multialloy:set_temperature_solve_w_fluids -- you can only solve with fluids using 2 or less time layers");
+    }
+
+  }
+
+
   inline void set_concentration(Vec cl[], Vec cs[])
   {
     for (int j = 0; j < num_comps_; ++j)
@@ -683,6 +713,38 @@ public:
     solid_cl_.restore_array();
     solid_part_coeff_.restore_array();
   }
+
+  //  inline void set_concentration_solve_w_fluids(CF_DIM *cl[], CF_DIM *cs[])
+  //  {
+  //    for (int j = 0; j < num_comps_; ++j)
+  //    {
+  //      for (int i = 0; i < num_time_layers_; ++i)
+  //      {
+  //        cl[j]->t = -double(i)*dt_[0];
+  //        sample_cf_on_nodes(p4est_, nodes_, *cl[j], cl_[i].vec[j]);
+  //      }
+
+  //      sample_cf_on_nodes(solid_p4est_, solid_nodes_, *cs[j], solid_cl_.vec[j]);
+  //    }
+
+  //    // compute partition coefficient inside solid
+  //    solid_cl_.get_array();
+  //    solid_part_coeff_.get_array();
+
+  //    vector<double> cl_all(num_comps_);
+  //    foreach_node(n, solid_nodes_) {
+  //      for (int i = 0; i < num_comps_; ++i) {
+  //        cl_all[i] = solid_cl_.ptr[i][n];
+  //      }
+
+  //      for (int i = 0; i < num_comps_; ++i) {
+  //        solid_part_coeff_.ptr[i][n] = part_coeff_(i, cl_all.data());
+  //      }
+  //    }
+
+  //    solid_cl_.restore_array();
+  //    solid_part_coeff_.restore_array();
+  //  }
 
   inline void set_normal_velocity(Vec v)
   {

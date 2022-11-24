@@ -612,11 +612,6 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes_, Vec *vn_nodes_, 
       ierr = VecDestroy(this->norm_grad_u); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &norm_grad_u); CHKERRXX(ierr);
   }
-
-  printf("\n[NS]:set_velocities -- \n"
-         "v_n[0] = %p \n"
-         "v_nm1[0] = %p \n", vn_nodes[0], vnm1_nodes[0]);
-
 }
 
 void my_p4est_navier_stokes_t::set_velocities(CF_DIM **vnm1, CF_DIM **vn, const bool set_max_L2_norm_u)
@@ -2208,12 +2203,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
   ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
 
-
-  printf("\n [NS]:update_from_tn_to_tnp1_grid_external \n"
-         "Addresses of vns vectors (NS, before grid update): \n "
-         "v_np1[0] = %p \n "
-         "v_n[0] = %p \n"
-         "v_nm1[0] = %p \n", vnp1_nodes[0], vn_nodes[0], vnm1_nodes[0]);
 //  double* vnp1_nodes_p;
 //  printf("tries to access vnp1 which should be gone \n");
 //  ierr = VecGetArray(vnp1_nodes[0], &vnp1_nodes_p); CHKERRXX(ierr);
@@ -2400,14 +2389,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
   }
 
-  printf("\n [NS]:update_from_tn_to_tnp1_grid_external: \n"
-         "Addresses of vns vectors (NS, after grid update): \n "
-         "vnp1_nodes[0] = %p \n"
-         "vn_nodes[0] = %p \n"
-         "vnm1_nodes[0] = %p \n",
-         vnp1_nodes[0], vn_nodes[0], vnm1_nodes[0]);
-
-
   //------------------------------------------------------
   //(7) Slide the grid objects
   //------------------------------------------------------
@@ -2441,11 +2422,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
   int vn_size; VecGetSize(vn_nodes[0], &vn_size);
   int vnm1_size; VecGetSize(vnm1_nodes[0], &vnm1_size);
-
-  printf("\n \n END OF UPDATE NS GRID, SIZES \n: nodes_n = %d, nodes_nm1 = %d, "
-         "vn = %d, vnm1 = %d \n", num_nodes_n, num_nodes_nm1, vn_size, vnm1_size);
-
-
 }
 
 // DONE ELYCE TRYING SOMETHING.

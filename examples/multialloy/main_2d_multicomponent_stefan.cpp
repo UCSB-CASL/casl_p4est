@@ -93,7 +93,7 @@ param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
 param_t<int> sub_split_num (pl, 0, "sub_split_num", "");
 
 param_t<double> lip  (pl, 1.5, "lip",  "Fine-to-coarse grid transition width");
-param_t<double> band (pl, 1.5, "band", "Uniform band width around interfaces");
+param_t<double> band (pl, 5.0, "band", "Uniform band width around interfaces");
 
 //-------------------------------------
 // solver parameters
@@ -1809,7 +1809,7 @@ bool is_y_wall(DIM(double x, double y, double z)){
 };
 // For velocity BCs/ICs
 double u0=0.;
-double v0=-1.e-4;
+double v0=-1.0;
 double outflow_u=0.;
 double outflow_v=0.;
 // --------------------------------------------------------------------------------------------------------------
@@ -2272,10 +2272,10 @@ int main (int argc, char* argv[])
 //  double lmin_eff = lmin_new + log(initial_division)/log(2.);
 
   /* initialize the solver */
-  my_p4est_multialloy_t mas(num_comps.val, order_in_time.val);
+  my_p4est_multialloy_t mas(num_comps.val, 1/*order_in_time.val*/);
 
 
-  mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin_new, lmax_new, lip.val, band.val);
+  mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin_new, lmax_new, lip.val, band.val, solve_w_fluids.val);
   ierr = PetscPrintf(mpi.comm(), "initialize complete \n"); CHKERRXX(ierr);
 
   my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver;
@@ -2306,7 +2306,7 @@ int main (int argc, char* argv[])
     mas.initialize_for_fluids(stefan_w_fluids_solver);
     //std::cout<<"Hello world 3_3 main \n";
   }
-  ierr = PetscPrintf(mpi.comm(), "initialize for fluids complete \n"); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "\nInitialize for fluids complete \n"); CHKERRXX(ierr);
   p4est_t                   *p4est = mas.get_p4est();
   p4est_nodes_t             *nodes = mas.get_nodes();
   my_p4est_node_neighbors_t *ngbd  = mas.get_ngbd();
@@ -2395,6 +2395,8 @@ int main (int argc, char* argv[])
   // set initial conditions
   mas.set_velocity(vn_cf, DIM(vx_cf, vy_cf, vz_cf), vf_cf);
   mas.set_temperature(tl_cf, ts_cf, tf_cf);
+//  mas.set_temperature_solve_w_fluids(tl_cf, ts_cf, tf_cf);
+
   mas.set_concentration(cl_cf_all, cs_cf_all);
   mas.set_ft(ft_cf);
 
