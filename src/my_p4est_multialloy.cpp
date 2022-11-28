@@ -2133,7 +2133,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_);
 
 
-  if(1){
+  if(0){
     // -------------------------------
     // TEMPORARY: save fields after backtrace
     // -------------------------------
