@@ -2297,6 +2297,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_for_shs_restart( const CF_
 		p4est_ghost_t *ghost_np1 = nullptr;
 		my_p4est_hierarchy_t *hierarchy_np1 = nullptr;
 		my_p4est_node_neighbors_t *ngbd_n_np1 = nullptr;
+		criteria->state = splitting_criteria_cf_and_uniform_band_shs_t::STATE::COARSEN_AND_REFINE_MAX_LVL;
 		while( !iterative_grid_update_converged )
 		{
 			/* ---   FIND THE NEXT ADAPTIVE GRID   --- */
@@ -2445,14 +2446,37 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_for_shs_restart( const CF_
 				}
 			}
 			iterative_grid_update_converged = !criteria->refine_and_coarsen( p4est_np1, nodes_np1, phi_np1 );
+			if( iterative_grid_update_converged )	// Update coarsening/refining state when we detect grid convergence for current state.
+			{
+				switch( criteria->state )
+				{
+					case splitting_criteria_cf_and_uniform_band_shs_t::STATE::COARSEN_AND_REFINE_MAX_LVL:
+						CHKERRXX( PetscPrintf( p4est_n->mpicomm, "+++ Done coarsening/refining for max lvl %i.\n", criteria->max_lvl ) );
+						break;
+					case splitting_criteria_cf_and_uniform_band_shs_t::STATE::REFINE_MAX_LVL_PLASTRON:
+						CHKERRXX( PetscPrintf( p4est_n->mpicomm, "+++ Done refining plastron max lvl %i.\n", criteria->PLASTRON_MAX_LVL ) );
+						break;
+					case splitting_criteria_cf_and_uniform_band_shs_t::STATE::REFINE_MID_BANDS:
+						CHKERRXX( PetscPrintf( p4est_n->mpicomm, "+++ Done refining mid-level bands.\n" ) );
+						break;
+					default:
+						throw std::runtime_error( "[CASL_ERROR] my_p4est_navier_stokes_t::update_from_tn_to_tnp1_for_shs_restart: "
+												  "Bad coarsening/refining state!" );
+				}
+
+				criteria->state += (criteria->SPECIAL_REFINEMENT? 1 : 2);		// Next state.
+				if( criteria->state <= splitting_criteria_cf_and_uniform_band_shs_t::STATE::REFINE_MID_BANDS )
+					iterative_grid_update_converged = false;					// Force loop continuation.
+			}
+
 			grid_is_unchanged = grid_is_unchanged && iterative_grid_update_converged;
 			iter++;
 
-			if( iter > ((u_int) 2 + criteria->max_lvl - criteria->min_lvl)) // increase the rhs by one to account for the very first step that used to be out of the loop, [Raphael]
-			{
-				ierr = PetscPrintf( p4est_n->mpicomm, "ooops ... the grid update did not converge\n" );
-				CHKERRXX( ierr );
-				break;
+			if( iter > 3 * ((u_int) 2 + criteria->max_lvl - criteria->min_lvl)) // increase the rhs by one to account for the very first step that used to be out of the loop, [Raphael]
+			{																	// Multiplied by 3 to account for the three refining/coarsening steps.
+				CHKERRXX( PetscPrintf( p4est_n->mpicomm, "ooops ... the grid update did not converge\n" ) );
+				throw std::runtime_error( "[CASL_ERROR] my_p4est_navier_stokes_t::update_from_tn_to_tnp1_for_shs_restart: "
+										  "Grid didn't converge!" );
 			}
 		}
 		if( vorticity_np1 != nullptr && vorticity_np1 != vorticity )

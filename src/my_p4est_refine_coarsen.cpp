@@ -1551,6 +1551,9 @@ void splitting_criteria_cf_and_uniform_band_shs_t::init_fn(p4est_t* p4est, p4est
 
 bool splitting_criteria_cf_and_uniform_band_shs_t::refine_and_coarsen( p4est_t* p4est, p4est_nodes_t* nodes, Vec phi )
 {
+	if( state < STATE::COARSEN_AND_REFINE_MAX_LVL || (state == STATE::REFINE_MAX_LVL_PLASTRON && !SPECIAL_REFINEMENT) || state > STATE::REFINE_MID_BANDS )
+		throw std::runtime_error( "[CASL_ERROR] splitting_criteria_cf_and_uniform_band_shs_t::refine_and_coarsen: Invalid state!" );
+
 	const double *phi_p;
 	phi_p = nullptr;
 	CHKERRXX( VecGetArrayRead( phi, &phi_p ) );
@@ -1644,53 +1647,53 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 		quad->p.user_int = COARSEN_QUADRANT;
 	else
 	{
-		const double quad_denom = (( double ) P4EST_QUADRANT_LEN( quad->level )) / (( double ) P4EST_ROOT_LEN);
-		const double quad_diag = sqrt(SUMD( SQR( tree_dimensions[0] ), SQR( tree_dimensions[1] ), SQR( tree_dimensions[2] ))) * quad_denom;
+//		const double quad_denom = (( double ) P4EST_QUADRANT_LEN( quad->level )) / (( double ) P4EST_ROOT_LEN);
+//		const double quad_diag = sqrt(SUMD( SQR( tree_dimensions[0] ), SQR( tree_dimensions[1] ), SQR( tree_dimensions[2] ))) * quad_denom;
 		const double plastron_smallest_dy = tree_dimensions[1] * (((double) P4EST_QUADRANT_LEN((int8_t) PLASTRON_MAX_LVL))/((double) P4EST_ROOT_LEN));
 		const double h1 = uniform_band * plastron_smallest_dy;		// Height of max level wave in specially refined grid.  Note that comparison is made with respect to plastron's band.
-		const double h2 = SPECIAL_REFINEMENT? midBounds[0] - uniform_band * plastron_smallest_dy : 0;	// Height of second wave (at max lvl of refinement on plastron); 0 if not special ref.
 
 		auto wave1 = [&](const double& t) -> double {				// First wave for special refinement (closest to wall).
 			return h1 / 2 * (1. + cos( 2 * M_PI * (t + R/2) / P ));
 		};
 
-		auto wave2 = [&](const double& t) -> double {				// Second wave for special refinement lies above wave1.
-			return h1 + h2 / 2 * (1. + cos( 2 * M_PI * (t + R/2) / P));
-		};
-
-		bool coarsen = (quad->level > min_lvl);
-		if( coarsen )
+		bool coarsen = false;
+		if( state == STATE::COARSEN_AND_REFINE_MAX_LVL )			// We only coarsen in the first round, otherwise the grid never stabilizes.
 		{
-			bool cor_band;
-			bool cor_intf;
-			p4est_locidx_t node_idx;
-
-			for( unsigned char k = 0; k < P4EST_CHILDREN; ++k )
+			coarsen = (quad->level > min_lvl);
+			if( coarsen )
 			{
-				node_idx = nodes->local_nodes[P4EST_CHILDREN * quad_idx + k];
-				double xyz[P4EST_DIM];
-				node_xyz_fr_n( node_idx, p4est, nodes, xyz );
-				double minDistToWall = MIN( ABS( xyz[1] + DELTA ), ABS( xyz[1] - DELTA ) );
+				bool cor_band;
+				p4est_locidx_t node_idx;
 
-				// Coarsening if we are out of the (possibly wavy) uniform band?
-				cor_band = minDistToWall > h1;
-				if( SPECIAL_REFINEMENT && !cor_band )
-					cor_band = minDistToWall > wave1( xyz[2] );
+				for( unsigned char k = 0; k < P4EST_CHILDREN; ++k )
+				{
+					node_idx = nodes->local_nodes[P4EST_CHILDREN * quad_idx + k];
+					double xyz[P4EST_DIM];
+					node_xyz_fr_n( node_idx, p4est, nodes, xyz );
+					double minDistToWall = MIN( ABS( xyz[1] + DELTA ), ABS( xyz[1] - DELTA ) );
 
-				cor_intf = minDistToWall > lip * 2.0 * quad_diag;
+					// Coarsening if we are out of the (possibly wavy) uniform band?
+					cor_band = minDistToWall > h1;
+					if( SPECIAL_REFINEMENT && !cor_band )
+						cor_band = minDistToWall > wave1( xyz[2] );
 
-				coarsen = (cor_band && cor_intf);
-				if( !coarsen )		// Mark cell for coarsening if all cell nodes are marked for coarsening.
-					break;
+					coarsen = cor_band;
+					if( !coarsen )		// Mark cell for coarsening if all cell nodes are marked for coarsening.
+						break;
+				}
 			}
 		}
 
-		bool refine = (quad->level < max_lvl);
+		const double h2 = SPECIAL_REFINEMENT? uniform_band * plastron_smallest_dy / 2 : 0;	// Height of second wave (at max lvl of refinement on plastron).
+		auto wave2 = [&](const double& t) -> double {										// Second wave for special refinement lies above wave1.
+			return h1 + (midBounds[0] - uniform_band * plastron_smallest_dy) / 2 + h2 / 2 * cos( 2 * M_PI * (t + R/2) / P);
+		};
+
+		bool refine = quad->level < max_lvl - (state > 0? int( SPECIAL_REFINEMENT ) : 0);
 		double xyz[P4EST_DIM];
 		if( refine )
 		{
-			bool ref_band;
-			bool ref_intf;
+			refine = false;
 			p4est_locidx_t node_idx;
 			bool node_found;
 			// check possibly finer points
@@ -1728,26 +1731,18 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 							node_xyz_fr_n( node_idx, p4est, nodes, xyz );
 							double minDistToWall = MIN( ABS( xyz[1] + DELTA ), ABS( xyz[1] - DELTA ) );
 
-							ref_band = minDistToWall <= (SPECIAL_REFINEMENT? MAX( wave1( xyz[2] ), 1.1 * plastron_smallest_dy ) : h1);	// Make sure there's always a layer
-							ref_intf = minDistToWall <= lip * quad_diag;																// of smallest cells next to the wall.
-
-							if( !ref_band )	// Not within the (possibly wavy) uniform band?
+							if( state == STATE::COARSEN_AND_REFINE_MAX_LVL )	// Are we refining for max lvl next to wall?
+								refine = minDistToWall <= (SPECIAL_REFINEMENT? wave1( xyz[2] ) : h1);
+							else if( state == STATE::REFINE_MAX_LVL_PLASTRON )	// Are we refining for the second wave and can refine?
+								refine = quad->level < PLASTRON_MAX_LVL && minDistToWall <= wave2( xyz[2] );
+							else if( NUM_MID_LEVELS > 0 )						// Are we now refining the usual straight mid-level bands.
 							{
-								if( SPECIAL_REFINEMENT )
-									ref_band = quad->level < PLASTRON_MAX_LVL && minDistToWall <= wave2( xyz[2] );	// Are we within the second wave and can refine?
-								if( !ref_band )
-								{
-									if( NUM_MID_LEVELS > 0 )	// Usual straight banded discretization.
-									{
-										int boundIdx = MAX( 0, MIN( (PLASTRON_MAX_LVL - 1) - (quad->level + 1), NUM_MID_LEVELS - 1 ) );	// Can go one level up?
-										if( minDistToWall < midBounds[boundIdx] && quad->level < PLASTRON_MAX_LVL - boundIdx - 1 )
-											ref_band = true;
-									}
-								}
+								int boundIdx = MAX( 0, MIN( (PLASTRON_MAX_LVL - 1) - (quad->level + 1), NUM_MID_LEVELS - 1 ) );	// Can go one level up?
+								if( minDistToWall < midBounds[boundIdx] && quad->level < PLASTRON_MAX_LVL - boundIdx - 1 )
+									refine = true;
 							}
 
-							refine = ref_band || ref_intf;
-							if( !refine )		// Refine only if all grid points are marked for refinement.
+							if( refine )		// Refine if at least one grid point is marked for refinement.
 								goto end_of_function;
 						}
 					}

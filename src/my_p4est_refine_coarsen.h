@@ -577,6 +577,8 @@ private:
 
 	/**
 	 * Tag a quadrant for coarsening, refinement, or leaving it as is.
+	 * @warning This function must be used only with splitting_criteria_cf_and_uniform_band_shs_t#refine_and_coarsen since the latter
+	 * validates the object state, which this function depends on.
 	 * @param [in] p4est P4est structure.
 	 * @param [in] quad_idx Quad index.
 	 * @param [in] tree_idx Tree index.
@@ -605,6 +607,8 @@ private:
 	double _offset() const;
 
 public:
+	enum STATE { COARSEN_AND_REFINE_MAX_LVL = 0, REFINE_MAX_LVL_PLASTRON, REFINE_MID_BANDS };
+
 	const double DELTA;					// Channel half-height (on the y-axis).
 	const double LMID_DELTA_PERCENT;	// How far to extend mid-level cells (use 0 to disable this option).
 	const bool SPECIAL_REFINEMENT;		// Whether we'll use sine waves instead of rectangular bands everywhere (only valid in 3D).
@@ -615,6 +619,9 @@ public:
 	const double XYZ_MIN[P4EST_DIM];	// Min coords of channel.
 	const double XYZ_MAX[P4EST_DIM];	// Max coords of channel.
 	const int N_TREES[P4EST_DIM];		// Number of trees in each direction.
+	unsigned int state;					// Allows us to control coarsening and refinement: if 0, coarsen and refine 'only' to achieve the
+										// uniform band; if 1 (valid only if special_refinement is true), refine only to achieve the second
+										// uniform band due to plastron (max lvl - 1); if 2, refine to complete the mid level bands.
 #ifdef P4_TO_P8
 	const bool SPANWISE;				// Whether the gratings are perpendicular to the flow.
 #endif
@@ -646,8 +653,8 @@ public:
 		DELTA( delta ), LMID_DELTA_PERCENT( lmidDeltaPercent ), GF( gf ),  P( pitch ), XYZ_DIM{DIM( xyzDim[0], xyzDim[1], xyzDim[2] )},
 		XYZ_MIN{DIM( -xyzDim[0]/2, -xyzDim[1]/2, -xyzDim[2]/2 )}, XYZ_MAX{DIM( xyzDim[0]/2, xyzDim[1]/2, xyzDim[2]/2 )},
 		SPECIAL_REFINEMENT( P4EST_DIM < 3? false : spRef ),		// NOLINT
-		N_TREES{DIM( nTrees[0], nTrees[1], nTrees[2] )}, PLASTRON_MAX_LVL( SPECIAL_REFINEMENT? (maxLvl - 1) : maxLvl )
-		ONLY3D(COMMA SPANWISE( spanwise ))
+		N_TREES{DIM( nTrees[0], nTrees[1], nTrees[2] )}, PLASTRON_MAX_LVL( SPECIAL_REFINEMENT? (maxLvl - 1) : maxLvl ),
+		state( STATE::COARSEN_AND_REFINE_MAX_LVL ) ONLY3D(COMMA SPANWISE( spanwise ))
 	{
 		std::string errorPrefix = "[CASL_ERROR] splitting_criteria_cf_and_uniform_band_shs_t::constructor: ";
 
