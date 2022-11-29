@@ -2388,7 +2388,7 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
       // Define variables for the refine/coarsen instructions for d2T fields:
 //      compare_diagonal_option_t diag_opn_d2T = DIVIDE_BY;
       // ELYCE 11/29/22: I'm modifying this to a new approach which I think makes more sense
-      compare_diagonal_option_t diag_opn_d2T = MULTIPLY_BY;
+      compare_diagonal_option_t diag_opn_d2T = ABSOLUTE;
 
       compare_option_t compare_opn_d2T = SIGN_CHANGE;
       PetscPrintf(mpi->comm(), "d2T_refine_threshold = %0.3e, d2T_coarsen_threshold = %0.3e \n",
@@ -2401,24 +2401,24 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
       // Coarsening instructions: (for d2T/dx2)
       compare_opn.push_back(compare_opn_d2T);
       diag_opn.push_back(diag_opn_d2T);
-      criteria.push_back(d2T_coarsen_threshold);
+      criteria.push_back(d2T_coarsen_threshold*dxyz_close_to_interface);
 
       // Refining instructions: (for d2T/dx2)
       compare_opn.push_back(compare_opn_d2T);
       diag_opn.push_back(diag_opn_d2T);
-      criteria.push_back(d2T_refine_threshold);
+      criteria.push_back(d2T_refine_threshold*dxyz_close_to_interface);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(lmax);}
 
       // Coarsening instructions: (for d2T/dy2)
       compare_opn.push_back(compare_opn_d2T);
       diag_opn.push_back(diag_opn_d2T);
-      criteria.push_back(d2T_coarsen_threshold);
+      criteria.push_back(d2T_coarsen_threshold*dxyz_close_to_interface);
 
       // Refining instructions: (for d2T/dy2)
       compare_opn.push_back(compare_opn_d2T);
       diag_opn.push_back(diag_opn_d2T);
-      criteria.push_back(d2T_refine_threshold);
+      criteria.push_back(d2T_refine_threshold*dxyz_close_to_interface);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(lmax);}
     }

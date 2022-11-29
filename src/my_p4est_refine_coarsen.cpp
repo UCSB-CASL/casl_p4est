@@ -791,10 +791,19 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                                   field_val, criteria_coarsen, max_quad_size, criteria_coarsen/max_quad_size, below_thresh_check? "true":"false");
                     }
 
+//                  if(sign_change && coarsen){
+//                    printf("\n Coarsen sign change? : %d . Field value = %0.3e, criteria = %0.3e, below_threshold = %d, quad lvl = %d \n",coarsen,
+//                           fabs(fields[n][node_idx]), criteria[2*n], below_threshold[n],quad->level );
+//                  }
                   // If there IS a sign change, you can only coarsen if the abs value of the field is below the threshold.
                   // If there is no sign change, you can coarsen
                   coarsen = coarsen && (sign_change? below_threshold[n]:true);
                   if(print_stuff) printf( "After: \n coarsen = %s \n \n \n", coarsen? "true":"false");
+
+                  if(sign_change && coarsen){
+                    printf("\n Coarsen sign change? : %d . Field value = %0.3e, criteria = %0.3e, below_threshold = %d, quad lvl = %d \n",coarsen,
+                           fabs(fields[n][node_idx]), criteria[2*n], below_threshold[n],quad->level );
+                  }
 
               }
 
@@ -1054,8 +1063,8 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
                 if(sign_change && we_had_neighbor_point && above_threshold[n]){
                     refine = (refine || sign_change) ;
-//                    printf("\n Field value = %0.3e, criteria*max_quad = %0.3e, criteria = %0.3e, max_quad_size = %0.3e \n",
-//                           fabs(fields[n][node_idx]), criteria[2*n + 1]*max_quad_size, criteria[2*n + 1], max_quad_size );
+//                    printf("\n Refine: Field value = %0.3e, criteria = %0.3e, quad lvl = %d \n",
+//                           fabs(fields[n][node_idx]), criteria[2*n + 1], quad->level );
                 }
 
             }
