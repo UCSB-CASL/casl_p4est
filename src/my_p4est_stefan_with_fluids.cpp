@@ -2312,7 +2312,7 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
     ngbd_n->second_derivatives_central(T_l_n.vec,T_l_dd.vec);
   } // for second derivatives of temperature
 
-  if(1){
+  if(0){
     // -------------------------------
     // TEMPORARY: save Tl_dd to visualize better the refinement criteria
     // -------------------------------

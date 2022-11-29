@@ -800,10 +800,10 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                   coarsen = coarsen && (sign_change? below_threshold[n]:true);
                   if(print_stuff) printf( "After: \n coarsen = %s \n \n \n", coarsen? "true":"false");
 
-                  if(sign_change && coarsen){
-                    printf("\n Coarsen sign change? : %d . Field value = %0.3e, criteria = %0.3e, below_threshold = %d, quad lvl = %d \n",coarsen,
-                           fabs(fields[n][node_idx]), criteria[2*n], below_threshold[n],quad->level );
-                  }
+//                  if(sign_change && coarsen){
+//                    printf("\n Coarsen sign change? : %d . Field value = %0.3e, criteria = %0.3e, below_threshold = %d, quad lvl = %d \n",coarsen,
+//                           fabs(fields[n][node_idx]), criteria[2*n], below_threshold[n],quad->level );
+//                  }
 
               }
 
