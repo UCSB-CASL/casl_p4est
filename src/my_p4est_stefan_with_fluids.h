@@ -275,7 +275,9 @@ private:
   bool refine_by_vorticity;
   bool refine_by_d2T;
   double vorticity_threshold;
-  double d2T_threshold;
+//  double d2T_threshold;
+  double d2T_refine_threshold;
+  double d2T_coarsen_threshold;
 
   // For initializationg from load state:
   bool loading_from_previous_state;
@@ -956,7 +958,11 @@ public:
   void set_vorticity_ref_threshold(double vort_thresh){
     vorticity_threshold = vort_thresh;
   }
-  void set_d2T_ref_threshold(double d2T_thresh){d2T_threshold = d2T_thresh;}
+//  void set_d2T_ref_threshold(double d2T_thresh){d2T_threshold = d2T_thresh;}
+  void set_d2T_refinement_thresholds(double d2T_thresh_refine, double d2T_thresh_coarsen){
+    d2T_refine_threshold = d2T_thresh_refine;
+    d2T_coarsen_threshold = d2T_thresh_coarsen;
+  }
   void set_loading_from_previous_state(bool loading_from_prev_state_){
     loading_from_previous_state = loading_from_prev_state_;
   }

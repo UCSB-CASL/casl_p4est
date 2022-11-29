@@ -156,8 +156,10 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   refine_by_d2T = false; // this needs to be set by user
 
   vorticity_threshold = 0.25;
-  d2T_threshold = 1.e-2;
-
+//  d2T_threshold = 1.e-2;
+  // d2T thresholds are the number by which you multiply the owning quadrant's diagonal when considering whether to refine or allow coarsening around a sign change across the quadrant (particularly necessary for the T-junctions to prevent oscialltions from the interpolation in the backtrace step)
+  d2T_refine_threshold=3.0;
+  d2T_coarsen_threshold=0.5;
   loading_from_previous_state = false;
 
 
@@ -2310,6 +2312,30 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
     ngbd_n->second_derivatives_central(T_l_n.vec,T_l_dd.vec);
   } // for second derivatives of temperature
 
+  if(1){
+    // -------------------------------
+    // TEMPORARY: save Tl_dd to visualize better the refinement criteria
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "T_l"));
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_dd.vec[0], "d2T_dx2"));
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_dd.vec[1], "d2T_dy2"));
+
+    const char* out_dir = getenv("OUT_DIR_VTK");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+    //          char output[] = "/home/elyce/workspace/projects/multialloy_with_fluids/output_two_grain_clogging/gradP_0pt01_St_0pt07/grid57_flush_no_collapse_after_extension_bc_added";
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_before_field_refinement_%d", out_dir, tstep);
+    my_p4est_vtk_write_all_lists(p4est_n, nodes_n, ngbd_n->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+
+  }
+
   // Create array of fields we wish to refine by, to pass to the refinement tools
   Vec fields_[num_fields];
 
@@ -2355,36 +2381,44 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
       double dxyz_smallest[P4EST_DIM];
       dxyz_min(p4est_n,dxyz_smallest);
 
-      double dTheta= fabs(theta_infty - theta_interface)>0 ? fabs(theta_infty - theta_interface): 1.0;
-      dTheta/=SQR(MIN(dxyz_smallest[0],dxyz_smallest[1])); // max d2Theta in liquid subdomain
+//      double dTheta= fabs(theta_infty - theta_interface)>0 ? fabs(theta_infty - theta_interface): 1.0;
+//      PetscPrintf(mpi->comm(), "dtheta prelim = %0.4e \n", dTheta);
+//      dTheta/=SQR(MIN(dxyz_smallest[0],dxyz_smallest[1])); // max d2Theta in liquid subdomain
 
       // Define variables for the refine/coarsen instructions for d2T fields:
-      compare_diagonal_option_t diag_opn_d2T = DIVIDE_BY;
+//      compare_diagonal_option_t diag_opn_d2T = DIVIDE_BY;
+      // ELYCE 11/29/22: I'm modifying this to a new approach which I think makes more sense
+      compare_diagonal_option_t diag_opn_d2T = MULTIPLY_BY;
+
       compare_option_t compare_opn_d2T = SIGN_CHANGE;
-      double refine_criteria_d2T = dTheta*d2T_threshold;
-      double coarsen_criteria_d2T = dTheta*d2T_threshold*0.1;
+      PetscPrintf(mpi->comm(), "d2T_refine_threshold = %0.3e, d2T_coarsen_threshold = %0.3e \n",
+                  d2T_refine_threshold, d2T_coarsen_threshold);
+
+//      double refine_criteria_d2T = dTheta*d2T_threshold;
+//      double coarsen_criteria_d2T = dTheta*d2T_threshold*0.1;
+//      PetscPrintf(mpi->comm(), "dTheta = %0.4e, d2T_threshold = %0.4e, Refinement criteria for d2T is : %0.4e, coarsen criteria is %0.4e \n", dTheta, d2T_threshold, refine_criteria_d2T, coarsen_criteria_d2T);
 
       // Coarsening instructions: (for d2T/dx2)
       compare_opn.push_back(compare_opn_d2T);
       diag_opn.push_back(diag_opn_d2T);
-      criteria.push_back(coarsen_criteria_d2T); // did 0.1* () for the coarsen if no sign change OR below threshold case
+      criteria.push_back(d2T_coarsen_threshold);
 
       // Refining instructions: (for d2T/dx2)
       compare_opn.push_back(compare_opn_d2T);
       diag_opn.push_back(diag_opn_d2T);
-      criteria.push_back(refine_criteria_d2T);
+      criteria.push_back(d2T_refine_threshold);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(lmax);}
 
       // Coarsening instructions: (for d2T/dy2)
       compare_opn.push_back(compare_opn_d2T);
       diag_opn.push_back(diag_opn_d2T);
-      criteria.push_back(coarsen_criteria_d2T);
+      criteria.push_back(d2T_coarsen_threshold);
 
       // Refining instructions: (for d2T/dy2)
       compare_opn.push_back(compare_opn_d2T);
       diag_opn.push_back(diag_opn_d2T);
-      criteria.push_back(refine_criteria_d2T);
+      criteria.push_back(d2T_refine_threshold);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(lmax);}
     }

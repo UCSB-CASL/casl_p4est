@@ -780,14 +780,11 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
                   bool print_stuff = false /* && below_threshold[n]*/;
 
-
-                  double field_val = fields[n][node_idx];
-                  double criteria_coarsen = criteria[2*n];
-
-                  bool below_thresh_check = (fabs(field_val)<criteria_coarsen/max_quad_size);
-
-
                   if(print_stuff){
+                    double field_val = fields[n][node_idx];
+                    double criteria_coarsen = criteria[2*n];
+
+                    bool below_thresh_check = (fabs(field_val)<criteria_coarsen/max_quad_size);
                       printf( "Inside sign change: \n coarsen = %s \n ", coarsen? "true":"false");
                       printf( "Sign change = %s, below_threshold[%d] = %s \n", sign_change?"true":"false", n, below_threshold[n]?"true":"false");
                       printf( "field value = %f, criteria_coarsen = %f, quad_size = %f, criteria_coarsen/quad_size = %f, below_thresh_check = %s \n",
@@ -1057,7 +1054,10 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
                 if(sign_change && we_had_neighbor_point && above_threshold[n]){
                     refine = (refine || sign_change) ;
+//                    printf("\n Field value = %0.3e, criteria*max_quad = %0.3e, criteria = %0.3e, max_quad_size = %0.3e \n",
+//                           fabs(fields[n][node_idx]), criteria[2*n + 1]*max_quad_size, criteria[2*n + 1], max_quad_size );
                 }
+
             }
         } // end of checking sign change
 

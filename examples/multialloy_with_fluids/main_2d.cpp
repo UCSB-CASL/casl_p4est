@@ -380,7 +380,12 @@ void select_solvers(){
 // ---------------------------------------
 
 DEFINE_PARAMETER(pl, double, vorticity_threshold, 0.1,"Threshold to refine vorticity by, default is 0.1 \n");
-DEFINE_PARAMETER(pl, double, gradT_threshold, 1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
+//DEFINE_PARAMETER(pl, double, gradT_threshold, 1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
+
+DEFINE_PARAMETER(pl, double, d2T_refine_threshold, 10.0, "Threshold by which to multiply the owning quadrant's diagonal when considering whether to refine around a sign change. Default: 3.0, i.e. we refine if a sign change is present AND the magnitude of the field value is above 3.0*quad_diag \n");
+
+DEFINE_PARAMETER(pl, double, d2T_coarsen_threshold, 0.5, "Threshold by which to multiply the owning quadrant's diagonal when considering whether to allow coarsening around a sign change. Default: 0.5, i.e. we allow coarsening if a sign change is present AND the magnitude of the field value is below 0.5*quad_diag \n");
+
 DEFINE_PARAMETER(pl, bool, use_uniform_band, true, "Boolean whether or not to refine using a uniform band");
 DEFINE_PARAMETER(pl, double, uniform_band, 8., "Uniform band (default:8.)");
 DEFINE_PARAMETER(pl, double, dxyz_close_to_interface_mult, 1.2, "Multiplier that defines dxyz_close_to_interface = mult* max(dxyz_smallest)");
@@ -826,6 +831,8 @@ DEFINE_PARAMETER(pl, double, theta_infty, 1., "The freestream temp or concentrat
 
 DEFINE_PARAMETER(pl, double, theta_initial, 0., "This allows you to set the initial nondim C value for the evolving porous media disso/precip problem in the fluid. Default: 0. \n ");
 
+DEFINE_PARAMETER(pl, double, theta0, 0., "This allows you to set the initial nondim C value for the evolving porous media disso/precip problem in the fluid. Default: 0. \n ");
+
 DEFINE_PARAMETER(pl, double, Tflush, -1.0, "The flush temperature (K) or concentration that the inlet BC is changed to if flush_dim_time is activated. Default: -1.0. \n");
 
 DEFINE_PARAMETER(pl, double, theta_flush, -1.0, "The nondim flush temperature or concentration that the inlet BC is changed to if flush_dim_time is activated. Default: -1.0. \n");
@@ -1047,7 +1054,7 @@ double vel_nondim_to_dim = 1.;
 // Nondimensional temperature values (computed in set_physical_properties)
 //double theta_infty=0.; // I've allowed the user to set this
 double theta_interface=0.;
-double theta0=0.;
+//double theta0=0.;
 double deltaT=0.;
 
 void set_temp_conc_nondim_defns(){
@@ -1119,6 +1126,9 @@ void set_temp_conc_nondim_defns(){
       // Using nondim theta = C/Csat
 //      theta_infty = theta_inf_prescribed;
       // We allow this to be set by the user
+
+      // We don't need deltaT in the actual equations, but we still set it for refinement purposes
+      deltaT = fabs(theta_infty - theta_initial);
 
 
     }
@@ -4328,6 +4338,7 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   // Set the defn's for the nondim temp/conc problem, and pass to solver:
   set_temp_conc_nondim_defns();
   stefan_w_fluids_solver->set_dim_temp_conc_variables(Tinfty, Tinterface, T0);
+  PetscPrintf(mpi.comm(), "we are setting theta_inf = %0.2f, theta_int = %0.2f, theta0 = %0.2f, delta T as %0.4e \n ", theta_infty, theta_interface, theta0, deltaT);
   stefan_w_fluids_solver->set_nondim_temp_conc_variables(theta_infty, theta_interface, theta0, deltaT);
 
   // Set the physical properties and pass to solver:
@@ -4435,7 +4446,9 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
 
   // Refinement:
   stefan_w_fluids_solver->set_refine_by_d2T(refine_by_d2T);
-  stefan_w_fluids_solver->set_d2T_ref_threshold(gradT_threshold);
+//  stefan_w_fluids_solver->set_d2T_ref_threshold(gradT_threshold);
+
+  stefan_w_fluids_solver->set_d2T_refinement_thresholds(d2T_refine_threshold, d2T_coarsen_threshold);
   stefan_w_fluids_solver->set_vorticity_ref_threshold(vorticity_threshold);
 
   // Reinitialization:
@@ -5268,13 +5281,13 @@ int main(int argc, char** argv) {
       // We flush every given dt for a certain duration, but we ignore the first flush cycle to give some startup time (since by this formula, the first flush cycle would be at t=0)
       bool do_flush = ((tn*time_nondim_to_dim - flush_idx * flush_every_dt) < flush_duration) && (flush_idx > 0);
 
-      PetscPrintf(mpi.comm(), "Flushing info: \n"
-                              "tn = %0.3e, tn_dim = %0.3e, \n flush_every_dt = %0.3e, flush_dur = %0.3e, \n "
-                              "tnew = %0.3e, flush_idx = %d, do_flush = %d, theta_wall = %0.2f \n \n",
-                  tn, tn*time_nondim_to_dim,
-                  flush_every_dt, flush_duration,
-                  (tn*time_nondim_to_dim - flush_idx * flush_every_dt),
-                  flush_idx, do_flush, theta_wall_flushing_scenario() );
+//      PetscPrintf(mpi.comm(), "Flushing info: \n"
+//                              "tn = %0.3e, tn_dim = %0.3e, \n flush_every_dt = %0.3e, flush_dur = %0.3e, \n "
+//                              "tnew = %0.3e, flush_idx = %d, do_flush = %d, theta_wall = %0.2f \n \n",
+//                  tn, tn*time_nondim_to_dim,
+//                  flush_every_dt, flush_duration,
+//                  (tn*time_nondim_to_dim - flush_idx * flush_every_dt),
+//                  flush_idx, do_flush, theta_wall_flushing_scenario() );
 
 
       // -------------------------------
