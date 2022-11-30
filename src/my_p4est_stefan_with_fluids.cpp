@@ -769,7 +769,8 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
 // -------------------------------------------------------
 // Functions related to scalar temp/conc problem: ( in order of their usage in the main step)
 // -------------------------------------------------------
-void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bool do_multicomponent_fields=false, int num_conc_fields=0){
+void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bool do_multicomponent_fields=false, int num_conc_fields=0, int out_iteration=0){
+
   // -------------------
   // A note on notation:
   // -------------------
@@ -811,8 +812,6 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 //  }
 
 
-
-
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning to do backtrace \n");
   PetscPrintf(mpi->comm(), "[SWF] Addresses for ngbd objects: \n"
                            "ngbd_np1 = %p \n"
@@ -820,32 +819,6 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 
   // If we are doing the multialloy case, verify that all the necessary things are defined:
 
-  if(0){
-    // -------------------------------
-    // TEMPORARY: save fields before backtrace
-    // -------------------------------
-    std::vector<Vec_for_vtk_export_t> point_fields;
-    std::vector<Vec_for_vtk_export_t> cell_fields = {};
-
-
-    point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl_tn"));
-    point_fields.push_back(Vec_for_vtk_export_t(Cl_n.vec[0], "Cl0_tn"));
-    point_fields.push_back(Vec_for_vtk_export_t(Cl_n.vec[1], "Cl1_tn"));
-
-
-    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "vx_n"));
-    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "vy_n"));
-
-    const char* out_dir = getenv("OUT_DIR");
-    if(!out_dir){
-      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
-    }
-
-    char filename[1000];
-    sprintf(filename, "%s/snapshot_inside_backtrace_np1_fields", out_dir);
-    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
-    point_fields.clear();
-  }
 
   if(do_multicomponent_fields){
 
@@ -951,7 +924,66 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     ngbd_n->second_derivatives_central(v_nm1.vec, DIM(v_dd_nm1[0], v_dd_nm1[1], v_dd_nm1[2]), P4EST_DIM);
   }
 
+
+  if(1){
+    // -------------------------------
+    // TEMPORARY: save fields before backtrace
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_n.vec[0], "Cl0_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_n.vec[1], "Cl1_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_backtrace_n.vec, "Tl_dn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_backtrace_n.vec[0], "Cl0_dn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_backtrace_n.vec[1], "Cl1_dn"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_backtrace_nm1.vec, "Tl_dnm1"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_backtrace_nm1.vec[0], "Cl0_dnm1"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_backtrace_nm1.vec[1], "Cl1_dnm1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "vx_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "vy_n"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_dd.vec[0], "d2T_dx2"));
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_dd.vec[1], "d2T_dy2"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(v_dd[0][0], "v_dd00"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_dd[0][1], "v_dd01"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_dd[1][0], "v_dd10"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_dd[1][1], "v_dd11"));
+
+    const char* out_dir = getenv("OUT_DIR");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_before_backtrace_n_SWF_%d", out_dir, out_iteration);
+    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+
+
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_nm1.vec, "Tl_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_nm1.vec[0], "Cl0_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_nm1.vec[1], "Cl1_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[0], "vx_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_n"));
+
+    char filename2[1000];
+    sprintf(filename2, "%s/snapshot_before_backtrace_nm1_SWF_%d", out_dir, out_iteration);
+    my_p4est_vtk_write_all_lists(p4est_n, nodes_n, ngbd_n->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename2, point_fields, cell_fields);
+    point_fields.clear();
+
+
+
+  }
+
+
   // Do the Semi-Lagrangian backtrace:
+  PetscPrintf(mpi->comm(), "INSIDE BACKTRACE: dt = %0.3e, dtnm1 = %0.3e \n", dt, dt_nm1);
   if(advection_sl_order ==2){
     trajectory_from_np1_to_nm1(p4est_np1, nodes_np1, ngbd_n, ngbd_np1, v_nm1.vec, v_dd_nm1, v_n.vec, v_dd, dt_nm1, dt, xyz_d_nm1, xyz_d);
 
@@ -962,16 +994,18 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   }
 
   // Add backtrace points to the interpolator(s):
-//  foreach_local_node(n, nodes_np1){
+
 //  VecView(v_n.vec[1], PETSC_VIEWER_STDOUT_WORLD);
-  foreach_node(n, nodes_np1){
+  v_n.get_array();
+//  foreach_node(n, nodes_np1){
+  foreach_local_node(n, nodes_np1){
     double xyz_temp[P4EST_DIM];
     double xyz_temp_nm1[P4EST_DIM];
 
     double xyz_[P4EST_DIM];
     node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz_);
-//    printf("\n node %d, (x,y) = (%0.2f, %0.2f) has (xdn, ydn) = (%0.2f, %0.2f) and (xdnm1, ydnm1) = (%0.2f, %0.2f) \n",
-//           n, xyz_[0], xyz_[1], xyz_d[0][n], xyz_d[1][n], xyz_d_nm1[0][n], xyz_d_nm1[1][n]);
+//    printf("\n Rank %d: node %d, (x,y) = (%0.2f, %0.2f) has vn = <%0.2f, %0.2f>, (xdn, ydn) = (%0.2f, %0.2f) and (xdnm1, ydnm1) = (%0.2f, %0.2f) \n", p4est_np1->mpirank,
+//           n, xyz_[0], xyz_[1], v_n.ptr[0][n], v_n.ptr[1][n], xyz_d[0][n], xyz_d[1][n], xyz_d_nm1[0][n], xyz_d_nm1[1][n]);
 
 
     foreach_dimension(d){
@@ -986,6 +1020,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
     if(advection_sl_order ==2 ) SL_backtrace_interp_nm1.add_point(n,xyz_temp_nm1);
   } // end of loop over local nodes
 
+  v_n.restore_array();
   // Interpolate the Temperature data to back-traced points:
   SL_backtrace_interp.set_input(T_l_n.vec, T_l_dd.vec[0], T_l_dd.vec[1],quadratic_non_oscillatory_continuous_v2);
   SL_backtrace_interp.interpolate(T_l_backtrace_n.vec);
@@ -1057,6 +1092,57 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 //      ierr = VecScaleGhost(v_nm1.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
 //    }
 //  }
+
+
+
+  if(1){
+    // -------------------------------
+    // TEMPORARY: save fields before backtrace
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_n.vec[0], "Cl0_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_n.vec[1], "Cl1_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_backtrace_n.vec, "Tl_dn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_backtrace_n.vec[0], "Cl0_dn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_backtrace_n.vec[1], "Cl1_dn"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_backtrace_nm1.vec, "Tl_dnm1"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_backtrace_nm1.vec[0], "Cl0_dnm1"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_backtrace_nm1.vec[1], "Cl1_dnm1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "vx_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "vy_n"));
+
+    const char* out_dir = getenv("OUT_DIR");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_after_backtrace_n_SWF_%d", out_dir, out_iteration);
+    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+
+
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_nm1.vec, "Tl_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_nm1.vec[0], "Cl0_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(Cl_nm1.vec[1], "Cl1_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[0], "vx_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_n"));
+
+    char filename2[1000];
+    sprintf(filename2, "%s/snapshot_after_backtrace_nm1_SWF_%d", out_dir, out_iteration);
+    my_p4est_vtk_write_all_lists(p4est_n, nodes_n, ngbd_n->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename2, point_fields, cell_fields);
+    point_fields.clear();
+
+
+
+  }
+
 
 
   if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace \n");

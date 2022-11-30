@@ -808,6 +808,7 @@ void my_p4est_multialloy_t::compute_dt()
   {
     if (fabs(front_phi_.ptr[n]) < dxyz_close_interface_)
     {
+//      printf("front velo norm [n] = %0.3e \n", front_velo_norm_[0].ptr[n]);
       velo_norm_max = MAX(velo_norm_max, fabs(front_velo_norm_[0].ptr[n]));
       curvature_max = MAX(curvature_max, fabs(front_curvature_.ptr[n]));
     }
@@ -831,13 +832,18 @@ void my_p4est_multialloy_t::compute_dt()
   dt_[0] = MIN(dt_[0], dt_max_);
   dt_[0] = MAX(dt_[0], dt_min_);
 
+  PetscPrintf(p4est_->mpicomm, "dt_[0] = %0.3e, dt_max = %0.3e, dt_min = %0.3e \n", dt_[0], dt_max_, dt_min_);
+
   if(solve_with_fluids){
     stefan_w_fluids_solver->get_ns_solver()->compute_dt();
     double dt_NS= stefan_w_fluids_solver->get_ns_solver()->get_dt();
     //std::cout<<"dt_NS :: "<< dt_NS<<"\n";
     dt_[0]=MIN(dt_NS,dt_[0]);
 
+    PetscPrintf(p4est_->mpicomm, "dt_NS = %0.3e \n", dt_NS);
+
   }
+
   double cfl_tmp = dt_[0]*MAX(fabs(velo_norm_max),EPS)/dxyz_min_;
 
   PetscPrintf(p4est_->mpicomm, "curvature max = %e, velo max = %e, dt = %e, eff cfl = %e done!\n", curvature_max, velo_norm_max/scaling_, dt_[0], cfl_tmp);
@@ -1913,10 +1919,6 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
     {
       rhs_cl.ptr[i][n] = rhs_cl.ptr[i][n]/dt_[0];
     }
-    //std::cout << "conc rhs"<< rhs_cl.ptr[0][n]<<"\n";
-    /*std::cout<< rhs_tl.ptr[n]<<"\n";
-    std::cout<< "Time step dt0" << dt_[0] << "\n";
-    std::cout<< "Time step dt0" << dt_[1] << "\n";*/
   }
   rhs_tl.restore_array();
   rhs_ts.restore_array();
@@ -2069,6 +2071,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   stefan_w_fluids_solver->set_p4est_np1(p4est_);
   stefan_w_fluids_solver->set_nodes_np1(nodes_);
   stefan_w_fluids_solver->set_ngbd_np1(ngbd_);
+
   stefan_w_fluids_solver->set_p4est_n(p4est_nm1);
   stefan_w_fluids_solver->set_nodes_n(nodes_nm1);
   stefan_w_fluids_solver->set_ngbd_n(ngbd_nm1);
@@ -2130,10 +2133,10 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
                                "ngbd_ = %p \n"
                                "ngbd_nm1 = %p \n", ngbd_, ngbd_nm1);
 
-  stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_);
+  stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_, iteration_w_fluids);
 
 
-  if(0){
+  if(1){
     // -------------------------------
     // TEMPORARY: save fields after backtrace
     // -------------------------------
@@ -2244,16 +2247,20 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
       rhs_ts.ptr[n] -= time_coeffs[i]*ts_[i].ptr[n];
     }
 
+
     // Use SL disc for fluid temp:
     rhs_tl.ptr[n] = tl_backtrace_n.ptr[n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1])) +
                     tl_backtrace_nm1.ptr[n]*(SL_beta/dt_[1]);
 
+//    printf("Tl_backtrace n = %0.2f, Tl_backtrace_nm1 = %0.2f \n", tl_backtrace_n.ptr[n], tl_backtrace_nm1.ptr[n]);
 
 
     // Use SL disc for fluid concentrations:
     for(int j = 0; j<num_comps_; ++j){
       rhs_cl.ptr[j][n] = cl_backtrace_n.ptr[j][n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1])) +
                     cl_backtrace_nm1.ptr[j][n]*(SL_beta/dt_[1]);
+
+      printf("rhs cl %d : %0.3e \n", j, rhs_cl.ptr[j][n]);
     }
 
 
@@ -2263,7 +2270,19 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     rhs_ts.ptr[n] = rhs_ts.ptr[n]*density_s_*heat_capacity_s_/dt_[0] + heat_gen;
     //std::cout<< rhs_tl.ptr[n]<<"\n";
     //std::cout << "conc rhs"<< rhs_cl.ptr[0][n]<<"\n";
+
+//    PetscPrintf(p4est_->mpicomm, "rhs_ts[n] = %0.3e, heat_gen = %0.3e \n", rhs_ts.ptr[n], heat_gen);
+//    PetscPrintf(p4est_->mpicomm, "SL_alpha = %0.2f, SL_beta = %0.2f \n", SL_alpha, SL_beta);
+
+//    PetscPrintf(p4est_->mpicomm, "rhs_tl[n] = %0.3e, heat_gen = %0.3e \n", rhs_tl.ptr[n], heat_gen);
+
   }
+
+//  PetscPrintf(p4est_->mpicomm, "RHS_TS: \n -------------------------------- \n");
+//  VecView(rhs_ts.vec, PETSC_VIEWER_STDOUT_WORLD);
+
+//  PetscPrintf(p4est_->mpicomm, "\n\nRHS_TL: \n -------------------------------- \n");
+//      VecView(rhs_tl.vec, PETSC_VIEWER_STDOUT_WORLD);
     
   // Restore arrays:
   rhs_tl.restore_array();
@@ -2320,17 +2339,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   solver_all_in_one.set_update_c0_robin(update_c0_robin_);
   solver_all_in_one.set_use_superconvergent_robin(use_superconvergent_robin_);
 
-//  my_p4est_interpolation_nodes_t interp_c0_n(ngbd_);
-//  interp_c0_n.set_input(cl_[1].vec[0], linear);
   solver_all_in_one.set_c0_guess(cl_[1].vec[0]);
-
-//  bc_error_.destroy();
-//  bc_error_.create(front_phi_.vec);
-
-//  cl0_grad_.destroy();
-//  cl0_grad_.create(p4est_, nodes_);
-
-//  solver_all_in_one.set_verbose_mode(1);
 
   int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, true,
       bc_error_.vec, bc_error_max, bc_error_avg,
@@ -2354,6 +2363,12 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // compute velocity
   compute_velocity();
 
+//  PetscPrintf(p4est_->mpicomm, "Forcing front velo to zero ... \n");
+//  foreach_dimension(d){
+//    ierr= VecScaleGhost(front_velo_[0].vec[d], 0.);
+//  }
+
+
 
  // TO-DO MULTICOMP:
   // Provide the computed interfacial velocity to the stefan_w_fluids solver
@@ -2375,12 +2390,9 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   foreach_dimension(dim){
     VecCopyGhost(front_normal_.vec[dim], vgamma_n_vec.vec[dim]);
     // VecScaleGhost(vgamma_n_vec.vec[dim], front_velo_norm_[0]);
-  
-
     foreach_node(n, nodes_){
       vgamma_n_vec.ptr[dim][n]*=front_velo_norm_[0].ptr[n];
     }
-  
   }
 //  std::cout<<"step_w_fluids line 2400\n";
   front_normal_.restore_array();
@@ -2423,19 +2435,14 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 */
   PetscPrintf(p4est_->mpicomm, "RED ALERT: Boussinesq is currently non-operational. We will want to fix this later \n");
 
-//  printf("addresses of vns vectors (inside Multialloy): \n "
-//         "v_n.vec = %p, v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
+
 
   stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(false, nullptr, true);
 
   // Now, get the velocity results back out of SWF (or do we need to? ) :
 
-//  printf("\n [MULTI]:one_step_w_fluids -- right after solving NS:\n"
-//         " v_n.vec = %p, \n"
-//         "v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
 
   // Slide and get things out of stefan with fluids:
-//  v_nm1.destroy();
   // the old v_nm1 has already been destroyed by stefan with fluids
 
   if(0){
@@ -2495,11 +2502,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     point_fields.clear();
   }
 
-
-//  printf("\n [MULTI]:one_step_w_fluids -- right after sliding velocities:\n "
-//         "v_n.vec = %p \n v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
-
-
   // TO-DO:
   // (1) need to handle scaling the fluid velocities back and forth between dim and nondim for
   // the NS solution
@@ -2509,27 +2511,12 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // -- note: want to handle scaling from dim to nondim here, not inside SWF
   // --> to be consistent, we want to modify the backtrace appropach too
 
-//  std::cout<<"step_w_fluids line 2420\n";
   // (4) get out the velocities, pressure, vort, for visualization
-//  v_nm1 = stefan_w_fluids_solver->get_v_nm1_dimensional();
-//  v_n = stefan_w_fluids_solver->get_v_n_dimensional();
-
-// I don't think we actually need to "get" the velocities bc we already have the address for them... but we can double check
-
-//  int vnsize2;
-//  VecGetSize(v_n.vec[0], &vnsize2);
-//  PetscPrintf(p4est_->mpicomm, "vn size after solving  = %d \n", vnsize2);
   press_nodes = stefan_w_fluids_solver->get_press_nodes();
   vorticity = stefan_w_fluids_solver->get_vorticity();
 
-//  std::cout<<"step_w_fluids line 2426\n";
-
-
-  //std::cout<<"hello world \n";
   compute_solid();
-  //std::cout<<"hello world 2\n";
 
-//  std::cout<<"step_w_fluids line 2433\n";
   // Increment the iteration count:
   iteration_w_fluids++;
 

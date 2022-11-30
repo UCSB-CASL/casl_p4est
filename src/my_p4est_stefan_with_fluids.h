@@ -617,7 +617,7 @@ public:
   // Functions related to scalar temp/conc problem:
   // -------------------------------------------------------
 
-  void do_backtrace_for_scalar_temp_conc_problem(bool do_multicomponent_fields, int num_conc_fields);
+  void do_backtrace_for_scalar_temp_conc_problem(bool do_multicomponent_fields, int num_conc_fields, int out_iteration);
   void setup_rhs_for_scalar_temp_conc_problem();
   void poisson_nodes_step_for_scalar_temp_conc_problem();
   void setup_and_solve_poisson_nodes_problem_for_scalar_temp_conc();

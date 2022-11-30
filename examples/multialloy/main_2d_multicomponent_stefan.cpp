@@ -2386,11 +2386,13 @@ int main (int argc, char* argv[])
 
   mas.set_wall_conditions_thermal(bc_wall_type_temp/*bc_type_temp.val*/, bc_value_temp);
   mas.set_wall_conditions_composition(bc_wall_type_conc, bc_value_conc_all);
-  mas.set_volumetric_heat(volumetric_heat_cf);
+  mas.set_volumetric_heat(zero_cf/*volumetric_heat_cf*/);
+  PetscPrintf(mpi.comm(), "Warning: we temporarily commented out the volumetric heat gen and put it to zero_cf instead \n");
 
   // set time steps
   double dt_max = base_cfl.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
   mas.set_dt_limits(0, dt_max);
+  // TO-DO: revisit if we really want these dt limits or not
 
   // set initial conditions
   mas.set_velocity(vn_cf, DIM(vx_cf, vy_cf, vz_cf), vf_cf);
