@@ -3932,6 +3932,9 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
 
   VecScaleGhost(phi.vec,-1.0);
 
+  // TEMPO:
+  vec_and_ptr_dim_t Tl_dd;
+
   // Save data:
   std::vector<Vec_for_vtk_export_t> point_fields;
   point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
@@ -3946,6 +3949,14 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
   // stefan related fields
   if(solve_stefan){
     point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl"));
+
+    Tl_dd.create(p4est_np1, nodes_np1);
+    ngbd_np1->second_derivatives_central(T_l_n.vec, Tl_dd.vec);
+
+    point_fields.push_back(Vec_for_vtk_export_t(Tl_dd.vec[0], "d2T_dx2"));
+    point_fields.push_back(Vec_for_vtk_export_t(Tl_dd.vec[1], "d2T_dy2"));
+
+
     if(do_we_solve_for_Ts){
       point_fields.push_back(Vec_for_vtk_export_t(T_s_n.vec, "Ts"));
     }
@@ -3986,6 +3997,7 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
   if(track_evolving_geometries && !is_crash){
     island_numbers.destroy();
   }
+  if(solve_stefan) Tl_dd.destroy();
 
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Finishes saving to VTK \n");
 
