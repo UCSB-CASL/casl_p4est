@@ -867,46 +867,6 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
 
   solver_conc_leading_->solve(c_[0].vec, poisson_use_nonzero_guess_);
 
-  if(1){
-    PetscPrintf(p4est_->mpicomm, "\n \n Saving fields before grid update \n");
-    // -------------------------------
-    // TEMPORARY: save fields before grid update
-    // -------------------------------
-    std::vector<Vec_for_vtk_export_t> point_fields;
-    std::vector<Vec_for_vtk_export_t> cell_fields = {};
-
-    point_fields.push_back(Vec_for_vtk_export_t(front_phi_.vec, "phi"));
-    point_fields.push_back(Vec_for_vtk_export_t(c_[0].vec, "c0"));
-
-    const char* out_dir = getenv("OUT_DIR");
-    if(!out_dir){
-      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
-    }
-
-    char filename[1000];
-    sprintf(filename, "%s/snapshot_after_solve_C0", out_dir);
-    my_p4est_vtk_write_all_lists(p4est_, nodes_, ghost_, P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
-    point_fields.clear();
-
-
-
-    //    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[0], "vx_nm1"));
-    //    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_nm1"));
-
-    //    char filename2[1000];
-    //    sprintf(filename2, "%s/snapshot_before_grid_update_nm1", out_dir);
-    //    my_p4est_vtk_write_all_lists(p4est_nm1, nodes_nm1, ngbd_nm1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename2, point_fields, cell_fields);
-    //    point_fields.clear();
-
-
-    PetscPrintf(p4est_->mpicomm, "Done! \n \n \n");
-
-  }
-
-
-
-
-
   my_p4est_level_set_t ls(node_neighbors_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 

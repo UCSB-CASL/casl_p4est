@@ -1067,7 +1067,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
   PetscPrintf(p4est_->mpicomm, "Number of nodes before: %d \n", num_nodes);
 
-  if(1){
+  if(0){
     PetscPrintf(p4est_->mpicomm, "\n \n Saving fields before grid update \n");
     // -------------------------------
     // TEMPORARY: save fields before grid update
@@ -2200,9 +2200,9 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   for (int i = 0; i < num_time_layers_; ++i)
   {
-    tl_[i].get_array();
+//    tl_[i].get_array();
     ts_[i].get_array();
-    cl_[i].get_array();
+//    cl_[i].get_array();
   }
 
   // PASTE STARTING HERE 
@@ -2252,6 +2252,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     rhs_tl.ptr[n] = tl_backtrace_n.ptr[n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1])) +
                     tl_backtrace_nm1.ptr[n]*(SL_beta/dt_[1]);
 
+
 //    printf("Tl_backtrace n = %0.2f, Tl_backtrace_nm1 = %0.2f \n", tl_backtrace_n.ptr[n], tl_backtrace_nm1.ptr[n]);
 
 
@@ -2260,8 +2261,11 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
       rhs_cl.ptr[j][n] = cl_backtrace_n.ptr[j][n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1])) +
                     cl_backtrace_nm1.ptr[j][n]*(SL_beta/dt_[1]);
 
-      printf("rhs cl %d : %0.3e \n", j, rhs_cl.ptr[j][n]);
+//      printf("rhs cl %d : %0.3e \n", j, rhs_cl.ptr[j][n]);
     }
+
+
+//    printf("rhs cl %d : %0.3e, rhs tl : %0.3e \n", 0, rhs_cl.ptr[0][n], rhs_tl.ptr[n]);
 
 
     // Multiply by relevant quantities:
@@ -2290,9 +2294,9 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   rhs_cl.restore_array();
   for (int i = 0; i < num_time_layers_; ++i)
   {
-    tl_[i].restore_array();
+//    tl_[i].restore_array();
     ts_[i].restore_array();
-    cl_[i].restore_array();
+//    cl_[i].restore_array();
   }
 
   //std::cout<< "Diagonal data :: " << SL_alpha/dt_[0] <<"\n";
