@@ -1564,6 +1564,7 @@ class BC_WALL_TYPE_TEMP: public WallBCDIM
   public:
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
+//    printf("bc wall type temp accessed \n");
     switch(geometry.val){
       case 8:{
         if((fabs(y-ymax.val) < EPS)){
@@ -1586,6 +1587,7 @@ class BC_WALL_TYPE_CONC: public WallBCDIM
   public:
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
+//    printf("bc wall type conc accessed \n");
     switch(geometry.val){
       case 8:{
         if((fabs(y-ymax.val) < EPS)){
@@ -1610,6 +1612,7 @@ class bc_value_temp_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
+//    printf("bc temp value accessed \n");
     // case 8 is treated seperately because we need different BC on different walls
     if (geometry.val==8){
       if((fabs(y-ymax.val) < EPS)){
@@ -1690,6 +1693,7 @@ public:
   bc_value_conc_t(int idx) : idx(idx) {}
   double operator()(DIM(double x, double y, double z)) const
   {
+//    printf("wall value conc accessed \n");
     if (geometry.val==8){
       if((fabs(y-ymax.val) < EPS)){
         return *initial_conc_all[idx]; // for DIRICHLET case
@@ -1860,7 +1864,7 @@ class BC_WALL_VALUE_VELOCITY: public CF_DIM
   }
   double operator()(DIM(double x, double y, double z)) const
   {
-    printf("bc wall value -- Gets in here!, dir = %d \n", dir);
+//    printf("bc wall value -- Gets in here!, dir = %d \n", dir);
     if(dirichlet_velocity_walls(DIM(x,y,z))){
 //      printf("Gets in here!, dir = %d \n", dir);
       switch(dir){
@@ -1893,7 +1897,7 @@ public:
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
 
-    printf("bc wall type velocity gets called at (%0.2f, %0.2f) \n", x, y);
+    printf("bc wall type velocity (dir = %d) gets called at (%0.2f, %0.2f) \n", dir, x, y);
 
     if(dirichlet_velocity_walls(DIM(x,y,z))){
 //        printf("dirichlet bc wall type velocity gets called at (%0.2f, %0.2f) \n", x, y);
@@ -1914,6 +1918,7 @@ class BC_INTERFACE_VALUE_PRESSURE: public CF_DIM{
   public:
   double operator()(DIM(double x, double y,double z)) const
   {
+//    printf("accesses bc pressure value interface \n ");
     return 0.0;
   }
 };
@@ -1932,7 +1937,7 @@ class BC_WALL_VALUE_PRESSURE: public CF_DIM
   public:
   double operator()(DIM(double x, double y, double z)) const
   {
-
+//      printf("accesses wall value pressure \n");
       return 0.0; // homogeneous dirichlet or neumann
   }
 };
@@ -1942,6 +1947,7 @@ class BC_WALL_TYPE_PRESSURE: public WallBCDIM
 public:
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
+//    printf("accesses wall pressure type at (%0.2f, %0.2f) \n");
     if(!dirichlet_velocity_walls(DIM(x,y,z))){ // pressure is dirichlet where vel is neumann
       return DIRICHLET;
     }
