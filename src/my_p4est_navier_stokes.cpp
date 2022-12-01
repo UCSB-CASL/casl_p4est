@@ -542,6 +542,11 @@ void my_p4est_navier_stokes_t::set_external_forces_per_unit_mass(CF_DIM **extern
 void my_p4est_navier_stokes_t::set_bc(BoundaryConditionsDIM *bc_v, BoundaryConditionsDIM *bc_p)
 {
   this->bc_v = bc_v;
+  printf("[NS] bc vel = %p \n", bc_v[0]);
+  foreach_dimension(d){
+    double test_val = (bc_v[d].getWallValue())(1.0,1.0);
+    printf("[NS] - Sets bc wall value velocity dir %d, test val = %0.2f \n",d, test_val);
+  }
   this->bc_pressure = bc_p;
 
   bc_hodge.setWallTypes(bc_pressure->getWallType());

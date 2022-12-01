@@ -860,7 +860,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
             bool is_one_negative = false;
 
             double limit = 0;
-
             if (bc_[phi_idx].type == DIRICHLET && dirichlet_scheme_ == 1) {
               limit = -gf_thresh_*diag_min_;
             }

@@ -241,9 +241,11 @@ param_t<bool>   start_from_moving_front (pl, 0, "start_from_moving_front", "Rele
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
 
-param_t<BoundaryConditionType> bc_type_conc (pl, NEUMANN, "bc_type_conc", "DIRICHLET/NEUMANN");
-param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRICHLET/NEUMANN");
+param_t<BoundaryConditionType> bc_type_conc (pl, DIRICHLET, "bc_type_conc", "DIRICHLET/NEUMANN");
+param_t<BoundaryConditionType> bc_type_temp (pl, DIRICHLET, "bc_type_temp", "DIRICHLET/NEUMANN");
 param_t<BoundaryConditionType> bc_wall_type_vel  (pl, NEUMANN, "bc_wall_type_vel", "DIRICHLET/NEUMANN");
+// all the above are usually neumann
+
 //param_t<BoundaryConditionType> bc_type_temp (pl, DIRICHLET, "bc_type_temp", "DIRICHLET/NEUMANN");
 
 param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
@@ -1693,7 +1695,7 @@ public:
   bc_value_conc_t(int idx) : idx(idx) {}
   double operator()(DIM(double x, double y, double z)) const
   {
-//    printf("wall value conc accessed \n");
+    printf("wall value conc accessed \n");
     if (geometry.val==8){
       if((fabs(y-ymax.val) < EPS)){
         return *initial_conc_all[idx]; // for DIRICHLET case
@@ -1897,7 +1899,7 @@ public:
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
 
-    printf("bc wall type velocity (dir = %d) gets called at (%0.2f, %0.2f) \n", dir, x, y);
+//    printf("bc wall type velocity (dir = %d) gets called at (%0.2f, %0.2f) \n", dir, x, y);
 
     if(dirichlet_velocity_walls(DIM(x,y,z))){
 //        printf("dirichlet bc wall type velocity gets called at (%0.2f, %0.2f) \n", x, y);

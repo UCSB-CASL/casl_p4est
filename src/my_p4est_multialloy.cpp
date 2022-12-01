@@ -1349,11 +1349,13 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   if(refine_by_d2C){
     cl0_dd.destroy();
   }
-
-
   PetscPrintf(p4est_->mpicomm, "done!\n");
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
+  //end of update grid
+
+
   PetscPrintf(p4est_->mpicomm, "Transfering data between grids... ");
-  // Create array of fields we wish to refine by, to pass to the refinement tools
+
   // -------------------------------
   // Update hierarchy and neighbors to match new updated grid:
   // -------------------------------
@@ -1367,9 +1369,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_, nodes_);
   ngbd_->init_neighbors();
-
-  ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
-  //end of update grid
+  printf("\n\n aaa \n");
 
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
   my_p4est_interpolation_nodes_t interp(ngbd_nm1);
@@ -1380,11 +1380,13 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     node_xyz_fr_n(n, p4est_, nodes_, xyz);
     interp.add_point(n, xyz);
   }
+  printf("bbb \n");
 
   vec_and_ptr_t front_phi_old;
   front_phi_old.create(front_phi_.vec);
   interp.set_input(front_curvature_.vec, interpolation_between_grids_);
   interp.interpolate(front_phi_old.vec);
+  printf("ccc \n");
 
   // interpolate old level-set function
   front_phi_dd_.destroy();
@@ -1393,6 +1395,8 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   front_curvature_.create(front_phi_.vec);
   front_normal_.destroy();
   front_normal_.create(front_phi_dd_.vec);
+  printf("ddd \n");
+
   /* temperature */
   for (int j = num_time_layers_-1; j > 0; --j)
   {
@@ -1428,6 +1432,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     }
   }
 
+  printf("eee \n");
   tl_[0].destroy();
   tl_[0].create(front_phi_.vec);
   VecCopyGhost(tl_[1].vec, tl_[0].vec);

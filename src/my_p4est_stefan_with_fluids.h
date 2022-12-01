@@ -1059,6 +1059,10 @@ public:
   void set_bc_wall_value_velocity(CF_DIM* bc_wall_value_velocity_[P4EST_DIM]){
     foreach_dimension(d){
       bc_wall_value_velocity[d] = bc_wall_value_velocity_[d];
+      double test_val = (*bc_wall_value_velocity[d])(1.0, 1.0);
+
+      printf("[SWF] - Sets bc wall value velocity dir %d, test val = %0.2f \n",d, test_val);
+
     }
   }
 

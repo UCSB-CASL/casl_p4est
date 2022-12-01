@@ -2114,58 +2114,42 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   for (unsigned char d=0; d<P4EST_DIM; d++){
     ierr = VecCreateNoGhostFaces(p4est_np1, faces_np1, &dxyz_hodge_old[d], d); CHKERRXX(ierr);
   }
-  //std:: cout<< "Hello world ns 3 \n";
-  //std:: cout<< "Hello world ns 4 NS norm: " << NS_norm<<"\n";
-  //std:: cout<< "Hello world ns 4 NS hodge% of max: " << hodge_percentage_of_max_u<<"\n";
-//  std:: cout<< "Hello world ns 4 NS hodge tolerance: " << hodge_tolerance<<"\n";
+
   hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
-  //std:: cout<< "Hello world ns 4 NS hodge tolerance: " << hodge_tolerance<<"\n";
-  //qPetscPrintf(mpi->comm(),"Hodge tolerance is %e \n",hodge_tolerance);
-  //std:: cout<< "Hello world ns 5 \n";
+
   int hodge_iteration = 0;
   double convergence_check_on_dxyz_hodge = DBL_MAX;
-  //std:: cout<< "Hello world ns 6 \n";
+
   face_solver = NULL;
   cell_solver = NULL;
-  //std:: cout<< "Hello world ns 7 \n";
+
   // Update the parameters: (this is only done to update the cfl potentially)
   // Use a function to set ns parameters to avoid code duplication
   set_ns_parameters();
-  //std:: cout<< "Hello world ns 8 \n";
-  //std:: cout<< "Hello world ns 8" << hodge_max_it<<" \n";
 
   // Enter the loop on the hodge variable and solve the NS equations
   while((hodge_iteration<hodge_max_it) && (convergence_check_on_dxyz_hodge>hodge_tolerance)){
-//    std:: cout<< "Hello world ns 8 HODGE iteration " << hodge_iteration<<" \n";
-//    std:: cout<< "Hello world ns 8 CONVERGENCE CHECK ON DXYZ HODGE" << hodge_tolerance<<" \n";
+
     ns->copy_dxyz_hodge(dxyz_hodge_old);
-//    std:: cout<< "Hello world ns 8_1 \n";
     ns->solve_viscosity(face_solver,(face_solver!=NULL),face_solver_type,pc_face);
-//    std:: cout<< "Hello world ns 8_2 \n";
-    //std:: cout<< "Hello world ns 9 \n";
+
     convergence_check_on_dxyz_hodge=
         ns->solve_projection(cell_solver,(cell_solver!=NULL),cell_solver_type,pc_cell,
                              false,NULL,dxyz_hodge_old,uvw_components);
-//    std:: cout<< "Hello world ns 10 \n";
-    //std:: cout << "Hodge iteration :: " << hodge_iteration <<"\n";
-    //std:: cout << "convergence check :: " << convergence_check_on_dxyz_hodge <<"\n";
-    //std:: cout << " NS_norm :: "<< NS_norm <<"\n";
-    //std:: cout << " mpi  :: "<< mpi <<"\n";
+
     ierr= PetscPrintf(mpi->comm(),"Hodge iteration : %d, (hodge error)/(NS_max): %0.3e \n",hodge_iteration,convergence_check_on_dxyz_hodge/NS_norm);CHKERRXX(ierr);
     hodge_iteration++;
   }
-//  std:: cout<< "Hello world ns 11 \n";
   //ierr = PetscPrintf(mpi->comm(), "Hodge loop exited \n");
-  //std:: cout<< "Hello world ns 12 \n";
+
   for (unsigned char d=0;d<P4EST_DIM;d++){
     ierr = VecDestroy(dxyz_hodge_old[d]); CHKERRXX(ierr);
   }
-//  std:: cout<< "Hello world ns 13 \n";
+
   // Delete solvers:
   delete face_solver;
   delete cell_solver;
 
-//  std:: cout<< "Hello world ns 14\n";
   // Compute velocity at the nodes
   ns->compute_velocity_at_nodes();
   // ------------------------
@@ -2337,14 +2321,10 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
 
   }
 
-//  std:: cout<< "Hello world 7 \n";
   // -------------------------------
   // Solve the Navier-Stokes problem:
   // -------------------------------
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning Navier-Stokes solution step... \n");
-
-//  printf("\n Addresses of vns vectors (inside SWF): \n "
-//         "v_n.vec = %p, v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
 
   // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
 
@@ -2357,7 +2337,6 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
       bc_interface_value_velocity[d]->clear();
     }
   }
-//  std:: cout<< "Hello world 10 \n";
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Completed Navier-Stokes step \n");
 
   if(1){
