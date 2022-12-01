@@ -1034,7 +1034,7 @@ bool periodicity(int dir)
     case  2: return false;
     case  3: return false;
     case  4: return false;
-    case  5: return false; //(dir == 0? 1: 0); /*true*/;
+    case  5: return (dir == 0? 1: 0); /*true*/;
     case  6: return (dir == 0 ? 1 : 0);
     case  7: return (dir == 0 ? 1 : 0);
     case  8: return true;
@@ -1567,7 +1567,7 @@ class BC_WALL_TYPE_TEMP: public WallBCDIM
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
     switch(geometry.val){
-      case 8:{
+      case 5:{
         if((fabs(y-ymax.val) < EPS)){
           return DIRICHLET;
         }
@@ -1590,7 +1590,7 @@ class BC_WALL_TYPE_CONC: public WallBCDIM
   {
 //    printf("bc wall type conc accessed \n");
     switch(geometry.val){
-      case 8:{
+      case 5:{
         if((fabs(y-ymax.val) < EPS)){
           return DIRICHLET;
         }
