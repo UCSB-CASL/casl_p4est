@@ -2108,7 +2108,6 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(bool convert_to_nondim_
 
 bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
 
-//  std:: cout<< "Hello world ns 1 \n";
   // Destroy old pressure at nodes (if it exists) and create vector to hold new solns:
   press_nodes.destroy(); press_nodes.create(p4est_np1, nodes_np1);
 

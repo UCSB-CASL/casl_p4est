@@ -2281,36 +2281,19 @@ int main (int argc, char* argv[])
   my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver;
   if(solve_w_fluids.val){
     stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(&mpi);
-//    printf("pointer to SWF solver: %p \n", stefan_w_fluids_solver);
     mas.set_mpi_env(&mpi);
     mas.set_solve_with_fluids();
-    ierr = PetscPrintf(mpi.comm(), "setting solve w fluids \n"); CHKERRXX(ierr);
+
+    ierr = PetscPrintf(mpi.comm(), "Setting solve w fluids \n"); CHKERRXX(ierr);
+
     // Calculate nondimensional groups:
     compute_nondimensional_groups(mpi.comm(), &mas);
   }
 
-  //std::cout<<"Hello world 3 main \n";
-  if(solve_w_fluids.val){
-    //std::cout<<"Hello world 3_1 main \n";
-
-    //std::cout<<"Hello world 3_2 main \n";
-//    printf("pointer to SWF solver: %p \n", stefan_w_fluids_solver);
-    initialize_all_relevant_ics_and_bcs_for_fluids(stefan_w_fluids_solver,
-                                                   bc_interface_value_velocity,
-                                                 bc_wall_value_velocity,
-                                                 bc_wall_type_velocity,
-                                                 bc_interface_value_pressure,
-                                                 bc_wall_value_pressure,
-                                                 bc_wall_type_pressure,
-                                                 &mas,v_init_cf);
-    mas.initialize_for_fluids(stefan_w_fluids_solver);
-    //std::cout<<"Hello world 3_3 main \n";
-  }
-  ierr = PetscPrintf(mpi.comm(), "\nInitialize for fluids complete \n"); CHKERRXX(ierr);
   p4est_t                   *p4est = mas.get_p4est();
   p4est_nodes_t             *nodes = mas.get_nodes();
   my_p4est_node_neighbors_t *ngbd  = mas.get_ngbd();
-  //std::cout<<"Hello world 4 main \n";
+
   /* initialize the variables */
   vec_and_ptr_t front_phi(p4est, nodes);
   vec_and_ptr_t contr_phi(front_phi.vec);
@@ -2368,7 +2351,6 @@ int main (int argc, char* argv[])
     eps_c_all[i] = new eps_c_cf_t(theta0(i));
     eps_v_all[i] = new eps_v_cf_t(theta0(i));
   }
-  //std::cout<<"Hello world 1 main \n";
   mas.set_undercoolings(num_seeds(), seed_map.vec, eps_v_all.data(), eps_c_all.data());
 
   // set geometry
@@ -2389,6 +2371,24 @@ int main (int argc, char* argv[])
   mas.set_volumetric_heat(zero_cf/*volumetric_heat_cf*/);
   PetscPrintf(mpi.comm(), "Warning: we temporarily commented out the volumetric heat gen and put it to zero_cf instead \n");
 
+  // Initialize everything for the fluids
+  // NOTE: the below needs to be called in such a way that the correct front phi is provided to SWF, because initializing the NS solver will require that. Therefore, it cannot be called until *after* mas.set_front
+  if(solve_w_fluids.val){
+    initialize_all_relevant_ics_and_bcs_for_fluids(stefan_w_fluids_solver,
+                                                   bc_interface_value_velocity,
+                                                   bc_wall_value_velocity,
+                                                   bc_wall_type_velocity,
+                                                   bc_interface_value_pressure,
+                                                   bc_wall_value_pressure,
+                                                   bc_wall_type_pressure,
+                                                   &mas,v_init_cf);
+    mas.initialize_for_fluids(stefan_w_fluids_solver);
+    ierr = PetscPrintf(mpi.comm(), "\nInitialize for fluids complete \n"); CHKERRXX(ierr);
+
+  }
+
+
+
   // set time steps
   double dt_max = base_cfl.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
   mas.set_dt_limits(0, dt_max);
@@ -2401,7 +2401,6 @@ int main (int argc, char* argv[])
 
   mas.set_concentration(cl_cf_all, cs_cf_all);
   mas.set_ft(ft_cf);
-
 
   // set solver parameters
   mas.set_bc_tolerance             (bc_tolerance.val);

@@ -426,7 +426,6 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   v_n.create(p4est_, nodes_);
   v_nm1.create(p4est_nm1, nodes_nm1);
 
-  //Rochi:: temporarily setting v_n and v_nm1 to zero; will be user defined later
   foreach_dimension(d){
     sample_cf_on_nodes(p4est_, nodes_, *initial_NS_velocity_n[d],v_n.vec[d]);
     sample_cf_on_nodes(p4est_nm1, nodes_nm1, *initial_NS_velocity_nm1[d],v_nm1.vec[d]);
@@ -463,13 +462,10 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
     point_fields.clear();
   }
 
-
-//  printf("\n[MULTI]:initialize_for_fluids -- after sampling velocities on nodes: \n "
-//         "v_n.vec[0] = %p \n"
-//         "v_nm1.vec[0] = %p \n", v_n.vec[0], v_nm1.vec[0]);
-
+  stefan_w_fluids_solver->set_phi(front_phi_);
   stefan_w_fluids_solver->set_v_n(v_n);
   stefan_w_fluids_solver->set_v_nm1(v_nm1);
+  printf("\n We've passed phi ( %p) to SWF before initializing NS solver \n", front_phi_.vec);
 
   stefan_w_fluids_solver->set_use_boussinesq(true);
   stefan_w_fluids_solver->set_print_checkpoints(true);
