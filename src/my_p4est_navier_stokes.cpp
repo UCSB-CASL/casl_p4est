@@ -542,11 +542,6 @@ void my_p4est_navier_stokes_t::set_external_forces_per_unit_mass(CF_DIM **extern
 void my_p4est_navier_stokes_t::set_bc(BoundaryConditionsDIM *bc_v, BoundaryConditionsDIM *bc_p)
 {
   this->bc_v = bc_v;
-  printf("[NS] bc vel = %p \n", bc_v[0]);
-  foreach_dimension(d){
-    double test_val = (bc_v[d].getWallValue())(1.0,1.0);
-    printf("[NS] - Sets bc wall value velocity dir %d, test val = %0.2f \n",d, test_val);
-  }
   this->bc_pressure = bc_p;
 
   bc_hodge.setWallTypes(bc_pressure->getWallType());
@@ -2219,34 +2214,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   // Create new the faces:
   faces_np1 = new my_p4est_faces_t(p4est_np1,ghost_np1,ngbd_c_np1);
 
-
-
-  if(1){
-    // -------------------------------
-    // TEMPORARY: save fields before NS grid update (for vis)
-    // -------------------------------
-    std::vector<Vec_for_vtk_export_t> point_fields;
-    std::vector<Vec_for_vtk_export_t> cell_fields = {};
-
-
-    point_fields.push_back(Vec_for_vtk_export_t(phi, "phi"));
-    point_fields.push_back(Vec_for_vtk_export_t(vn_nodes[0], "vx"));
-    point_fields.push_back(Vec_for_vtk_export_t(vn_nodes[1], "vy"));
-
-    const char* out_dir = getenv("OUT_DIR");
-    if(!out_dir){
-      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
-    }
-
-    char filename[1000];
-    sprintf(filename, "%s/snapshot_before_NS_grid_update", out_dir);
-    my_p4est_vtk_write_all_lists(p4est_n, nodes_n, ngbd_n->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
-    point_fields.clear();
-  }
-
-
-
-
   //------------------------------------------------------
   // (0) Interpolate the cell-centered hodge variable onto the new grid (cells to cells)
   //------------------------------------------------------
@@ -2444,29 +2411,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
   semi_lagrangian_backtrace_is_done         = false;
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  if(1){
-    // -------------------------------
-    // TEMPORARY: save fields after NS grid update (for vis)
-    // -------------------------------
-    std::vector<Vec_for_vtk_export_t> point_fields;
-    std::vector<Vec_for_vtk_export_t> cell_fields = {};
-
-
-    point_fields.push_back(Vec_for_vtk_export_t(phi, "phi"));
-    point_fields.push_back(Vec_for_vtk_export_t(vn_nodes[0], "vx"));
-    point_fields.push_back(Vec_for_vtk_export_t(vn_nodes[1], "vy"));
-
-    const char* out_dir = getenv("OUT_DIR");
-    if(!out_dir){
-      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
-    }
-
-    char filename[1000];
-    sprintf(filename, "%s/snapshot_after_NS_grid_update", out_dir);
-    my_p4est_vtk_write_all_lists(p4est_n, nodes_n, ngbd_n->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
-    point_fields.clear();
-  }
 }
 
 // DONE ELYCE TRYING SOMETHING.

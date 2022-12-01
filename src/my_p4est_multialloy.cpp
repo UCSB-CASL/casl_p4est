@@ -485,7 +485,6 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
 
   stefan_w_fluids_solver->set_bc_wall_type_velocity(bc_wall_type_velocity);
   stefan_w_fluids_solver->set_bc_wall_value_velocity(bc_wall_value_velocity);
-  printf("[MULTI] bc_wall_value_velocity = %p \n", bc_wall_value_velocity[0]);
 
   // Pressure
   stefan_w_fluids_solver->set_bc_wall_type_pressure(bc_wall_type_pressure);
@@ -1359,17 +1358,9 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   // -------------------------------
   // Update hierarchy and neighbors to match new updated grid:
   // -------------------------------
-//  hierarchy_np1->update(p4est_np1, ghost_np1);
-//  ngbd_np1->update(hierarchy_np1, nodes_np1);
-
-//  // Initialize the neigbors:
-//  ngbd_np1->init_neighbors();
-
-
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_, nodes_);
   ngbd_->init_neighbors();
-  printf("\n\n aaa \n");
 
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
   my_p4est_interpolation_nodes_t interp(ngbd_nm1);
@@ -1380,13 +1371,11 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     node_xyz_fr_n(n, p4est_, nodes_, xyz);
     interp.add_point(n, xyz);
   }
-  printf("bbb \n");
 
   vec_and_ptr_t front_phi_old;
   front_phi_old.create(front_phi_.vec);
   interp.set_input(front_curvature_.vec, interpolation_between_grids_);
   interp.interpolate(front_phi_old.vec);
-  printf("ccc \n");
 
   // interpolate old level-set function
   front_phi_dd_.destroy();
@@ -1395,7 +1384,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   front_curvature_.create(front_phi_.vec);
   front_normal_.destroy();
   front_normal_.create(front_phi_dd_.vec);
-  printf("ddd \n");
 
   /* temperature */
   for (int j = num_time_layers_-1; j > 0; --j)
@@ -1432,7 +1420,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     }
   }
 
-  printf("eee \n");
   tl_[0].destroy();
   tl_[0].create(front_phi_.vec);
   VecCopyGhost(tl_[1].vec, tl_[0].vec);
@@ -1537,7 +1524,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
 
   interp.interpolate(velocity_fields_new);
 
-  //std::cout<<"line 1808 ok \n";
   interp.clear();
   for(unsigned int k=0;k<P4EST_DIM;k++){
     ierr = VecDestroy(velocity_fields_old[k]); CHKERRXX(ierr); // Destroy objects where the old vectors were
@@ -1551,8 +1537,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   stefan_w_fluids_solver->set_v_n(v_n);
 
   // update the ns grid (this will handle updating with our new vn inside the NS class)
-//  printf("\n Addresses of vns vectors (multialloy, before passing to NS for grid update): \n "
-//         "v_n.vec = %p, v_nm1.vec = %p \n", v_n.vec[0], v_nm1.vec[0]);
 
   ns->update_from_tn_to_tnp1_grid_external(front_phi_.vec, front_phi_old.vec,
                                            v_n.vec, v_nm1.vec,
@@ -1560,6 +1544,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
                                            ngbd_,
                                            faces_,ngbd_c_,
                                            hierarchy_);
+
 
   // Update stefan's copy of the faces:
   stefan_w_fluids_solver->set_faces_np1(faces_);
@@ -1580,7 +1565,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   stefan_w_fluids_solver->set_ghost_np1(ghost_);
   stefan_w_fluids_solver->set_ngbd_np1(ngbd_);
   stefan_w_fluids_solver->set_hierarchy_np1(hierarchy_);
-
 
   PetscPrintf(p4est_->mpicomm, "update_grid_w_fluids done!\n");
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -2348,10 +2332,10 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // compute velocity
   compute_velocity();
 
-  PetscPrintf(p4est_->mpicomm, "Forcing front velo to zero ... \n");
-  foreach_dimension(d){
-    ierr= VecScaleGhost(front_velo_[0].vec[d], 0.);
-  }
+//  PetscPrintf(p4est_->mpicomm, "Forcing front velo to zero ... \n");
+//  foreach_dimension(d){
+//    ierr= VecScaleGhost(front_velo_[0].vec[d], 0.);
+//  }
 
 
 

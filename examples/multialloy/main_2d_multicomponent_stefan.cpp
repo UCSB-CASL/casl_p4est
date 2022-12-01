@@ -93,7 +93,7 @@ param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
 param_t<int> sub_split_num (pl, 0, "sub_split_num", "");
 
 param_t<double> lip  (pl, 1.5, "lip",  "Fine-to-coarse grid transition width");
-param_t<double> band (pl, 5.0, "band", "Uniform band width around interfaces");
+param_t<double> band (pl, 6.0, "band", "Uniform band width around interfaces");
 
 //-------------------------------------
 // solver parameters
@@ -1034,7 +1034,7 @@ bool periodicity(int dir)
     case  2: return false;
     case  3: return false;
     case  4: return false;
-    case  5: return 0; /*true*/;
+    case  5: return false; //(dir == 0? 1: 0); /*true*/;
     case  6: return (dir == 0 ? 1 : 0);
     case  7: return (dir == 0 ? 1 : 0);
     case  8: return true;
@@ -1566,7 +1566,6 @@ class BC_WALL_TYPE_TEMP: public WallBCDIM
   public:
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
-//    printf("bc wall type temp accessed \n");
     switch(geometry.val){
       case 8:{
         if((fabs(y-ymax.val) < EPS)){
@@ -1616,9 +1615,9 @@ public:
   {
 //    printf("bc temp value accessed \n");
     // case 8 is treated seperately because we need different BC on different walls
-    if (geometry.val==8){
+    if (geometry.val==5){
       if((fabs(y-ymax.val) < EPS)){
-        return 0.0; // for DIRICHLET case
+        return analytic::Tstar; // for DIRICHLET case
       }
       else{
         return 0.0; // for NEUMANN case
@@ -1641,8 +1640,8 @@ public:
           case  1:
           case  2:
           case  3:
-          case  4:
-          case  5: return 100.;
+          case  4:return 0;
+          case  5: return analytic::Tstar;
           case  6:
           case  7:
           case  8: return 0;
@@ -1695,8 +1694,7 @@ public:
   bc_value_conc_t(int idx) : idx(idx) {}
   double operator()(DIM(double x, double y, double z)) const
   {
-    printf("wall value conc accessed \n");
-    if (geometry.val==8){
+    if (geometry.val==5){
       if((fabs(y-ymax.val) < EPS)){
         return *initial_conc_all[idx]; // for DIRICHLET case
       }
@@ -1777,15 +1775,12 @@ class BC_INTERFACE_VALUE_VELOCITY: public my_p4est_stefan_with_fluids_t::interfa
     BC_INTERFACE_VALUE_VELOCITY(my_p4est_stefan_with_fluids_t* parent_solver,bool do_we_use_vgamma_for_bc) : interfacial_bc_fluid_velocity_t(parent_solver, do_we_use_vgamma_for_bc=true){}
     double operator()(double x, double y) const
     {
-//      printf("Accessing bc interface value \n");
-
       return 0.0;
     }
 };
 // Type:
 BoundaryConditionType interface_bc_type_velocity[P4EST_DIM];
 void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
-//    printf("Accessing bc interface type \n");
     interface_bc_type_velocity[dir] = DIRICHLET;
 }
 
@@ -1866,17 +1861,12 @@ class BC_WALL_VALUE_VELOCITY: public CF_DIM
   }
   double operator()(DIM(double x, double y, double z)) const
   {
-//    printf("bc wall value -- Gets in here!, dir = %d \n", dir);
     if(dirichlet_velocity_walls(DIM(x,y,z))){
-//      printf("Gets in here!, dir = %d \n", dir);
       switch(dir){
       case dir::x:{
-        printf("xdir -- sets %0.2f \n", u0);
         return u0;
-
       }
       case dir::y:{
-        printf("ydir -- sets %0.2f \n", v0);
         return v0;
       }
       default:
