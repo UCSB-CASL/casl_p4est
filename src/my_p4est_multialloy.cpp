@@ -396,7 +396,6 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
 
   //stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(mpi_);
   stefan_w_fluids_solver = stefan_w_fluids_solver_;
-  //std::cout<<"hello world \n";
 
   // Set up the initial nm1 grids that we will need:
   p4est_nm1 = p4est_copy(p4est_, P4EST_FALSE); // copy the grid but not the data
@@ -412,14 +411,6 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // Get the new neighbors:
   hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, &brick_);
   ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1,nodes_nm1);
-
-  int num_nodes = nodes_->num_owned_indeps;
-  MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
-  PetscPrintf(p4est_->mpicomm, "Number of nodes grid n: %d \n", num_nodes);
-
-  int num_nodes2 = nodes_nm1->num_owned_indeps;
-  MPI_Allreduce(MPI_IN_PLACE,&num_nodes2,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
-  PetscPrintf(p4est_->mpicomm, "Number of nodes grid nm1: %d \n", num_nodes2);
 
   // Initialize the neigbors:
   ngbd_nm1->init_neighbors();
@@ -465,10 +456,10 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   stefan_w_fluids_solver->set_phi(front_phi_);
   stefan_w_fluids_solver->set_v_n(v_n);
   stefan_w_fluids_solver->set_v_nm1(v_nm1);
-  printf("\n We've passed phi ( %p) to SWF before initializing NS solver \n", front_phi_.vec);
 
-  stefan_w_fluids_solver->set_use_boussinesq(true);
-  stefan_w_fluids_solver->set_print_checkpoints(true);
+  stefan_w_fluids_solver->set_use_boussinesq(false);
+  // TO-DO: turn on boussinesq eventually
+  stefan_w_fluids_solver->set_print_checkpoints(false);
   // ----------------------------------------------
   // Next will need to initialize the NS solver:
   // ----------------------------------------------
@@ -477,7 +468,6 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
 
   // TO-DO MULTICOMP: flesh this out
   // Interface velocity:
-  stefan_w_fluids_solver->set_bc_interface_value_velocity(bc_interface_val_fluid_vel);
 
   // Rochi addition :: to define type of interface velocity
   /*BoundaryConditionType* bc_interface_type_velocity_[P4EST_DIM];
@@ -488,23 +478,21 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
     *bc_interface_type_velocity_[dim]=DIRICHLET;
   }*/
   //std::cout<<"hello world 7\n";
+
+  // Velocity
+  stefan_w_fluids_solver->set_bc_interface_value_velocity(bc_interface_val_fluid_vel);
   stefan_w_fluids_solver->set_bc_interface_type_velocity(bc_interface_type_fluid_vel);
+
   stefan_w_fluids_solver->set_bc_wall_type_velocity(bc_wall_type_velocity);
   stefan_w_fluids_solver->set_bc_wall_value_velocity(bc_wall_value_velocity);
+  printf("[MULTI] bc_wall_value_velocity = %p \n", bc_wall_value_velocity[0]);
+
+  // Pressure
   stefan_w_fluids_solver->set_bc_wall_type_pressure(bc_wall_type_pressure);
   stefan_w_fluids_solver->set_bc_wall_value_pressure(bc_wall_value_pressure);
+
   stefan_w_fluids_solver->set_bc_interface_type_pressure(bc_interface_type_fluid_press);
   stefan_w_fluids_solver->set_bc_interface_value_pressure(bc_interface_val_fluid_press);
-
-
-  //std::cout<<"hello world 8\n";
-  // Interface pressure: set
-
-
-  // Wall velocity: set
-
-
-  // Wall pressure: set
 
   // -------------
   // (2) Pass along all the necessary grid variables:
@@ -525,12 +513,11 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   stefan_w_fluids_solver->set_ngbd_n(ngbd_nm1);
 
 
-  // Rochi :: passing along initial velocities
-//  PetscPrintf(p4est_->mpicomm, " Before setting, in multialloy: \n - vn = %p \n - vnm1 = %p \n", v_n.vec[0], v_nm1.vec[0]);
 
   l_char=1.0;
   PetscPrintf(p4est_->mpicomm, "WARNING: RED ALERT: LCHAR MANUALLY SET INSIDE INITIALIZE_FOR_FLUIDS \n");
   double thermal_diff_l = thermal_cond_l_/(density_l_*heat_capacity_l_);
+
   //printf("thermal cond l = %0.2e, density_l = %0.2e, "
     //     "heat_capacity_l = %0.2e, thermal diff = %0.2e, l_char = %0.2e \n",
       //   thermal_cond_l_, density_l_, heat_capacity_l_, thermal_diff_l, l_char);
@@ -590,14 +577,10 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // -------------
   // Get back out the cell neigbors and faces:
   // -------------
-
   // Then we should grab back out the ngbd_c and faces so that multialloy has access to those pointers
   // since the actual objects get created by stefan_w_fluids and navier_stokes
   ngbd_c_ = stefan_w_fluids_solver->get_ngbd_c_np1();
   faces_ = stefan_w_fluids_solver->get_faces_np1();
-
-
-
 
 }
 
@@ -1059,10 +1042,10 @@ void my_p4est_multialloy_t::update_grid()
 void my_p4est_multialloy_t::update_grid_w_fluids(){
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  PetscPrintf(p4est_->mpicomm, "Updating grid (with fluids)... \n ");
+  PetscPrintf(p4est_->mpicomm, "Updating grid (with fluids)... ");
   int num_nodes = nodes_->num_owned_indeps;
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
-  PetscPrintf(p4est_->mpicomm, "Number of nodes before: %d \n", num_nodes);
+  PetscPrintf(p4est_->mpicomm, "(Number of nodes before: %d) \n", num_nodes);
 
   if(0){
     PetscPrintf(p4est_->mpicomm, "\n \n Saving fields before grid update \n");
@@ -1338,8 +1321,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     }
 
   } // end of "if num_fields!=0"
-
-  PetscPrintf(p4est_->mpicomm, "NOTE: NEED TO NULLIFY NS GRID P4ESTNM1, see SWF 2679 for guideline \n");
 
   // Create second derivatives for phi in the case that we are using update_p4est:
   front_phi_dd_.create(p4est_, nodes_);
@@ -2004,19 +1985,16 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
 int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max, double *bc_error_avg, std::vector<int> *num_pdes, std::vector<double> *bc_error_max_all, std::vector<double> *bc_error_avg_all)
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
-  PetscPrintf(p4est_->mpicomm, "Solving nonlinear system:\n");
 
   time_ += dt_[0];
 
   int num_nodes = nodes_->num_owned_indeps;
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
 
-  PetscPrintf(p4est_->mpicomm, "\n ------------------------- \n Time = %3e, Number of Nodes = %d "
-                               "\n -------------------------- \n", time_,num_nodes);
+  PetscPrintf(p4est_->mpicomm, "\n ------------------------- \n Iteration = %d, Time = %3e, Number of Nodes = %d "
+                               "\n -------------------------- \n", iteration_w_fluids, time_,num_nodes);
+    PetscPrintf(p4est_->mpicomm, "Solving nonlinear system:\n");
 
-//  int vnsize;
-//  VecGetSize(v_n.vec[0], &vnsize);
-//  PetscPrintf(p4est_->mpicomm, "vn size beginning of one_step = %d \n", vnsize);
 
   // update time in interface and boundary conditions
   //gibbs_thomson_->t = time_;
@@ -2063,6 +2041,9 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // Temperature backtraces:
   stefan_w_fluids_solver->set_T_l_backtrace_n(tl_backtrace_n);
   stefan_w_fluids_solver->set_T_l_backtrace_nm1(tl_backtrace_nm1);
+
+  // Set the phi (only relevant for visualization I think, but still let's just do it)
+  stefan_w_fluids_solver->set_phi(front_phi_);
 
   // Relevant grid objects:
   stefan_w_fluids_solver->set_p4est_np1(p4est_);
@@ -2127,10 +2108,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   stefan_w_fluids_solver->set_dt_nm1(dt_[1]);
   stefan_w_fluids_solver->set_dt(dt_[0]);
-
-  PetscPrintf(p4est_->mpicomm, "[MULTI] Address for ngbd objects: \n"
-                               "ngbd_ = %p \n"
-                               "ngbd_nm1 = %p \n", ngbd_, ngbd_nm1);
 
   stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_, iteration_w_fluids);
 

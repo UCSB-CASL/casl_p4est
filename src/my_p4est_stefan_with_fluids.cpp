@@ -813,9 +813,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 
 
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Beginning to do backtrace \n");
-  PetscPrintf(mpi->comm(), "[SWF] Addresses for ngbd objects: \n"
-                           "ngbd_np1 = %p \n"
-                           "ngbd_n = %p \n", ngbd_np1, ngbd_n);
+
 
   // If we are doing the multialloy case, verify that all the necessary things are defined:
 
@@ -983,7 +981,6 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 
 
   // Do the Semi-Lagrangian backtrace:
-  PetscPrintf(mpi->comm(), "INSIDE BACKTRACE: dt = %0.3e, dtnm1 = %0.3e \n", dt, dt_nm1);
   if(advection_sl_order ==2){
     trajectory_from_np1_to_nm1(p4est_np1, nodes_np1, ngbd_n, ngbd_np1, v_nm1.vec, v_dd_nm1, v_n.vec, v_dd, dt_nm1, dt, xyz_d_nm1, xyz_d);
 
@@ -2215,19 +2212,6 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
 } // end of "navier_stokes_step()"
 
 void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool use_external_boussinesq_vec, Vec externally_defined_boussinesq_vec, bool convert_to_nondim_for_multialloy){
-  //std:: cout<< "Hello world 1 \n";
-
-//  int vnsize;
-//  VecGetSize(v_n.vec[0], &vnsize);
-//  PetscPrintf(p4est_np1->mpicomm, "vn size before setup and solve navier stokes problem = %d \n", vnsize);
-
-//  int num_nodesn = nodes_n->num_owned_indeps;
-//  MPI_Allreduce(MPI_IN_PLACE,&num_nodesn,1,MPI_INT,MPI_SUM, p4est_n->mpicomm);
-//  PetscPrintf(p4est_n->mpicomm, "!!! stefan w fluids nodes_n: %d \n", num_nodesn);
-
-//  int num_nodesnp1 = nodes_np1->num_owned_indeps;
-//  MPI_Allreduce(MPI_IN_PLACE,&num_nodesnp1,1,MPI_INT,MPI_SUM, p4est_np1->mpicomm);
-//  PetscPrintf(p4est_np1->mpicomm, "!!! stefan w fluids nodes_np1: %d \n", num_nodesnp1);
 
   if(convert_to_nondim_for_multialloy){
     // Convert dimensional to nondimensional
@@ -2235,6 +2219,29 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
       ierr = VecScaleGhost(v_n.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
       ierr = VecScaleGhost(v_nm1.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
     }
+  }
+
+  if(1){
+    // -------------------------------
+    // TEMPORARY: save fields before NS
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "vx_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "vy_n"));
+
+    const char* out_dir = getenv("OUT_DIR");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    printf("Saving NS fields to VTK ... \n");
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_before_NS_SWF_%d", out_dir, tstep);
+    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
   }
 
   // -------------------------------
@@ -2263,13 +2270,13 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
     bc_velocity[d].setWallValues(*bc_wall_value_velocity[d]);
     bc_velocity[d].setWallTypes(*bc_wall_type_velocity[d]);
   }
-//  std:: cout<< "Hello world 3 \n";
+
   // Setup pressure conditions:
   bc_pressure.setInterfaceType(bc_interface_type_pressure);
   bc_pressure.setInterfaceValue(*bc_interface_value_pressure);
   bc_pressure.setWallTypes(*bc_wall_type_pressure);
   bc_pressure.setWallValues(*bc_wall_value_pressure);
-//  std:: cout<< "Hello world 4 \n";
+
   // -------------------------------
   // Set BC's and external forces if relevant
   // (note: these are actually updated in the fxn dedicated to it, aka setup_analytical_ics_and_bcs_for_this_tstep() )

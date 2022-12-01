@@ -1771,12 +1771,15 @@ class BC_INTERFACE_VALUE_VELOCITY: public my_p4est_stefan_with_fluids_t::interfa
     BC_INTERFACE_VALUE_VELOCITY(my_p4est_stefan_with_fluids_t* parent_solver,bool do_we_use_vgamma_for_bc) : interfacial_bc_fluid_velocity_t(parent_solver, do_we_use_vgamma_for_bc=true){}
     double operator()(double x, double y) const
     {
+//      printf("Accessing bc interface value \n");
+
       return 0.0;
     }
 };
 // Type:
 BoundaryConditionType interface_bc_type_velocity[P4EST_DIM];
 void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
+//    printf("Accessing bc interface type \n");
     interface_bc_type_velocity[dir] = DIRICHLET;
 }
 
@@ -1798,6 +1801,7 @@ bool ylower_wall(DIM(double x, double y, double z)){
   return (fabs(y - ymin.val) <= EPS);
 }
 bool yupper_wall(DIM(double x, double y, double z)){
+//  printf("yupper? ymax is %0.2f, y is %0.2f \n", ymax.val, y);
   return (fabs(y - ymax.val) <= EPS);
 };
 
@@ -1843,7 +1847,7 @@ struct INITIAL_VELOCITY : CF_DIM
 
 bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
     // Dirichlet on y upper wall (where bulk flow is incoming
-    return ( yupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)));
+    return ( yupper_wall(DIM(x,y,z)) /*|| xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z))*/);
 
 };
 class BC_WALL_VALUE_VELOCITY: public CF_DIM
@@ -1856,12 +1860,17 @@ class BC_WALL_VALUE_VELOCITY: public CF_DIM
   }
   double operator()(DIM(double x, double y, double z)) const
   {
+    printf("bc wall value -- Gets in here!, dir = %d \n", dir);
     if(dirichlet_velocity_walls(DIM(x,y,z))){
+//      printf("Gets in here!, dir = %d \n", dir);
       switch(dir){
       case dir::x:{
+        printf("xdir -- sets %0.2f \n", u0);
         return u0;
+
       }
       case dir::y:{
+        printf("ydir -- sets %0.2f \n", v0);
         return v0;
       }
       default:
@@ -1883,12 +1892,17 @@ public:
   }
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
+
+    printf("bc wall type velocity gets called at (%0.2f, %0.2f) \n", x, y);
+
     if(dirichlet_velocity_walls(DIM(x,y,z))){
+//        printf("dirichlet bc wall type velocity gets called at (%0.2f, %0.2f) \n", x, y);
        return DIRICHLET;
     }
     else{
      return NEUMANN;
     }
+
   }
 };
 
@@ -1918,6 +1932,7 @@ class BC_WALL_VALUE_PRESSURE: public CF_DIM
   public:
   double operator()(DIM(double x, double y, double z)) const
   {
+
       return 0.0; // homogeneous dirichlet or neumann
   }
 };
@@ -1944,27 +1959,20 @@ void initialize_all_relevant_ics_and_bcs_for_fluids(my_p4est_stefan_with_fluids_
                                                     my_p4est_multialloy_t* mas,
                                                     INITIAL_VELOCITY* v_init_cf[P4EST_DIM])
 {
-  std :: cout << " Hello -1\n";
- // my_p4est_stefan_with_fluids_t* stefan_w_fluid_solver;
-  // stefan_w_fluid_solver=mas->return_stefan_solver();
-  //std :: cout << " pointer to stefan solver :: " << stefan_w_fluid_solver << "\n";
-//  printf("pointer to SWF solver: %p \n", stefan_w_fluids_solver);
+
   for(unsigned char d=0;d<P4EST_DIM;d++){
         // Set the BC types:
-//        std::cout<<"fn 1 \n";
         bc_interface_value_velocity[d] = new BC_INTERFACE_VALUE_VELOCITY(stefan_w_fluids_solver,true);
-//        std::cout<<"fn 2 \n";
         BC_INTERFACE_TYPE_VELOCITY(d);
-//        std::cout<<"fn 3 \n";
+
         bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
         bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d);
-//        std::cout<<"fn 4 \n";
+
         v_init_cf[d]= new INITIAL_VELOCITY(d);
-//        std::cout<<"fn 5 \n";
     }
-        interface_bc_pressure();
+
+    interface_bc_pressure();
     CF_DIM* initial_velocity[P4EST_DIM] = {DIM(v_init_cf[0], v_init_cf[1], v_init_cf[2])};
-//    std :: cout << " Hello 1\n";
     mas->set_initial_NS_velocity_n_(initial_velocity);
     mas->set_initial_NS_velocity_nm1_(initial_velocity);
 
@@ -1980,6 +1988,7 @@ void initialize_all_relevant_ics_and_bcs_for_fluids(my_p4est_stefan_with_fluids_
         // Vel interface
         bc_interface_type_velocity_[d] = &interface_bc_type_velocity[d];
         bc_interface_value_velocity_[d] = bc_interface_value_velocity[d];
+
         // Vel wall
         bc_wall_value_velocity_[d] = bc_wall_value_velocity[d];
         bc_wall_type_velocity_[d] = bc_wall_type_velocity[d];
@@ -1987,6 +1996,7 @@ void initialize_all_relevant_ics_and_bcs_for_fluids(my_p4est_stefan_with_fluids_
     }
     mas->set_bc_wall_type_velocity(bc_wall_type_velocity_);
     mas->set_bc_wall_value_velocity(bc_wall_value_velocity_);
+
     mas->set_bc_interface_type_velocity(bc_interface_type_velocity_);
     mas->set_bc_interface_value_velocity(bc_interface_value_velocity_);
     mas->set_bc_wall_value_pressure(&bc_wall_value_pressure);
@@ -2484,7 +2494,7 @@ int main (int argc, char* argv[])
 
   while (1)
   {
-    PetscPrintf(mpi.comm(), "\n ------- \n Iteration: %d \n --------------- \n", iteration);
+//    PetscPrintf(mpi.comm(), "\n ------- \n Iteration: %d \n --------------- \n", iteration);
     // determine to save or not
     bool save_now =
         (save_type.val == 0 && iteration    >= vtk_idx*save_every_dn.val) ||
@@ -2674,38 +2684,28 @@ int main (int argc, char* argv[])
     }
     // save field data
     if (save_now)
-    { //std::cout<<"main line 2330 ok \n";
+    {
       if (save_dendrites.val)   mas.count_dendrites(vtk_idx);
-      //std::cout<<"main line 2332 ok \n";
       if (save_vtk.val)         mas.save_VTK(vtk_idx);
-      //std::cout<<"main line 2334 ok \n";
-      ierr = PetscPrintf(mpi.comm(), " Saving VTK is complete line 2059 \n"); CHKERRXX(ierr);
       if (save_vtk_solid.val)   mas.save_VTK_solid(vtk_idx);
-      PetscPrintf(mpi.comm(), "VTK solid saving complete \n");
       ierr = PetscPrintf(mpi.comm(), "Saved characteristics in %s\n", filename_characteristics); CHKERRXX(ierr);
       if (save_p4est.val)       mas.save_p4est(vtk_idx);
-      PetscPrintf(mpi.comm(), "P4est saving complete \n");
     }
     if (save_now) vtk_idx++;
-    //std::cout<<"main line 2462 ok \n";
-    PetscPrintf(mpi.comm(), "Solve_with_fluids paramter has been set \n");
-    //std::cout<<"main line 2464 ok \n";
+
     if(solve_w_fluids.val){
       mas.update_grid_w_fluids();
-    }else{
+      PetscPrintf(mpi.comm(), "Update grid with fluids is complete \n");
+    }
+    else{
       mas.update_grid();
     }
 
-
-    //mas.update_grid_w_fluids_v2();
-    PetscPrintf(mpi.comm(), "Update grid with fluids is complete \n");
-   // std::cout<<"main line 2468 ok \n";
     mas.update_grid_solid();
 
     //std::cout << "Total growth :: "<< total_growth << " ; Growth Limit :: " << growth_limit.val << "\n";
     keep_going = keep_going && (iteration < step_limit.val) && (total_growth < growth_limit.val);
-    //std :: cout << "Keep going flag :: " << keep_going << "\n";
-    //std::cout<< "time_limit" << time_limit.val << "\n";
+
     iteration++;
 
   }
