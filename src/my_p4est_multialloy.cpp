@@ -538,7 +538,8 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   //printf("thermal cond l = %0.2e, density_l = %0.2e, "
     //     "heat_capacity_l = %0.2e, thermal diff = %0.2e, l_char = %0.2e \n",
       //   thermal_cond_l_, density_l_, heat_capacity_l_, thermal_diff_l, l_char);
-  stefan_w_fluids_solver->set_vel_nondim_to_dim(thermal_diff_l/SQR(l_char));
+
+  stefan_w_fluids_solver->set_vel_nondim_to_dim(1.0/*thermal_diff_l/SQR(l_char)*/);
   PetscPrintf(p4est_->mpicomm, "RED ALERT: ns max allowed is manually hard coded for now \n");
   stefan_w_fluids_solver->set_NS_max_allowed(1000.0);
 
@@ -1607,7 +1608,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   PetscPrintf(p4est_->mpicomm, "Number of nodes after: %d \n", num_nodes2);
 
 
-  if(1){
+  if(0){
     PetscPrintf(p4est_->mpicomm," \n \n \n saving fields after grid update \n");
     // -------------------------------
     // TEMPORARY: save fields after grid update
@@ -2076,7 +2077,9 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   stefan_w_fluids_solver->set_nodes_n(nodes_nm1);
   stefan_w_fluids_solver->set_ngbd_n(ngbd_nm1);
 
-   if(1){
+  stefan_w_fluids_solver->set_tstep(iteration_w_fluids);
+
+   if(0){
      // -------------------------------
     // TEMPORARY: save fields before backtrace
     // -------------------------------
@@ -2136,7 +2139,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_, iteration_w_fluids);
 
 
-  if(1){
+  if(0){
     // -------------------------------
     // TEMPORARY: save fields after backtrace
     // -------------------------------
@@ -2367,10 +2370,10 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // compute velocity
   compute_velocity();
 
-//  PetscPrintf(p4est_->mpicomm, "Forcing front velo to zero ... \n");
-//  foreach_dimension(d){
-//    ierr= VecScaleGhost(front_velo_[0].vec[d], 0.);
-//  }
+  PetscPrintf(p4est_->mpicomm, "Forcing front velo to zero ... \n");
+  foreach_dimension(d){
+    ierr= VecScaleGhost(front_velo_[0].vec[d], 0.);
+  }
 
 
 

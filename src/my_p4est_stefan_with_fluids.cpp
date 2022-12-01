@@ -925,7 +925,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   }
 
 
-  if(1){
+  if(0){
     // -------------------------------
     // TEMPORARY: save fields before backtrace
     // -------------------------------
@@ -1095,7 +1095,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 
 
 
-  if(1){
+  if(0){
     // -------------------------------
     // TEMPORARY: save fields before backtrace
     // -------------------------------
@@ -2079,7 +2079,7 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(bool convert_to_nondim_
     }
   }
 
-  /*
+
   // To-do: move this switch case to the set parameters fxn since it makes more sense to have it there
   switch(problem_dimensionalization_type){
   case NONDIM_BY_FLUID_VELOCITY:
@@ -2103,7 +2103,7 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(bool convert_to_nondim_
   NS_norm = NS_max_allowed;
 
   PetscPrintf(mpi->comm(), "NS norm max allowed = %f, NS norm = %f \n", NS_max_allowed, NS_norm);
-  */
+
 } // end of "initialize_ns_solver()"
 
 bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
@@ -2354,6 +2354,29 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
 //  std:: cout<< "Hello world 10 \n";
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Completed Navier-Stokes step \n");
 
+  if(1){
+    // -------------------------------
+    // TEMPORARY: save fields after NS
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "vx_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "vy_n"));
+
+    const char* out_dir = getenv("OUT_DIR");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    printf("Saving NS fields to VTK ... \n");
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_after_NS_SWF_%d", out_dir, tstep);
+    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+  }
+
   // Convert back to dimensional units for multialloy if relevant
   if(convert_to_nondim_for_multialloy){
     // Convert nondimensional result back to dimensional
@@ -2369,10 +2392,6 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
     save_fields_to_vtk(0, did_crash, crash_tag);
     throw std::runtime_error("The Navier Stokes step crashed \n");
   }
-  //std:: cout<< "Hello world 11 \n";
-//  int vnsize2;
-//  VecGetSize(v_n.vec[0], &vnsize2);
-//  PetscPrintf(p4est_np1->mpicomm, "vn size after setup and solve navier stokes problem = %d \n", vnsize2);
 
 } // end of "setup_and_solve_navier_stokes_problem()"
 
