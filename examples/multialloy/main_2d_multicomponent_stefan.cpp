@@ -1034,7 +1034,7 @@ bool periodicity(int dir)
     case  2: return false;
     case  3: return false;
     case  4: return false;
-    case  5: return true;
+    case  5: return 0; /*true*/;
     case  6: return (dir == 0 ? 1 : 0);
     case  7: return (dir == 0 ? 1 : 0);
     case  8: return true;
@@ -1642,7 +1642,7 @@ public:
           case  2:
           case  3:
           case  4:
-          case  5:
+          case  5: return 100.;
           case  6:
           case  7:
           case  8: return 0;
