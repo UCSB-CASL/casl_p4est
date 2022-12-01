@@ -1567,7 +1567,7 @@ class BC_WALL_TYPE_TEMP: public WallBCDIM
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
     switch(geometry.val){
-      case 8:{
+      case 5:{
         if((fabs(y-ymax.val) < EPS)){
           return DIRICHLET;
         }
@@ -1590,7 +1590,7 @@ class BC_WALL_TYPE_CONC: public WallBCDIM
   {
 //    printf("bc wall type conc accessed \n");
     switch(geometry.val){
-      case 8:{
+      case 5:{
         if((fabs(y-ymax.val) < EPS)){
           return DIRICHLET;
         }
