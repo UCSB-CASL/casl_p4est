@@ -540,7 +540,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt,
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_2nd_order_with_fields, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  int mpicomm = p4est->mpicomm;
+  //int mpicomm = p4est->mpicomm;
 
   // Compute vx_xx, vx_yy
   Vec *vxx[P4EST_DIM];
