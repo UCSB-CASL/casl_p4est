@@ -108,3 +108,5 @@ message( "" )
 
 set( CMAKE_C_COMPILER mpicc )
 set( CMAKE_CXX_COMPILER mpicxx )
+
+set( CASL_ON_APPLE_M1 ON )

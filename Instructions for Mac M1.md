@@ -1,6 +1,6 @@
 # Instructions for installing libraries on a Mac M1 architecture
 
-#### Updated on Wednesday, October 12, 2022.
+#### Updated on Wednesday, December 7, 2022.
 
 The following instructions assume you'll install our development software on a Mac system with Monterey OS and M1 arm64
 architecture.  For reproducibility, peform the steps in order.
@@ -21,10 +21,30 @@ First, install the xcode development tools:
 Run these steps:
 
 ```bash
-% echo '# Set PATH, MANPATH, etc., for Homebrew.' >> /Users/m1/.zprofile
-% echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> /Users/m1/.zprofile
+% echo '# Set PATH, MANPATH, etc., for Homebrew.' >> /Users/youngmin/.zprofile
+% echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> /Users/youngmin/.zprofile
 % eval "$(/opt/homebrew/bin/brew shellenv)"
 ```
+
+## Install GNU Make
+
+Run these steps:
+```bash
+% brew install make
+```
+
+Add its path to PATH in .zsh_profile:
+```bash
+export PATH="/opt/homebrew/opt/make/libexec/gnubin:$PATH"
+```
+
+Close and reopen the terminal.  Check that `echo $PATH` shows Homebrew's and GNU make's paths.
+Check also GNU make's version with
+```bash
+make --version
+```
+It should say something like `GNU Make 4.4` or above.
+
 
 ## Install GNU CC compiler
 
@@ -46,7 +66,10 @@ Create softlinks:
 % ln -s g++-12 g++
 ```
 
-Check priorities:
+Close and reopen the terminal to make changes effective.
+
+Check priorities; it should show Homebrew first.  Also, `gcc --version` and `g++ --version` should
+show Homebrew's versions just installed:
 ```bash
 % where gcc
 % where g++
@@ -71,6 +94,7 @@ If it points to old version, add a softlink too:
 % cmake --version.  # Would show something like 3.24
 ```
 
+Close and reopen terminal.
 
 ## Install `anaconda3` for arm64
 
@@ -82,7 +106,7 @@ Download the M1 command line installer from (https://www.anaconda.com/products/d
 % ./Anaconda.sh
 ```
 
-Follow the screen instructions; `anaconda` will be installed under `/Users/xyz/anaconda3/`, where `xyz` is your user name.
+Follow the screen instructions; `anaconda` will be installed under `/Users/youngmin/anaconda3/`.
 1. Let the installer initialize `anaconda`; it will write a few lines to `.zshrc`.
 2. Exit the terminal and reopen it.
 3. Verify that the prefix `(base)` appears in the prompt.
@@ -106,6 +130,9 @@ Then, install from source and verify the installation:
 % brew install --cc=gcc-12 mpich --build-from-source
 % mpichversion
 ```
+It should show a version >= 4.0.2.
+
+Close and reopen terminal.
 
 
 ## Install `OpenBLAS`
@@ -119,49 +146,53 @@ By using `~/work/`, we won't have to provide `sudo` privileges to install softwa
 % tar xvf OpenBLAS-0.3.20.tar.gz
 % cd OpenBLAS-0.3.20
 % mkdir -p build && cd build
-% cmake -DCMAKE_INSTALL_PREFIX:PATH=/Users/m1/work -DCMAKE_C_COMPILER=gcc-12 -DCMAKE_CXX_COMPILER=g++-12 ..
+% cmake -DCMAKE_INSTALL_PREFIX:PATH=/Users/youngmin/work -DCMAKE_C_COMPILER=gcc-12 -DCMAKE_CXX_COMPILER=g++-12 ..
 % make && make install
 ```
 
 Now, add these lines to `.zshrc` in your home directory and source it:
 ```bash
-export OPENBLAS=/Users/m1/work
+export OPENBLAS=/Users/youngmin/work
 export CFLAGS="-falign-functions=8 ${CFLAGS}"
 ```
+
+Close and reopen terminal.
 
 
 ## Install `PETSc`
 
-Download the latest `PETSc` version, or if you prefer, use the stable 3.16.3 version used in these instructions.
+Download the latest `PETSc` version, or if you prefer, use the stable 3.18.2 version used in these instructions.
 ```bash
 % cd
-% curl -O https://ftp.mcs.anl.gov/pub/petsc/release-snapshots/petsc-3.16.3.tar.gz
-% tar -xvf petsc-3.16.3.tar.gz
+% curl -O https://ftp.mcs.anl.gov/pub/petsc/release-snapshots/petsc-3.18.2.tar.gz
+% tar -xvf petsc-3.18.2.tar.gz
 ```
 
-Install it using the `mpich` and `BLAS` options, in the `~/work/` folder:
+Install it in the `~/work/` folder using the `mpich` and `BLAS` options:
 ```bash
-% cd petsc-3.16.3
-% ./configure --prefix=/Users/m1/work/petsc-3.16.3 --with-openblas=1 
+% cd petsc-3.18.3
+% ./configure --prefix=/Users/youngmin/work/petsc-3.18.2 --with-openblas=1 
   --with-openblas-lib=$OPENBLAS/lib/libopenblas.a --with-openblas-include=$OPENBLAS/include/openblas 
-  --download-hypre=1 --with-debugging=0 --with-mpi-dir=/opt/homebrew/Cellar/mpich/4.0.2_1 --with-shared-libraries=1 
+  --download-hypre=1 --with-debugging=0 --with-mpi-dir=/opt/homebrew/Cellar/mpich/4.0.3 --with-shared-libraries=1 
   CFLAGS=$CFLAGS COPTFLAGS=-O2 CXXOPTFLAGS=-O2 FOPTFLAGS=-O2
 ```
 
 Now, build `PETSc`.  You may follow the instructions in the prompt as you complete each step.
 ```bash
-% make PETSC_DIR=/Users/m1/petsc-3.16.3 PETSC_ARCH=arch-darwin-c-opt all
+% make PETSC_DIR=/Users/youngmin/petsc-3.18.2 PETSC_ARCH=arch-darwin-c-opt all
 ```
 
 Then, install the library:
 ```bash
-% make PETSC_DIR=/Users/m1/petsc-3.16.3 PETSC_ARCH=arch-darwin-c-opt install
+% make PETSC_DIR=/Users/youngmin/petsc-3.18.2 PETSC_ARCH=arch-darwin-c-opt install
 ```
 
 Test `PETSc` with:
 ```bash
-% make PETSC_DIR=/Users/m1/work/petsc-3.16.3 PETSC_ARCH="" check
+% make PETSC_DIR=/Users/youngmin/work/petsc-3.16.3 PETSC_ARCH="" check
 ```
+
+Close and reopen terminal.
 
 
 ## Install `p4est`
@@ -176,11 +207,13 @@ Download the library.  Use a newer version if you prefer.
 Install `p4est` using `mpich`, in the `~/work/` folder:
 ```bash
 % cd p4est-2.8
-% ./configure --prefix=/Users/m1/work/p4est-2.8 --enable-mpi --enable-shared --enable-memalign=16 
-  CFLAGS=-O2 CPPFLAGS=-O2 FCFLAGS=-O2 CC=/opt/homebrew/Cellar/mpich/4.0.2_1/bin/mpicc
+% ./configure --prefix=/Users/youngmin/work/p4est-2.8 --enable-mpi --enable-shared --enable-memalign=16 
+  CFLAGS=-O2 CPPFLAGS=-O2 FCFLAGS=-O2 CC=/opt/homebrew/Cellar/mpich/4.0.3/bin/mpicc
 % make 
 % make install
 ```
+
+Close and reopen terminal.
 
 
 ## Install `BOOST`
@@ -195,10 +228,12 @@ decompress it.
 Install `BOOST` by running the following commands:
 ```bash
 % cd boost_1_78_0
-% ./bootstrap.sh --prefix=/Users/m1/work/boost-1.78.0
+% ./bootstrap.sh --prefix=/Users/youngmin/work/boost-1.78.0
 % ./b2
 % ./b2 install
 ```
+
+Close and reopen terminal.
 
 
 ## Install `Voro++`
@@ -211,7 +246,7 @@ Download it from (https://math.lbl.gov/voro++/download/) and decompress it by do
 Edit the `config.mk` file by changing the prefix where we'll install `Voro++`:
 ```bash
 # Installation directory
-PREFIX=/Users/m1/work
+PREFIX=/Users/youngmin/work
 ```
 
 Compile and install:
@@ -220,7 +255,7 @@ Compile and install:
 % make all install
 ```
 
-The library is now under `/Users/m1/work/`.  The executable is under `bin/`, and the library and headers under
+The library is now under `/Users/youngmin/work/`.  The executable is under `bin/`, and the library and headers under
  `lib/` and `include/voro++/`.
 
 Check executable:
@@ -228,6 +263,8 @@ Check executable:
 % cd ~/work/bin
 % ./voro++ --help
 ```
+
+Close and reopen terminal.
 
 
 ## Build the library with no machine learning support (yet))
@@ -238,7 +275,7 @@ some location in your laptop.   Suppose we want to run the **SHS project** from 
 Add the `*.cmake` profile for your machine under the `cmake/` folder.   Then, add an environment variable to the 
 `~/.zshrc` file like so:
 ```bash
-CASL_CMAKE_PROFILE=zea.cmake	# Replace zea.cmake for your *.cmake machine profile.
+export CASL_CMAKE_PROFILE=mtxt.cmake	# Replace mtxt.cmake for your *.cmake machine profile.
 ```
 Next:
 ```bash
@@ -267,10 +304,17 @@ else
 fi
 
 # Compile.
-cd /Users/m1/casl_p4est/examples/shs_channel_flow/
-cd $BUILD_DIR
+PROJECT="/Users/youngmin/Documents/CS/CASL/casl_p4est/examples/shs_channel_flow"
+
+# Check if build directory does not exist
+if [ ! -d "$PROJECT/$BUILD_DIR" ] 
+then
+    echo "Directory $PROJECT/$BUILD_DIR DOES NOT exist!" 
+    exit 1
+fi
+cd $PROJECT/$BUILD_DIR
 make clean
-rm -r *
+rm -rf *
 cd ..
 
 echo "-------------- Generating Makefile using default generator --------------"
@@ -287,20 +331,30 @@ echo "Wall time: $walltime seconds"
 
 Add executable permisions to the script:
 ```bash
-% chmod a+x build_shs.shs
+% chmod a+x build_shs.sh
 ```
 
-Create a temporary directory and test execution:
+Now, build the project:
+```bash
+% cd
+% ./build_shs.sh
+```
+
+Next, create a temporary directory and test execution:
 ```bash
 % cd
 % mkdir tmp/
 % cd casl_p4est/examples/shs_channel_flow/cmake-build-release-3d	# Assuming we built the release version.
 % mpiexec -n 6 ./shs_channel_flow -duration 0.01 -Re_tau 10 -adapted_dt -lmin 3 -lmax 5 -GF 0.8125 
-  -wall_layer 6 -export_folder /Users/m1/tmp -pitch 1.0 -length 1 -height 2 -width 1 -nx 1 -ny 2 -nz 1 
+  -wall_layer 6 -export_folder /Users/youngmin/tmp -pitch 1.0 -length 1 -height 2 -width 1 -nx 1 -ny 2 -nz 1 
   -save_drag -save_mean_profiles -save_state_dt 5.0 -save_nstates 10 -grid_update 4294967295
 ```
 
 It should run with no issues!
+
+**Note**:  If the compilation didn't succeed, try again from scratch with homebrew.  Uninstall anything installed with
+it, and skip installing any of the GNU CC compilers.  When uninstalling, make sure you also remove the soft links.
+You need to reinstall Anaconda too, which requires removing its initialization from the `~/.zshrc` file.
 
 
 ## Installing the machine learning libraries
@@ -342,39 +396,41 @@ Install the software in sequence; modify the `-DCMAKE_INSTALL_PREFIX` according 
 % git clone -b 'v0.2.14-p0' --single-branch --depth 1 https://github.com/Dobiasd/FunctionalPlus
 % cd FunctionalPlus
 % mkdir -p build && cd build
-% cmake -DCMAKE_INSTALL_PREFIX:PATH=/Users/m1/work -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ..
+% cmake -DCMAKE_INSTALL_PREFIX:PATH=/Users/youngmin/work -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ..
 % make && make install
 % cd ../..
 
 % git clone -b '3.3.9' --single-branch --depth 1 https://gitlab.com/libeigen/eigen.git
 % cd eigen
 % mkdir -p build && cd build
-% cmake -DCMAKE_INSTALL_PREFIX:PATH=/Users/m1/work -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ..
+% cmake -DCMAKE_INSTALL_PREFIX:PATH=/Users/youngmin/work -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ..
 % make && make install
-% ln -s /Users/m1/work/include/eigen3/Eigen /Users/m1/work/include/Eigen
+% ln -s /Users/youngmin/work/include/eigen3/Eigen /Users/youngmin/work/include/Eigen
 % cd ../..
 
 % git clone -b 'v3.9.1' --single-branch --depth 1 https://github.com/nlohmann/json
 % cd json
 % mkdir -p build && cd build
-% cmake -DCMAKE_INSTALL_PREFIX:PATH=/Users/m1/work -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DBUILD_TESTING=OFF ..
-% make && sudo make install
+% cmake -DCMAKE_INSTALL_PREFIX:PATH=/Users/youngmin/work -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DBUILD_TESTING=OFF ..
+% make && make install
 % cd ../..
 
 % git clone -b 'v0.15.2-p0' https://github.com/Dobiasd/frugally-deep
 % cd frugally-deep
 % mkdir -p build && cd build
-% cmake -DCMAKE_INSTALL_PREFIX:PATH=/Users/m1/work -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ..
-% make && sudo make install
+% cmake -DCMAKE_INSTALL_PREFIX:PATH=/Users/youngmin/work -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ..
+% make && make install
 % cd ../..
 
 % wget http://dlib.net/files/dlib-19.23.tar.bz2
 % tar xvf dlib-19.23.tar.bz2
 % cd dlib-19.23
 % mkdir -p build && cd build
-% cmake -DCMAKE_INSTALL_PREFIX:PATH=/Users/m1/work -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ..
+% cmake -DCMAKE_INSTALL_PREFIX:PATH=/Users/youngmin/work -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ..
 % make && make install
 ```
+
+Update the cmake profile in the `casl_p4est` project with the paths for the newly added libraries.
 
 Now, let's test the build for the `ml_curvature` project, which uses the above libraries.  To do so, create the
 `~/build_ml_curvature.sh` script with the following template bash, assuming that the folders `cmake-build-debug-#d/` 
@@ -398,11 +454,18 @@ else
 	fi
 fi
 
-# Recompile.
-cd /Users/m1/casl_p4est/examples/ml_curvature/
-cd $BUILD_DIR
+# Compile.
+PROJECT="/Users/youngmin/Documents/CS/CASL/casl_p4est/examples/ml_curvature"
+
+# Check if build directory does not exist
+if [ ! -d "$PROJECT/$BUILD_DIR" ] 
+then
+    echo "Directory $PROJECT/$BUILD_DIR DOES NOT exist!" 
+    exit 1
+fi
+cd $PROJECT/$BUILD_DIR
 make clean
-rm -r *
+rm -rf *
 cd ..
 
 echo "-------------- Generating Makefile using default generator --------------"
@@ -418,12 +481,12 @@ walltime=$(expr $ended - $began)
 echo "Wall time: $walltime seconds"
 ```
 
-Let's test the curvature in 3D using machine learning.   Suppose we have the neural networks in `/Users/m1/k_nnets/3d/`
+Let's test the curvature in 3D using machine learning.   Suppose we have the neural networks in `/Users/youngmin/k_nnets/3d/`
 (or `[...]/2d/` for the two-dimensional case).
 
 ```bash
-% cd /Users/m1/casl_p4est/examples/ml_curvature/cmake-build-release-3d	# Assuming we built the release version.
-% mpiexec -n 3 ./ml_curvature -nnetsDir /Users/m1/k_nnets
+% cd /Users/youngmin/casl_p4est/examples/ml_curvature/cmake-build-release-3d	# Assuming we built the release version.
+% mpiexec -n 3 ./ml_curvature -nnetsDir /Users/youngmin/k_nnets
 ```
 
 It should work and show the following results (with wall times varying):
@@ -431,7 +494,7 @@ It should work and show the following results (with wall times varying):
 -------------------== CASL Options Database ==------------------- 
  List of entered options:
 
-  -nnetsDir /Users/m1/k_nnets
+  -nnetsDir /Users/youngmin/k_nnets
  ----------------------------------------------------------------- 
 >> Began testing hybrid curvature on a Gaussian surface online with a = 1., su^2 = 0.130208, sv^2 = 0.0144676, 
    max |hk| = 0.6, and h = 0.015625 (level 6)

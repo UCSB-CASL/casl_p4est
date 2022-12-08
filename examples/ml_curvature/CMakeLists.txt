@@ -35,8 +35,8 @@ endif()
 
 ############################################# Compiler optimization flags ##############################################
 
-if( CMAKE_BUILD_TYPE MATCHES Release AND NOT CASL_ON_STAMPEDE )	# These optimization flags don't work on Stampede2.
-	set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
+if( CMAKE_BUILD_TYPE MATCHES Release AND CASL_ON_APPLE_M1 )
+	set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -mcpu=apple-m1" )
 	set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
 	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
 endif()
