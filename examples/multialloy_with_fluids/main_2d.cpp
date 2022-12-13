@@ -5203,9 +5203,12 @@ int main(int argc, char** argv) {
     stefan_w_fluids_solver->perform_initializations();
 
     if(save_to_vtk){
+      if(!loading_from_previous_state){
         out_idx=-1;
         stefan_w_fluids_solver->set_tstep(0);
         stefan_w_fluids_solver->save_fields_to_vtk(out_idx);
+      }
+      // if we are loading from a previous state, we want the tstep and outidx the be loaded/computed from the load state
     }
 
     // Initialize tn and tstep
