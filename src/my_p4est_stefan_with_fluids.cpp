@@ -916,6 +916,17 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
     SL_backtrace_interp_nm1.interpolate(T_l_backtrace_nm1.vec);
   }
 
+  // Update the ghost values (to-do: is there a more strategic way to write this that saves us time?)
+  ierr = VecGhostUpdateBegin(T_l_backtrace_n.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  if(advection_sl_order==2){
+    ierr = VecGhostUpdateBegin(T_l_backtrace_nm1.vec, INSERT_VALUES, SCATTER_FORWARD);CHKERRXX(ierr);
+  }
+
+  ierr = VecGhostUpdateEnd(T_l_backtrace_n.vec, INSERT_VALUES, SCATTER_FORWARD);CHKERRXX(ierr);
+  if(advection_sl_order==2){
+    ierr = VecGhostUpdateEnd(T_l_backtrace_nm1.vec, INSERT_VALUES, SCATTER_FORWARD);CHKERRXX(ierr);
+  }
+
   // Destroy velocity derivatives now that not needed:
   foreach_dimension(d){
     foreach_dimension(dd)
@@ -938,6 +949,33 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(){
   // Clear and delete interpolators:
   SL_backtrace_interp.clear();
   SL_backtrace_interp_nm1.clear();
+
+  // -------------------------------------------------
+  // TEMPORARY
+  // -------------------------------------------------
+  if(0){
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl"));
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_backtrace_n.vec, "Tl_dn"));
+    point_fields.push_back(Vec_for_vtk_export_t(T_l_backtrace_nm1.vec, "Tl_dnm1"));
+
+
+    const char* out_dir = getenv("OUT_DIR_VTK");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    char filename[1000];
+    sprintf(filename, "%s/grid_lmin%d_lint%d_lmax%d/snapshot_after_backtrace_%d", out_dir,lmin, lint, lmax, tstep);
+    my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+  }
+
+  // --------------------------------------------------
+
 
   if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace \n");
 } // end of "do_backtrace_for_scalar_temp_conc_problem"
@@ -1978,7 +2016,8 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   }
 
   hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
-  PetscPrintf(mpi->comm(),"Hodge tolerance is %e \n",hodge_tolerance);
+//  PetscPrintf(mpi->comm(),"Hodge tolerance is %e \n",hodge_tolerance);
+  PetscPrintf(mpi->comm(),"Hodge percent of max NS_norm is %e \n",hodge_percentage_of_max_u);
 
   int hodge_iteration = 0;
   double convergence_check_on_dxyz_hodge = DBL_MAX;
@@ -2393,6 +2432,8 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
       compare_option_t compare_opn_d2T = SIGN_CHANGE;
       PetscPrintf(mpi->comm(), "d2T_refine_threshold = %0.3e, d2T_coarsen_threshold = %0.3e \n",
                   d2T_refine_threshold, d2T_coarsen_threshold);
+      PetscPrintf(mpi->comm(), "d2T_refine_criteria = %0.3e, d2T_coarsen_criteria= %0.3e \n",
+                  d2T_refine_threshold*dxyz_close_to_interface, d2T_coarsen_threshold*dxyz_close_to_interface);
 
 //      double refine_criteria_d2T = dTheta*d2T_threshold;
 //      double coarsen_criteria_d2T = dTheta*d2T_threshold*0.1;
@@ -2409,6 +2450,7 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
       criteria.push_back(d2T_refine_threshold*dxyz_close_to_interface);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(lmax);}
+//      custom_lmax.push_back(lmax);
 
       // Coarsening instructions: (for d2T/dy2)
       compare_opn.push_back(compare_opn_d2T);
@@ -2421,6 +2463,7 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
       criteria.push_back(d2T_refine_threshold*dxyz_close_to_interface);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(lmax);}
+//      custom_lmax.push_back(lmax);
     }
   } // end of "if num_fields!=0"
 

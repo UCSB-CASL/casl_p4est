@@ -539,8 +539,6 @@ void splitting_criteria_tag_t::tag_quadrant_inside(p4est_t *p4est, p4est_quadran
   }
 }
 
-// ELYCE TRYING SOMETHING --------:
-
 void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes,
                                             const double* phi_p, const int num_fields,
                                             bool use_block, bool enforce_uniform_band,
@@ -813,6 +811,22 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
       // Next we check the refinement arguments if refining is possible:
 
+      // Elyce printing info [TEMP] -------------------------
+      /*
+      // List the bounds where I need to print stuff:
+
+//      double xq_min = 0.468745;
+//      double xq_max = 0.93755;
+//      double yq_min = 4.68745;
+//      double yq_max = 5.6255;
+
+      double xq_min = 7.089835;
+      double xq_max = 7.14845;
+      double yq_min = 7.91015;
+      double yq_max = 7.96876;
+      */
+      // ELYCE TEMP END -------------------------
+
       if(refine){
 
         // Now that we are inside refine, set refine to false:
@@ -878,7 +892,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
         for(int n=0; n<num_fields;n++){
             field_all_pos[n] = true;
             field_all_neg[n] = true;
-            above_threshold[n] = true; // will be set to true if we are checking sign change for this field
+            above_threshold[n] = false; // the default is false. To trigger refinement, we need a sign change AND for any of the fields to be above the threshold of concern
         }
 
 
@@ -914,6 +928,19 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
                     if(node_found) we_had_neighbor_point=true;
 
+                    // Elyce printing info -----------------------
+                    /*
+                    if(node_found){
+
+                      double xyz_n[P4EST_DIM];
+                      node_xyz_fr_n(node_idx, p4est, nodes, xyz_n);
+                      bool print_info = (xyz_n[0] < xq_max) && (xyz_n[0] > xq_min) && (xyz_n[1] <yq_max) && (xyz_n[1] > yq_min);
+
+                      if(print_info) printf("Quad %d, Node %d at (%0.4f, %0.4f) --(!!) T-junction point found \n", quad_idx, node_idx, xyz_n[0], xyz_n[1]);
+
+                    }
+                    */
+                    // Elyce end printing info --------------------
                 }
 
                 if(node_found){
@@ -936,12 +963,11 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
                     for(unsigned short n = 0; n<num_fields;n++){
                         if(refine){ // If refine is ever true, we can stop checking and mark the quad for refinement
-                            goto end_of_function;
+                          goto end_of_function;
                         }
                         // Check if we are allowed to refine for this specific field,
                         //according to the user-specified custom lmax:
-                        bool field_refine_allowed = true; // assume refinement is allowed for each field, then check condition
-                        field_refine_allowed = (quad->level < lmax_custom[n]);
+                        bool field_refine_allowed = (quad->level < lmax_custom[n]);
 
                         // Get field val and criteria (same as in coarsen case)
                         if(use_block){
@@ -960,8 +986,6 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                         case DIVIDE_BY:{
                             switch(compare_opn[2*n + 1]){
                             case GREATER_THAN:{
-                                //                                    if((fabs(field_val) > criteria_refine/d) && n==0){
-                                //                                        printf("Refined at level %d based on vorticity = %0.4f on rank %d \n \n",quad->level,field_val,p4est->mpirank);}
                                 refine = refine || ((fabs(field_val) > criteria_refine/max_quad_size) && field_refine_allowed);
                                 break;
                             }
@@ -975,7 +999,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                                 field_all_pos[n] = field_all_pos[n] && (field_val>0.);
                                 field_all_neg[n] = field_all_neg[n] && (field_val<0.);
 
-                                above_threshold[n] = (fabs(field_val)>criteria_refine/max_quad_size) && above_threshold[n];
+                                above_threshold[n] = (fabs(field_val)>criteria_refine/max_quad_size) || above_threshold[n];
 
                                 break;
                             }
@@ -1001,7 +1025,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                                 field_all_pos[n] = field_all_pos[n] && (field_val>0.);
                                 field_all_neg[n] = field_all_neg[n] && (field_val<0.);
 
-                                above_threshold[n] = (fabs(field_val)>criteria_refine*max_quad_size) && above_threshold[n];
+                                above_threshold[n] = (fabs(field_val)>criteria_refine*max_quad_size) || above_threshold[n];
 
                                 break;
                             }
@@ -1027,7 +1051,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                                 field_all_pos[n] = field_all_pos[n] && (field_val>0.);
                                 field_all_neg[n] = field_all_neg[n] && (field_val<0.);
 
-                                above_threshold[n] = (fabs(field_val)>criteria_refine) && above_threshold[n];
+                                above_threshold[n] = (fabs(field_val)>criteria_refine) || above_threshold[n];
 
                                 break;
                             }
@@ -1043,6 +1067,25 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                         } // end of case: absolute
                         } // end of switch case on diagonal option
                     } // End of loop over n fields
+
+
+                    // Elyce printing info: ------
+                    /*
+                    double xyz_n[P4EST_DIM];
+                    node_xyz_fr_n(node_idx, p4est, nodes, xyz_n);
+
+                    bool print_info = (xyz_n[0] < xq_max) && (xyz_n[0] > xq_min) && (xyz_n[1] <yq_max) && (xyz_n[1] > yq_min); // && (n==2);
+
+                    if(print_info){
+                      int n =2;
+                      printf("Quad %d (lvl %d): Node %d at (%0.4f, %0.4f): d2T_dy2 = %0.4f, "
+                             "Neighbor? %d, "
+                             "Above thresh? %d \n",
+                             quad_idx, quad->level, node_idx, xyz_n[0], xyz_n[1],
+                             fields[n][node_idx], we_had_neighbor_point, above_threshold[n]);
+                    }
+                    */
+                    // ------------------------------ End Elyce printing info
                 } // end of if node found
             } // end of loop over j
 
@@ -1050,11 +1093,9 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
         if((!all_pos && !all_neg)){ // if nodes of the quad have different signs of LSF after checking each node --> interface crosses quad, we should refine
             refine = true;
-
-          }
+        }
         // If we had a sign change, check if that happened:
         if(checking_sign_change){
-//            PetscPrintf(p4est->mpicomm,"CHECKING FOR A SIGN CHANGE REFINE CASE: \n");
             for(unsigned short n=0;n<num_fields;n++){
                 bool field_refine_allowed = true; // assume refinement is allowed for each field, then check condition
                 field_refine_allowed = (quad->level < lmax_custom[n]);
@@ -1062,14 +1103,30 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                 bool sign_change = (!field_all_pos[n] && !field_all_neg[n]) && field_refine_allowed;
 
                 if(sign_change && we_had_neighbor_point && above_threshold[n]){
-                    refine = (refine || sign_change) ;
-//                    printf("\n Refine: Field value = %0.3e, criteria = %0.3e, quad lvl = %d \n",
-//                           fabs(fields[n][node_idx]), criteria[2*n + 1], quad->level );
+                    refine = true; //(refine || sign_change) ;
                 }
+                // Elyce printing info: ------
+                /*
+                double xyz_n[P4EST_DIM];
+                node_xyz_fr_n(node_idx, p4est, nodes, xyz_n);
+                bool print_info = (xyz_n[0] < xq_max) && (xyz_n[0] > xq_min)
+                                  && (xyz_n[1] <yq_max) && (xyz_n[1] > yq_min)
+                                  && (n==2);
 
+                if(print_info){
+                  printf("-------------------- \n "
+                         "Quad %d (lvl %d) result (ref_crit = %0.4f, coars crit = %0.4f): "
+                         "Neighbor point? %d, "
+                         "Sign change? %d, Above threshold? %d, Refine? %d \n "
+                         "-------------------- \n \n",
+                         quad_idx, quad->level, criteria[2*n +1], criteria[2*n],
+                         we_had_neighbor_point,
+                         sign_change, above_threshold[n], refine);
+                }
+                */
+                // ------------------------------
             }
         } // end of checking sign change
-
         } // End of if refine possible
 
 
@@ -1087,8 +1144,6 @@ end_of_function:
         }
     } // End of if statement to check for refine and coarsening
 } // end of function
-
-// END : ELYCE TRYING SOMETHING --------:
 
 int splitting_criteria_tag_t::refine_fn(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad) {
   (void) p4est;
@@ -1184,8 +1239,6 @@ function_end:
 
   return is_grid_changed;
 }
-
-// ELYCE TRYING SOMETHING -------:
 
 bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi,
                                                   const unsigned int num_fields, bool use_block, bool enforce_uniform_band,
@@ -1307,8 +1360,6 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
     MPI_Allreduce(&is_grid_changed,&global_is_grid_changed,1,MPI_INT,MPI_LOR,p4est->mpicomm);
     return global_is_grid_changed;
 }
-
-// END: ELYCE TRYING SOMETHING--------------
 
 p4est_bool_t
 refine_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
