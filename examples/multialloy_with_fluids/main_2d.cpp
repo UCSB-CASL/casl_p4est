@@ -5203,7 +5203,7 @@ int main(int argc, char** argv) {
     stefan_w_fluids_solver->perform_initializations();
 
     if(save_to_vtk){
-        out_idx=0;
+        out_idx=-1;
         stefan_w_fluids_solver->set_tstep(0);
         stefan_w_fluids_solver->save_fields_to_vtk(out_idx);
     }
