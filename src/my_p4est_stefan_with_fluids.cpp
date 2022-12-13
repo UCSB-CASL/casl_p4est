@@ -1970,16 +1970,26 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
   ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
   faces_np1 = new my_p4est_faces_t(p4est_np1, ghost_np1, &brick, ngbd_c_np1);
 
-  // Create the solver
-  ns = new my_p4est_navier_stokes_t(ngbd_n,ngbd_np1,faces_np1);
+  // Create and setup the solver
+  if(!loading_from_previous_state){
+    ns = new my_p4est_navier_stokes_t(ngbd_n,ngbd_np1,faces_np1);
 
+    ns->set_phi((there_is_a_substrate ? phi_eff.vec:phi.vec));
+    ns->set_dt(dt_nm1,dt);
+    ns->set_velocities(v_nm1.vec, v_n.vec);
+  }
+  else{
+    // Get the load directory:
+    const char* load_path_ns = getenv("LOAD_STATE_PATH_NS");
+    if(!load_path_ns){
+      throw std::invalid_argument("You need to set the  directory for the desired load state");
+    }
 
-  // Set the LSF:
-  ns->set_phi((there_is_a_substrate ? phi_eff.vec:phi.vec));
+    PetscPrintf(mpi->comm(),"Load dir for navier stokes is:  %s \n",load_path_ns);
+    ns = new my_p4est_navier_stokes_t(*mpi, load_path_ns, tn);
+    PetscPrintf(mpi->comm(),"NS solver successfully initialized from load state \n",load_path_ns);
 
-  ns->set_dt(dt_nm1,dt);
-
-  ns->set_velocities(v_nm1.vec, v_n.vec);
+  }
 
   // To-do: move this switch case to the set parameters fxn since it makes more sense to have it there
   switch(problem_dimensionalization_type){
@@ -4245,6 +4255,26 @@ void my_p4est_stefan_with_fluids_t::save_state(const char* path_to_directory,uns
     }
   }
 
+  // ------------------------------------------
+  // Elyce TEMP --> adding NS save state folder:
+  // ------------------------------------------
+  char path_to_directory_NS[PATH_MAX];
+  sprintf(path_to_directory_NS,"%s_navier_stokes", path_to_directory);
+  if(solve_navier_stokes){
+    if(!file_exists(path_to_directory_NS)){
+      create_directory(path_to_directory_NS,p4est_np1->mpirank, p4est_np1->mpicomm);
+    }
+    if(!is_folder(path_to_directory_NS)){
+      if(!create_directory(path_to_directory_NS, p4est_np1->mpirank, p4est_np1->mpicomm))
+      {
+        char error_msg[1024];
+        sprintf(error_msg, "save_state: the path %s is invalid and the directory could not be created", path_to_directory_NS);
+        throw std::invalid_argument(error_msg);
+      }
+    }
+  }
+  // ------------------------------------------
+
   unsigned int backup_idx = 0;
 
   if(mpi->rank() ==0){
@@ -4321,7 +4351,6 @@ void my_p4est_stefan_with_fluids_t::save_state(const char* path_to_directory,uns
 
   vector<save_or_load_element_t> fields_to_save_n, fields_to_save_np1;
 
-
   prepare_fields_for_save_or_load(fields_to_save_np1, fields_to_save_n);
 
   // Save the state:
@@ -4332,7 +4361,17 @@ void my_p4est_stefan_with_fluids_t::save_state(const char* path_to_directory,uns
   my_p4est_save_forest_and_data(path_to_folder, p4est_n, nodes_n, NULL,
                                 "p4est_n", fields_to_save_n);
 
-  ierr = PetscPrintf(p4est_np1->mpicomm,"Saved solver state in ... %s \n",path_to_folder);CHKERRXX(ierr);
+  // ------------------------------------------
+  // Elyce TEMP --> adding NS save state folder:
+  // ------------------------------------------
+  if(solve_navier_stokes){
+    ns->save_state(path_to_directory_NS, tn, n_saved);
+  }
+
+  // ------------------------------------------
+
+
+  ierr = PetscPrintf(p4est_np1->mpicomm,"Saved solver state in: \n - %s \n - %s \n",path_to_folder, path_to_directory_NS);CHKERRXX(ierr);
 
 } // end of "save_state()"
 
