@@ -996,6 +996,7 @@ public:
 
   void set_tstep(int tstep_){tstep = tstep_;}
   int get_tstep(){return tstep;}
+  int get_load_tstep(){return load_tstep;}
 
   int get_last_tstep(){return last_tstep;}
 

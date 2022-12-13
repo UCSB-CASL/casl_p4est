@@ -1965,6 +1965,7 @@ void my_p4est_stefan_with_fluids_t::set_ns_parameters(){
 
 void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
 
+
   // Create the initial neigbhors and faces (after first step, NS grid update will handle this internally)
   ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
   faces_np1 = new my_p4est_faces_t(p4est_np1, ghost_np1, &brick, ngbd_c_np1);
@@ -2000,7 +2001,7 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(){
   set_ns_parameters();
 
   // Set an initial norm for the first hodge iteration
-  NS_norm = NS_max_allowed/100.; //TO-DO: make this not something that's hard coded, but for now I'm leaving it, bc if you set the initial NS_norm to the max allowed value, you're going to get wonky values for the first iteration (sometimes way too big or etc)
+  if(!loading_from_previous_state) NS_norm = NS_max_allowed/100.; //TO-DO: make this not something that's hard coded, but for now I'm leaving it, bc if you set the initial NS_norm to the max allowed value, you're going to get wonky values for the first iteration (sometimes way too big or etc)
 
   PetscPrintf(mpi->comm(), "NS norm max allowed = %f, NS norm = %f \n", NS_max_allowed, NS_norm);
 
@@ -3950,10 +3951,6 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
 
   PetscPrintf(mpi->comm(),"Saving to vtk, outidx = %d ...\n",out_idx);
 
-  //    if(example_uses_inner_LSF){
-  //      if(start_w_merged_grains){regularize_front(p4est, nodes, ngbd, phi_substrate.vec);}
-  //    }
-
   if(is_crash){
     sprintf(output2,"%s/snapshot_lmin_%d_lmax_%d_%s_CRASH", output, lmin, lmax, crash_type);
 
@@ -4012,7 +4009,7 @@ void my_p4est_stefan_with_fluids_t::save_fields_to_vtk(int out_idx, bool is_cras
 
     point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "v"));
 
-    if(tstep!=0){
+    if(tstep!=0 && tstep!=load_tstep){
         point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
         point_fields.push_back(Vec_for_vtk_export_t(press_nodes.vec, "pressure"));
 

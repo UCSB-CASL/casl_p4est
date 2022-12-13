@@ -3306,7 +3306,7 @@ void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, my_p4est_stefa
 
   if(solve_navier_stokes){
     // Adjust the cfl_NS depending on the timestep:
-    if(tstep<=10){
+    if(tstep<=10 ){
       cfl_NS=0.5;
 
       // loosen hodge criteria for initialization for porous media case:
@@ -3314,6 +3314,10 @@ void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, my_p4est_stefa
         hodge_percentage_of_max_u = 0.1;
       }
 
+    }
+    else if((loading_from_previous_state && (tstep <= stefan_w_fluids_solver->get_load_tstep() + 5))){
+      cfl_NS = 2.0;
+      hodge_percentage_of_max_u = hodge_percentage_steady;
     }
     else{
       cfl_NS = cfl_NS_steady;
@@ -3323,7 +3327,6 @@ void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, my_p4est_stefa
       }
     }
   }
-
 
   // Check if some startup time (before allowing interfacial growth) has been requested
   if((startup_dim_time>0.) || (startup_nondim_time>0.)){
@@ -5215,6 +5218,8 @@ int main(int argc, char** argv) {
     if(loading_from_previous_state){
       tn = stefan_w_fluids_solver->get_tn();
       tstep = stefan_w_fluids_solver->get_tstep();
+      stefan_w_fluids_solver->save_fields_to_vtk(-1);
+
     }
     else{
       tn = tstart;
