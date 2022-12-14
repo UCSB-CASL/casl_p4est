@@ -163,11 +163,11 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
       /* this cannot happen as it means the source processor made a mistake in
        * calculating its remote matches.
        */
-      PetscPrintf(p4est->mpicomm, "Relevant info: \n"
+      printf( "Relevant info: rank = %d \n"
                        "rank found = %d \n"
                         "(x, y) = (%0.4f, %0.4f) \n"
                                   "tree index = %d \n"
-                                  "quad index = %d \n", rank_found, xyz[i], xyz[i+1],
+             "quad index = %d \n",p4est->mpirank ,rank_found, xyz[i], xyz[i+1],
                                   best_match.p.piggy3.which_tree,
                                   best_match.p.piggy3.local_num);
 

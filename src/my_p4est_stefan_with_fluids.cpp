@@ -320,10 +320,10 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
 } // end of constructor
 
 void my_p4est_stefan_with_fluids_t::perform_ghost_expansions(p4est_t* p4est_, p4est_ghost_t* ghost_){
-  int num_expansions = cfl_NS > 1. ? ceil(cfl_NS - 1) + 1: 1;
-  for(int i=0; i<num_expansions; i++){
-    my_p4est_ghost_expand(p4est_, ghost_);
-  }
+//  int num_expansions = cfl_NS > 1. ? ceil(cfl_NS - 1) + 1: 1;
+//  for(int i=0; i<num_expansions; i++){
+  my_p4est_ghost_expand(p4est_, ghost_);
+//  }
 }
 void my_p4est_stefan_with_fluids_t::initialize_grids(){
 
