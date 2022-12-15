@@ -3193,7 +3193,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
     phi.get_array();
 
     v_interface_new.get_array();
-    PetscPrintf(mpi->comm(),"warning: there is code written for a grain separation procedure, but it has not yet been tested. \n");
+    PetscPrintf(mpi->comm(),"warning: there is code written for a grain separation procedure, but it has not yet been tested. Note: separation procedure has been deactivated for now \n");
 
     foreach_local_node(n, nodes_np1){
       // Check only nodes in a small band around the interface:
@@ -3311,7 +3311,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
             phi.ptr[n]+= dxyz_min_*proximity_smoothing_ ;
             printf("Changed phi[n] to %0.4f \n", phi.ptr[n]);
           }
-          else if(separate_up_down){
+          else if(0 && separate_up_down){
             phi.ptr[n]-= dxyz_min_*proximity_smoothing_ ;
             printf("Changed phi[n] to %0.4f \n", phi.ptr[n]);
           }
@@ -3333,7 +3333,7 @@ void my_p4est_stefan_with_fluids_t::regularize_front()
             phi.ptr[n]+= dxyz_min_*proximity_smoothing_ ;
             printf("Changed phi[n] to %0.4f \n", phi.ptr[n]);
           }
-          else if(separate_side_side){
+          else if(0 && separate_side_side){
             phi.ptr[n]-= dxyz_min_*proximity_smoothing_ ;
             printf("Changed phi[n] to %0.4f \n", phi.ptr[n]);
           }
