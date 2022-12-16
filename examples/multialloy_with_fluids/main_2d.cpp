@@ -3306,12 +3306,12 @@ void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, my_p4est_stefa
 
   if(solve_navier_stokes){
     // Adjust the cfl_NS depending on the timestep:
-    if(tstep<=10 ){
+    if(tstep<=5 ){
       cfl_NS=0.5;
 
       // loosen hodge criteria for initialization for porous media case:
       if(example_ == EVOLVING_POROUS_MEDIA){
-        hodge_percentage_of_max_u = 0.1;
+        hodge_percentage_of_max_u = hodge_percentage_steady*10;
       }
 
     }
