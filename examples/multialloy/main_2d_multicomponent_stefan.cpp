@@ -93,7 +93,7 @@ param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
 param_t<int> sub_split_num (pl, 0, "sub_split_num", "");
 
 param_t<double> lip  (pl, 1.5, "lip",  "Fine-to-coarse grid transition width");
-param_t<double> band (pl, 6.0, "band", "Uniform band width around interfaces");
+param_t<double> band (pl, 1.5, "band", "Uniform band width around interfaces");
 
 //-------------------------------------
 // solver parameters
@@ -103,9 +103,9 @@ param_t<bool> use_superconvergent_robin (pl, 0, "use_superconvergent_robin", "")
 
 param_t<int>    update_c0_robin (pl, 1,     "update_c0_robin", "Solve for c0 using Robin BC: 0 - never (pl, 1 - once (pl, 2 - always");
 param_t<int>    order_in_time   (pl, 2,     "order_in_time",   "");
-param_t<int>    max_iterations  (pl, 50,     "max_iterations",  "");
+param_t<int>    max_iterations  (pl, 7,     "max_iterations",  "");
 param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
-param_t<double> cfl_number      (pl, 0.1,   "cfl_number",      "");
+param_t<double> cfl_number      (pl, 0.6,   "cfl_number",      "");
 //param_t<double> base_cfl        (pl, pow(1.0,1.5)*0.0811,   "base_cfl",      "");
 param_t<double> base_cfl        (pl, 0.111/pow(4.,1.5),   "base_cfl",      "");
 
@@ -241,8 +241,8 @@ param_t<bool>   start_from_moving_front (pl, 0, "start_from_moving_front", "Rele
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
 
-param_t<BoundaryConditionType> bc_type_conc (pl, DIRICHLET, "bc_type_conc", "DIRICHLET/NEUMANN");
-param_t<BoundaryConditionType> bc_type_temp (pl, DIRICHLET, "bc_type_temp", "DIRICHLET/NEUMANN");
+param_t<BoundaryConditionType> bc_type_conc (pl, NEUMANN, "bc_type_conc", "DIRICHLET/NEUMANN");
+param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRICHLET/NEUMANN");
 param_t<BoundaryConditionType> bc_wall_type_vel  (pl, NEUMANN, "bc_wall_type_vel", "DIRICHLET/NEUMANN");
 // all the above are usually neumann
 
@@ -281,7 +281,7 @@ param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidifi
                                               " 7 - daniil has not defined this case - no comments - need to see what it is,"
                                               " 8 - single dendrite growth <new addition>");
 
-param_t<bool> solve_w_fluids (pl, 1, "solve_w_fluids", "");
+param_t<bool> solve_w_fluids (pl, 0, "solve_w_fluids", "");
 
 // ----------------------------------------
 // alloy parameters
@@ -1579,6 +1579,7 @@ class BC_WALL_TYPE_TEMP: public WallBCDIM
         return bc_type_temp.val;
       }
     }
+    //return bc_type_temp.val;
   }
 }bc_wall_type_temp_;
 
@@ -1602,6 +1603,7 @@ class BC_WALL_TYPE_CONC: public WallBCDIM
         return bc_type_conc.val;
       }
     } // end of switch case
+    //return bc_type_conc.val;
   }
 }bc_wall_type_conc_;
 
@@ -1614,7 +1616,7 @@ public:
   double operator()(DIM(double x, double y, double z)) const
   {
 //    printf("bc temp value accessed \n");
-    // case 8 is treated seperately because we need different BC on different walls
+    // case 5 is treated seperately because we need different BC on different walls
     if (geometry.val==5){
       if((fabs(y-ymax.val) < EPS)){
         return analytic::Tstar; // for DIRICHLET case
@@ -1640,8 +1642,8 @@ public:
           case  1:
           case  2:
           case  3:
-          case  4:return 0;
-          case  5: return analytic::Tstar;
+          case  4: return 0;
+          case  5: return 0;
           case  6:
           case  7:
           case  8: return 0;
@@ -2376,7 +2378,9 @@ int main (int argc, char* argv[])
 
   mas.set_wall_conditions_thermal(bc_wall_type_temp/*bc_type_temp.val*/, bc_value_temp);
   mas.set_wall_conditions_composition(bc_wall_type_conc, bc_value_conc_all);
-  mas.set_volumetric_heat(zero_cf/*volumetric_heat_cf*/);
+  //mas.set_volumetric_heat(zero_cf/*volumetric_heat_cf*/);
+  mas.set_volumetric_heat(volumetric_heat_cf);
+
   PetscPrintf(mpi.comm(), "Warning: we temporarily commented out the volumetric heat gen and put it to zero_cf instead \n");
 
   // Initialize everything for the fluids
@@ -2458,38 +2462,6 @@ int main (int argc, char* argv[])
   std::vector<double> errors_max_over_time(2*num_comps.val+7, 0);
   int itn =1;
 
-//  while(1){
-//    PetscPrintf(mpi.comm(), "\n ------------------------- \n"
-//                                 "Multialloy Main Iteration %d \n "
-//                                 "------------------------- \n", iteration);
-//    if (!keep_going) break;
-////    std::cout<<"line 2262\n";
-//    // compute time step
-//    mas.compute_dt();
-////    std::cout<<"line 2263\n";
-//    if (tn + mas.get_dt() > time_limit.val) {
-//      mas.set_dt(time_limit.val-tn);
-//      keep_going = false;
-//    }
-////    std::cout<<"line 2270\n";
-//    //if (iteration==1){
-////    std::cout<<"line 2275\n";
-//    // solve nonlinear system for temperature, concentration and velocity at t_n
-//    bc_error_max = 0;
-//    bc_error_avg = 0;
-////    std::cout<<"line 2279\n";
-//    sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
-//    PetscPrintf(mpi.comm(), "Onestep w fluids is complete \n");
-//    mas.update_grid_w_fluids();
-////    std::cout<<"line 2280\n";
-//    mas.update_grid_solid();
-////    std::cout<<"line 2282\n";
-//    tn             += mas.get_dt();
-////    std::cout<<"line 2284\n";
-//    keep_going = keep_going && (iteration < step_limit.val) && (total_growth < growth_limit.val);
-//    iteration++;
-//  }
-
   while (1)
   {
 //    PetscPrintf(mpi.comm(), "\n ------- \n Iteration: %d \n --------------- \n", iteration);
@@ -2501,13 +2473,13 @@ int main (int argc, char* argv[])
 
     if (!keep_going) break;
 
-    // compute time step
-    mas.compute_dt();
+//    // compute time step
+//    mas.compute_dt();
 
-    if (tn + mas.get_dt() > time_limit.val) {
-      mas.set_dt(time_limit.val-tn);
-      keep_going = false;
-    }
+//    if (tn + mas.get_dt() > time_limit.val) {
+//      mas.set_dt(time_limit.val-tn);
+//      keep_going = false;
+//    }
 
     // solve nonlinear system for temperature, concentration and velocity at t_n
     bc_error_max = 0;
@@ -2544,7 +2516,7 @@ int main (int argc, char* argv[])
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
       ierr = PetscPrintf(mpi.comm(), "Step convergence saved in %s and %s\n", filename_error_max, filename_error_avg); CHKERRXX(ierr);
     }
-
+    /*
     // compute total growth
     total_growth = base;
 
@@ -2562,10 +2534,11 @@ int main (int argc, char* argv[])
     }
     front_phi.restore_array();
 
+
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &total_growth, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
     total_growth -= base;
-
+    */
     ierr = PetscPrintf(mpi.comm(), "------------------------------------------------------------------------------------------------------\n"
                                    "Time step %d: growth %e, simulation time %e, compute time %e\n"
                                    "------------------------------------------------------------------------------------------------------\n",
@@ -2691,6 +2664,15 @@ int main (int argc, char* argv[])
     }
     if (save_now) vtk_idx++;
 
+    // Rochi :: moving compute_dt to a different location
+    // compute time step
+    mas.compute_dt();
+
+    if (tn + mas.get_dt() > time_limit.val) {
+      mas.set_dt(time_limit.val-tn);
+      keep_going = false;
+    }
+
     if(solve_w_fluids.val){
       mas.update_grid_w_fluids();
       PetscPrintf(mpi.comm(), "Update grid with fluids is complete \n");
@@ -2701,13 +2683,33 @@ int main (int argc, char* argv[])
 
     mas.update_grid_solid();
 
+    // compute total growth - new position - Rochi - checking if growth is occuring now or not
+    total_growth = base;
+
+    p4est         = mas.get_p4est();
+    nodes         = mas.get_nodes();
+    front_phi.vec = mas.get_front_phi();
+
+    front_phi.get_array();
+    foreach_node(n, nodes) {
+      if (front_phi.ptr[n] > 0) {
+        double xyz[P4EST_DIM];
+        node_xyz_fr_n(n, p4est, nodes, xyz);
+        total_growth = MAX(total_growth, xyz[1]);
+      }
+    }
+    front_phi.restore_array();
+
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, &total_growth, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+    total_growth -= base;
+
     //std::cout << "Total growth :: "<< total_growth << " ; Growth Limit :: " << growth_limit.val << "\n";
     keep_going = keep_going && (iteration < step_limit.val) && (total_growth < growth_limit.val);
 
     iteration++;
 
   }
-
   w1.stop(); w1.read_duration();
 
   return 0;

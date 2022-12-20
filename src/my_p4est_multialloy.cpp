@@ -290,10 +290,10 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   my_p4est_partition(p4est_, P4EST_FALSE, NULL);
 
   ghost_ = my_p4est_ghost_new(p4est_, P4EST_CONNECT_FULL);
-  printf("should have expanded the ghost layer ? vvv solve_w_fluids = %d \n", solve_with_fluids);
+  //printf("should have expanded the ghost layer ? vvv solve_w_fluids = %d \n", solve_with_fluids);
   if(solve_with_fluids) {my_p4est_ghost_expand(p4est_, ghost_); printf("EXPANDS THE GHOST LAYER !!! \n");}
 
-  printf("should have expanded the ghost layer ? ^^^ solve_w_fluids = %d \n", solve_with_fluids);
+  //printf("should have expanded the ghost layer ? ^^^ solve_w_fluids = %d \n", solve_with_fluids);
   // TO-DO MULTICOMP: eventually add extra expansions for ghost layer for CFL larger than 2
   nodes_ = my_p4est_nodes_new(p4est_, ghost_);
 
@@ -746,7 +746,7 @@ void my_p4est_multialloy_t::compute_velocity()
 
     double velo_norm_avg = integrate_over_interface(p4est_, nodes_, front_phi_.vec, front_velo_norm_[0].vec)
                            /integrate_over_interface(p4est_, nodes_, front_phi_.vec, ones.vec);
-
+    PetscPrintf(p4est_->mpicomm, "velo_norm_avg :: %e \n", velo_norm_avg);
     VecSetGhost(front_velo_norm_[0].vec, velo_norm_avg);
 
     foreach_dimension(dim)
@@ -792,12 +792,10 @@ void my_p4est_multialloy_t::compute_dt()
       curvature_max = MAX(curvature_max, fabs(front_curvature_.ptr[n]));
     }
   }
-
   double buffer[] = {velo_norm_max, curvature_max};
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, buffer, 2, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
   velo_norm_max = buffer[0];
   curvature_max = buffer[1];
-
   front_velo_norm_max_ = velo_norm_max;
 
   for (int i = 1; i < num_time_layers_; ++i)
@@ -2332,10 +2330,10 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // compute velocity
   compute_velocity();
 
-//  PetscPrintf(p4est_->mpicomm, "Forcing front velo to zero ... \n");
-//  foreach_dimension(d){
-//    ierr= VecScaleGhost(front_velo_[0].vec[d], 0.);
-//  }
+  /*PetscPrintf(p4est_->mpicomm, "Forcing front velo to zero ... \n");
+  foreach_dimension(d){
+    ierr= VecScaleGhost(front_velo_[0].vec[d], 0.);
+  }*/
 
 
 

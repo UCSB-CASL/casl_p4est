@@ -574,7 +574,7 @@ public:
     wall_bc_value_temp_ = &bc_value;
 
     double test_val = (bc_value)(1.0, 1.0);
-    printf("Sets wall bc temp: Testing wall bc value temp : %0.2f \n", test_val);
+    //printf("Sets wall bc temp: Testing wall bc value temp : %0.2f \n", test_val);
   }
 
 //  inline void set_wall_conditions_composition(BoundaryConditionType bc_type, CF_DIM *bc_value[])

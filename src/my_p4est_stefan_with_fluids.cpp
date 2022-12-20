@@ -2205,7 +2205,7 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
     }
   }
 
-  if(1){
+  if(0){
     // -------------------------------
     // TEMPORARY: save fields before NS
     // -------------------------------
@@ -2221,7 +2221,7 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
       throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
     }
 
-    printf("Saving NS fields to VTK ... \n");
+    //printf("Saving NS fields to VTK ... \n");
     char filename[1000];
     sprintf(filename, "%s/snapshot_before_NS_SWF_%d", out_dir, tstep);
     my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
@@ -2339,7 +2339,7 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
   }
   if(print_checkpoints) PetscPrintf(mpi->comm(),"Completed Navier-Stokes step \n");
 
-  if(1){
+  if(0){
     // -------------------------------
     // TEMPORARY: save fields after NS
     // -------------------------------
@@ -2355,7 +2355,7 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
       throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
     }
 
-    printf("Saving NS fields to VTK ... \n");
+    //printf("Saving NS fields to VTK ... \n");
     char filename[1000];
     sprintf(filename, "%s/snapshot_after_NS_SWF_%d", out_dir, tstep);
     my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
