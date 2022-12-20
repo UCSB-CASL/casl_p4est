@@ -3311,7 +3311,9 @@ void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, my_p4est_stefa
 
       // loosen hodge criteria for initialization for porous media case:
       if(example_ == EVOLVING_POROUS_MEDIA){
-        hodge_percentage_of_max_u = hodge_percentage_steady*10;
+        hodge_percentage_of_max_u = hodge_percentage_steady/**10*/;
+        stefan_w_fluids_solver->set_hodge_max_iteration(500);
+
       }
 
     }
@@ -3324,6 +3326,8 @@ void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, my_p4est_stefa
 
       if(example_ == EVOLVING_POROUS_MEDIA){
         hodge_percentage_of_max_u = hodge_percentage_steady; // to-do : clean up, num startup iterations should be a user intput, instead of just being set to 10
+        stefan_w_fluids_solver->set_hodge_max_iteration(50);
+
       }
     }
   }
