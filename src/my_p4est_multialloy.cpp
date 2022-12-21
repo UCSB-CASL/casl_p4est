@@ -1383,26 +1383,73 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   front_normal_.destroy();
   front_normal_.create(front_phi_dd_.vec);
 
-  /* temperature */
+  printf("aaa \n");
+  //
+  // Get rid of the old tl2 (and concentrations)
+  tl_[2].destroy();
+  cl_[2].destroy();
+
+  // Slide tl1 --> tl2 (and concentrations)
+  tl_[2].create(tl_[1].vec);
+  VecCopyGhost(tl_[1].vec, tl_[2].vec );
+
+  cl_[2].create(tl_[1].vec);
+  for(int i=0; i<num_comps_; i++){
+    VecCopyGhost(cl_[1].vec[i], cl_[2].vec[i]);
+  }
+
+  printf("bbb \n");
+
+  // Get rid of the old tl1
+  tl_[1].destroy();
+  tl_[1].create(front_phi_.vec);
+  interp.set_input(tl_[0].vec, interpolation_between_grids_);
+  interp.interpolate(tl_[1].vec);
+
+  cl_[1].destroy();
+  cl_[1].create(front_phi_.vec);
+  for(int i=0; i<num_comps_; i++){
+    interp.set_input(cl_[0].vec[i], interpolation_between_grids_);
+    interp.interpolate(cl_[1].vec[i]);
+  }
+
+  printf("ccc \n");
+
+  // Get rid of tl0 on old grid now:
+  tl_[0].destroy();
+  tl_[0].create(front_phi_.vec);
+  VecCopyGhost(tl_[1].vec, tl_[0].vec);
+
+  cl_[0].destroy();
+  cl_[0].create(front_phi_.vec);
+  for(int i=0; i<num_comps_; i++){
+    VecCopyGhost(cl_[1].vec[i], cl_[0].vec[i]);
+  }
+
+  printf("ddd \n");
+
+
+
+  // Old daniil stuff that gets interpolated bw grids:
   for (int j = num_time_layers_-1; j > 0; --j)
   {
-    tl_[j].destroy();
-    tl_[j].create(front_phi_.vec);
-    interp.set_input(tl_[j-1].vec, interpolation_between_grids_);
-    interp.interpolate(tl_[j].vec);
+//    tl_[j].destroy();
+//    tl_[j].create(front_phi_.vec);
+//    interp.set_input(tl_[j-1].vec, interpolation_between_grids_);
+//    interp.interpolate(tl_[j].vec);
 
     ts_[j].destroy();
     ts_[j].create(front_phi_.vec);
     interp.set_input(ts_[j-1].vec, interpolation_between_grids_);
     interp.interpolate(ts_[j].vec);
 
-    cl_[j].destroy();
-    cl_[j].create(front_phi_.vec);
-    for (int i = 0; i < num_comps_; ++i)
-    {
-      interp.set_input(cl_[j-1].vec[i], interpolation_between_grids_);
-      interp.interpolate(cl_[j].vec[i]);
-    }
+//    cl_[j].destroy();
+//    cl_[j].create(front_phi_.vec);
+//    for (int i = 0; i < num_comps_; ++i)
+//    {
+//      interp.set_input(cl_[j-1].vec[i], interpolation_between_grids_);
+//      interp.interpolate(cl_[j].vec[i]);
+//    }
 
     front_velo_norm_[j].destroy();
     front_velo_norm_[j].create(front_phi_.vec);
@@ -1418,18 +1465,18 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     }
   }
 
-  tl_[0].destroy();
-  tl_[0].create(front_phi_.vec);
-  VecCopyGhost(tl_[1].vec, tl_[0].vec);
+//  tl_[0].destroy();
+//  tl_[0].create(front_phi_.vec);
+//  VecCopyGhost(tl_[1].vec, tl_[0].vec);
   ts_[0].destroy();
   ts_[0].create(front_phi_.vec);
   VecCopyGhost(ts_[1].vec, ts_[0].vec);
-  cl_[0].destroy();
-  cl_[0].create(front_phi_.vec);
-  for (int i = 0; i < num_comps_; ++i)
-  {
-    VecCopyGhost(cl_[1].vec[i], cl_[0].vec[i]);
-  }
+//  cl_[0].destroy();
+//  cl_[0].create(front_phi_.vec);
+//  for (int i = 0; i < num_comps_; ++i)
+//  {
+//    VecCopyGhost(cl_[1].vec[i], cl_[0].vec[i]);
+//  }
   front_velo_[0].destroy();
   front_velo_[0].create(front_phi_dd_.vec);
   front_velo_norm_[0].destroy();
@@ -2014,16 +2061,16 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // Pass all relevant vectors/grid objects to stefan_w_fluids solver:
   // ---------------------------------
   // Concentrations:
-  stefan_w_fluids_solver->set_Cl_n(cl_[0]);
-  stefan_w_fluids_solver->set_Cl_nm1(cl_[1]);
+  stefan_w_fluids_solver->set_Cl_n(cl_[1]);
+  stefan_w_fluids_solver->set_Cl_nm1(cl_[2]);
   
   // Concentration backtraces:
   stefan_w_fluids_solver->set_Cl_backtrace_n(cl_backtrace_n);
   stefan_w_fluids_solver->set_Cl_backtrace_nm1(cl_backtrace_nm1);
 
   // Temperatures:
-  stefan_w_fluids_solver->set_T_l_n(tl_[0]);
-  stefan_w_fluids_solver->set_T_l_nm1(tl_[1]);
+  stefan_w_fluids_solver->set_T_l_n(tl_[1]);
+  stefan_w_fluids_solver->set_T_l_nm1(tl_[2]);
 
   // Temperature backtraces:
   stefan_w_fluids_solver->set_T_l_backtrace_n(tl_backtrace_n);
@@ -2093,8 +2140,8 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     point_fields.clear();
   }
 
-  stefan_w_fluids_solver->set_dt_nm1(dt_[1]);
-  stefan_w_fluids_solver->set_dt(dt_[0]);
+  stefan_w_fluids_solver->set_dt_nm1(dt_[2]);
+  stefan_w_fluids_solver->set_dt(dt_[1]);
 
   stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_, iteration_w_fluids);
 

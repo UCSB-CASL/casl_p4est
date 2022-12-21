@@ -1816,7 +1816,8 @@ bool is_y_wall(DIM(double x, double y, double z)){
 };
 // For velocity BCs/ICs
 double u0=0.;
-double v0=-1.0;
+double v0=-1.0e-4;
+
 double outflow_u=0.;
 double outflow_v=0.;
 // --------------------------------------------------------------------------------------------------------------
@@ -2282,7 +2283,7 @@ int main (int argc, char* argv[])
 //  double lmin_eff = lmin_new + log(initial_division)/log(2.);
 
   /* initialize the solver */
-  my_p4est_multialloy_t mas(num_comps.val, 1/*order_in_time.val*/);
+  my_p4est_multialloy_t mas(num_comps.val, order_in_time.val);
 
 
   mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin_new, lmax_new, lip.val, band.val, solve_w_fluids.val);

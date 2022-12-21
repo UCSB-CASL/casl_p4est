@@ -899,7 +899,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
       ngbd_np1->second_derivatives_central(Cl_n.vec[j], Cl_dd[j].vec);
 
       if(advection_sl_order==2){
-        Cl_dd_nm1[j].create(p4est_np1, nodes_np1);
+        Cl_dd_nm1[j].create(p4est_n, nodes_n);
         ngbd_n->second_derivatives_central(Cl_nm1.vec[j], Cl_dd_nm1[j].vec);
       }
     }
@@ -923,13 +923,14 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   }
 
 
-  if(0){
+  if(1){
     // -------------------------------
     // TEMPORARY: save fields before backtrace
     // -------------------------------
     std::vector<Vec_for_vtk_export_t> point_fields;
     std::vector<Vec_for_vtk_export_t> cell_fields = {};
 
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
 
     point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl_tn"));
     point_fields.push_back(Vec_for_vtk_export_t(Cl_n.vec[0], "Cl0_tn"));
@@ -1018,6 +1019,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   } // end of loop over local nodes
 
   v_n.restore_array();
+
   // Interpolate the Temperature data to back-traced points:
   SL_backtrace_interp.set_input(T_l_n.vec, T_l_dd.vec[0], T_l_dd.vec[1],quadratic_non_oscillatory_continuous_v2);
   SL_backtrace_interp.interpolate(T_l_backtrace_n.vec);
@@ -1092,13 +1094,14 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 
 
 
-  if(0){
+  if(1){
     // -------------------------------
-    // TEMPORARY: save fields before backtrace
+    // TEMPORARY: save fields after backtrace
     // -------------------------------
     std::vector<Vec_for_vtk_export_t> point_fields;
     std::vector<Vec_for_vtk_export_t> cell_fields = {};
 
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
 
     point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl_tn"));
     point_fields.push_back(Vec_for_vtk_export_t(Cl_n.vec[0], "Cl0_tn"));
