@@ -114,16 +114,16 @@ param_t<double> proximity_smoothing       (pl, 1.01, "proximity_smoothing",     
 //-------------------------------------
 // output parameters
 //-------------------------------------
-param_t<bool>   save_characteristics (pl, 1, "save_characteristics", "");
+param_t<bool>   save_characteristics (pl, 0, "save_characteristics", "");
 param_t<bool>   save_dendrites       (pl, 0, "save_dendrites", "");
 param_t<bool>   save_accuracy        (pl, 0, "save_accuracy", "");
 param_t<bool>   save_timings         (pl, 0, "save_timings", "");
 param_t<bool>   save_params          (pl, 1, "save_params", "");
 param_t<bool>   save_vtk             (pl, 1, "save_vtk", "");
-param_t<bool>   save_vtk_solid       (pl, 1, "save_vtk_solid", "");
+param_t<bool>   save_vtk_solid       (pl, 0, "save_vtk_solid", "");
 param_t<bool>   save_vtk_analytical  (pl, 0, "save_vtk_analytical", "");
 param_t<bool>   save_p4est           (pl, 1, "save_p4est", "");
-param_t<bool>   save_p4est_solid     (pl, 1, "save_p4est_solid", "");
+param_t<bool>   save_p4est_solid     (pl, 0, "save_p4est_solid", "");
 param_t<bool>   save_step_convergence(pl, 0, "save_step_convergence", "");
 
 param_t<int>    save_every_dn (pl, 1000, "save_every_dn", "");
@@ -2364,6 +2364,7 @@ int main (int argc, char* argv[])
   }
   mas.set_undercoolings(num_seeds(), seed_map.vec, eps_v_all.data(), eps_c_all.data());
 
+
   // set geometry
   mas.set_front(front_phi.vec);
   mas.set_container(contr_phi.vec);
@@ -2471,6 +2472,7 @@ int main (int argc, char* argv[])
         (save_type.val == 0 && iteration    >= vtk_idx*save_every_dn.val) ||
         (save_type.val == 1 && total_growth >= vtk_idx*save_every_dl.val) ||
         (save_type.val == 2 && tn           >= vtk_idx*save_every_dt.val);
+    //bool save_now=0;
 
     if (!keep_going) break;
 
@@ -2711,6 +2713,13 @@ int main (int argc, char* argv[])
     iteration++;
 
   }
+  for (int i = 0; i < num_seeds(); ++i)
+  {
+      if(eps_c_all[i]) delete eps_c_all[i];
+      if(eps_v_all[i]) delete eps_v_all[i];
+  }
+  eps_c_all.clear();
+  eps_v_all.clear();
   w1.stop(); w1.read_duration();
 
   return 0;

@@ -291,7 +291,7 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
 
   ghost_ = my_p4est_ghost_new(p4est_, P4EST_CONNECT_FULL);
   //printf("should have expanded the ghost layer ? vvv solve_w_fluids = %d \n", solve_with_fluids);
-  if(solve_with_fluids) {my_p4est_ghost_expand(p4est_, ghost_); printf("EXPANDS THE GHOST LAYER !!! \n");}
+  if(solve_with_fluids) {my_p4est_ghost_expand(p4est_, ghost_); }/*printf("EXPANDS THE GHOST LAYER !!! \n");*/
 
   //printf("should have expanded the ghost layer ? ^^^ solve_w_fluids = %d \n", solve_with_fluids);
   // TO-DO MULTICOMP: eventually add extra expansions for ghost layer for CFL larger than 2
@@ -1383,7 +1383,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   front_normal_.destroy();
   front_normal_.create(front_phi_dd_.vec);
 
-  printf("aaa \n");
+  //printf("aaa \n");
   //
   // Get rid of the old tl2 (and concentrations)
   tl_[2].destroy();
@@ -1398,7 +1398,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     VecCopyGhost(cl_[1].vec[i], cl_[2].vec[i]);
   }
 
-  printf("bbb \n");
+  //printf("bbb \n");
 
   // Get rid of the old tl1
   tl_[1].destroy();
@@ -1413,7 +1413,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     interp.interpolate(cl_[1].vec[i]);
   }
 
-  printf("ccc \n");
+  //printf("ccc \n");
 
   // Get rid of tl0 on old grid now:
   tl_[0].destroy();
@@ -1426,7 +1426,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     VecCopyGhost(cl_[1].vec[i], cl_[0].vec[i]);
   }
 
-  printf("ddd \n");
+  //printf("ddd \n");
 
 
 
@@ -2542,7 +2542,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 void my_p4est_multialloy_t::save_VTK(int iter)
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
-  //std:: cout<<"mas line 2017 \n";
+
   if(solve_with_fluids)
   {
     ierr = PetscPrintf(p4est_->mpicomm, " solve_w_fluids \n");
@@ -2559,16 +2559,11 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   char name[1000];
   sprintf(name, "%s/vtu/multialloy_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
 
-  /*
-  // cell data
-  std::vector<const double *>    cell_data;
-  std::vector<std::string> cell_data_names;
-  */
   // new format for saving to vtk
-  //std:: cout<<"mas line 2036 \n";
+  std:: cout<<"mas line 2036 \n";
   std::vector<Vec_for_vtk_export_t> cell_fields = {};
   /* save the size of the leaves */
-  Vec leaf_level;
+  Vec leaf_level=NULL;
   ierr = VecCreateGhostCells(p4est_, ghost_, &leaf_level); CHKERRXX(ierr);
   double *l_p;
   ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
@@ -2582,117 +2577,81 @@ void my_p4est_multialloy_t::save_VTK(int iter)
       l_p[tree->quadrants_offset+q] = quad->level;
     }
   }
-  //std:: cout<<"mas line 2053 \n";
+
   for(size_t q=0; q<ghost_->ghosts.elem_count; ++q)
   {
     const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost_->ghosts, q);
     l_p[p4est_->local_num_quadrants+q] = quad->level;
   }
-  //std:: cout<<"mas line 2059 \n";
-  //cell_data.push_back(l_p); cell_data_names.push_back("leaf_level");
+
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
   cell_fields.push_back(Vec_for_vtk_export_t(leaf_level, "leaf_level"));
-  // point data
-  /*std::vector<const double *>    point_data;
-  std::vector<std::string> point_data_names;*/
+  //ierr = delete_and_nullify_vector(leaf_level); CHKERRXX(ierr);
+
 
   std::vector<Vec_for_vtk_export_t> point_fields;
 
-  //front_phi_.get_array();
-  //point_data.push_back(front_phi_.ptr); point_data_names.push_back("phi");
+
   point_fields.push_back(Vec_for_vtk_export_t(front_phi_.vec, "phi" ));
   if (contr_phi_.vec != NULL)
   {
-    //contr_phi_.get_array(); // point_data.push_back(contr_phi_.ptr); point_data_names.push_back("contr");
+
     point_fields.push_back(Vec_for_vtk_export_t(contr_phi_.vec, "contr" ));
   }
-  //std:: cout<<"mas line 2077 \n";
-  //tl_[0].get_array(); //point_data.push_back(tl_[0].ptr); point_data_names.push_back("tl");
+
   point_fields.push_back(Vec_for_vtk_export_t(tl_[0].vec, "tl" ));
-  //ts_[0].get_array(); //point_data.push_back(ts_[0].ptr); point_data_names.push_back("ts");
   point_fields.push_back(Vec_for_vtk_export_t(ts_[0].vec, "ts" ));
-  //cl_[0].get_array();
-  //std:: cout<<"mas line 2083 \n";
+
   for (int i = 0; i < num_comps_; ++i)
   {
     char numstr[21];
     sprintf(numstr, "%d", i);
     std::string name("cl");
-    //point_data.push_back(cl_[0].ptr[i]); point_data_names.push_back(name + numstr);
     point_fields.push_back(Vec_for_vtk_export_t(cl_[0].vec[i], name+numstr));
   }
-  //std:: cout<<"mas line 2092 \n";
-  //front_velo_norm_[0]      .get_array(); //point_data.push_back(front_velo_norm_[0].ptr);       point_data_names.push_back("vn");
+
   point_fields.push_back(Vec_for_vtk_export_t(front_velo_norm_[0].vec, "vn" ));
-  //std:: cout<<"mas line 2095 \n";
-  //front_curvature_         .get_array(); //point_data.push_back(front_curvature_.ptr);          point_data_names.push_back("kappa");
-  //std:: cout<<"mas line 2097 \n";
+
   point_fields.push_back(Vec_for_vtk_export_t(front_curvature_.vec, "kappa" ));
-  //bc_error_                .get_array(); //point_data.push_back(bc_error_.ptr);                 point_data_names.push_back("bc_error");
-  //std:: cout<<"mas line 2100 \n";
+
   point_fields.push_back(Vec_for_vtk_export_t(bc_error_.vec, "bc_error" ));
-  //dendrite_number_         .get_array(); //point_data.push_back(dendrite_number_.ptr);          point_data_names.push_back("dendrite_number");
-  //std:: cout<<"mas line 2103 \n";
+
   point_fields.push_back(Vec_for_vtk_export_t(dendrite_number_.vec, "dendrite_number" ));
-  //dendrite_tip_            .get_array(); //point_data.push_back(dendrite_tip_.ptr);             point_data_names.push_back("dendrite_tip");
-  //std:: cout<<"mas line 2106 \n";
+
   point_fields.push_back(Vec_for_vtk_export_t(dendrite_tip_.vec, "dendrite_tip" ));
-  //seed_map_                .get_array(); //point_data.push_back(seed_map_.ptr);                 point_data_names.push_back("seed_num");
-  //std:: cout<<"mas line 2109 \n";
+
   point_fields.push_back(Vec_for_vtk_export_t(seed_map_.vec, "seed_num" ));
-  //smoothed_nodes_          .get_array(); //point_data.push_back(smoothed_nodes_.ptr);           point_data_names.push_back("smoothed_nodes");
-  //std:: cout<<"mas line 2112 \n";
+
   point_fields.push_back(Vec_for_vtk_export_t(smoothed_nodes_.vec, "smoothed_nodes" ));
-  //std:: cout<<"mas line 2114 \n";
-  //front_phi_unsmooth_      .get_array(); //point_data.push_back(front_phi_unsmooth_.ptr);       point_data_names.push_back("phi_unsmooth");
+
   point_fields.push_back(Vec_for_vtk_export_t(front_phi_unsmooth_.vec, "phi_unsmooth" ));
-  //std:: cout<<"mas line 2117\n";
-  // if solving with fluids , output fluid velocity
+
   if (solve_with_fluids){
-//        std:: cout<<"we are here \n";
+
         point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "u"));
-        //std:: cout<<"mas line 2122\n";
+
         point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "v"));
-        //std:: cout<<"mas line 2124\n";
+
         point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
-        //std:: cout<<"mas line 2126\n";
+
         point_fields.push_back(Vec_for_vtk_export_t(press_nodes.vec, "pressure"));
   }
   VecScaleGhost(front_velo_norm_[0].vec, 1./scaling_);
-  //std:: cout<<"mas line 2130\n";
+
   my_p4est_vtk_write_all_lists(p4est_, nodes_, ghost_,
                                P4EST_TRUE, P4EST_TRUE,
                                name,
                                point_fields,
                                cell_fields);
-  //std:: cout<<"mas line 2136\n";
+
   VecScaleGhost(front_velo_norm_[0].vec, scaling_);
 
-  //ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
-  //ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
-  /*
-  front_phi_.restore_array();
-
-  if (contr_phi_.vec != NULL)
-  {
-    contr_phi_.restore_array();
-  }
-
-  tl_[0].restore_array();
-  ts_[0].restore_array();
-  cl_[0].restore_array();
-
-  front_velo_norm_[0]      .restore_array();
-  front_curvature_         .restore_array();
-  bc_error_                .restore_array();
-  dendrite_number_         .restore_array();
-  dendrite_tip_            .restore_array();
-  seed_map_                .restore_array();
-  smoothed_nodes_          .restore_array();
-  front_phi_unsmooth_      .restore_array();
-  */
   PetscPrintf(p4est_->mpicomm, "VTK saved in %s\n", name);
+  cell_fields.clear();
+  point_fields.clear();
+  if(leaf_level!=NULL) {ierr = VecDestroy(leaf_level);       CHKERRXX(ierr); }
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
+  std:: cout<<"mas line 2140\n";
 }
 
 void my_p4est_multialloy_t::save_VTK_solid(int iter)
