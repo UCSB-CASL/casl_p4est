@@ -211,18 +211,23 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   my_p4est_brick_destroy(connectivity_, &brick_);
   if(solve_with_fluids){
     if(stefan_w_fluids_solver!=nullptr) delete stefan_w_fluids_solver;
-
     foreach_dimension(d){
       // Interface:
+      delete bc_interface_val_fluid_vel[d];
       bc_interface_val_fluid_vel[d] = NULL;
+      delete bc_interface_type_fluid_vel[d];
       bc_interface_type_fluid_vel[d] = NULL;
 
       // Wall:
+      delete bc_wall_value_velocity[d];
       bc_wall_value_velocity[d] = NULL;
+      delete bc_wall_type_velocity[d];
       bc_wall_type_velocity[d] = NULL;
     }
     bc_interface_type_fluid_press=NOINTERFACE;
     bc_interface_val_fluid_press=NULL;
+    v_n.destroy();
+    v_nm1.destroy();
   }
   delete sp_crit_;
 }
@@ -1120,6 +1125,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
 //  my_p4est_node_neighbors_t* ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
 
   p4est_ = p4est_copy(p4est_nm1, P4EST_FALSE);
+  p4est_->connectivity = p4est_nm1->connectivity;
   ghost_ = my_p4est_ghost_new(p4est_, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_, ghost_);
   nodes_ = my_p4est_nodes_new(p4est_, ghost_);
@@ -1698,9 +1704,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   compute_geometric_properties_front();
   compute_geometric_properties_contr();
   front_phi_old.destroy();
-
-
-
 
 }
 
@@ -2535,6 +2538,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   iteration_w_fluids++;
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
+  if(vgamma_n_vec.ptr!=nullptr) vgamma_n_vec.destroy();
   return one_step_iterations;
 } // END OF ONE STEP W FLUIDS
 
