@@ -172,7 +172,6 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   psi_tl_.destroy();
   psi_ts_.destroy();
   psi_cl_.destroy();
-
   //--------------------------------------------------
   // Geometry on the auxiliary grid
   //--------------------------------------------------
@@ -196,33 +195,30 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   front_phi_unsmooth_.destroy();
 
   /* destroy the p4est and its connectivity structure */
-  delete ngbd_;
-  delete hierarchy_;
-  p4est_nodes_destroy(nodes_);
-  p4est_ghost_destroy(ghost_);
-  p4est_destroy      (p4est_);
+  if(ngbd_ !=NULL) {delete ngbd_; ngbd_ = NULL;}
+  if(hierarchy_ !=NULL) {delete hierarchy_; hierarchy_ = NULL;}
 
-  delete solid_ngbd_;
-  delete solid_hierarchy_;
-  p4est_nodes_destroy(solid_nodes_);
-  p4est_ghost_destroy(solid_ghost_);
-  p4est_destroy      (solid_p4est_);
+  if(nodes_!=NULL) {p4est_nodes_destroy(nodes_); nodes_ = NULL;}
+  if(ghost_!=NULL) {p4est_ghost_destroy(ghost_); ghost_ = NULL;}
+  if(p4est_!=NULL) {p4est_destroy      (p4est_); p4est_ = NULL;}
+  if(solid_ngbd_!=NULL) {delete solid_ngbd_; solid_ngbd_ = NULL;}
 
-  my_p4est_brick_destroy(connectivity_, &brick_);
+  if(solid_hierarchy_ !=NULL) {delete solid_hierarchy_; solid_hierarchy_ = NULL;}
+
+  if(solid_nodes_ !=NULL) {p4est_nodes_destroy(solid_nodes_); solid_nodes_ = NULL;}
+  if(solid_ghost_ !=NULL) {p4est_ghost_destroy(solid_ghost_); solid_ghost_ = NULL;}
+  if(solid_p4est_ !=NULL) {p4est_destroy      (solid_p4est_); solid_p4est_ = NULL;}
+
+  my_p4est_brick_destroy(connectivity_, &brick_); connectivity_ = NULL;
   if(solve_with_fluids){
     if(stefan_w_fluids_solver!=nullptr) delete stefan_w_fluids_solver;
     foreach_dimension(d){
       // Interface:
       delete bc_interface_val_fluid_vel[d];
-      bc_interface_val_fluid_vel[d] = NULL;
-      delete bc_interface_type_fluid_vel[d];
-      bc_interface_type_fluid_vel[d] = NULL;
 
       // Wall:
       delete bc_wall_value_velocity[d];
-      bc_wall_value_velocity[d] = NULL;
       delete bc_wall_type_velocity[d];
-      bc_wall_type_velocity[d] = NULL;
     }
     bc_interface_type_fluid_press=NOINTERFACE;
     bc_interface_val_fluid_press=NULL;
@@ -230,6 +226,14 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
     v_nm1.destroy();
   }
   delete sp_crit_;
+
+  // destroy the extra grid objects
+  if(nodes_nm1 !=NULL) p4est_nodes_destroy(nodes_nm1);
+  if(ghost_nm1 !=NULL) p4est_ghost_destroy(ghost_nm1);
+  if(p4est_nm1 !=NULL) p4est_destroy      (p4est_nm1);
+
+  if(hierarchy_nm1 != NULL) delete hierarchy_nm1;
+  if(ngbd_nm1!= NULL) delete ngbd_nm1;
 }
 void my_p4est_multialloy_t::set_front(Vec phi)
 {
