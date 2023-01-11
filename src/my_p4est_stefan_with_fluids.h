@@ -1491,6 +1491,35 @@ public:
     }    
   }
 
+  // ---------------------------------------------------------
+  // FUNCTIONS TO NULLIFY VECTORS OWNED BY STEFAN_WITH_FLUIDS
+  // DO NOT TOUCH THESE UNLESS YOU REALLY KNOW WHAT YOU'RE DOING AND ARE
+  // PREPARED TO RUN MEMORY LEAK CHECKS
+  // These should really only be used in conjunction with the multialloy class, or in other scenarios
+  // where another class is the primary owner of vectors but gives them to SWF to use, and handles the destructions before SWF can do it
+  void nullify_phi(){
+    phi.vec = NULL;
+  }
+  void nullify_T_l_n(){
+    T_l_n.vec = NULL;
+  }
+  void nullify_T_l_nm1(){
+    T_l_nm1.vec = NULL;
+  }
+  void nullify_v_interface(){
+    foreach_dimension(d){
+      v_interface.vec[d] = NULL;
+    }
+  }
+  void nullify_vorticity(){
+    vorticity.vec=NULL;
+  }
+//  void nullify_press_nodes(){
+//    press_nodes.vec = NULL;
+//  }
+  // ---------------------------------------------------------
+
+
 };
 
 #endif // STEFAN_WITH_FLUIDS_H

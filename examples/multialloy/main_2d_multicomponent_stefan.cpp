@@ -2692,6 +2692,8 @@ int main (int argc, char* argv[])
     p4est         = mas.get_p4est();
     nodes         = mas.get_nodes();
     front_phi.vec = mas.get_front_phi();
+    printf("IN MAIN: front_phi = %p, front_phi.vec = %p \n", front_phi, front_phi.vec);
+
 
     front_phi.get_array();
     foreach_node(n, nodes) {

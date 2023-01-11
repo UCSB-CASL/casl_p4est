@@ -143,11 +143,15 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
 
 my_p4est_multialloy_t::~my_p4est_multialloy_t()
 {
+  printf("MULTI destructor starts \n");
+
+
   //--------------------------------------------------
   // Geometry
   //--------------------------------------------------
   contr_phi_.destroy();
   front_phi_.destroy();
+
   front_curvature_.destroy();
 
   contr_phi_dd_.destroy();
@@ -195,22 +199,39 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   front_phi_unsmooth_.destroy();
 
   /* destroy the p4est and its connectivity structure */
-  if(ngbd_ !=NULL) {delete ngbd_; ngbd_ = NULL;}
-  if(hierarchy_ !=NULL) {delete hierarchy_; hierarchy_ = NULL;}
+  if(!solve_with_fluids){
+    // If solving with fluids, navier stokes will handle the destruction of these grid objects
+    if(ngbd_ !=NULL) {delete ngbd_; ngbd_ = NULL;}
+    if(hierarchy_ !=NULL) {delete hierarchy_; hierarchy_ = NULL;}
 
-  if(nodes_!=NULL) {p4est_nodes_destroy(nodes_); nodes_ = NULL;}
-  if(ghost_!=NULL) {p4est_ghost_destroy(ghost_); ghost_ = NULL;}
-  if(p4est_!=NULL) {p4est_destroy      (p4est_); p4est_ = NULL;}
+    if(nodes_!=NULL) {p4est_nodes_destroy(nodes_); nodes_ = NULL;}
+    if(ghost_!=NULL) {p4est_ghost_destroy(ghost_); ghost_ = NULL;}
+    if(p4est_!=NULL) {p4est_destroy      (p4est_); p4est_ = NULL;}
+  }
+
   if(solid_ngbd_!=NULL) {delete solid_ngbd_; solid_ngbd_ = NULL;}
-
   if(solid_hierarchy_ !=NULL) {delete solid_hierarchy_; solid_hierarchy_ = NULL;}
 
   if(solid_nodes_ !=NULL) {p4est_nodes_destroy(solid_nodes_); solid_nodes_ = NULL;}
   if(solid_ghost_ !=NULL) {p4est_ghost_destroy(solid_ghost_); solid_ghost_ = NULL;}
   if(solid_p4est_ !=NULL) {p4est_destroy      (solid_p4est_); solid_p4est_ = NULL;}
 
-  my_p4est_brick_destroy(connectivity_, &brick_); connectivity_ = NULL;
+  if(!solve_with_fluids) {my_p4est_brick_destroy(connectivity_, &brick_); connectivity_ = NULL;}
+  printf("starts SWF destructions \n");
+
   if(solve_with_fluids){
+    // First, nullify things that SWF might have that have already been destroyed:
+    stefan_w_fluids_solver->nullify_phi();
+
+    stefan_w_fluids_solver->nullify_T_l_n();
+    if(num_time_layers_ ==3) stefan_w_fluids_solver->nullify_T_l_nm1();
+    stefan_w_fluids_solver->nullify_v_interface();
+
+    // It's okay to nullify vorticity because the NS solver will already have destroyed SWF's
+    // version of the vorticity when we called update_from_tn_to_tnp1...
+    stefan_w_fluids_solver->nullify_vorticity();
+
+
     if(stefan_w_fluids_solver!=nullptr) delete stefan_w_fluids_solver;
     foreach_dimension(d){
       // Interface:
@@ -222,18 +243,22 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
     }
     bc_interface_type_fluid_press=NOINTERFACE;
     bc_interface_val_fluid_press=NULL;
-    v_n.destroy();
-    v_nm1.destroy();
+    //    v_n.destroy();
+    //    v_nm1.destroy();
+
+//    // destroy the extra grid objects
+//    if(nodes_nm1 !=NULL) p4est_nodes_destroy(nodes_nm1);
+//    if(ghost_nm1 !=NULL) p4est_ghost_destroy(ghost_nm1);
+//    if(p4est_nm1 !=NULL) p4est_destroy      (p4est_nm1);
+
+//    if(hierarchy_nm1 != NULL) delete hierarchy_nm1;
+//    if(ngbd_nm1!= NULL) delete ngbd_nm1;
   }
+  printf("passes the solve w fluids destructions \n");
+
   delete sp_crit_;
 
-  // destroy the extra grid objects
-  if(nodes_nm1 !=NULL) p4est_nodes_destroy(nodes_nm1);
-  if(ghost_nm1 !=NULL) p4est_ghost_destroy(ghost_nm1);
-  if(p4est_nm1 !=NULL) p4est_destroy      (p4est_nm1);
 
-  if(hierarchy_nm1 != NULL) delete hierarchy_nm1;
-  if(ngbd_nm1!= NULL) delete ngbd_nm1;
 }
 void my_p4est_multialloy_t::set_front(Vec phi)
 {
@@ -406,6 +431,10 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   //stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(mpi_);
   stefan_w_fluids_solver = stefan_w_fluids_solver_;
 
+  // Set the appropriate solve flags in the stefan with fluids class
+  stefan_w_fluids_solver->set_solve_stefan(true);
+  stefan_w_fluids_solver->set_solve_navier_stokes(true);
+
   // Set up the initial nm1 grids that we will need:
   p4est_nm1 = p4est_copy(p4est_, P4EST_FALSE); // copy the grid but not the data
   p4est_nm1->user_pointer = sp_crit_; // CHECK
@@ -462,6 +491,7 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
     point_fields.clear();
   }
 
+  printf(" \n front phi MULTI sets : front_phi_ = %p, front_phi_.vec = %p \n", front_phi_, front_phi_.vec);
   stefan_w_fluids_solver->set_phi(front_phi_);
   stefan_w_fluids_solver->set_v_n(v_n);
   stefan_w_fluids_solver->set_v_nm1(v_nm1);
@@ -537,10 +567,11 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // NOTE -- If you want to visualize dimensional velocities, pressure, and vorticity, you will need to do the appropriate
   // scaling by hand before outputting to vtk
 
-  // -------------
-  // (3) pass along the level set function:
-  // -------------
-  stefan_w_fluids_solver->set_phi(front_phi_);
+  // commented out below -- we want to do this in the update grid w fluids to be in proper sync with sequence of events to allow correct destructions to take place at time loop exit
+//  // -------------
+//  // (3) pass along the level set function:
+//  // -------------
+//  stefan_w_fluids_solver->set_phi(front_phi_);
 
   // -------------
   // (4) pass along timestep
@@ -1600,6 +1631,8 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
                                            faces_,ngbd_c_,
                                            hierarchy_);
 
+  // update stefan with fluids copy of phi:
+  stefan_w_fluids_solver->set_phi(front_phi_);
 
   // Update stefan's copy of the faces:
   stefan_w_fluids_solver->set_faces_np1(faces_);
@@ -1622,6 +1655,9 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   stefan_w_fluids_solver->set_hierarchy_np1(hierarchy_);
 
   PetscPrintf(p4est_->mpicomm, "update_grid_w_fluids done!\n");
+  printf("\nMULTI: front_phi = %p, front_phi.vec = %p \n", front_phi_, front_phi_.vec);
+
+
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
 
   int num_nodes2 = nodes_->num_owned_indeps;
@@ -1682,7 +1718,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
 
   }
 
-
   regularize_front(front_phi_old.vec);
 
   /* reinitialize phi */
@@ -1703,11 +1738,14 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     VecScaleGhost(front_phi_.vec, -1.);
   }
 
+  printf("\nEND update grid w fluids: front_phi = %p, front_phi.vec = %p \n", front_phi_, front_phi_.vec);
+
   /* second derivatives, normals, curvature, angles */
 //  std::cout<<"ns update over \n";
   compute_geometric_properties_front();
   compute_geometric_properties_contr();
   front_phi_old.destroy();
+
 
 }
 
@@ -1715,6 +1753,8 @@ void my_p4est_multialloy_t::update_grid_solid()
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_solid, 0, 0, 0, 0); CHKERRXX(ierr);
   PetscPrintf(p4est_->mpicomm, "Refining auxiliary p4est for storing data... ");
+  printf("\nBEGIN update grid solid: front_phi = %p, front_phi.vec = %p \n", front_phi_, front_phi_.vec);
+
 
   Vec tmp = solid_front_phi_.vec;
   solid_front_phi_.vec = solid_front_phi_nm1_.vec;
@@ -1853,6 +1893,8 @@ void my_p4est_multialloy_t::update_grid_solid()
   solid_hierarchy_->update(solid_p4est_, solid_ghost_);
   solid_ngbd_->update(solid_hierarchy_, solid_nodes_);
   PetscPrintf(p4est_->mpicomm, "done!\n");
+  printf("\nEND update grid solid: front_phi = %p, front_phi.vec = %p \n", front_phi_, front_phi_.vec);
+
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_solid, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -3112,6 +3154,7 @@ void my_p4est_multialloy_t::regularize_front(Vec front_phi_old)
     // shift level-set upwards
     my_p4est_level_set_t ls(ngbd_);
     vec_and_ptr_t front_phi_tmp(front_phi_.vec);
+
     double shift = dxyz_min_*proximity_smoothing_;
     ierr = VecCopyGhost(front_phi_.vec, front_phi_tmp.vec); CHKERRXX(ierr);
     ierr = VecShiftGhost(front_phi_tmp.vec, shift); CHKERRXX(ierr);
@@ -3189,6 +3232,7 @@ void my_p4est_multialloy_t::regularize_front(Vec front_phi_old)
     front_phi_.restore_array();
     front_phi_tmp.restore_array();
     front_phi_tmp.destroy();
+
   }
 
   // second pass (optional, not used anymore): smooth out too sharp protruding corners

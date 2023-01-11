@@ -708,9 +708,16 @@ void my_p4est_stefan_with_fluids_t::perform_initializations(){
 my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
 {
 
+  printf("enters SWF destructor \n");
   // Final destructions
+  if(phi.vec!=NULL){
+    printf("phi vec is NOT null! \n");
+  }
+  else{
+    printf("phi vec is null ! \n");
+  }
   phi.destroy();
-
+  printf("passes phi destroy \n");
   if(there_is_a_substrate){
     phi_substrate.destroy();
     phi_eff.destroy();
@@ -719,14 +726,20 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
   if(ls!=NULL) delete ls;
   if(sp!=NULL) delete sp;
 
+  printf("SWF DESTRUCTOR --> solve_navier_stokes = %d \n", solve_navier_stokes);
+  printf("SWF DESTRUCTOR --> solve_stefan = %d \n ", solve_stefan);
+
+
   if(solve_stefan){
+    printf("aaa \n");
     T_l_n.destroy();
     T_s_n.destroy();
     v_interface.destroy();
 
+
     if(advection_sl_order==2) T_l_nm1.destroy();
 
-
+    printf("bbb \n");
     if(!solve_navier_stokes){
       // destroy the structures leftover (in non NS case)
       if(nodes_n !=NULL) p4est_nodes_destroy(nodes_n);
@@ -744,23 +757,36 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
       if(hierarchy_np1 !=NULL) delete hierarchy_np1;
       if(ngbd_np1 !=NULL) delete ngbd_np1;
     }
+    printf("ccc \n");
+
   }
 
   if(solve_navier_stokes){
+    printf("ddd \n");
+
     v_n.destroy();
+    printf("111 \n");
     v_nm1.destroy();
+    printf("222 \n");
     phi_nm1.destroy();
-
+    printf("333 \n");
     // NS takes care of destroying v_NS_n and v_NS_nm1
+    printf("vorticity = %p \n", vorticity);
     vorticity.destroy();
+    printf("444 \n");
+    printf("press_nodes = %p \n", press_nodes);
     press_nodes.destroy();
-
+    printf("555 \n");
     // NUllify some NS stuff that we have already deleted so she doesn't get angry:
+    printf("eee \n");
 
     ns->nullify_phi();
     ns->nullify_velocities_at_nodes();
     ns->nullify_vorticity();
-    if(ns!=NULL) delete ns;
+    printf("fff \n");
+    printf("ns solver: %p \n", ns);
+    if(ns!=NULL) {delete ns;}
+    printf("ggg \n");
     MPI_Barrier(mpi->comm());
   }
 
@@ -2050,7 +2076,6 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(bool convert_to_nondim_
   // Create the initial neigbhors and faces (after first step, NS grid update will handle this internally
   ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
 
-
   faces_np1 = new my_p4est_faces_t(p4est_np1, ghost_np1, &brick, ngbd_c_np1);
 
   // Create the solver
@@ -2182,6 +2207,8 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
                         " - Computational value: %0.4f  "
                         " - Physical value: %0.3e [m/s]  "
                         " - Physical value: %0.3f [mm/s] \n",NS_norm,NS_norm*vel_nondim_to_dim,NS_norm*vel_nondim_to_dim*1000.);
+
+  printf("\n[SWF] vorticity = %p, press_nodes = %p \n", vorticity, press_nodes);
 
   // Stop simulation if things are blowing up
   bool did_crash;
