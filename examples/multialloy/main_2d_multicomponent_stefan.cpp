@@ -2667,25 +2667,6 @@ int main (int argc, char* argv[])
     }
     if (save_now) vtk_idx++;
 
-    // Rochi :: moving compute_dt to a different location
-    // compute time step
-    mas.compute_dt();
-
-    if (tn + mas.get_dt() > time_limit.val) {
-      mas.set_dt(time_limit.val-tn);
-      keep_going = false;
-    }
-
-    if(solve_w_fluids.val){
-      mas.update_grid_w_fluids();
-      PetscPrintf(mpi.comm(), "Update grid with fluids is complete \n");
-    }
-    else{
-      mas.update_grid();
-    }
-
-    mas.update_grid_solid();
-
     // compute total growth - new position - Rochi - checking if growth is occuring now or not
     total_growth = base;
 
@@ -2710,7 +2691,27 @@ int main (int argc, char* argv[])
     total_growth -= base;
 
     //std::cout << "Total growth :: "<< total_growth << " ; Growth Limit :: " << growth_limit.val << "\n";
+    // Rochi :: moving compute_dt to a different location
+    // compute time step
+    mas.compute_dt();
+
+    if (tn + mas.get_dt() > time_limit.val) {
+      mas.set_dt(time_limit.val-tn);
+      keep_going = false;
+    }
     keep_going = keep_going && (iteration < step_limit.val) && (total_growth < growth_limit.val);
+
+    if(keep_going){
+      if(solve_w_fluids.val){
+        mas.update_grid_w_fluids();
+        PetscPrintf(mpi.comm(), "Update grid with fluids is complete \n");
+      }
+      else{
+        mas.update_grid();
+      }
+
+      mas.update_grid_solid();
+    }
 
     iteration++;
 

@@ -243,8 +243,8 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
     }
     bc_interface_type_fluid_press=NOINTERFACE;
     bc_interface_val_fluid_press=NULL;
-    //    v_n.destroy();
-    //    v_nm1.destroy();
+//    v_n.destroy();
+//    v_nm1.destroy();
 
 //    // destroy the extra grid objects
 //    if(nodes_nm1 !=NULL) p4est_nodes_destroy(nodes_nm1);
@@ -1361,6 +1361,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   } // end of "if num_fields!=0"
 
   // Create second derivatives for phi in the case that we are using update_p4est:
+  front_phi_dd_.destroy();
   front_phi_dd_.create(p4est_, nodes_);
   ngbd_->second_derivatives_central(front_phi_.vec, front_phi_dd_.vec);
   double uniform_band= stefan_w_fluids_solver->get_uniform_band();
@@ -2584,7 +2585,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   iteration_w_fluids++;
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
-  if(vgamma_n_vec.ptr!=nullptr) vgamma_n_vec.destroy();
+  vgamma_n_vec.destroy();
   return one_step_iterations;
 } // END OF ONE STEP W FLUIDS
 

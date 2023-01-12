@@ -2264,6 +2264,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   }
   ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, P4EST_DIM, &grad_phi);
   ngbd_np1->first_derivatives_central(phi_np1, grad_phi);
+
   delete interp_grad_phi;
   interp_grad_phi = new my_p4est_interpolation_nodes_t(ngbd_np1);
   interp_grad_phi->set_input(grad_phi, linear, P4EST_DIM);
