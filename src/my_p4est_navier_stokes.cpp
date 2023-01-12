@@ -2275,8 +2275,10 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   // (2) Reset the scalar vorticity field onto the new grid provided
   //------------------------------------------------------
   // Note -- vorticity will be computed by user as desired after solution is obtained
-  if(vorticity!=NULL) ierr = VecDestroy(vorticity); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vorticity); CHKERRXX(ierr);
+  if(vorticity != NULL){
+    ierr = VecDestroy(vorticity); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vorticity); CHKERRXX(ierr);
+  }
   if(norm_grad_u != NULL)
   {
     ierr = VecDestroy(norm_grad_u); CHKERRXX(ierr);
@@ -2291,7 +2293,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   // vnm1_nodes[d] = vn_nodes[d]
   // vnp_nodes[d] = vnp1_nodes[d]
   // vnp1_nodes[d] --> we will create a new one here on the new grid provided by the user to hold the forthcoming new soln at vnp1
-
   foreach_dimension(d){
     // Slide the velocities:
     vnm1_nodes[d] = v_nm1_nodes_[d];

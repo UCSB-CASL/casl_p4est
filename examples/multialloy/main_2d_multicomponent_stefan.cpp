@@ -2009,17 +2009,14 @@ void remove_all_relevant_ics_and_bcs_for_fluids(BC_WALL_VALUE_VELOCITY* bc_wall_
                                                     BC_INTERFACE_VALUE_PRESSURE& bc_interface_value_pressure,
                                                     BC_WALL_VALUE_PRESSURE& bc_wall_value_pressure,
                                                     BC_WALL_TYPE_PRESSURE& bc_wall_type_pressure,
-                                                    my_p4est_multialloy_t* mas,
                                                     INITIAL_VELOCITY* v_init_cf[P4EST_DIM])
 {
   for(unsigned char d=0;d<P4EST_DIM;d++){
         delete bc_wall_value_velocity[d];
-        delete bc_wall_type_velocity[d];
+        //delete bc_wall_type_velocity[d];
         delete v_init_cf[d];
         delete bc_interface_value_velocity[d];
     }
-    delete &bc_interface_value_pressure;
-    delete &bc_wall_type_pressure;
 }
 int main (int argc, char* argv[])
 {

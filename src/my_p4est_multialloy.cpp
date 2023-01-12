@@ -1,4 +1,4 @@
-﻿#ifdef P4_TO_P8
+#ifdef P4_TO_P8
 #include "my_p8est_multialloy.h"
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_vtk.h>
@@ -235,6 +235,8 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
       // Wall:
       delete bc_wall_value_velocity[d];
       delete bc_wall_type_velocity[d];
+
+      delete initial_NS_velocity_n[d];
     }
     bc_interface_type_fluid_press=NOINTERFACE;
     bc_interface_val_fluid_press=NULL;
