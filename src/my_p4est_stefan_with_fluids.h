@@ -1511,12 +1511,6 @@ public:
       v_interface.vec[d] = NULL;
     }
   }
-  void nullify_vorticity(){
-    vorticity.vec=NULL;
-  }
-//  void nullify_press_nodes(){
-//    press_nodes.vec = NULL;
-//  }
   // ---------------------------------------------------------
 
 
