@@ -764,6 +764,7 @@ my_p4est_stefan_with_fluids_t::~my_p4est_stefan_with_fluids_t()
   if(solve_navier_stokes){
     printf("ddd \n");
 
+    printf("SWF destructor: destroys v_n.vec[0] = %p, v_nm1.vec[0] = %p \n", v_n.vec[0], v_nm1.vec[0]);
     v_n.destroy();
     printf("111 \n");
     v_nm1.destroy();
@@ -2094,6 +2095,7 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(bool convert_to_nondim_
     }
   }
 
+  printf("SWF: initialize_ns_solver: v_nm1.vec[0] = %p, v_n.vec[0] = %p \n", v_nm1.vec[0], v_n.vec[0]);
   ns->set_velocities(v_nm1.vec, v_n.vec);
 
   if(convert_to_nondim_for_multialloy){
@@ -2185,12 +2187,15 @@ bool my_p4est_stefan_with_fluids_t::navier_stokes_step(){
   // ------------------------
   // (a) get rid of old vnm1, now vn becomes the new vnm1
   // (b) no need to destroy vn, bc now we put vnp1 into vn's slot
+  printf("SWF: navier_stokes_Step: destroys v_nm1.vec[0] = %p \n", v_nm1.vec[0]);
   v_nm1.destroy();
 
   foreach_dimension(d){
     ns->get_node_velocities_n(v_nm1.vec[d], d);
     ns->get_node_velocities_np1(v_n.vec[d], d);
   }
+  printf("SWF: navier_stokes_Step: get the new v_nm1.vec[0] = %p, v_n.vec[0] = %p \n", v_nm1.vec[0], v_n.vec[0]);
+
 
   // ------------------------
   // Compute the pressure

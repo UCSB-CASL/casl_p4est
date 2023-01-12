@@ -454,6 +454,7 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   ngbd_nm1->init_neighbors();
   v_n.create(p4est_, nodes_);
   v_nm1.create(p4est_nm1, nodes_nm1);
+  printf("MULTI: initialize_for_fluids: v_nm1.vec[0] = %p , v_n.vec[0] = %p \n", v_nm1.vec[0], v_n.vec[0]);
 
   foreach_dimension(d){
     sample_cf_on_nodes(p4est_, nodes_, *initial_NS_velocity_n[d],v_n.vec[d]);
@@ -491,8 +492,8 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
     point_fields.clear();
   }
 
-  printf(" \n front phi MULTI sets : front_phi_ = %p, front_phi_.vec = %p \n", front_phi_, front_phi_.vec);
   stefan_w_fluids_solver->set_phi(front_phi_);
+  printf("MULTI: setting in SWF: v_nm1[0] = %p, v_n[0] = %p \n", v_nm1.vec[0], v_n.vec[0]);
   stefan_w_fluids_solver->set_v_n(v_n);
   stefan_w_fluids_solver->set_v_nm1(v_nm1);
 
@@ -1612,6 +1613,9 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   interp.interpolate(velocity_fields_new);
 
   interp.clear();
+
+  printf("MULTI:update_grid_w_fluids: destroys v_n.vec[0] old grid: %p, creates v_n.vec[0] new grid: %p \n", velocity_fields_old[0], velocity_fields_new[0]);
+
   for(unsigned int k=0;k<P4EST_DIM;k++){
     ierr = VecDestroy(velocity_fields_old[k]); CHKERRXX(ierr); // Destroy objects where the old vectors were
   }
