@@ -227,11 +227,6 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
     if(num_time_layers_ ==3) stefan_w_fluids_solver->nullify_T_l_nm1();
     stefan_w_fluids_solver->nullify_v_interface();
 
-    // It's okay to nullify vorticity because the NS solver will already have destroyed SWF's
-    // version of the vorticity when we called update_from_tn_to_tnp1...
-    stefan_w_fluids_solver->nullify_vorticity();
-
-
     if(stefan_w_fluids_solver!=nullptr) delete stefan_w_fluids_solver;
     foreach_dimension(d){
       // Interface:
@@ -1619,6 +1614,8 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   for(unsigned int k=0;k<P4EST_DIM;k++){
     ierr = VecDestroy(velocity_fields_old[k]); CHKERRXX(ierr); // Destroy objects where the old vectors were
   }
+  printf("printing vel fields old address: \n");
+  printf("it's : %p \n", velocity_fields_old[0]);
 
   foreach_dimension(d){
     v_n.vec[d] = velocity_fields_new[d];
