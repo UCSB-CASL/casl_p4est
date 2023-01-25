@@ -921,7 +921,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
   }
 
 
-  if(1){
+  if(0){
     // -------------------------------
     // TEMPORARY: save fields before backtrace
     // -------------------------------
@@ -1092,7 +1092,7 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 
 
 
-  if(1){
+  if(0){
     // -------------------------------
     // TEMPORARY: save fields after backtrace
     // -------------------------------
