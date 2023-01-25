@@ -143,7 +143,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
 
 my_p4est_multialloy_t::~my_p4est_multialloy_t()
 {
-  printf("MULTI destructor starts \n");
+  //printf("MULTI destructor starts \n");
 
 
   //--------------------------------------------------
@@ -217,7 +217,7 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   if(solid_p4est_ !=NULL) {p4est_destroy      (solid_p4est_); solid_p4est_ = NULL;}
 
   if(!solve_with_fluids) {my_p4est_brick_destroy(connectivity_, &brick_); connectivity_ = NULL;}
-  printf("starts SWF destructions \n");
+  //printf("starts SWF destructions \n");
 
   if(solve_with_fluids){
     // First, nullify things that SWF might have that have already been destroyed:
@@ -251,7 +251,7 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
 //    if(hierarchy_nm1 != NULL) delete hierarchy_nm1;
 //    if(ngbd_nm1!= NULL) delete ngbd_nm1;
   }
-  printf("passes the solve w fluids destructions \n");
+  //printf("passes the solve w fluids destructions \n");
 
   delete sp_crit_;
 
