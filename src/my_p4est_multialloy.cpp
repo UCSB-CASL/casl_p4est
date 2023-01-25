@@ -451,7 +451,6 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   ngbd_nm1->init_neighbors();
   v_n.create(p4est_, nodes_);
   v_nm1.create(p4est_nm1, nodes_nm1);
-  printf("MULTI: initialize_for_fluids: v_nm1.vec[0] = %p , v_n.vec[0] = %p \n", v_nm1.vec[0], v_n.vec[0]);
 
   foreach_dimension(d){
     sample_cf_on_nodes(p4est_, nodes_, *initial_NS_velocity_n[d],v_n.vec[d]);
@@ -490,7 +489,6 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   }
 
   stefan_w_fluids_solver->set_phi(front_phi_);
-  printf("MULTI: setting in SWF: v_nm1[0] = %p, v_n[0] = %p \n", v_nm1.vec[0], v_n.vec[0]);
   stefan_w_fluids_solver->set_v_n(v_n);
   stefan_w_fluids_solver->set_v_nm1(v_nm1);
 
@@ -620,7 +618,6 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   faces_ = stefan_w_fluids_solver->get_faces_np1();
 
 }
-
 
 void my_p4est_multialloy_t::compute_geometric_properties_front()
 {
@@ -1605,19 +1602,15 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     node_xyz_fr_n(n, p4est_, nodes_,  xyz_);
     interp.add_point(n,xyz_);
   }
-  //std::cout<<"line 1806 ok \n";
 
   interp.interpolate(velocity_fields_new);
 
   interp.clear();
 
-  printf("MULTI:update_grid_w_fluids: destroys v_n.vec[0] old grid: %p, creates v_n.vec[0] new grid: %p \n", velocity_fields_old[0], velocity_fields_new[0]);
 
   for(unsigned int k=0;k<P4EST_DIM;k++){
     ierr = VecDestroy(velocity_fields_old[k]); CHKERRXX(ierr); // Destroy objects where the old vectors were
   }
-  printf("printing vel fields old address: \n");
-  printf("it's : %p \n", velocity_fields_old[0]);
 
   foreach_dimension(d){
     v_n.vec[d] = velocity_fields_new[d];
@@ -1659,8 +1652,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   stefan_w_fluids_solver->set_hierarchy_np1(hierarchy_);
 
   PetscPrintf(p4est_->mpicomm, "update_grid_w_fluids done!\n");
-  printf("\nMULTI: front_phi = %p, front_phi.vec = %p \n", front_phi_, front_phi_.vec);
-
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -1742,8 +1733,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     VecScaleGhost(front_phi_.vec, -1.);
   }
 
-  printf("\nEND update grid w fluids: front_phi = %p, front_phi.vec = %p \n", front_phi_, front_phi_.vec);
-
   /* second derivatives, normals, curvature, angles */
 //  std::cout<<"ns update over \n";
   compute_geometric_properties_front();
@@ -1757,8 +1746,6 @@ void my_p4est_multialloy_t::update_grid_solid()
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_solid, 0, 0, 0, 0); CHKERRXX(ierr);
   PetscPrintf(p4est_->mpicomm, "Refining auxiliary p4est for storing data... ");
-  printf("\nBEGIN update grid solid: front_phi = %p, front_phi.vec = %p \n", front_phi_, front_phi_.vec);
-
 
   Vec tmp = solid_front_phi_.vec;
   solid_front_phi_.vec = solid_front_phi_nm1_.vec;
@@ -1897,7 +1884,6 @@ void my_p4est_multialloy_t::update_grid_solid()
   solid_hierarchy_->update(solid_p4est_, solid_ghost_);
   solid_ngbd_->update(solid_hierarchy_, solid_nodes_);
   PetscPrintf(p4est_->mpicomm, "done!\n");
-  printf("\nEND update grid solid: front_phi = %p, front_phi.vec = %p \n", front_phi_, front_phi_.vec);
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_solid, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -2614,7 +2600,6 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   sprintf(name, "%s/vtu/multialloy_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
 
   // new format for saving to vtk
-  std:: cout<<"mas line 2036 \n";
   std::vector<Vec_for_vtk_export_t> cell_fields = {};
   /* save the size of the leaves */
   Vec leaf_level=NULL;
@@ -2705,7 +2690,6 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   point_fields.clear();
   if(leaf_level!=NULL) {ierr = VecDestroy(leaf_level);       CHKERRXX(ierr); }
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
-  std:: cout<<"mas line 2140\n";
 }
 
 void my_p4est_multialloy_t::save_VTK_solid(int iter)

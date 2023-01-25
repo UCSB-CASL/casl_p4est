@@ -595,9 +595,6 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes_, Vec *vn_nodes_, 
   ngbd_n->second_derivatives_central(vn_nodes, DIM(second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2]), P4EST_DIM);
   ngbd_nm1->second_derivatives_central(vnm1_nodes, DIM(second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], second_derivatives_vnm1_nodes[2]), P4EST_DIM);
 
-    printf("\nNS: set_velocities (provided) : v_nm1[0] = %p, v_n[0] = %p \n", vnm1_nodes_[0], vn_nodes_[0]);
-  printf("\nNS: set_velocities: v_nm1[0] = %p, v_n[0] = %p, v_np1[0] = %p \n", vnm1_nodes[0], vn_nodes[0], vnp1_nodes[0]);
-
   if(max_L2_norm_u_from_user != NULL) {
     max_L2_norm_u = *max_L2_norm_u_from_user;
 #ifdef P4EST_DEBUG
@@ -2311,8 +2308,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vnp1_nodes[dir]); CHKERRXX(ierr);
   }
-
-  printf("NS update from tn to tnp1: new vnm1_nodes[0] = %p, vn_nodes[0] = %p, vnp1_nodes[0] = %p \n", vnm1_nodes[0], vn_nodes[0], vnp1_nodes[0]);
 
   // (3.6) Compute the new second derivatives of vn on the new grid
   ngbd_np1->second_derivatives_central(vn_nodes, DIM(second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2]), P4EST_DIM);
