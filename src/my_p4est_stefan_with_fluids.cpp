@@ -1923,6 +1923,11 @@ void my_p4est_stefan_with_fluids_t::compute_timestep(){
               v_interface_max_norm*vel_nondim_to_dim,
               v_interface_max_norm*vel_nondim_to_dim*1000.);
 
+  if(is_dissolution_case && solve_navier_stokes){
+    PetscPrintf(mpi->comm(), " \n"
+                             "(Max NS vel)/(Interface vel) = %0.2e \n", NS_norm/v_interface_max_norm);
+  }
+
   // Print the timestep info:
   PetscPrintf(mpi->comm(),"\n"
                        "Computed timestep: \n"
