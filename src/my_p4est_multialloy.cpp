@@ -140,6 +140,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
   ngbd_nm1 = NULL;
 
 }
+// end of constructor
 
 my_p4est_multialloy_t::~my_p4est_multialloy_t()
 {
@@ -254,9 +255,9 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   //printf("passes the solve w fluids destructions \n");
 
   delete sp_crit_;
-
-
 }
+// end of destructor
+
 void my_p4est_multialloy_t::set_front(Vec phi)
 {
   VecCopyGhost(phi, front_phi_.vec);
@@ -280,6 +281,7 @@ void my_p4est_multialloy_t::set_front(Vec phi)
   interp.set_input(front_curvature_.vec, interpolation_between_grids_);
   interp.interpolate(solid_front_curvature_.vec);
 }
+// end of "set_front"
 
 void my_p4est_multialloy_t::set_container(Vec phi)
 {
@@ -304,6 +306,7 @@ void my_p4est_multialloy_t::set_container(Vec phi)
   interp.set_input(front_curvature_.vec, interpolation_between_grids_);
   interp.interpolate(solid_front_curvature_.vec);
 }
+// end of "set_container"
 
 void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip, double band, bool solve_w_fluids)
 {
@@ -413,7 +416,7 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   VecSetGhost(solid_time_.vec, 0.);
 
 }
-
+// end of "initialize"
 
 void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver_){
 
@@ -618,6 +621,7 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   faces_ = stefan_w_fluids_solver->get_faces_np1();
 
 }
+// end of "initialize_for_fluids"
 
 void my_p4est_multialloy_t::compute_geometric_properties_front()
 {
@@ -645,9 +649,7 @@ void my_p4est_multialloy_t::compute_geometric_properties_front()
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_geometric_properties, 0, 0, 0, 0); CHKERRXX(ierr);
 }
-
-
-
+// end of "compute_geometric_properties_front"
 
 void my_p4est_multialloy_t::compute_geometric_properties_contr()
 {
@@ -655,10 +657,7 @@ void my_p4est_multialloy_t::compute_geometric_properties_contr()
   ngbd_->second_derivatives_central(contr_phi_.vec, contr_phi_dd_.vec);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_geometric_properties, 0, 0, 0, 0); CHKERRXX(ierr);
 }
-
-
-
-
+// end of "compute_geometric_properties_contr"
 
 void my_p4est_multialloy_t::compute_velocity()
 {
@@ -797,11 +796,7 @@ void my_p4est_multialloy_t::compute_velocity()
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_velocity, 0, 0, 0, 0); CHKERRXX(ierr);
 }
-
-
-
-
-
+// end of "compute_velocity"
 
 void my_p4est_multialloy_t::compute_dt()
 {
@@ -868,8 +863,7 @@ void my_p4est_multialloy_t::compute_dt()
   //std::exit(EXIT_FAILURE);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_dt, 0, 0, 0, 0); CHKERRXX(ierr);
 }
-
-
+// end of "compute_dt"
 
 void my_p4est_multialloy_t::update_grid()
 {
@@ -1070,6 +1064,7 @@ void my_p4est_multialloy_t::update_grid()
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
 }
+// end of "update_grid"
 
 void my_p4est_multialloy_t::update_grid_w_fluids(){
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1078,58 +1073,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   int num_nodes = nodes_->num_owned_indeps;
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
   PetscPrintf(p4est_->mpicomm, "(Number of nodes before: %d) \n", num_nodes);
-
-  if(1){
-    PetscPrintf(p4est_->mpicomm, "\n \n Saving fields before grid update \n");
-    // -------------------------------
-    // TEMPORARY: save fields before grid update
-    // -------------------------------
-    std::vector<Vec_for_vtk_export_t> point_fields;
-    std::vector<Vec_for_vtk_export_t> cell_fields = {};
-
-    point_fields.push_back(Vec_for_vtk_export_t(front_phi_.vec, "phi"));
-    point_fields.push_back(Vec_for_vtk_export_t(cl_[0].vec[0], "cl_tn_0"));
-    point_fields.push_back(Vec_for_vtk_export_t(cl_[0].vec[1], "cl_tn_1"));
-
-    point_fields.push_back(Vec_for_vtk_export_t(cl_[1].vec[0], "cl_tnm1_0"));
-    point_fields.push_back(Vec_for_vtk_export_t(cl_[1].vec[1], "cl_tnm1_1"));
-
-    point_fields.push_back(Vec_for_vtk_export_t(tl_[0].vec, "tl_tn"));
-    point_fields.push_back(Vec_for_vtk_export_t(tl_[1].vec, "tl_tnm1_1"));
-
-    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "vx_n"));
-    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "vy_n"));
-    point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vort"));
-//    point_fields.push_back(Vec_for_vtk_export_t(vorticity_refine.vec, "vort_refine"));
-//    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[0], "vx_nm1"));
-//    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_nm1"));
-
-
-    const char* out_dir = getenv("OUT_DIR");
-    if(!out_dir){
-      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
-    }
-
-    char filename[1000];
-    sprintf(filename, "%s/snapshot_before_grid_update_%d", out_dir, iteration_w_fluids);
-    my_p4est_vtk_write_all_lists(p4est_, nodes_, ngbd_->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
-    point_fields.clear();
-
-
-
-
-//    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[0], "vx_nm1"));
-//    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_nm1"));
-
-//    char filename2[1000];
-//    sprintf(filename2, "%s/snapshot_before_grid_update_nm1", out_dir);
-//    my_p4est_vtk_write_all_lists(p4est_nm1, nodes_nm1, ngbd_nm1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename2, point_fields, cell_fields);
-//    point_fields.clear();
-
-
-    PetscPrintf(p4est_->mpicomm, "Done! \n \n \n");
-
-  }
 
   p4est_destroy(p4est_nm1);
   p4est_ghost_destroy(ghost_nm1); ghost_nm1 = NULL;
@@ -1177,9 +1120,9 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   PetscInt num_fields = 0;
   //refine_by_vorticity = vorticity.vec!=NULL;
 
-  refine_by_vorticity = false;
-  refine_by_d2C = false;
-  refine_by_d2T = false;
+  refine_by_vorticity = true;
+  refine_by_d2C = true;
+  refine_by_d2T = true;
 
   // -----------------------
   // Count number of refinement fields and create vectors for necessary fields:
@@ -1323,10 +1266,14 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     // ------------------------------------------------------------
     // Coarsening instructions: (for vorticity)
     PetscPrintf(p4est_->mpicomm,"\nRefine by vort = %d, refine_by_d2T = %d, refine_by_d2C= %d \n", refine_by_vorticity, refine_by_d2T, refine_by_d2C);
+
+    vorticity_threshold = 0.2;
+
     if(refine_by_vorticity){
       compare_opn.push_back(LESS_THAN);
       diag_opn.push_back(DIVIDE_BY);
       criteria.push_back(vorticity_threshold*NS_norm/2.);
+      PetscPrintf(p4est_->mpicomm, "vort thresh coarsen: %0.2e , vort thresh refine: %0.2e \n", vorticity_threshold*NS_norm/2., vorticity_threshold*NS_norm);
 
       // Refining instructions: (for vorticity)
       compare_opn.push_back(GREATER_THAN);
@@ -1426,6 +1373,59 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
       else{custom_lmax.push_back(lmax);}
     }
   } // end of "if num_fields!=0"
+
+
+  if(0){
+    PetscPrintf(p4est_->mpicomm, "\n \n Saving fields before grid update \n");
+    // -------------------------------
+    // TEMPORARY: save fields before grid update
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+    point_fields.push_back(Vec_for_vtk_export_t(front_phi_.vec, "phi"));
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[0].vec[0], "cl_tn_0"));
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[0].vec[1], "cl_tn_1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[1].vec[0], "cl_tnm1_0"));
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[1].vec[1], "cl_tnm1_1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(tl_[0].vec, "tl_tn"));
+    point_fields.push_back(Vec_for_vtk_export_t(tl_[1].vec, "tl_tnm1_1"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "vx_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "vy_n"));
+    point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vort"));
+    if(refine_by_vorticity) point_fields.push_back(Vec_for_vtk_export_t(vorticity_refine.vec, "vort_refine"));
+    //    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[0], "vx_nm1"));
+    //    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_nm1"));
+
+
+    const char* out_dir = getenv("OUT_DIR");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_before_grid_update_%d", out_dir, iteration_w_fluids);
+    my_p4est_vtk_write_all_lists(p4est_, nodes_, ngbd_->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+
+
+
+
+    //    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[0], "vx_nm1"));
+    //    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_nm1"));
+
+    //    char filename2[1000];
+    //    sprintf(filename2, "%s/snapshot_before_grid_update_nm1", out_dir);
+    //    my_p4est_vtk_write_all_lists(p4est_nm1, nodes_nm1, ngbd_nm1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename2, point_fields, cell_fields);
+    //    point_fields.clear();
+
+
+    PetscPrintf(p4est_->mpicomm, "Done! \n \n \n");
+
+  }
 
   // Create second derivatives for phi in the case that we are using update_p4est:
   front_phi_dd_.destroy();
@@ -1716,7 +1716,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   PetscPrintf(p4est_->mpicomm, "Number of nodes after: %d \n", num_nodes2);
 
 
-  if(1){
+  if(0){
     PetscPrintf(p4est_->mpicomm," \n \n \n saving fields after grid update \n");
     // -------------------------------
     // TEMPORARY: save fields after grid update
@@ -1794,9 +1794,8 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   compute_geometric_properties_front();
   compute_geometric_properties_contr();
   front_phi_old.destroy();
-
-
 }
+// end of "update_grid_w_fluids"
 
 void my_p4est_multialloy_t::update_grid_solid()
 {
@@ -1943,6 +1942,7 @@ void my_p4est_multialloy_t::update_grid_solid()
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_solid, 0, 0, 0, 0); CHKERRXX(ierr);
 }
+// end of "update_grid_solid"
 
 int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double *bc_error_avg, std::vector<int> *num_pdes, std::vector<double> *bc_error_max_all, std::vector<double> *bc_error_avg_all)
 {
@@ -2109,7 +2109,7 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
   return one_step_iterations;
 }
-
+// end of "one_step"
 
 int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max, double *bc_error_avg, std::vector<int> *num_pdes, std::vector<double> *bc_error_max_all, std::vector<double> *bc_error_avg_all)
 {
@@ -2632,8 +2632,8 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
   vgamma_n_vec.destroy();
   return one_step_iterations;
-} // END OF ONE STEP W FLUIDS
-
+}
+// end of "one_step_w_fluids"
 
 void my_p4est_multialloy_t::save_VTK(int iter)
 {
@@ -2771,6 +2771,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   if(leaf_level!=NULL) {ierr = VecDestroy(leaf_level);       CHKERRXX(ierr); }
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
 }
+// end of "save_VTK"
 
 void my_p4est_multialloy_t::save_VTK_solid(int iter)
 {
@@ -2863,6 +2864,7 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
 }
+// end of "save_VTK_solid"
 
 void my_p4est_multialloy_t::save_p4est(int iter)
 {
@@ -2903,6 +2905,7 @@ void my_p4est_multialloy_t::save_p4est(int iter)
   VecDump(name_vecs, vecs_to_save.size(), vecs_to_save.data());
 //  ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
 }
+// end of "save_p4est"
 
 void my_p4est_multialloy_t::save_p4est_solid(int iter)
 {
@@ -2951,6 +2954,7 @@ void my_p4est_multialloy_t::save_p4est_solid(int iter)
 
 //  ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
 }
+// end of "save_p4est_solid"
 
 void my_p4est_multialloy_t::count_dendrites(int iter)
 {
@@ -3176,6 +3180,7 @@ void my_p4est_multialloy_t::count_dendrites(int iter)
     }
   }
 }
+// end of "count_dendrites"
 
 void my_p4est_multialloy_t::sample_along_line(const double xyz0[], const double xyz1[], const unsigned int nb_points, Vec data, std::vector<double> out)
 {
@@ -3200,6 +3205,7 @@ void my_p4est_multialloy_t::sample_along_line(const double xyz0[], const double 
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, out.data(), nb_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 }
+// end of "sample_along_line"
 
 void my_p4est_multialloy_t::regularize_front(Vec front_phi_old)
 {
@@ -3411,7 +3417,7 @@ void my_p4est_multialloy_t::regularize_front(Vec front_phi_old)
   ierr = PetscPrintf(p4est_->mpicomm, "done!\n"); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
 }
-
+// end of "regularize_front"
 void my_p4est_multialloy_t::compute_solid()
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_compute_solid, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -3531,3 +3537,8 @@ void my_p4est_multialloy_t::compute_solid()
   VecScaleGhost(solid_front_phi_.vec, -1.);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_solid, 0, 0, 0, 0); CHKERRXX(ierr);
 }
+// end of "compute_solid"
+
+// ----------------------------------------------------------------------------------------------
+// Functions for save/load of simulation state:
+// ----------------------------------------------------------------------------------------------
