@@ -1079,7 +1079,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
   PetscPrintf(p4est_->mpicomm, "(Number of nodes before: %d) \n", num_nodes);
 
-  if(0){
+  if(1){
     PetscPrintf(p4est_->mpicomm, "\n \n Saving fields before grid update \n");
     // -------------------------------
     // TEMPORARY: save fields before grid update
@@ -1176,9 +1176,11 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   std::vector<int> custom_lmax;
   PetscInt num_fields = 0;
   //refine_by_vorticity = vorticity.vec!=NULL;
-  refine_by_vorticity=false;
-  refine_by_d2C=false;
-  refine_by_d2T=false;
+
+  refine_by_vorticity = false;
+  refine_by_d2C = false;
+  refine_by_d2T = false;
+
   // -----------------------
   // Count number of refinement fields and create vectors for necessary fields:
   // ------------------------
@@ -1189,12 +1191,12 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   if(refine_by_d2T){
     num_fields+=2;
     tl_dd.create(p4est_, nodes_);
-    ngbd_->second_derivatives_central(tl_[num_time_layers_-1].vec,tl_dd.vec);
+    ngbd_->second_derivatives_central(tl_[0/*num_time_layers_-1*/].vec,tl_dd.vec);
   }// for temperature
   if(refine_by_d2C){
     num_fields+=2;
     cl0_dd.create(p4est_,nodes_);
-    ngbd_->second_derivatives_central(cl_[num_time_layers_-1].vec[0],cl0_dd.vec);
+    ngbd_->second_derivatives_central(cl_[0/*num_time_layers_-1*/].vec[0],cl0_dd.vec);
   }// for concentration (using the first component ) // might change later
 
   Vec fields_[num_fields];
@@ -1206,6 +1208,8 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
       vorticity_refine.get_array();
     }
     if(refine_by_d2T) {tl_dd.get_array();}
+    if(refine_by_d2C) {cl0_dd.get_array();}
+
     front_phi_.get_array();
 
     // Compute proper refinement fields on layer nodes:
@@ -1216,9 +1220,15 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
       }
       else{
         if(refine_by_vorticity) vorticity_refine.ptr[n] = 0.0;
-        if(refine_by_d2T){ // Set to 0 in solid subdomain, don't want to refine by T_l_dd in there
+        if(refine_by_d2T){
+          // Set to 0 in solid subdomain, don't want to refine by T_l_dd in there
           foreach_dimension(d){
             tl_dd.ptr[d][n]=0.;
+          }
+        }
+        if(refine_by_d2C){
+          foreach_dimension(d){
+            cl0_dd.ptr[d][n]=0.;
           }
         }
       }
@@ -1229,6 +1239,11 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     if(refine_by_d2T){
       foreach_dimension(d){
         ierr = VecGhostUpdateBegin(tl_dd.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+      }
+    }
+    if(refine_by_d2C){
+      foreach_dimension(d){
+        ierr = VecGhostUpdateBegin(cl0_dd.vec[d], INSERT_VALUES, SCATTER_FORWARD);
       }
     }
 
@@ -1245,6 +1260,11 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
             tl_dd.ptr[d][n]=0.;
           }
         }
+        if(refine_by_d2C){
+          foreach_dimension(d){
+            cl0_dd.ptr[d][n]=0.;
+          }
+        }
       }
     } // end of loop over local nodes
 
@@ -1256,8 +1276,14 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
       }
     }
 
+    if(refine_by_d2C){
+      foreach_dimension(d){
+        ierr = VecGhostUpdateEnd(cl0_dd.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+      }
+    }
     // Restore appropriate arrays:
     if(refine_by_d2T) {tl_dd.restore_array();}
+    if(refine_by_d2C) {cl0_dd.restore_array();}
     if(refine_by_vorticity){
       vorticity.restore_array();
       vorticity_refine.restore_array();
@@ -1273,8 +1299,12 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
       fields_[fields_idx++] = tl_dd.vec[0];
       fields_[fields_idx++] = tl_dd.vec[1];
     }
+    if(refine_by_d2C){
+      fields_[fields_idx++] = cl0_dd.vec[0];
+      fields_[fields_idx++] = cl0_dd.vec[1];
+    }
 
-    P4EST_ASSERT(fields_idx ==num_fields);
+    P4EST_ASSERT(fields_idx == num_fields);
 //    int lint= stefan_w_fluids_solver->get_lint();
 //    int lmin= stefan_w_fluids_solver->get_lmin();
 //    int lmax= stefan_w_fluids_solver->get_lmax();
@@ -1285,8 +1315,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     PetscPrintf(p4est_->mpicomm, "Warning: for refinement, the lint option is not implemented. You might want this later. \n");
     PetscPrintf(p4est_->mpicomm, "INSIDE MULTI GRID UPDATE: "
            "lmin = %d, lmax = %d, lint = %d \n", lmin, lmax, lint);
-
-
 
     double NS_norm= stefan_w_fluids_solver->get_NS_norm();
 
@@ -1309,21 +1337,27 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
       else{custom_lmax.push_back(lmax);}
     }
     if(refine_by_d2T){
+      double d2T_refine_threshold = 200.;
+      double d2T_coarsen_threshold = 50.0;
+
       PetscPrintf(p4est_->mpicomm, "Warning: you have activated refine_by_d2T, but this has not been updated to the diimensional case \n");
       double dxyz_smallest[P4EST_DIM];
       dxyz_min(p4est_,dxyz_smallest);
-      double theta_infty= stefan_w_fluids_solver->get_theta_infty();
-      double theta_interface= stefan_w_fluids_solver->get_theta_interface();
-      double theta0= stefan_w_fluids_solver->get_theta0();
-      double deltaT= stefan_w_fluids_solver->get_deltaT();
-      double dTheta= fabs(theta_infty - theta_interface)>0 ? fabs(theta_infty - theta_interface): 1.0;
-      dTheta/=SQR(MIN(dxyz_smallest[0],dxyz_smallest[1])); // max d2Theta in liquid subdomain
+//      double theta_infty= stefan_w_fluids_solver->get_theta_infty();
+//      double theta_interface= stefan_w_fluids_solver->get_theta_interface();
+//      double theta0= stefan_w_fluids_solver->get_theta0();
+//      double deltaT= stefan_w_fluids_solver->get_deltaT();
+//      double dTheta= fabs(theta_infty - theta_interface)>0 ? fabs(theta_infty - theta_interface): 1.0;
+//      dTheta/=SQR(MIN(dxyz_smallest[0],dxyz_smallest[1])); // max d2Theta in liquid subdomain
 
       // Define variables for the refine/coarsen instructions for d2T fields:
-      compare_diagonal_option_t diag_opn_d2T = DIVIDE_BY;
+      compare_diagonal_option_t diag_opn_d2T = ABSOLUTE;
       compare_option_t compare_opn_d2T = SIGN_CHANGE;
-      double refine_criteria_d2T = dTheta*d2T_threshold;
-      double coarsen_criteria_d2T = dTheta*d2T_threshold*0.1;
+
+      double refine_criteria_d2T = d2T_refine_threshold*dxyz_smallest[0];
+      double coarsen_criteria_d2T = d2T_coarsen_threshold*dxyz_smallest[0];
+
+      PetscPrintf(p4est_->mpicomm, "Temp refine: %0.2e, temp coarsen: %0.2e \n", refine_criteria_d2T, coarsen_criteria_d2T );
 
       // Coarsening instructions: (for d2T/dx2)
       compare_opn.push_back(compare_opn_d2T);
@@ -1351,8 +1385,46 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     }
     if(refine_by_d2C){
       PetscPrintf(p4est_->mpicomm, "Warning: you have activated refine_by_d2C, but this has not been implemented. Bypassing ... \n");
-    }
 
+      compare_diagonal_option_t diag_opn_d2C = ABSOLUTE;
+      compare_option_t compare_opn_d2C = SIGN_CHANGE;
+
+      double d2C_refine_threshold = 200.;
+      double d2C_coarsen_threshold = 50.0;
+
+      double dxyz_smallest[P4EST_DIM];
+      dxyz_min(p4est_,dxyz_smallest);
+
+      double refine_criteria_d2C = d2C_refine_threshold*dxyz_smallest[0];
+      double coarsen_criteria_d2C = d2C_coarsen_threshold*dxyz_smallest[0];
+
+      PetscPrintf(p4est_->mpicomm, "Conc refine: %0.2e, conc coarsen: %0.2e \n", refine_criteria_d2C, coarsen_criteria_d2C );
+
+
+      // Coarsening instructions: (for d2C/dx2)
+      compare_opn.push_back(compare_opn_d2C);
+      diag_opn.push_back(diag_opn_d2C);
+      criteria.push_back(coarsen_criteria_d2C);
+
+      // Refining instructions: (for d2C/dx2)
+      compare_opn.push_back(compare_opn_d2C);
+      diag_opn.push_back(diag_opn_d2C);
+      criteria.push_back(refine_criteria_d2C);
+      if(lint>0){custom_lmax.push_back(lint);}
+      else{custom_lmax.push_back(lmax);}
+
+      // Coarsening instructions: (for d2C/dy2)
+      compare_opn.push_back(compare_opn_d2C);
+      diag_opn.push_back(diag_opn_d2C);
+      criteria.push_back(coarsen_criteria_d2C);
+
+      // Refining instructions: (for d2T/dy2)
+      compare_opn.push_back(compare_opn_d2C);
+      diag_opn.push_back(diag_opn_d2C);
+      criteria.push_back(refine_criteria_d2C);
+      if(lint>0){custom_lmax.push_back(lint);}
+      else{custom_lmax.push_back(lmax);}
+    }
   } // end of "if num_fields!=0"
 
   // Create second derivatives for phi in the case that we are using update_p4est:
@@ -1375,7 +1447,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   //front_phi_dd_.destroy();
   if(refine_by_vorticity){
     vorticity_refine.destroy();
-//printf("\n!!!! do not leave this uncommented !!! refine vorticity needs to be destroyed !! red alert\n");
   }
   if(refine_by_d2T){
     tl_dd.destroy();
@@ -1386,7 +1457,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   PetscPrintf(p4est_->mpicomm, "done!\n");
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
   //end of update grid
-
 
   PetscPrintf(p4est_->mpicomm, "Transfering data between grids... ");
 
@@ -1420,8 +1490,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   front_normal_.destroy();
   front_normal_.create(front_phi_dd_.vec);
 
-  //printf("aaa \n");
-  //
   // Get rid of the old tl2 (and concentrations)
   tl_[2].destroy();
   cl_[2].destroy();
@@ -1434,8 +1502,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   for(int i=0; i<num_comps_; i++){
     VecCopyGhost(cl_[1].vec[i], cl_[2].vec[i]);
   }
-
-  //printf("bbb \n");
 
   // Get rid of the old tl1
   tl_[1].destroy();
@@ -1450,8 +1516,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     interp.interpolate(cl_[1].vec[i]);
   }
 
-  //printf("ccc \n");
-
   // Get rid of tl0 on old grid now:
   tl_[0].destroy();
   tl_[0].create(front_phi_.vec);
@@ -1462,10 +1526,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   for(int i=0; i<num_comps_; i++){
     VecCopyGhost(cl_[1].vec[i], cl_[0].vec[i]);
   }
-
-  //printf("ddd \n");
-
-
 
   // Old daniil stuff that gets interpolated bw grids:
   for (int j = num_time_layers_-1; j > 0; --j)
@@ -1576,10 +1636,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   psi_cl_.destroy();
   psi_cl_.set(psi_cl_tmp.vec.data());
 
-
-
-
-//  std::cout<<"line 1790 ok \n";
   //interpolating velocity fields to the new grid
 
 //  int num_velocity_fields=P4EST_DIM; // vNSx, vNSy
@@ -1589,12 +1645,12 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   foreach_dimension(d){
     velocity_fields_old[i++]=v_n.vec[d];
   }
-  //std::cout<<"line 1799 ok \n";
+
   PetscErrorCode ierr;
   for(unsigned int j = 0;j<P4EST_DIM;j++){
     ierr = VecCreateGhostNodes(p4est_, nodes_, &velocity_fields_new[j]);CHKERRXX(ierr);
   }
-  //std::cout<<"line 1804 ok \n";
+
   interp.set_input(velocity_fields_old, quadratic_non_oscillatory_continuous_v2,P4EST_DIM);
 
   double xyz_[P4EST_DIM];
@@ -1660,7 +1716,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   PetscPrintf(p4est_->mpicomm, "Number of nodes after: %d \n", num_nodes2);
 
 
-  if(0){
+  if(1){
     PetscPrintf(p4est_->mpicomm," \n \n \n saving fields after grid update \n");
     // -------------------------------
     // TEMPORARY: save fields after grid update
@@ -2674,7 +2730,26 @@ void my_p4est_multialloy_t::save_VTK(int iter)
         point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
 
         point_fields.push_back(Vec_for_vtk_export_t(press_nodes.vec, "pressure"));
+
   }
+  vec_and_ptr_dim_t tl_dd;
+  vec_and_ptr_dim_t cl0_dd;
+  bool save_second_deriv = true;
+  if(save_second_deriv){
+    tl_dd.create(p4est_, nodes_);
+    ngbd_->second_derivatives_central(tl_[0].vec, tl_dd.vec);
+
+    cl0_dd.create(p4est_, nodes_);
+    ngbd_->second_derivatives_central(cl_[0].vec[0], cl0_dd.vec);
+
+    point_fields.push_back(Vec_for_vtk_export_t(tl_dd.vec[0], "d2T/dx2"));
+    point_fields.push_back(Vec_for_vtk_export_t(tl_dd.vec[1], "d2T/dy2"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(cl0_dd.vec[0], "d2C0/dx2"));
+    point_fields.push_back(Vec_for_vtk_export_t(cl0_dd.vec[1], "d2C0/dy2"));
+
+  }
+
   VecScaleGhost(front_velo_norm_[0].vec, 1./scaling_);
 
   my_p4est_vtk_write_all_lists(p4est_, nodes_, ghost_,
@@ -2682,6 +2757,11 @@ void my_p4est_multialloy_t::save_VTK(int iter)
                                name,
                                point_fields,
                                cell_fields);
+
+  if(save_second_deriv){
+    tl_dd.destroy();
+    cl0_dd.destroy();
+  }
 
   VecScaleGhost(front_velo_norm_[0].vec, scaling_);
 
