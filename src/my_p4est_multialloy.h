@@ -881,6 +881,10 @@ public:
   void count_dendrites(int iter);
   void sample_along_line(const double xyz0[], const double xyz1[], const unsigned int nb_points, Vec data, std::vector<double> out);
 
+  void fill_or_load_double_parameters(save_or_load flag, PetscInt num, PetscReal *data);
+  void fill_or_load_integer_parameters(save_or_load flag, PetscInt num, PetscInt *data);
+  void save_or_load_parameters(const char* filename, save_or_load flag);
+
 };
 
 

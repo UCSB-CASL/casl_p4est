@@ -3542,3 +3542,65 @@ void my_p4est_multialloy_t::compute_solid()
 // ----------------------------------------------------------------------------------------------
 // Functions for save/load of simulation state:
 // ----------------------------------------------------------------------------------------------
+void my_p4est_multialloy_t::fill_or_load_double_parameters(save_or_load flag, PetscInt num, PetscReal *data){
+  size_t idx=0;
+  switch(flag){
+  case SAVE:{
+    data[idx++] = time_;
+    // note: below implies that integer parameters *must* be loaded first
+    for(unsigned int i=0; i<num_time_layers_; i++){
+      data[idx++] = dt_[i];
+    }
+    data[idx++] = cfl_number_;
+    data[idx++] = sp_crit_->lip;
+    data[idx++] = sp_crit_->band;
+    // TO-DO: save and load cfl_NS and NS_advection_order? or leave these hard coded?
+
+//    data[idx++] = ;
+//    data[idx++] = ;
+    break;
+  }
+  case LOAD:{
+    time_ = data[idx++];
+    for(unsigned int i=0; i<num_time_layers_; i++){
+      dt_[i] = data[idx++];
+    }
+    cfl_number_ = data[idx++];
+    sp_crit_->lip = data[idx++];
+    sp_crit_->band = data[idx++];
+
+//    tn = data[idx++];
+//    dt = data[idx++];
+//    dt_nm1 = data[idx++];
+//    cfl_Stefan = data[idx++];
+//    cfl_NS = data[idx++];
+//    uniform_band= data[idx++];
+//    sp->lip = data[idx++];
+//    NS_norm = data[idx++];
+//    v_interface_max_norm = data[idx++];
+  }
+
+  }
+  P4EST_ASSERT(idx == num);
+} // end of "fill_or_load_double_parameters()"
+
+void my_p4est_multialloy_t::fill_or_load_integer_parameters(save_or_load flag, PetscInt num, PetscInt *data){
+  size_t idx=0;
+  switch(flag){
+  case SAVE:{
+//    data[idx++] = advection_sl_order;
+//    data[idx++] = tstep;
+//    data[idx++] = sp->min_lvl;
+//    data[idx++] = sp->max_lvl;
+    break;
+  }
+  case LOAD:{
+//    advection_sl_order = data[idx++];
+//    tstep = data[idx++];
+//    sp->min_lvl=data[idx++];
+//    sp->max_lvl=data[idx++];
+  }
+
+  }
+  P4EST_ASSERT(idx == num);
+} // end of "fill_or_load_integer_parameters()"

@@ -1105,9 +1105,9 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                 if(sign_change && we_had_neighbor_point && above_threshold[n]){
                     refine = true; //(refine || sign_change) ;
                 }
-                if(refine){
-                  printf("sign change triggered a refine flag! \n");
-                }
+//                if(refine){
+//                  printf("sign change triggered a refine flag! \n");
+//                }
 //                // Elyce printing info: ------
 
 //                double xyz_n[P4EST_DIM];
