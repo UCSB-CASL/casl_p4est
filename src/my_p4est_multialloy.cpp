@@ -20,6 +20,7 @@
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_utils.h>
 #endif
+#include <linux/limits.h>
 
 #ifndef CASL_LOG_EVENTS
 #undef PetscLogEventBegin
@@ -3418,6 +3419,7 @@ void my_p4est_multialloy_t::regularize_front(Vec front_phi_old)
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 // end of "regularize_front"
+
 void my_p4est_multialloy_t::compute_solid()
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_compute_solid, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -3588,6 +3590,9 @@ void my_p4est_multialloy_t::fill_or_load_integer_parameters(save_or_load flag, P
   size_t idx=0;
   switch(flag){
   case SAVE:{
+    data[idx++] = num_time_layers_;
+    data[idx++] = sp_crit_->min_lvl;
+    data[idx++] = sp_crit_->max_lvl;
 //    data[idx++] = advection_sl_order;
 //    data[idx++] = tstep;
 //    data[idx++] = sp->min_lvl;
@@ -3595,6 +3600,9 @@ void my_p4est_multialloy_t::fill_or_load_integer_parameters(save_or_load flag, P
     break;
   }
   case LOAD:{
+    num_time_layers_ = data[idx++];
+    sp_crit_->min_lvl = data[idx++];
+    sp_crit_->max_lvl = data[idx++];
 //    advection_sl_order = data[idx++];
 //    tstep = data[idx++];
 //    sp->min_lvl=data[idx++];
@@ -3604,3 +3612,334 @@ void my_p4est_multialloy_t::fill_or_load_integer_parameters(save_or_load flag, P
   }
   P4EST_ASSERT(idx == num);
 } // end of "fill_or_load_integer_parameters()"
+
+void my_p4est_multialloy_t::save_or_load_parameters(const char* filename, save_or_load flag){
+  PetscErrorCode ierr;
+
+  // Double parameters we need to save:
+  PetscInt num_doubles = 4 + num_time_layers_;
+  PetscReal double_parameters[num_doubles];
+
+  // Integer parameters we need to save:
+  PetscInt num_integers = 3;
+  PetscInt integer_parameters[num_integers];
+
+  int fd;
+  char diskfilename[PATH_MAX];
+
+  switch(flag){
+  case SAVE:{
+    if(mpi_->rank() ==0){
+
+      // Save the integer parameters to a file
+      sprintf(diskfilename,"%s_integers",filename);
+
+      fill_or_load_integer_parameters(flag, num_integers, integer_parameters);
+      ierr = PetscBinaryOpen(diskfilename,FILE_MODE_WRITE,&fd); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, integer_parameters, num_integers, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+
+      // Save the double parameters to a file:
+
+      sprintf(diskfilename, "%s_doubles", filename);
+      fill_or_load_double_parameters(flag,num_doubles, double_parameters);
+
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, double_parameters, num_doubles, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+    }
+    break;
+  }
+  case LOAD: {
+    // First, load the integer parameters:
+    sprintf(diskfilename, "%s_integers", filename);
+    if(!file_exists(diskfilename))
+      throw std::invalid_argument("The file storing the solver's integer parameters could not be found");
+    if(mpi_->rank()==0){
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, integer_parameters, num_integers, NULL, PETSC_INT); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+    }
+    int mpiret = MPI_Bcast(integer_parameters, num_integers, MPI_INT, 0, mpi_->comm()); SC_CHECK_MPI(mpiret);
+    fill_or_load_integer_parameters(flag,num_integers, integer_parameters);
+
+    // Now, load the double parameters:
+    sprintf(diskfilename, "%s_doubles", filename);
+    if(!file_exists(diskfilename))
+      throw std::invalid_argument("The file storing the solver's double parameters could not be found");
+    if(mpi_->rank() == 0)
+    {
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, double_parameters, num_doubles, NULL, PETSC_DOUBLE); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+    }
+    mpiret = MPI_Bcast(double_parameters, num_doubles, MPI_DOUBLE, 0, mpi_->comm()); SC_CHECK_MPI(mpiret);
+    fill_or_load_double_parameters(flag,num_doubles, double_parameters);
+    break;
+  }
+  default:
+    throw std::runtime_error("Unkown flag values were used when load/saving parameters \n");
+  }
+} // end of "save_or_load_parameters()"
+
+void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_save_n,
+                                                                    vector<save_or_load_element_t> &fields_to_save_nm1){
+
+  save_or_load_element_t to_add;
+
+  // ----------------------
+  // Add relevant fields to the vector of fields to save:
+  // ----------------------
+  // Level-set:
+  to_add.name = "front_phi";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = 1;
+  to_add.pointer_to_vecs = &front_phi_.vec;
+  fields_to_save_n.push_back(to_add);
+
+
+  // ALERT TO-DO: we need to sort out which list to add each field to ... in the case with solve with fluids, we will likely want to save the nm1 times to the nm1 grid, and etc. Need to recall which fields are on which grid. For the case without solving fluids, I think we can save them all on one grid
+
+  // TO-DO: we may need to add the "solid" fields for the auxiliary grid
+
+  // Fields only present for the fluids case:
+  if(solve_with_fluids){
+    // Temperature and concentration fields:
+    // NOTE: we assume that if we are solving with fluids, we are solving with two time layers
+    // Tl at time layer 0 (n):
+    to_add.name = "tl_time_layer_0";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &tl_[0].vec;
+    fields_to_save_n.push_back(to_add);
+
+    // Tl at time layer 1 (nm1):
+    to_add.name = "tl_time_layer_1";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &tl_[1].vec;
+    fields_to_save_nm1.push_back(to_add);
+
+    // Ts at time layers 0 and 1: (both on the n grid, as per daniil's approach)
+    for(int i=0; i<num_time_layers_; i++){
+      char name[1000];
+      sprintf(name, "ts_time_layer_%d", i);
+      to_add.name = name;
+      to_add.DATA_SAMPLING = NODE_DATA;
+      to_add.nvecs = 1;
+      to_add.pointer_to_vecs = &ts_[i].vec;
+      fields_to_save_n.push_back(to_add);
+    }
+
+    for (int j=0; j<num_comps_; j++){
+
+      char name[1000];
+      // Concentration components at time layer 0: (n grid)
+      sprintf(name, "cl_comp_%d_time_layer_%d", j, 0);
+      to_add.name = name;
+      to_add.DATA_SAMPLING = NODE_DATA;
+      to_add.nvecs = 1;
+      to_add.pointer_to_vecs = &cl_[0].vec[j];
+      fields_to_save_n.push_back(to_add);
+
+      // Concentration components at time layer 1: (nm1 grid)
+      sprintf(name, "cl_comp_%d_time_layer_%d", j, 1);
+      to_add.name = name;
+      to_add.DATA_SAMPLING = NODE_DATA;
+      to_add.nvecs = 1;
+      to_add.pointer_to_vecs = &cl_[1].vec[j];
+      fields_to_save_nm1.push_back(to_add);
+    }
+
+    // The fluid velocity fields:
+    to_add.name = "v_NS_n";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = P4EST_DIM;
+    to_add.pointer_to_vecs = v_n.vec;
+    fields_to_save_n.push_back(to_add);
+
+    to_add.name = "v_NS_nm1";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = P4EST_DIM;
+    to_add.pointer_to_vecs = v_nm1.vec;
+    fields_to_save_nm1.push_back(to_add);
+  }
+  else{
+    // Fields for temperature and concentration (in case without solving fluids, all the time layers are saved on the most recent grid):
+    for(int i=0; i < num_time_layers_; i++){
+      char name[1000];
+
+      // Temperature fields:
+      sprintf(name, "tl_time_layer_%d", i);
+      to_add.name = name;
+      to_add.DATA_SAMPLING = NODE_DATA;
+      to_add.nvecs = 1;
+      to_add.pointer_to_vecs = &tl_[i].vec;
+      fields_to_save_n.push_back(to_add);
+
+      sprintf(name, "ts_time_layer_%d", i);
+      to_add.name = name;
+      to_add.DATA_SAMPLING = NODE_DATA;
+      to_add.nvecs = 1;
+      to_add.pointer_to_vecs = &ts_[i].vec;
+      fields_to_save_n.push_back(to_add);
+
+      // Concentration fields:
+      for(int j = 0; j<num_comps_; j++){
+        char name[1000];
+
+        sprintf(name, "cl_comp_%d_time_layer_%d", j, i);
+        to_add.name = name;
+        to_add.DATA_SAMPLING = NODE_DATA;
+        to_add.nvecs = 1;
+        to_add.pointer_to_vecs = &cl_[i].vec[j];
+      } // end of loop over num components
+    } // end of loop over time layers
+  } // end of case with no fluids
+} // end of "prepare_fields_for_save_or_load"
+
+void my_p4est_multialloy_t::load_state(const char* path_to_folder){
+
+  char filename[PATH_MAX];
+  if(!is_folder(path_to_folder)) throw std::invalid_argument("Load state: path to directory is invalid \n");
+
+  // First load the general solver parameters -- integers and doubles
+  sprintf(filename, "%s/solver_parameters", path_to_folder);
+
+
+  save_or_load_parameters(filename, LOAD);
+
+  // Prepare the fields for save/load
+  vector<save_or_load_element_t> fields_to_load_nm1, fields_to_load_n;
+  prepare_fields_for_save_or_load(fields_to_load_n,
+                                  fields_to_load_nm1);
+
+  // Load the time nm1 grid:
+  my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
+                                p4est_nm1, connectivity_, P4EST_TRUE, ghost_nm1, nodes_nm1,
+                                "p4est_nm1", fields_to_load_nm1);
+
+  // Load the np1 grid:
+  my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
+                                p4est_, connectivity_, P4EST_TRUE, ghost_, nodes_,
+                                "p4est_nm1", fields_to_load_n);
+
+
+  P4EST_ASSERT(find_max_level(p4est_n) == sp->max_lvl);
+  P4EST_ASSERT(find_max_level(p4est_np1) == sp->max_lvl);
+
+  // Update the user pointer:
+  // sp_crit_ is generated by "initialize", and then we can provide it to the loaded grids (to replace the old user pointers they likely hold?) although that does not quite make sense, because then what's the point of loading the old lmin and lmax?
+  // TO-DO: may need to fix how this is handled later but I'm leaving it for now
+
+//  splitting_criteria_cf_t* sp_new = new splitting_criteria_cf_and_uniform_band_t(*sp_crit_);
+  p4est_nm1->user_pointer = (void*) sp_crit_;
+  p4est_->user_pointer = (void*) sp_crit_;
+
+  PetscPrintf(mpi_->comm(),"Loads forest and data \n");
+} // end of "load_state()"
+
+void my_p4est_multialloy_t::save_state(const char* path_to_directory, unsigned int n_saved){
+  PetscErrorCode ierr;
+
+  if(!file_exists(path_to_directory)){
+    create_directory(path_to_directory, mpi_->rank(), mpi_->comm());
+  }
+  if(!is_folder(path_to_directory)){
+    if(!create_directory(path_to_directory, mpi_->rank(), mpi_->comm()))
+    {
+      char error_msg[1024];
+      sprintf(error_msg, "save_state: the path %s is invalid and the directory could not be created", path_to_directory);
+      throw std::invalid_argument(error_msg);
+    }
+  }
+
+  unsigned int backup_idx = 0;
+
+  if(mpi_->rank() ==0){
+    unsigned int n_backup_subfolders = 0;
+
+    // Get the current number of backups already present:
+    // (Delete extra ones that exist for whatever reason)
+    std::vector<std::string> subfolders; subfolders.resize(0);
+    get_subdirectories_in(path_to_directory,subfolders);
+
+    for(size_t idx =0; idx<subfolders.size(); ++idx){
+      if(!subfolders[idx].compare(0,7,"backup_")){
+        unsigned int backup_idx;
+        sscanf(subfolders[idx].c_str(), "backup_%d", &backup_idx);
+
+        if(backup_idx >= n_saved)
+        {
+          char full_path[PATH_MAX];
+          sprintf(full_path, "%s/%s", path_to_directory, subfolders[idx].c_str());
+          delete_directory(full_path, mpi_->rank(), mpi_->comm(), true);
+        }
+        else
+          n_backup_subfolders++;
+      }
+    }
+
+    // check that they are successively indexed if less than the max number
+    if(n_backup_subfolders < n_saved)
+    {
+      backup_idx = 0;
+      for (unsigned int idx = 0; idx < n_backup_subfolders; ++idx) {
+        char expected_dir[PATH_MAX];
+        sprintf(expected_dir, "%s/backup_%d", path_to_directory, (int) idx);
+
+        if(!is_folder(expected_dir))
+          break; // well, it's a mess in there, but I can't really do any better...
+        backup_idx++;
+      }
+    }
+    // Slide the names of the backup folders in time:
+    if ((n_saved > 1) && (n_backup_subfolders == n_saved))
+    {
+      char full_path_zeroth_index[PATH_MAX];
+      sprintf(full_path_zeroth_index, "%s/backup_0", path_to_directory);
+      // delete the 0th
+      delete_directory(full_path_zeroth_index, mpi_->rank(), mpi_->comm(), true);
+      // shift the others
+      for (size_t idx = 1; idx < n_saved; ++idx) {
+        char old_name[PATH_MAX], new_name[PATH_MAX];
+        sprintf(old_name, "%s/backup_%d", path_to_directory, (int) idx);
+        sprintf(new_name, "%s/backup_%d", path_to_directory, (int) (idx-1));
+        rename(old_name, new_name);
+      }
+      backup_idx = n_saved-1;
+    }
+
+    subfolders.clear();
+
+  } // end of operations only on rank 0
+
+  int mpiret = MPI_Bcast(&backup_idx, 1, MPI_INT, 0, mpi_->comm()); SC_CHECK_MPI(mpiret);// acts as a MPI_Barrier, too
+
+  char path_to_folder[PATH_MAX];
+  sprintf(path_to_folder, "%s/backup_%d", path_to_directory, (int) backup_idx);
+  create_directory(path_to_folder, mpi_->rank(), mpi_->comm());
+
+  char filename[PATH_MAX];
+
+  // save the solver parameters
+  sprintf(filename, "%s/solver_parameters", path_to_folder);
+  save_or_load_parameters(filename, SAVE);
+
+  // Save the p4est and corresponding data:
+
+  vector<save_or_load_element_t> fields_to_save_n, fields_to_save_nm1;
+
+
+  prepare_fields_for_save_or_load(fields_to_save_n, fields_to_save_nm1);
+
+  // Save the state:
+  my_p4est_save_forest_and_data(path_to_folder, p4est_, nodes_, NULL,
+                                "p4est_np1", fields_to_save_n);
+
+  my_p4est_save_forest_and_data(path_to_folder, p4est_nm1, nodes_nm1, NULL,
+                                "p4est_n", fields_to_save_n);
+
+  ierr = PetscPrintf(mpi_->comm(),"Saved solver state in ... %s \n",path_to_folder);CHKERRXX(ierr);
+
+} // end of "save_state()"

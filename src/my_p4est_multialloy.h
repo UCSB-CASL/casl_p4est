@@ -881,9 +881,13 @@ public:
   void count_dendrites(int iter);
   void sample_along_line(const double xyz0[], const double xyz1[], const unsigned int nb_points, Vec data, std::vector<double> out);
 
+  // Functions for save/load of simulation state:
   void fill_or_load_double_parameters(save_or_load flag, PetscInt num, PetscReal *data);
   void fill_or_load_integer_parameters(save_or_load flag, PetscInt num, PetscInt *data);
   void save_or_load_parameters(const char* filename, save_or_load flag);
+  void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_save_np1, vector<save_or_load_element_t> &fields_to_save_n);
+  void load_state(const char* path_to_folder);
+  void save_state(const char* path_to_directory, unsigned int n_saved);
 
 };
 

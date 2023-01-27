@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <boost/math/special_functions/expint.hpp>
 #include <boost/math/special_functions/erf.hpp>
-
+#include <linux/limits.h>
 
 // p4est Library
 #ifdef P4_TO_P8
@@ -1822,7 +1822,7 @@ bool is_y_wall(DIM(double x, double y, double z)){
 };
 // For velocity BCs/ICs
 double u0=0.;
-double v0=-1.0e-4;
+double v0=10; // cm/s // -1.0e-4;
 
 double outflow_u=0.;
 double outflow_v=0.;
@@ -2288,6 +2288,8 @@ int main (int argc, char* argv[])
   /* initialize the solver */
   my_p4est_multialloy_t mas(num_comps.val, order_in_time.val);
 
+  // Set the mpi environment: (elyce addition, needed for fluids, but also needed for save/load)
+  mas.set_mpi_env(&mpi);
 
   mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin_new, lmax_new, lip.val, band.val, solve_w_fluids.val);
   ierr = PetscPrintf(mpi.comm(), "initialize complete \n"); CHKERRXX(ierr);
@@ -2295,7 +2297,7 @@ int main (int argc, char* argv[])
   my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver;
   if(solve_w_fluids.val){
     stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(&mpi);
-    mas.set_mpi_env(&mpi);
+//    mas.set_mpi_env(&mpi);
     mas.set_solve_with_fluids();
 
     ierr = PetscPrintf(mpi.comm(), "Setting solve w fluids \n"); CHKERRXX(ierr);
