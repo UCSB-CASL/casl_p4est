@@ -1079,7 +1079,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
   PetscPrintf(p4est_->mpicomm, "(Number of nodes before: %d) \n", num_nodes);
 
-  if(1){
+  if(0){
     PetscPrintf(p4est_->mpicomm, "\n \n Saving fields before grid update \n");
     // -------------------------------
     // TEMPORARY: save fields before grid update
@@ -1178,8 +1178,8 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   //refine_by_vorticity = vorticity.vec!=NULL;
 
   refine_by_vorticity = false;
-  refine_by_d2C = false;
-  refine_by_d2T = false;
+  refine_by_d2C = true;
+  refine_by_d2T = true;
 
   // -----------------------
   // Count number of refinement fields and create vectors for necessary fields:
@@ -1716,7 +1716,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   PetscPrintf(p4est_->mpicomm, "Number of nodes after: %d \n", num_nodes2);
 
 
-  if(1){
+  if(0){
     PetscPrintf(p4est_->mpicomm," \n \n \n saving fields after grid update \n");
     // -------------------------------
     // TEMPORARY: save fields after grid update

@@ -1069,7 +1069,11 @@ public:
         double dist2 = ABS2(x-(xc()+seed_dist()*cos(2.*PI/3.*2. + seed_rot())), y-(yc()+seed_dist()*sin(2.*PI/3.*2. + seed_rot())));
 
         //return seed_radius() - MIN(dist0, dist1, dist2);
-        return -(ABS2(x-xc(), y-yc())-seed_radius());
+        //return -(ABS2(x-xc(), y-yc())-seed_radius());
+        double noise = 0.001;
+        double theta = atan2(y-yc(),x-xc());
+        //return r0*(1.0 - noise*fabs(sin(theta)) - noise*fabs(cos(theta))) - sqrt(SQR(x - xc) + SQR(y - yc));
+        return seed_radius()*(1.0 - noise*fabs(pow(sin(2*theta),2)))- sqrt(SQR(x - xc()) + SQR(y - yc()));
       }
       case 6:
       {
