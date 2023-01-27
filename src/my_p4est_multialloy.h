@@ -240,6 +240,7 @@ private:
   interpolation_method interpolation_between_grids_;
 
   bool solve_with_fluids; // To set if we are solving the coupled problem
+  bool loading_from_previous_state;
 
   //--------------------------------------------------
   // Dendrite counting and profiling
@@ -264,6 +265,7 @@ private:
   vec_and_ptr_t  front_phi_unsmooth_; // is used to track nodes that were artificially solidified during front regularization
 
   int iteration_w_fluids;
+
 
   static my_p4est_node_neighbors_t *v_ngbd;
   static double **v_c_p, **v_c0_d_p, **v_c0_dd_p, **v_normal_p;
@@ -408,7 +410,8 @@ public:
 
   // Setting functions for coupled problem with fluids:
   // ---------------------------------------------------
-  inline void set_solve_with_fluids(){solve_with_fluids=true;}
+  inline void set_solve_with_fluids(){ solve_with_fluids = true;}
+  void set_load_from_previous_state(bool load_from_prev){ loading_from_previous_state = load_from_prev;}
 
   void set_mu_l(double mu_l_){mu_l = mu_l_;}
   void set_nondimensional_groups(double Pr_, double St_,

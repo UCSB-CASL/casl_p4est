@@ -2047,33 +2047,48 @@ void my_p4est_stefan_with_fluids_t::initialize_ns_solver(bool convert_to_nondim_
 
   // Create the initial neigbhors and faces (after first step, NS grid update will handle this internally
   ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
-
   faces_np1 = new my_p4est_faces_t(p4est_np1, ghost_np1, &brick, ngbd_c_np1);
 
-  // Create the solver
-  ns = new my_p4est_navier_stokes_t(ngbd_n,ngbd_np1,faces_np1);
 
-  // Set the LSF:
-  ns->set_phi((there_is_a_substrate ? phi_eff.vec:phi.vec));
 
-  ns->set_dt(dt_nm1,dt);
+  if(!loading_from_previous_state){
 
-  if(convert_to_nondim_for_multialloy){
-    // Convert dimensional to nondimensional
-    foreach_dimension(d){
-      ierr = VecScaleGhost(v_n.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
-      ierr = VecScaleGhost(v_nm1.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
+    // Create the solver
+    ns = new my_p4est_navier_stokes_t(ngbd_n,ngbd_np1,faces_np1);
+
+    // Set the LSF:
+    ns->set_phi((there_is_a_substrate ? phi_eff.vec:phi.vec));
+
+    ns->set_dt(dt_nm1,dt);
+
+    if(convert_to_nondim_for_multialloy){
+      // Convert dimensional to nondimensional
+      foreach_dimension(d){
+        ierr = VecScaleGhost(v_n.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
+        ierr = VecScaleGhost(v_nm1.vec[d], 1./vel_nondim_to_dim);CHKERRXX(ierr);
+      }
+    }
+
+    ns->set_velocities(v_nm1.vec, v_n.vec);
+
+    if(convert_to_nondim_for_multialloy){
+      // Convert dimensional to nondimensional
+      foreach_dimension(d){
+        ierr = VecScaleGhost(v_n.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
+        ierr = VecScaleGhost(v_nm1.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
+      }
     }
   }
-
-  ns->set_velocities(v_nm1.vec, v_n.vec);
-
-  if(convert_to_nondim_for_multialloy){
-    // Convert dimensional to nondimensional
-    foreach_dimension(d){
-      ierr = VecScaleGhost(v_n.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
-      ierr = VecScaleGhost(v_nm1.vec[d], vel_nondim_to_dim);CHKERRXX(ierr);
+  else{
+    // Get the load directory:
+    const char* load_path_ns = getenv("LOAD_STATE_PATH_NS");
+    if(!load_path_ns){
+      throw std::invalid_argument("You need to set the  directory for the desired load state");
     }
+
+    PetscPrintf(mpi->comm(),"Load dir for navier stokes is:  %s \n",load_path_ns);
+    ns = new my_p4est_navier_stokes_t(*mpi, load_path_ns, tn);
+    PetscPrintf(mpi->comm(),"NS solver successfully initialized from load state \n",load_path_ns);
   }
 
 

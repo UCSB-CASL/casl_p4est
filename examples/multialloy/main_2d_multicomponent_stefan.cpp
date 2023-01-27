@@ -135,6 +135,15 @@ param_t<int>    save_type (pl, 0, "save_type", "0 - every n iterations (pl, 1 - 
 param_t<double> dendrite_cut_off_fraction (pl, 1.05, "dendrite_cut_off_fraction", "");
 param_t<double> dendrite_min_length       (pl, 0.05, "dendrite_min_length", "");
 
+// Parameters for saving/load of simulation state:
+param_t<bool>   save_state            (pl, 1, "save_state", "are we saving the simulation state?");
+param_t<int>    save_state_every_dn (pl, 1000, "save_state_every_dn", "save the simulation state every n iterations");
+param_t<int>    num_state_backups (pl, 20, "num_state_backups", "number of simulation state backup files to keep");
+
+
+param_t<bool>   loading_from_previous_state(pl, 1, "loading_from_previous_state", "are we loading from a previously saved simulation state?");
+
+
 //-------------------------------------
 // alloy parameters
 //-------------------------------------
@@ -2291,7 +2300,11 @@ int main (int argc, char* argv[])
   // Set the mpi environment: (elyce addition, needed for fluids, but also needed for save/load)
   mas.set_mpi_env(&mpi);
 
+  // Set if we are loading from a previous state
+  mas.set_load_from_previous_state(loading_from_previous_state.val);
+
   mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin_new, lmax_new, lip.val, band.val, solve_w_fluids.val);
+
   ierr = PetscPrintf(mpi.comm(), "initialize complete \n"); CHKERRXX(ierr);
 
   my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver;
@@ -2456,6 +2469,7 @@ int main (int argc, char* argv[])
   int    iteration      = 0;
   int    sub_iterations = 0;
   int    vtk_idx        = 0;
+  int    save_state_idx = 0;
   int    mpiret;
 
   vector<double> bc_error_max_all;
@@ -2477,7 +2491,8 @@ int main (int argc, char* argv[])
         (save_type.val == 0 && iteration    >= vtk_idx*save_every_dn.val) ||
         (save_type.val == 1 && total_growth >= vtk_idx*save_every_dl.val) ||
         (save_type.val == 2 && tn           >= vtk_idx*save_every_dt.val);
-    //bool save_now=0;
+
+    bool save_state_now = (save_vtk.val) && (iteration >= save_state_idx * save_state_every_dn.val);
 
     if (!keep_going) break;
 
@@ -2671,6 +2686,22 @@ int main (int argc, char* argv[])
       if (save_p4est.val)       mas.save_p4est(vtk_idx);
     }
     if (save_now) vtk_idx++;
+
+    if(save_state_now){
+      char output[1000];
+      const char* out_dir_save_state = getenv("OUT_DIR_SAVE_STATE");
+      if(!out_dir_save_state){
+        throw std::invalid_argument("You need to set the output directory for save states: OUT_DIR_SAVE_STATE");
+      }
+      sprintf(output,
+              "%s/save_states_multialloy_lmin_%d_lmax_%d_geom_%d",
+              out_dir_save_state,
+              lmin.val, lmax.val, geometry.val);
+
+      mas.save_state(output, num_state_backups.val);
+
+      save_state_idx++;
+    }
 
     // compute total growth - new position - Rochi - checking if growth is occuring now or not
     total_growth = base;

@@ -421,6 +421,9 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
 
 void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver_){
 
+  // NOTE: to load state from fluids, stefan_W_fluids->initialize_ns_solver automatically handles the case, but only in the porous media branch ... so we may need to do a merge to get that feature.
+  // otherwise we can just handle it externally in multialloy? which perhaps would be better? idk
+
   iteration_w_fluids=0;
   // NOTE: calling this fxn assumes that initialize for multialloy
   // has already been performed
@@ -435,6 +438,8 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // Set the appropriate solve flags in the stefan with fluids class
   stefan_w_fluids_solver->set_solve_stefan(true);
   stefan_w_fluids_solver->set_solve_navier_stokes(true);
+
+  stefan_w_fluids_solver_->set_loading_from_previous_state(loading_from_previous_state);
 
   // Set up the initial nm1 grids that we will need:
   p4est_nm1 = p4est_copy(p4est_, P4EST_FALSE); // copy the grid but not the data
@@ -611,6 +616,7 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // -------------
   // Initialize the ns solver:
   // -------------
+  PetscPrintf(mpi_->comm(), "\n \n ELYCE!! \n \n, You need to tell SWF that we are loading from a state file for the NS solver to do things correctly! add this if you have not already ! ");
   stefan_w_fluids_solver->initialize_ns_solver(true);
 
   // -------------
@@ -3941,5 +3947,29 @@ void my_p4est_multialloy_t::save_state(const char* path_to_directory, unsigned i
                                 "p4est_n", fields_to_save_n);
 
   ierr = PetscPrintf(mpi_->comm(),"Saved solver state in ... %s \n",path_to_folder);CHKERRXX(ierr);
+
+
+  // --------------------------------------
+  // Now we need to save the NS solver state, and to do so in a way that
+  // will allow stefan_w_fluids to reload the saved state when it initializes
+  // the NS solver:
+  // --------------------------------------
+  char path_to_directory_NS[PATH_MAX];
+  sprintf(path_to_directory_NS,"%s_navier_stokes", path_to_directory);
+  if(solve_with_fluids){
+    if(!file_exists(path_to_directory_NS)){
+      create_directory(path_to_directory_NS, mpi_->rank(), mpi_->comm());
+    }
+    if(!is_folder(path_to_directory_NS)){
+      if(!create_directory(path_to_directory_NS, mpi_->rank(), mpi_->comm()))
+      {
+        char error_msg[1024];
+        sprintf(error_msg, "save_state: the path %s is invalid and the directory could not be created", path_to_directory_NS);
+        throw std::invalid_argument(error_msg);
+      }
+    }
+    ns = stefan_w_fluids_solver->get_ns_solver();
+    ns->save_state(path_to_directory_NS, time_, n_saved);
+  }
 
 } // end of "save_state()"
