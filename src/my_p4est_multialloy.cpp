@@ -3968,8 +3968,11 @@ void my_p4est_multialloy_t::save_state(const char* path_to_directory, unsigned i
         throw std::invalid_argument(error_msg);
       }
     }
+    PetscPrintf(mpi_->comm(), "aaa \n");
     ns = stefan_w_fluids_solver->get_ns_solver();
+    PetscPrintf(mpi_->comm(), "bbb \n path to NS directory: %s \n", path_to_directory_NS);
     ns->save_state(path_to_directory_NS, time_, n_saved);
+    PetscPrintf(mpi_->comm(), "ccc \n");
   }
 
 } // end of "save_state()"
