@@ -3689,7 +3689,8 @@ void my_p4est_multialloy_t::save_or_load_parameters(const char* filename, save_o
 } // end of "save_or_load_parameters()"
 
 void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_save_n,
-                                                                    vector<save_or_load_element_t> &fields_to_save_nm1){
+                                                            vector<save_or_load_element_t> &fields_to_save_nm1,
+                                                            vector<save_or_load_element_t> &fields_to_save_solid){
 
   save_or_load_element_t to_add;
 
@@ -3802,6 +3803,46 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
       } // end of loop over num components
     } // end of loop over time layers
   } // end of case with no fluids
+
+
+  // ---------------------------------------------------
+  // Lastly, let's prepare the fields for the solid grid:
+  // ---------------------------------------------------
+  to_add.name = "solid_front_phi";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = 1;
+  to_add.pointer_to_vecs = &solid_front_phi_.vec;
+  fields_to_save_solid.push_back(to_add);
+
+  to_add.name = "solid_front_phi_nm1";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = 1;
+  to_add.pointer_to_vecs = &solid_front_phi_nm1_.vec;
+  fields_to_save_solid.push_back(to_add);
+
+  // May need to include more fields, but let's start with this and see how it goes ...
+
+//  to_add.name = "solid_front_curvature";
+//  to_add.DATA_SAMPLING = NODE_DATA;
+//  to_add.nvecs = 1;
+//  to_add.pointer_to_vecs = &solid_front_curvature_.vec;
+//  fields_to_save_solid.push_back(to_add);
+
+//  to_add.name = "solid_front_velo_norm";
+//  to_add.DATA_SAMPLING = NODE_DATA;
+//  to_add.nvecs = 1;
+//  to_add.pointer_to_vecs = &solid_front_velo_norm_.vec;
+//  fields_to_save_solid.push_back(to_add);
+
+//  to_add.name = "solid_time_";
+//  to_add.DATA_SAMPLING = NODE_DATA;
+//  to_add.nvecs = 1;
+//  to_add.pointer_to_vecs = &solid_front_velo_norm_.vec;
+//  fields_to_save_solid.push_back(to_add);
+
+
+
+
 } // end of "prepare_fields_for_save_or_load"
 
 void my_p4est_multialloy_t::load_state(const char* path_to_folder){
@@ -3816,9 +3857,9 @@ void my_p4est_multialloy_t::load_state(const char* path_to_folder){
   save_or_load_parameters(filename, LOAD);
 
   // Prepare the fields for save/load
-  vector<save_or_load_element_t> fields_to_load_nm1, fields_to_load_n;
+  vector<save_or_load_element_t> fields_to_load_nm1, fields_to_load_n, fields_to_load_solid;
   prepare_fields_for_save_or_load(fields_to_load_n,
-                                  fields_to_load_nm1);
+                                  fields_to_load_nm1, fields_to_load_solid);
 
   // Load the time nm1 grid:
   my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
@@ -3829,6 +3870,13 @@ void my_p4est_multialloy_t::load_state(const char* path_to_folder){
   my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
                                 p4est_, connectivity_, P4EST_TRUE, ghost_, nodes_,
                                 "p4est_nm1", fields_to_load_n);
+
+  // Load the solid grid:
+  // TO-DO
+  PetscPrintf(mpi_->comm(), "HELLO! LOAD THE SOLID GRID STILL TO DO \n");
+  my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
+                                solid_p4est_, connectivity_, P4EST_TRUE, solid_ghost_, solid_nodes_,
+                                "solid_p4est_n", fields_to_load_solid);
 
 
   P4EST_ASSERT(find_max_level(p4est_n) == sp->max_lvl);
@@ -3841,6 +3889,7 @@ void my_p4est_multialloy_t::load_state(const char* path_to_folder){
 //  splitting_criteria_cf_t* sp_new = new splitting_criteria_cf_and_uniform_band_t(*sp_crit_);
   p4est_nm1->user_pointer = (void*) sp_crit_;
   p4est_->user_pointer = (void*) sp_crit_;
+  solid_p4est_->user_pointer = (void*) sp_crit_;
 
   PetscPrintf(mpi_->comm(),"Loads forest and data \n");
 } // end of "load_state()"
@@ -3934,19 +3983,23 @@ void my_p4est_multialloy_t::save_state(const char* path_to_directory, unsigned i
 
   // Save the p4est and corresponding data:
 
-  vector<save_or_load_element_t> fields_to_save_n, fields_to_save_nm1;
+  vector<save_or_load_element_t> fields_to_save_n, fields_to_save_nm1, fields_to_save_solid;
 
 
-  prepare_fields_for_save_or_load(fields_to_save_n, fields_to_save_nm1);
+  prepare_fields_for_save_or_load(fields_to_save_n, fields_to_save_nm1, fields_to_save_solid);
 
   // Save the state:
   my_p4est_save_forest_and_data(path_to_folder, p4est_, nodes_, NULL,
-                                "p4est_np1", fields_to_save_n);
-
-  my_p4est_save_forest_and_data(path_to_folder, p4est_nm1, nodes_nm1, NULL,
                                 "p4est_n", fields_to_save_n);
 
+  my_p4est_save_forest_and_data(path_to_folder, p4est_nm1, nodes_nm1, NULL,
+                                "p4est_nm1", fields_to_save_n);
+
   ierr = PetscPrintf(mpi_->comm(),"Saved solver state in ... %s \n",path_to_folder);CHKERRXX(ierr);
+
+  // Save the solid fields and grids
+  my_p4est_save_forest_and_data(path_to_folder, solid_p4est_, solid_nodes_, NULL,
+                                "solid_p4est_n", fields_to_save_solid);
 
 
   // --------------------------------------
