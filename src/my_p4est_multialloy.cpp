@@ -314,6 +314,21 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   // Check if we solve with fluids:
   solve_with_fluids = solve_w_fluids;
 
+  if(loading_from_previous_state){
+    // Get the load directory:
+    const char* load_path = getenv("LOAD_STATE_PATH");
+    if(!load_path){
+      throw std::invalid_argument("You need to set the  directory for the desired load state");
+    }
+    PetscPrintf(mpi_->comm(),"Load dir is:  %s \n",load_path);
+
+    load_state(load_path);
+
+    PetscPrintf(mpi_->comm(),"State was loaded successfully from %s \n",load_path);
+  }
+
+
+
   /* create main p4est grid */
   connectivity_ = my_p4est_brick_new(nxyz, xyz_min, xyz_max, &brick_, periodicity);
   p4est_        = my_p4est_new(mpi_comm, connectivity_, 0, NULL, NULL);
@@ -3853,30 +3868,33 @@ void my_p4est_multialloy_t::load_state(const char* path_to_folder){
   // First load the general solver parameters -- integers and doubles
   sprintf(filename, "%s/solver_parameters", path_to_folder);
 
-
+  PetscPrintf(mpi_->comm(), "AAA \n");
   save_or_load_parameters(filename, LOAD);
-
+  PetscPrintf(mpi_->comm(), "BBB \n");
   // Prepare the fields for save/load
   vector<save_or_load_element_t> fields_to_load_nm1, fields_to_load_n, fields_to_load_solid;
   prepare_fields_for_save_or_load(fields_to_load_n,
                                   fields_to_load_nm1, fields_to_load_solid);
+  PetscPrintf(mpi_->comm(), "CCC \n");
 
   // Load the time nm1 grid:
   my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
                                 p4est_nm1, connectivity_, P4EST_TRUE, ghost_nm1, nodes_nm1,
                                 "p4est_nm1", fields_to_load_nm1);
+  PetscPrintf(mpi_->comm(), "DDD \n");
 
   // Load the np1 grid:
   my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
                                 p4est_, connectivity_, P4EST_TRUE, ghost_, nodes_,
-                                "p4est_nm1", fields_to_load_n);
+                                "p4est_n", fields_to_load_n);
+  PetscPrintf(mpi_->comm(), "EEE \n");
 
   // Load the solid grid:
-  // TO-DO
-  PetscPrintf(mpi_->comm(), "HELLO! LOAD THE SOLID GRID STILL TO DO \n");
   my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
                                 solid_p4est_, connectivity_, P4EST_TRUE, solid_ghost_, solid_nodes_,
                                 "solid_p4est_n", fields_to_load_solid);
+  PetscPrintf(mpi_->comm(), "FFF \n");
+
 
 
   P4EST_ASSERT(find_max_level(p4est_n) == sp->max_lvl);
