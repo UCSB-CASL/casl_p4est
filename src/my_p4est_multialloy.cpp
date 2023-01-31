@@ -314,6 +314,9 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   // Check if we solve with fluids:
   solve_with_fluids = solve_w_fluids;
 
+  // Create splitting criteria (which we will need for the loading of a previous state as well as for a typical run)
+  sp_crit_ = new splitting_criteria_cf_t(lmin, lmax, &level_set, lip, band);
+
   if(loading_from_previous_state){
     // Get the load directory:
     const char* load_path = getenv("LOAD_STATE_PATH");
@@ -333,7 +336,6 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   connectivity_ = my_p4est_brick_new(nxyz, xyz_min, xyz_max, &brick_, periodicity);
   p4est_        = my_p4est_new(mpi_comm, connectivity_, 0, NULL, NULL);
 
-  sp_crit_ = new splitting_criteria_cf_t(lmin, lmax, &level_set, lip, band);
 
   p4est_->user_pointer = (void*)(sp_crit_);
   my_p4est_refine(p4est_, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -3624,6 +3626,7 @@ void my_p4est_multialloy_t::fill_or_load_integer_parameters(save_or_load flag, P
     num_time_layers_ = data[idx++];
     sp_crit_->min_lvl = data[idx++];
     sp_crit_->max_lvl = data[idx++];
+
 //    advection_sl_order = data[idx++];
 //    tstep = data[idx++];
 //    sp->min_lvl=data[idx++];
@@ -3683,7 +3686,6 @@ void my_p4est_multialloy_t::save_or_load_parameters(const char* filename, save_o
     }
     int mpiret = MPI_Bcast(integer_parameters, num_integers, MPI_INT, 0, mpi_->comm()); SC_CHECK_MPI(mpiret);
     fill_or_load_integer_parameters(flag,num_integers, integer_parameters);
-
     // Now, load the double parameters:
     sprintf(diskfilename, "%s_doubles", filename);
     if(!file_exists(diskfilename))
@@ -4004,14 +4006,16 @@ void my_p4est_multialloy_t::save_state(const char* path_to_directory, unsigned i
   vector<save_or_load_element_t> fields_to_save_n, fields_to_save_nm1, fields_to_save_solid;
 
 
-  prepare_fields_for_save_or_load(fields_to_save_n, fields_to_save_nm1, fields_to_save_solid);
+  prepare_fields_for_save_or_load(fields_to_save_n,
+                                  fields_to_save_nm1,
+                                  fields_to_save_solid);
 
   // Save the state:
   my_p4est_save_forest_and_data(path_to_folder, p4est_, nodes_, NULL,
                                 "p4est_n", fields_to_save_n);
 
   my_p4est_save_forest_and_data(path_to_folder, p4est_nm1, nodes_nm1, NULL,
-                                "p4est_nm1", fields_to_save_n);
+                                "p4est_nm1", fields_to_save_nm1);
 
   ierr = PetscPrintf(mpi_->comm(),"Saved solver state in ... %s \n",path_to_folder);CHKERRXX(ierr);
 
@@ -4039,11 +4043,8 @@ void my_p4est_multialloy_t::save_state(const char* path_to_directory, unsigned i
         throw std::invalid_argument(error_msg);
       }
     }
-    PetscPrintf(mpi_->comm(), "aaa \n");
     ns = stefan_w_fluids_solver->get_ns_solver();
-    PetscPrintf(mpi_->comm(), "bbb \n path to NS directory: %s \n", path_to_directory_NS);
     ns->save_state(path_to_directory_NS, time_, n_saved);
-    PetscPrintf(mpi_->comm(), "ccc \n");
   }
 
 } // end of "save_state()"
