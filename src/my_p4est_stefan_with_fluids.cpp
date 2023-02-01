@@ -817,7 +817,6 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 
 
   if(do_multicomponent_fields){
-
     bool conc_check = true;
 
     for(int j=0; j<num_conc_fields; j++){
@@ -911,15 +910,12 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
       }
     }
   }
-
   // v_dd[k] is the second derivative of the velocity components n along cartesian direction k
   // v_dd_nm1[k] is the second derivative of the velocity components nm1 along cartesian direction k
-
   ngbd_np1->second_derivatives_central(v_n.vec,v_dd[0],v_dd[1],P4EST_DIM);
   if(advection_sl_order ==2){
     ngbd_n->second_derivatives_central(v_nm1.vec, DIM(v_dd_nm1[0], v_dd_nm1[1], v_dd_nm1[2]), P4EST_DIM);
   }
-
 
   if(0){
     // -------------------------------
@@ -977,7 +973,6 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 
 
   }
-
 
   // Do the Semi-Lagrangian backtrace:
   if(advection_sl_order ==2){
@@ -1090,8 +1085,6 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 //    }
 //  }
 
-
-
   if(0){
     // -------------------------------
     // TEMPORARY: save fields after backtrace
@@ -1140,8 +1133,6 @@ void my_p4est_stefan_with_fluids_t::do_backtrace_for_scalar_temp_conc_problem(bo
 
 
   }
-
-
 
   if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace \n");
 } // end of "do_backtrace_for_scalar_temp_conc_problem"

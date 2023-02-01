@@ -136,9 +136,12 @@ void trajectory_from_np1_to_nm1(const p4est_t* p4est_n, const p4est_nodes_t* nod
     double xyz_star[P4EST_DIM];
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       xyz_star[dir] = xyz[dir] - .5*dt_n*v_p[dir][n];
+//    printf("node %d rank %d: xyz_star (%0.2f, %0.2f) = xyz (%0.2f, %0.2f) - 0.5 * dt (%0.2e) * vp (%0.2f, %0.2f) \n", n, p4est_n->mpirank,
+//           xyz_star[0], xyz_star[1], xyz[0], xyz[1], dt_n, v_p[0][n], v_p[1][n]);
+//    printf("periodic = (%d, %d), xyz_min = (%0.2f, %0.2f), xyz_max = (%0.2f, %0.2f) \n",
+//           periodic[0], periodic[1], xyz_min[0], xyz_min[1], xyz_max[0], xyz_max[1]);
+
     clip_in_domain(xyz_star, xyz_min, xyz_max, periodic);
-//    printf("\n dt_n = %0.3e, n = %d, (x,y) = (%0.2f, %0.2f), (xstar, ystar) = (%0.2f, %0.2f), v_px = %0.2f, v_py = %0.2f \n", dt_n, n,
-//           xyz[0], xyz[1], xyz_star[0], xyz_star[1], v_p[0][n], v_p[1][n]);
 
     interp_n  .add_point(n, xyz_star);
     interp_nm1.add_point(n, xyz_star);

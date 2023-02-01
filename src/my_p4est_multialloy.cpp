@@ -317,7 +317,18 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   // Create splitting criteria (which we will need for the loading of a previous state as well as for a typical run)
   sp_crit_ = new splitting_criteria_cf_t(lmin, lmax, &level_set, lip, band);
 
+  // Create the brick (which we will need before loading the state, if we are reloading)
+  connectivity_ = my_p4est_brick_new(nxyz, xyz_min, xyz_max, &brick_, periodicity);
+
   if(loading_from_previous_state){
+    // Destroy the old connectivity (which was created in order to create the brick), to
+    // make way for the loaded one
+    if(connectivity_!=NULL){
+      p4est_connectivity_destroy(connectivity_);
+      connectivity_= NULL;
+    }
+
+
     // Get the load directory:
     const char* load_path = getenv("LOAD_STATE_PATH");
     if(!load_path){
@@ -333,7 +344,6 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   // If we are *not* loading from previous state, we need to actually create the grids needed
   if(!loading_from_previous_state){
     /* create main p4est grid */
-    connectivity_ = my_p4est_brick_new(nxyz, xyz_min, xyz_max, &brick_, periodicity);
     p4est_        = my_p4est_new(mpi_comm, connectivity_, 0, NULL, NULL);
 
     p4est_->user_pointer = (void*)(sp_crit_);
@@ -485,7 +495,7 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // Initialize the neigbors:
   ngbd_nm1->init_neighbors();
 
-  // If we are reloading, we don't need to create or set the velocities and/or phi
+  // If we are reloading, we don't need to create new velocities.
   if(!loading_from_previous_state){
     v_n.create(p4est_, nodes_);
     v_nm1.create(p4est_nm1, nodes_nm1);
@@ -494,11 +504,10 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
       sample_cf_on_nodes(p4est_, nodes_, *initial_NS_velocity_n[d],v_n.vec[d]);
       sample_cf_on_nodes(p4est_nm1, nodes_nm1, *initial_NS_velocity_nm1[d],v_nm1.vec[d]);
     }
-
-    stefan_w_fluids_solver->set_v_n(v_n);
-    stefan_w_fluids_solver->set_v_nm1(v_nm1);
-    stefan_w_fluids_solver->set_phi(front_phi_);
   }
+  stefan_w_fluids_solver->set_v_n(v_n);
+  stefan_w_fluids_solver->set_v_nm1(v_nm1);
+  stefan_w_fluids_solver->set_phi(front_phi_);
 
 
   PetscPrintf(mpi_->comm(), "TO-DO: boussinesq flag for SWF is currently being hard-coded set to false \n");
@@ -619,6 +628,7 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   PetscPrintf(mpi_->comm(), "Before initialize ns \n");
   stefan_w_fluids_solver->initialize_ns_solver(true);
   PetscPrintf(mpi_->comm(), "After initialize ns \n");
+
   // -------------
   // Get back out the cell neigbors and faces:
   // -------------
@@ -2149,14 +2159,11 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // stefan with fluids solver
   
   // Create backtraced vectors:
-  PetscPrintf(mpi_->comm(), "AAA\n");
   cl_backtrace_n.resize(num_comps_);
   cl_backtrace_nm1.resize(num_comps_);
 
-  PetscPrintf(mpi_->comm(), "BBB\n");
   cl_backtrace_n.create(p4est_, nodes_);
   cl_backtrace_nm1.create(p4est_, nodes_);
-  PetscPrintf(mpi_->comm(), "CCC\n");
 
   tl_backtrace_n.create(p4est_, nodes_);
   tl_backtrace_nm1.create(p4est_, nodes_);
@@ -2166,36 +2173,30 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // Concentrations:
   stefan_w_fluids_solver->set_Cl_n(cl_[1]);
   stefan_w_fluids_solver->set_Cl_nm1(cl_[2]);
-  PetscPrintf(mpi_->comm(), "DDD\n");
   
   // Concentration backtraces:
   stefan_w_fluids_solver->set_Cl_backtrace_n(cl_backtrace_n);
   stefan_w_fluids_solver->set_Cl_backtrace_nm1(cl_backtrace_nm1);
-  PetscPrintf(mpi_->comm(), "EEE\n");
+
   // Temperatures:
   stefan_w_fluids_solver->set_T_l_n(tl_[1]);
   stefan_w_fluids_solver->set_T_l_nm1(tl_[2]);
-  PetscPrintf(mpi_->comm(), "FFF\n");
 
   // Temperature backtraces:
   stefan_w_fluids_solver->set_T_l_backtrace_n(tl_backtrace_n);
   stefan_w_fluids_solver->set_T_l_backtrace_nm1(tl_backtrace_nm1);
-  PetscPrintf(mpi_->comm(), "GGG\n");
 
   // Set the phi (only relevant for visualization I think, but still let's just do it)
   stefan_w_fluids_solver->set_phi(front_phi_);
-  PetscPrintf(mpi_->comm(), "HHH\n");
 
   // Relevant grid objects:
   stefan_w_fluids_solver->set_p4est_np1(p4est_);
   stefan_w_fluids_solver->set_nodes_np1(nodes_);
   stefan_w_fluids_solver->set_ngbd_np1(ngbd_);
 
-  PetscPrintf(mpi_->comm(), "III\n");
   stefan_w_fluids_solver->set_p4est_n(p4est_nm1);
   stefan_w_fluids_solver->set_nodes_n(nodes_nm1);
   stefan_w_fluids_solver->set_ngbd_n(ngbd_nm1);
-  PetscPrintf(mpi_->comm(), "JJJ\n");
 
   stefan_w_fluids_solver->set_tstep(iteration_w_fluids);
 
@@ -2251,9 +2252,8 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   stefan_w_fluids_solver->set_dt_nm1(dt_[2]);
   stefan_w_fluids_solver->set_dt(dt_[1]);
-  PetscPrintf(mpi_->comm(), "KKK\n");
+
   stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_, iteration_w_fluids);
-  PetscPrintf(mpi_->comm(), "LLL\n");
 
   if(0){
     // -------------------------------
@@ -2400,12 +2400,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 //    PetscPrintf(p4est_->mpicomm, "rhs_tl[n] = %0.3e, heat_gen = %0.3e \n", rhs_tl.ptr[n], heat_gen);
 
   }
-
-//  PetscPrintf(p4est_->mpicomm, "RHS_TS: \n -------------------------------- \n");
-//  VecView(rhs_ts.vec, PETSC_VIEWER_STDOUT_WORLD);
-
-//  PetscPrintf(p4est_->mpicomm, "\n\nRHS_TL: \n -------------------------------- \n");
-//      VecView(rhs_tl.vec, PETSC_VIEWER_STDOUT_WORLD);
     
   // Restore arrays:
   rhs_tl.restore_array();
@@ -2422,6 +2416,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   // MULTICOMP ALERT: we have changed the diag below
   //std::exit(EXIT_FAILURE);
+
   vector<double> conc_diag(num_comps_, SL_alpha/dt_[0]);
 
   // solve coupled system of equations
@@ -2505,6 +2500,8 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // (1) pass the computed interfacial velocity to stefan w fluids
   // Convert to a (vgamma,n) n to make it a vector still along the normal direction
 //  std::cout<<"step_w_fluids line 2384\n";
+  PetscPrintf(mpi_->comm(), "AAA\n");
+
   vec_and_ptr_dim_t vgamma_n_vec;
   vgamma_n_vec.create(p4est_, nodes_);
 
@@ -2517,10 +2514,13 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
       vgamma_n_vec.ptr[dim][n]*=front_velo_norm_[0].ptr[n];
     }
   }
+
 //  std::cout<<"step_w_fluids line 2400\n";
   front_normal_.restore_array();
   vgamma_n_vec.restore_array();
   stefan_w_fluids_solver->set_v_interface(vgamma_n_vec);
+  PetscPrintf(mpi_->comm(), "BBB\n");
+
 //  std::cout<<"step_w_fluids line 2404\n";
 
   // (2) provide stefan_w_fluids w all other relevant things to solve the ns problem:
@@ -2561,6 +2561,8 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
 
   stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(false, nullptr, true);
+  PetscPrintf(mpi_->comm(), "CCC\n");
+
 
   // Now, get the velocity results back out of SWF (or do we need to? ) :
 
