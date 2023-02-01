@@ -1953,14 +1953,11 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
   PetscPrintf(p4est_->mpicomm, "Solving nonlinear system:\n");
-  printf("hi \n");
+
   time_ += dt_[0];
-  PetscPrintf(p4est_->mpicomm, "time upd:\n");
 
 
   int num_nodes = nodes_->num_owned_indeps;
-  PetscPrintf(p4est_->mpicomm, "got num nodes:\n");
-
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
 
   PetscPrintf(p4est_->mpicomm, "\n Time = %3e, Number of Nodes = %d "
@@ -2141,24 +2138,25 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   contr_bc_value_temp_->t = time_;
   wall_bc_value_temp_ ->t = time_;
-
   for (int i = 0; i < num_comps_; ++i)
   {
     contr_bc_value_conc_[i]->t = time_;
     wall_bc_value_conc_ [i]->t = time_;
   }
-
   // TO-DO MULTICOMP: // DID IT
 
   // Get the backtraced values for conc components and temperature from 
   // stefan with fluids solver
   
   // Create backtraced vectors:
+  PetscPrintf(mpi_->comm(), "AAA\n");
   cl_backtrace_n.resize(num_comps_);
   cl_backtrace_nm1.resize(num_comps_);
 
+  PetscPrintf(mpi_->comm(), "BBB\n");
   cl_backtrace_n.create(p4est_, nodes_);
   cl_backtrace_nm1.create(p4est_, nodes_);
+  PetscPrintf(mpi_->comm(), "CCC\n");
 
   tl_backtrace_n.create(p4est_, nodes_);
   tl_backtrace_nm1.create(p4est_, nodes_);
@@ -2168,30 +2166,36 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // Concentrations:
   stefan_w_fluids_solver->set_Cl_n(cl_[1]);
   stefan_w_fluids_solver->set_Cl_nm1(cl_[2]);
+  PetscPrintf(mpi_->comm(), "DDD\n");
   
   // Concentration backtraces:
   stefan_w_fluids_solver->set_Cl_backtrace_n(cl_backtrace_n);
   stefan_w_fluids_solver->set_Cl_backtrace_nm1(cl_backtrace_nm1);
-
+  PetscPrintf(mpi_->comm(), "EEE\n");
   // Temperatures:
   stefan_w_fluids_solver->set_T_l_n(tl_[1]);
   stefan_w_fluids_solver->set_T_l_nm1(tl_[2]);
+  PetscPrintf(mpi_->comm(), "FFF\n");
 
   // Temperature backtraces:
   stefan_w_fluids_solver->set_T_l_backtrace_n(tl_backtrace_n);
   stefan_w_fluids_solver->set_T_l_backtrace_nm1(tl_backtrace_nm1);
+  PetscPrintf(mpi_->comm(), "GGG\n");
 
   // Set the phi (only relevant for visualization I think, but still let's just do it)
   stefan_w_fluids_solver->set_phi(front_phi_);
+  PetscPrintf(mpi_->comm(), "HHH\n");
 
   // Relevant grid objects:
   stefan_w_fluids_solver->set_p4est_np1(p4est_);
   stefan_w_fluids_solver->set_nodes_np1(nodes_);
   stefan_w_fluids_solver->set_ngbd_np1(ngbd_);
 
+  PetscPrintf(mpi_->comm(), "III\n");
   stefan_w_fluids_solver->set_p4est_n(p4est_nm1);
   stefan_w_fluids_solver->set_nodes_n(nodes_nm1);
   stefan_w_fluids_solver->set_ngbd_n(ngbd_nm1);
+  PetscPrintf(mpi_->comm(), "JJJ\n");
 
   stefan_w_fluids_solver->set_tstep(iteration_w_fluids);
 
@@ -2247,9 +2251,9 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   stefan_w_fluids_solver->set_dt_nm1(dt_[2]);
   stefan_w_fluids_solver->set_dt(dt_[1]);
-
+  PetscPrintf(mpi_->comm(), "KKK\n");
   stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_, iteration_w_fluids);
-
+  PetscPrintf(mpi_->comm(), "LLL\n");
 
   if(0){
     // -------------------------------
