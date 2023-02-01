@@ -323,40 +323,39 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
     if(!load_path){
       throw std::invalid_argument("You need to set the  directory for the desired load state");
     }
-    PetscPrintf(mpi_->comm(),"Load dir is:  %s \n",load_path);
+    PetscPrintf(mpi_->comm(),"\nLoad dir is:  %s \n",load_path);
 
     load_state(load_path);
 
-    PetscPrintf(mpi_->comm(),"State was loaded successfully from %s \n",load_path);
+    PetscPrintf(mpi_->comm(),"\nState was loaded successfully from %s \n",load_path);
   }
 
+  // If we are *not* loading from previous state, we need to actually create the grids needed
+  if(!loading_from_previous_state){
+    /* create main p4est grid */
+    connectivity_ = my_p4est_brick_new(nxyz, xyz_min, xyz_max, &brick_, periodicity);
+    p4est_        = my_p4est_new(mpi_comm, connectivity_, 0, NULL, NULL);
 
+    p4est_->user_pointer = (void*)(sp_crit_);
+    my_p4est_refine(p4est_, P4EST_TRUE, refine_levelset_cf, NULL);
+    my_p4est_partition(p4est_, P4EST_FALSE, NULL);
 
-  /* create main p4est grid */
-  connectivity_ = my_p4est_brick_new(nxyz, xyz_min, xyz_max, &brick_, periodicity);
-  p4est_        = my_p4est_new(mpi_comm, connectivity_, 0, NULL, NULL);
+    ghost_ = my_p4est_ghost_new(p4est_, P4EST_CONNECT_FULL);
+    if(solve_with_fluids) {my_p4est_ghost_expand(p4est_, ghost_); }
+    nodes_ = my_p4est_nodes_new(p4est_, ghost_);
 
+    /* create auxiliary p4est grid for keeping values in solid */
+    solid_p4est_ = p4est_copy(p4est_, P4EST_FALSE);
+    solid_ghost_ = my_p4est_ghost_new(solid_p4est_, P4EST_CONNECT_FULL);
+    solid_nodes_ = my_p4est_nodes_new(solid_p4est_, solid_ghost_);
 
-  p4est_->user_pointer = (void*)(sp_crit_);
-  my_p4est_refine(p4est_, P4EST_TRUE, refine_levelset_cf, NULL);
-  my_p4est_partition(p4est_, P4EST_FALSE, NULL);
+  }
 
-  ghost_ = my_p4est_ghost_new(p4est_, P4EST_CONNECT_FULL);
-  //printf("should have expanded the ghost layer ? vvv solve_w_fluids = %d \n", solve_with_fluids);
-  if(solve_with_fluids) {my_p4est_ghost_expand(p4est_, ghost_); }/*printf("EXPANDS THE GHOST LAYER !!! \n");*/
-
-  //printf("should have expanded the ghost layer ? ^^^ solve_w_fluids = %d \n", solve_with_fluids);
-  // TO-DO MULTICOMP: eventually add extra expansions for ghost layer for CFL larger than 2
-  nodes_ = my_p4est_nodes_new(p4est_, ghost_);
-
+  // Create hierarchy and neighbors for both main grid and solid grid.
+  // For both new simulations and loaded from previous state, we will need to create new hierarchies and neighborhoods.
   hierarchy_ = new my_p4est_hierarchy_t(p4est_, ghost_, &brick_);
   ngbd_ = new my_p4est_node_neighbors_t(hierarchy_, nodes_);
   ngbd_->init_neighbors();
-
-  /* create auxiliary p4est grid for keeping values in solid */
-  solid_p4est_ = p4est_copy(p4est_, P4EST_FALSE);
-  solid_ghost_ = my_p4est_ghost_new(solid_p4est_, P4EST_CONNECT_FULL);
-  solid_nodes_ = my_p4est_nodes_new(solid_p4est_, solid_ghost_);
 
   solid_hierarchy_ = new my_p4est_hierarchy_t(solid_p4est_, solid_ghost_, &brick_);
   solid_ngbd_      = new my_p4est_node_neighbors_t(solid_hierarchy_, solid_nodes_);
@@ -365,16 +364,21 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   /* determine the smallest cell size */
   get_dxyz_min(p4est_, dxyz_, &dxyz_min_, &diag_);
   dxyz_max_ = dxyz_min_;
-
   dxyz_close_interface_ = 1.2*dxyz_max_;
 
   // front_phi_ and front_phi_dd_ are templates for all other vectors
 
   // allocate memory for physical fields
+  // Note: some fields may not need to be created if we are loading from a
+  // previous state, and we are loading those fields.
+  // However, some fields will need to be created regardless of whether it is a new run or
+  // a loaded simulation.
+  // That is why the creations below look a little odd (whether or not they happen)
   //--------------------------------------------------
   // Geometry
   //--------------------------------------------------
-  front_phi_.create(p4est_, nodes_);
+  if(!loading_from_previous_state) front_phi_.create(p4est_, nodes_);
+
   front_phi_dd_.create(p4est_, nodes_);
   front_curvature_.create(front_phi_.vec);
   front_normal_.create(front_phi_dd_.vec);
@@ -388,16 +392,18 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   /* temperature */
   for (int i = 0; i < num_time_layers_; ++i)
   {
-    tl_[i].create(front_phi_.vec);
-    ts_[i].create(front_phi_.vec);
-    cl_[i].create(front_phi_.vec);
+    if(!loading_from_previous_state){
+      tl_[i].create(front_phi_.vec);
+      ts_[i].create(front_phi_.vec);
+      cl_[i].create(front_phi_.vec);
+    }
     front_velo_     [i].create(front_phi_dd_.vec);
     front_velo_norm_[i].create(front_phi_.vec);
   }
 
   cl0_grad_.create(front_phi_dd_.vec);
 
-  seed_map_.create(front_phi_.vec);
+  if(!loading_from_previous_state) seed_map_.create(front_phi_.vec);
 
   dendrite_number_.create(front_phi_.vec);
   dendrite_tip_.create(front_phi_.vec);
@@ -419,8 +425,10 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   //--------------------------------------------------
   // Geometry on the auxiliary grid
   //--------------------------------------------------
-  solid_front_phi_.create(solid_p4est_, solid_nodes_);
-  solid_front_phi_nm1_.create(solid_front_phi_.vec);
+  if(!loading_from_previous_state){
+    solid_front_phi_.create(solid_p4est_, solid_nodes_);
+    solid_front_phi_nm1_.create(solid_front_phi_.vec);
+  }
   solid_front_curvature_.create(solid_front_phi_.vec);
   solid_front_velo_norm_.create(solid_front_phi_.vec);
 
@@ -459,67 +467,42 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   stefan_w_fluids_solver_->set_loading_from_previous_state(loading_from_previous_state);
 
   // Set up the initial nm1 grids that we will need:
-  p4est_nm1 = p4est_copy(p4est_, P4EST_FALSE); // copy the grid but not the data
-  p4est_nm1->user_pointer = sp_crit_; // CHECK
-  my_p4est_partition(p4est_nm1,P4EST_FALSE,NULL);
+  // If we are loading from previous state, we already have the nm1 grids loaded and don't need to create them
+  if(!loading_from_previous_state){
+    p4est_nm1 = p4est_copy(p4est_, P4EST_FALSE); // copy the grid but not the data
+    p4est_nm1->user_pointer = sp_crit_; // CHECK
+    my_p4est_partition(p4est_nm1,P4EST_FALSE,NULL);
 
-  ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
+    ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
+    my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
+    nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
+  }
 
-  // TO-DO MULTICOMP: eventually add extra expansions for ghost layer for CFL larger than 2
-  nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
-
-  // Get the new neighbors:
+  // Get the new neighbors: (this happens regardless of reload or not)
   hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, &brick_);
   ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1,nodes_nm1);
 
   // Initialize the neigbors:
   ngbd_nm1->init_neighbors();
-  v_n.create(p4est_, nodes_);
-  v_nm1.create(p4est_nm1, nodes_nm1);
 
-  foreach_dimension(d){
-    sample_cf_on_nodes(p4est_, nodes_, *initial_NS_velocity_n[d],v_n.vec[d]);
-    sample_cf_on_nodes(p4est_nm1, nodes_nm1, *initial_NS_velocity_nm1[d],v_nm1.vec[d]);
-  }
+  // If we are reloading, we don't need to create or set the velocities and/or phi
+  if(!loading_from_previous_state){
+    v_n.create(p4est_, nodes_);
+    v_nm1.create(p4est_nm1, nodes_nm1);
 
-  if(0){
-    // -------------------------------
-    // TEMPORARY: save fields before backtrace
-    // -------------------------------
-    std::vector<Vec_for_vtk_export_t> point_fields;
-    std::vector<Vec_for_vtk_export_t> cell_fields = {};
-
-    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[0], "vx_n"));
-    point_fields.push_back(Vec_for_vtk_export_t(v_n.vec[1], "vy_n"));
-
-    const char* out_dir = getenv("OUT_DIR");
-    if(!out_dir){
-      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    foreach_dimension(d){
+      sample_cf_on_nodes(p4est_, nodes_, *initial_NS_velocity_n[d],v_n.vec[d]);
+      sample_cf_on_nodes(p4est_nm1, nodes_nm1, *initial_NS_velocity_nm1[d],v_nm1.vec[d]);
     }
 
-    char filename[1000];
-    sprintf(filename, "%s/snapshot_after_init_for_fluids_%d", out_dir, iteration_w_fluids);
-    my_p4est_vtk_write_all_lists(p4est_, nodes_, ngbd_->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
-    point_fields.clear();
-
-
-    // nm1 fields now:
-    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[0], "vx_nm1"));
-    point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_nm1"));
-
-    char filename2[1000];
-    sprintf(filename2, "%s/snapshot_after_init_for_fluids_nm1_%d", out_dir, iteration_w_fluids);
-    my_p4est_vtk_write_all_lists(p4est_nm1, nodes_nm1, ngbd_nm1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename2, point_fields, cell_fields);
-    point_fields.clear();
+    stefan_w_fluids_solver->set_v_n(v_n);
+    stefan_w_fluids_solver->set_v_nm1(v_nm1);
+    stefan_w_fluids_solver->set_phi(front_phi_);
   }
 
-  stefan_w_fluids_solver->set_phi(front_phi_);
-  stefan_w_fluids_solver->set_v_n(v_n);
-  stefan_w_fluids_solver->set_v_nm1(v_nm1);
 
+  PetscPrintf(mpi_->comm(), "TO-DO: boussinesq flag for SWF is currently being hard-coded set to false \n");
   stefan_w_fluids_solver->set_use_boussinesq(false);
-  // TO-DO: turn on boussinesq eventually
   stefan_w_fluids_solver->set_print_checkpoints(false);
   // ----------------------------------------------
   // Next will need to initialize the NS solver:
@@ -573,17 +556,17 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   stefan_w_fluids_solver->set_ngbd_n(ngbd_nm1);
 
 
-
   l_char=1.0;
-  PetscPrintf(p4est_->mpicomm, "WARNING: RED ALERT: LCHAR MANUALLY SET INSIDE INITIALIZE_FOR_FLUIDS \n");
+  PetscPrintf(p4est_->mpicomm, "\nWARNING: RED ALERT: LCHAR MANUALLY SET INSIDE INITIALIZE_FOR_FLUIDS \n");
   double thermal_diff_l = thermal_cond_l_/(density_l_*heat_capacity_l_);
 
   //printf("thermal cond l = %0.2e, density_l = %0.2e, "
     //     "heat_capacity_l = %0.2e, thermal diff = %0.2e, l_char = %0.2e \n",
       //   thermal_cond_l_, density_l_, heat_capacity_l_, thermal_diff_l, l_char);
-
+  PetscPrintf(p4est_->mpicomm, "\nWarning: SWF vel nondim to dim is currently hardcoded as 1.0. This should not be used. \n");
   stefan_w_fluids_solver->set_vel_nondim_to_dim(1.0/*thermal_diff_l/SQR(l_char)*/);
-  PetscPrintf(p4est_->mpicomm, "RED ALERT: ns max allowed is manually hard coded for now \n");
+
+  PetscPrintf(p4est_->mpicomm, "\nWarning: ns max allowed is manually hard coded for now \n");
   stefan_w_fluids_solver->set_NS_max_allowed(1000.0);
 
   // NOTE -- If you want to visualize dimensional velocities, pressure, and vorticity, you will need to do the appropriate
@@ -598,7 +581,7 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // -------------
   // (4) pass along timestep
   // -------------
-  PetscPrintf(p4est_->mpicomm, "RED ALERT: dt's passed in here are likely blank, restructure later, for now we pass in one_Step w fluids \n");
+  PetscPrintf(p4est_->mpicomm, "\nRED ALERT: dt's passed in here are likely blank, restructure later, for now we pass in one_Step w fluids \n");
   stefan_w_fluids_solver->set_dt(dt_[0]);
   stefan_w_fluids_solver->set_dt_nm1(dt_[1]);
 
@@ -611,7 +594,7 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // irrelevant since we don't know Re, we nondim by diffusivity stefan_w_fluids_solver->set_Re(1.);
   // ALERT :: Pr hard coded and set here
   Pr=23.1;
-  PetscPrintf(p4est_->mpicomm, "ALERT ALERT: PRANDTL NUMBER IS HARD CODED AND SET TO 23.1. THIS IS A SHORT TERM FIX AND MUST BE UPDATED \n");
+  PetscPrintf(p4est_->mpicomm, "\nWarning:: PRANDTL NUMBER IS HARD CODED AND SET TO 23.1. THIS IS A SHORT TERM FIX AND MUST BE UPDATED \n");
   stefan_w_fluids_solver->set_Pr(Pr);
 
   stefan_w_fluids_solver->set_NS_advection_order(2);
@@ -633,9 +616,9 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // -------------
   // Initialize the ns solver:
   // -------------
-  PetscPrintf(mpi_->comm(), "\n \n ELYCE!! \n \n, You need to tell SWF that we are loading from a state file for the NS solver to do things correctly! add this if you have not already ! ");
+  PetscPrintf(mpi_->comm(), "Before initialize ns \n");
   stefan_w_fluids_solver->initialize_ns_solver(true);
-
+  PetscPrintf(mpi_->comm(), "After initialize ns \n");
   // -------------
   // Get back out the cell neigbors and faces:
   // -------------
@@ -1279,7 +1262,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     int lmin = sp_new->min_lvl;
     int lmax = sp_new->max_lvl;
     int lint = -1;
-    PetscPrintf(p4est_->mpicomm, "Warning: for refinement, the lint option is not implemented. You might want this later. \n");
+    PetscPrintf(p4est_->mpicomm, "\nWarning: for refinement, the lint option is not implemented. You might want this later. \n");
     PetscPrintf(p4est_->mpicomm, "INSIDE MULTI GRID UPDATE: "
            "lmin = %d, lmax = %d, lint = %d \n", lmin, lmax, lint);
 
@@ -1311,7 +1294,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
       double d2T_refine_threshold = 200.;
       double d2T_coarsen_threshold = 50.0;
 
-      PetscPrintf(p4est_->mpicomm, "Warning: you have activated refine_by_d2T, but this has not been updated to the diimensional case \n");
+      PetscPrintf(p4est_->mpicomm, "\nWarning: you have activated refine_by_d2T, but this has not been updated to the diimensional case \n");
       double dxyz_smallest[P4EST_DIM];
       dxyz_min(p4est_,dxyz_smallest);
 //      double theta_infty= stefan_w_fluids_solver->get_theta_infty();
@@ -1355,8 +1338,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
       else{custom_lmax.push_back(lmax);}
     }
     if(refine_by_d2C){
-      PetscPrintf(p4est_->mpicomm, "Warning: you have activated refine_by_d2C, but this has not been implemented. Bypassing ... \n");
-
       compare_diagonal_option_t diag_opn_d2C = ABSOLUTE;
       compare_option_t compare_opn_d2C = SIGN_CHANGE;
 
@@ -2566,7 +2547,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   boussinesq_terms_rhs_for_ns.destroy(); // move this somewhere more appropriate later
 
 */
-  PetscPrintf(p4est_->mpicomm, "RED ALERT: Boussinesq is currently non-operational. We will want to fix this later \n");
+  PetscPrintf(p4est_->mpicomm, "\nRED ALERT: Boussinesq is currently non-operational. We will want to fix this later \n");
 
 
 
@@ -3579,6 +3560,7 @@ void my_p4est_multialloy_t::fill_or_load_double_parameters(save_or_load flag, Pe
     data[idx++] = cfl_number_;
     data[idx++] = sp_crit_->lip;
     data[idx++] = sp_crit_->band;
+
     // TO-DO: save and load cfl_NS and NS_advection_order? or leave these hard coded?
 
 //    data[idx++] = ;
@@ -3616,6 +3598,8 @@ void my_p4est_multialloy_t::fill_or_load_integer_parameters(save_or_load flag, P
     data[idx++] = num_time_layers_;
     data[idx++] = sp_crit_->min_lvl;
     data[idx++] = sp_crit_->max_lvl;
+    data[idx++] = num_seeds_;
+    data[idx++] = num_comps_;
 //    data[idx++] = advection_sl_order;
 //    data[idx++] = tstep;
 //    data[idx++] = sp->min_lvl;
@@ -3626,6 +3610,8 @@ void my_p4est_multialloy_t::fill_or_load_integer_parameters(save_or_load flag, P
     num_time_layers_ = data[idx++];
     sp_crit_->min_lvl = data[idx++];
     sp_crit_->max_lvl = data[idx++];
+    num_seeds_= data[idx++];
+    num_comps_ = data[idx++];
 
 //    advection_sl_order = data[idx++];
 //    tstep = data[idx++];
@@ -3645,7 +3631,7 @@ void my_p4est_multialloy_t::save_or_load_parameters(const char* filename, save_o
   PetscReal double_parameters[num_doubles];
 
   // Integer parameters we need to save:
-  PetscInt num_integers = 3;
+  PetscInt num_integers = 5;
   PetscInt integer_parameters[num_integers];
 
   int fd;
@@ -3719,6 +3705,13 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
   to_add.DATA_SAMPLING = NODE_DATA;
   to_add.nvecs = 1;
   to_add.pointer_to_vecs = &front_phi_.vec;
+  fields_to_save_n.push_back(to_add);
+
+  // Seed map:
+  to_add.name = "seed_map";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = 1;
+  to_add.pointer_to_vecs = &seed_map_.vec;
   fields_to_save_n.push_back(to_add);
 
 
@@ -3837,6 +3830,12 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
   to_add.pointer_to_vecs = &solid_front_phi_nm1_.vec;
   fields_to_save_solid.push_back(to_add);
 
+  to_add.name = "solid_seed";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = 1;
+  to_add.pointer_to_vecs = &solid_seed_.vec;
+  fields_to_save_solid.push_back(to_add);
+
   // May need to include more fields, but let's start with this and see how it goes ...
 
 //  to_add.name = "solid_front_curvature";
@@ -3870,34 +3869,27 @@ void my_p4est_multialloy_t::load_state(const char* path_to_folder){
   // First load the general solver parameters -- integers and doubles
   sprintf(filename, "%s/solver_parameters", path_to_folder);
 
-  PetscPrintf(mpi_->comm(), "AAA \n");
   save_or_load_parameters(filename, LOAD);
-  PetscPrintf(mpi_->comm(), "BBB \n");
+
   // Prepare the fields for save/load
   vector<save_or_load_element_t> fields_to_load_nm1, fields_to_load_n, fields_to_load_solid;
   prepare_fields_for_save_or_load(fields_to_load_n,
                                   fields_to_load_nm1, fields_to_load_solid);
-  PetscPrintf(mpi_->comm(), "CCC \n");
 
   // Load the time nm1 grid:
   my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
                                 p4est_nm1, connectivity_, P4EST_TRUE, ghost_nm1, nodes_nm1,
                                 "p4est_nm1", fields_to_load_nm1);
-  PetscPrintf(mpi_->comm(), "DDD \n");
 
   // Load the np1 grid:
   my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
                                 p4est_, connectivity_, P4EST_TRUE, ghost_, nodes_,
                                 "p4est_n", fields_to_load_n);
-  PetscPrintf(mpi_->comm(), "EEE \n");
 
   // Load the solid grid:
   my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
                                 solid_p4est_, connectivity_, P4EST_TRUE, solid_ghost_, solid_nodes_,
                                 "solid_p4est_n", fields_to_load_solid);
-  PetscPrintf(mpi_->comm(), "FFF \n");
-
-
 
   P4EST_ASSERT(find_max_level(p4est_n) == sp->max_lvl);
   P4EST_ASSERT(find_max_level(p4est_np1) == sp->max_lvl);

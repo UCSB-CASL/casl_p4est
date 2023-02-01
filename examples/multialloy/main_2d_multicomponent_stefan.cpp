@@ -2313,8 +2313,6 @@ int main (int argc, char* argv[])
 //    mas.set_mpi_env(&mpi);
     mas.set_solve_with_fluids();
 
-    ierr = PetscPrintf(mpi.comm(), "Setting solve w fluids \n"); CHKERRXX(ierr);
-
     // Calculate nondimensional groups:
     compute_nondimensional_groups(mpi.comm(), &mas);
   }
@@ -2324,13 +2322,20 @@ int main (int argc, char* argv[])
   my_p4est_node_neighbors_t *ngbd  = mas.get_ngbd();
 
   /* initialize the variables */
-  vec_and_ptr_t front_phi(p4est, nodes);
-  vec_and_ptr_t contr_phi(front_phi.vec);
-  vec_and_ptr_t seed_map (front_phi.vec);
+//  vec_and_ptr_t front_phi(p4est, nodes);
+//  vec_and_ptr_t contr_phi(front_phi.vec);
+//  vec_and_ptr_t seed_map (front_phi.vec);
+  vec_and_ptr_t front_phi, contr_phi, seed_map;
+  if(!loading_from_previous_state.val){
+    front_phi.create(p4est, nodes);
+    contr_phi.create(p4est, nodes);
+    seed_map.create(p4est, nodes);
 
-  sample_cf_on_nodes(p4est, nodes, front_phi_cf, front_phi.vec);
-  sample_cf_on_nodes(p4est, nodes, contr_phi_cf, contr_phi.vec);
-  sample_cf_on_nodes(p4est, nodes, seed_number_cf, seed_map.vec);
+    sample_cf_on_nodes(p4est, nodes, front_phi_cf, front_phi.vec);
+    sample_cf_on_nodes(p4est, nodes, contr_phi_cf, contr_phi.vec);
+    sample_cf_on_nodes(p4est, nodes, seed_number_cf, seed_map.vec);
+  }
+  PetscPrintf(mpi.comm(), "ELYCE, WARNING: do you need to save contr phi and seed number to the state so it can be loaded? \n");
 
   /* set initial time step */
   double dxyz[P4EST_DIM];
@@ -2340,24 +2345,28 @@ int main (int argc, char* argv[])
              dy = dxyz[1],
              dz = dxyz[2]);
 
-  PetscPrintf(mpi.comm(), "Conc dt: %1.3e, Temp dt: %1.3e, Velo dt: %1.3e\n", .5*dx*dx/solute_diff_0.val, .5*dx*dx*density_l.val*heat_capacity_l.val/thermal_cond_l.val, cfl_number.val*dx/cooling_velocity.val);
+  PetscPrintf(mpi.comm(), "Conc dt: %1.3e, Temp dt: %1.3e, Velo dt: %1.3e\n",
+              .5*dx*dx/solute_diff_0.val,
+              .5*dx*dx*density_l.val*heat_capacity_l.val/thermal_cond_l.val,
+              cfl_number.val*dx/cooling_velocity.val);
 
   // perturb level set
   if (enforce_planar_front.val) init_perturb.val = 0;
 
-  front_phi.get_array();
+  if(!loading_from_previous_state.val){
+    front_phi.get_array();
 
-  srand(mpi.rank());
+    srand(mpi.rank());
 
-  foreach_node(n, nodes)
-  {
-    front_phi.ptr[n] += init_perturb.val*dx*double(rand())/double(RAND_MAX);
+    foreach_node(n, nodes)
+    {
+      front_phi.ptr[n] += init_perturb.val*dx*double(rand())/double(RAND_MAX);
+    }
+
+    front_phi.restore_array();
+    ierr = VecGhostUpdateBegin(front_phi.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (front_phi.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
-
-  front_phi.restore_array();
-
-  ierr = VecGhostUpdateBegin(front_phi.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (front_phi.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   my_p4est_level_set_t ls(ngbd);
   //  ls.reinitialize_2nd_order(front_phi.vec);
@@ -2372,6 +2381,7 @@ int main (int argc, char* argv[])
                              density_l.val, heat_capacity_l.val, thermal_cond_l.val,
                              density_s.val, heat_capacity_s.val, thermal_cond_s.val);
 
+
   std::vector<CF_DIM *> eps_c_all(num_seeds(), NULL);
   std::vector<CF_DIM *> eps_v_all(num_seeds(), NULL);
 
@@ -2380,12 +2390,13 @@ int main (int argc, char* argv[])
     eps_c_all[i] = new eps_c_cf_t(theta0(i));
     eps_v_all[i] = new eps_v_cf_t(theta0(i));
   }
-  mas.set_undercoolings(num_seeds(), seed_map.vec, eps_v_all.data(), eps_c_all.data());
-
+  mas.set_undercoolings(num_seeds(), loading_from_previous_state.val? NULL:seed_map.vec, eps_v_all.data(), eps_c_all.data());
 
   // set geometry
-  mas.set_front(front_phi.vec);
-  mas.set_container(contr_phi.vec);
+  if(!loading_from_previous_state.val){
+    mas.set_front(front_phi.vec);
+    mas.set_container(contr_phi.vec);
+  }
   mas.set_scaling(scaling());
 
   // set boundary conditions
@@ -2398,10 +2409,7 @@ int main (int argc, char* argv[])
 
   mas.set_wall_conditions_thermal(bc_wall_type_temp/*bc_type_temp.val*/, bc_value_temp);
   mas.set_wall_conditions_composition(bc_wall_type_conc, bc_value_conc_all);
-  //mas.set_volumetric_heat(zero_cf/*volumetric_heat_cf*/);
   mas.set_volumetric_heat(volumetric_heat_cf);
-
-  PetscPrintf(mpi.comm(), "Warning: we temporarily commented out the volumetric heat gen and put it to zero_cf instead \n");
 
   // Initialize everything for the fluids
   // NOTE: the below needs to be called in such a way that the correct front phi is provided to SWF, because initializing the NS solver will require that. Therefore, it cannot be called until *after* mas.set_front
@@ -2711,8 +2719,9 @@ int main (int argc, char* argv[])
     //std::cout << "Total growth :: "<< total_growth << " ; Growth Limit :: " << growth_limit.val << "\n";
     // Rochi :: moving compute_dt to a different location
     // compute time step
+    PetscPrintf(mpi.comm(), "AAA \n");
     mas.compute_dt();
-
+    PetscPrintf(mpi.comm(), "BBB \n");
     if (tn + mas.get_dt() > time_limit.val) {
       mas.set_dt(time_limit.val-tn);
       keep_going = false;
@@ -2721,6 +2730,7 @@ int main (int argc, char* argv[])
 
     if(keep_going){
       if(solve_w_fluids.val){
+        PetscPrintf(mpi.comm(), "CCC \n");
         mas.update_grid_w_fluids();
         PetscPrintf(mpi.comm(), "Update grid with fluids is complete \n");
       }

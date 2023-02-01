@@ -383,29 +383,29 @@ public:
   inline void set_undercoolings(int num_seeds, Vec seed_map, CF_DIM *eps_v[], CF_DIM *eps_c[])
   {
     num_seeds_    = num_seeds;
-
-    VecCopyGhost(seed_map, seed_map_.vec);
+    if(!loading_from_previous_state)VecCopyGhost(seed_map, seed_map_.vec);
 
     eps_v_.resize(num_seeds, NULL);
     eps_c_.resize(num_seeds, NULL);
-
     for (int i = 0; i < num_seeds; ++i)
     {
       eps_v_[i] = eps_v[i];
       eps_c_[i] = eps_c[i];
     }
 
-    my_p4est_interpolation_nodes_t interp(ngbd_);
-
-    double xyz[P4EST_DIM];
-    foreach_node(n, solid_nodes_)
-    {
-      node_xyz_fr_n(n, solid_p4est_, solid_nodes_, xyz);
-      interp.add_point(n, xyz);
+    if(!loading_from_previous_state){
+      // Only do this interp if we are not reloading.
+      // If reloading, we have save/loaded this information
+      my_p4est_interpolation_nodes_t interp(ngbd_);
+      double xyz[P4EST_DIM];
+      foreach_node(n, solid_nodes_)
+      {
+        node_xyz_fr_n(n, solid_p4est_, solid_nodes_, xyz);
+        interp.add_point(n, xyz);
+      }
+      interp.set_input(seed_map_.vec, linear);
+      interp.interpolate(solid_seed_.vec);
     }
-
-    interp.set_input(seed_map_.vec, linear);
-    interp.interpolate(solid_seed_.vec);
   }
 
   // Setting functions for coupled problem with fluids:
