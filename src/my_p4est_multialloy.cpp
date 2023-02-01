@@ -387,14 +387,16 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   //--------------------------------------------------
   // Geometry
   //--------------------------------------------------
-  if(!loading_from_previous_state) front_phi_.create(p4est_, nodes_);
+  if(!loading_from_previous_state) {
+    front_phi_.create(p4est_, nodes_);
+    front_phi_dd_.create(p4est_, nodes_);
 
-  front_phi_dd_.create(p4est_, nodes_);
-  front_curvature_.create(front_phi_.vec);
-  front_normal_.create(front_phi_dd_.vec);
+    front_curvature_.create(front_phi_.vec);
+    front_normal_.create(front_phi_dd_.vec);
 
-  if(!loading_from_previous_state) contr_phi_.create(p4est_, nodes_);
-  contr_phi_dd_.create(p4est_, nodes_);
+    contr_phi_.create(p4est_, nodes_);
+    contr_phi_dd_.create(p4est_, nodes_);
+  }
 
   //--------------------------------------------------
   // Physical fields
@@ -421,15 +423,17 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   smoothed_nodes_.create(front_phi_.vec);
   front_phi_unsmooth_.create(front_phi_.vec);
 
-  psi_tl_.create(front_phi_.vec);
-  psi_ts_.create(front_phi_.vec);
-  psi_cl_.create(front_phi_.vec);
+  if(!loading_from_previous_state){
+    psi_tl_.create(front_phi_.vec);
+    psi_ts_.create(front_phi_.vec);
+    psi_cl_.create(front_phi_.vec);
 
-  VecSetGhost(psi_tl_.vec, 0.);
-  VecSetGhost(psi_ts_.vec, 0.);
-  for (int i = 0; i < num_comps_; ++i)
-  {
-    VecSetGhost(psi_cl_.vec[i], 0.);
+    VecSetGhost(psi_tl_.vec, 0.);
+    VecSetGhost(psi_ts_.vec, 0.);
+    for (int i = 0; i < num_comps_; ++i)
+    {
+      VecSetGhost(psi_cl_.vec[i], 0.);
+    }
   }
 
   //--------------------------------------------------
@@ -2504,7 +2508,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   vec_and_ptr_dim_t vgamma_n_vec;
   vgamma_n_vec.create(p4est_, nodes_);
 
-  VecView(front_normal_.vec[0], PETSC_VIEWER_STDOUT_WORLD);
   front_normal_.get_array();
 
   PetscPrintf(mpi_->comm(), "bbb \n");
@@ -3724,11 +3727,23 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
   to_add.pointer_to_vecs = &front_phi_.vec;
   fields_to_save_n.push_back(to_add);
 
+  to_add.name = "front_phi_dd";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = P4EST_DIM;
+  to_add.pointer_to_vecs = front_phi_dd_.vec;
+  fields_to_save_n.push_back(to_add);
+
   // The container:
   to_add.name = "contr_phi";
   to_add.DATA_SAMPLING = NODE_DATA;
   to_add.nvecs = 1;
   to_add.pointer_to_vecs = &contr_phi_.vec;
+  fields_to_save_n.push_back(to_add);
+
+  to_add.name = "contr_phi_dd";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = P4EST_DIM;
+  to_add.pointer_to_vecs = contr_phi_dd_.vec;
   fields_to_save_n.push_back(to_add);
 
   // Seed map:
@@ -3738,7 +3753,7 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
   to_add.pointer_to_vecs = &seed_map_.vec;
   fields_to_save_n.push_back(to_add);
 
-  // Geometric properties of the front (and container):
+  // Geometric properties of the front:
   to_add.name = "front_normal";
   to_add.DATA_SAMPLING = NODE_DATA;
   to_add.nvecs = P4EST_DIM;
@@ -3751,11 +3766,7 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
   to_add.pointer_to_vecs = &front_curvature_.vec;
   fields_to_save_n.push_back(to_add);
 
-  to_add.name = "contr_phi_dd";
-  to_add.DATA_SAMPLING = NODE_DATA;
-  to_add.nvecs = P4EST_DIM;
-  to_add.pointer_to_vecs = contr_phi_dd_.vec;
-  fields_to_save_n.push_back(to_add);
+
 
   // ALERT TO-DO: we need to sort out which list to add each field to ... in the case with solve with fluids, we will likely want to save the nm1 times to the nm1 grid, and etc. Need to recall which fields are on which grid. For the case without solving fluids, I think we can save them all on one grid
 
@@ -3876,6 +3887,28 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
     } // end of loop over time layers
   } // end of case with no fluids
 
+  // Last, the Lagrange multipliers:
+  to_add.name = "psi_tl";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = 1;
+  to_add.pointer_to_vecs = &psi_tl_.vec;
+  fields_to_save_n.push_back(to_add);
+
+  to_add.name = "psi_ts";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = 1;
+  to_add.pointer_to_vecs = &psi_ts_.vec;
+  fields_to_save_n.push_back(to_add);
+
+  for(unsigned int i = 0; i<num_comps_; i++){
+    char name[1000];
+    sprintf(name, "psi_cl_%d", i);
+    to_add.name = name;
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &psi_cl_.vec[i];
+    fields_to_save_n.push_back(to_add);
+  }
 
   // ---------------------------------------------------
   // Lastly, let's prepare the fields for the solid grid:
@@ -3886,11 +3919,15 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
   to_add.pointer_to_vecs = &solid_front_phi_.vec;
   fields_to_save_solid.push_back(to_add);
 
-  to_add.name = "solid_front_phi_nm1";
+  to_add.name = "solid_front_phi_nm1"; // this will be on the n grid as well, it will have been interpolated over in update_grid
   to_add.DATA_SAMPLING = NODE_DATA;
   to_add.nvecs = 1;
   to_add.pointer_to_vecs = &solid_front_phi_nm1_.vec;
   fields_to_save_solid.push_back(to_add);
+
+//  to_add.name = "solid_front_curvature";
+//  to_add.DATA_SAMPLING = NODE_DATA;
+
 
   to_add.name = "solid_seed";
   to_add.DATA_SAMPLING = NODE_DATA;
