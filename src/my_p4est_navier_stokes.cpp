@@ -3053,12 +3053,10 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
                                   "dxyz_hodge", P4EST_DIM, dxyz_hodge,
                                   "vn_nodes", P4EST_DIM, vn_nodes,
                                   "smoke", 1, &smoke);
-  PetscPrintf(p4est_n->mpicomm, "111 \n");
   // save p4est_nm1
   my_p4est_save_forest_and_data(path_to_folder, p4est_nm1, nodes_nm1,
                                 "p4est_nm1", 1,
                                 "vnm1_nodes", P4EST_DIM, vnm1_nodes);
-  PetscPrintf(p4est_n->mpicomm, "222 \n");
 
   PetscErrorCode ierr = PetscPrintf(p4est_n->mpicomm, "Saved solver state in ... %s\n", path_to_folder); CHKERRXX(ierr);
 }

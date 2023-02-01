@@ -1290,11 +1290,11 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     double vort_thresh_refine = vorticity_threshold*NS_norm;
     double vort_thresh_coarsen = vorticity_threshold*NS_norm/2.;
 
-    double d2T_refine_threshold = 200.;
-    double d2T_coarsen_threshold = 50.0;
+    double d2T_refine_threshold = 1000.;
+    double d2T_coarsen_threshold = 10.0;
 
-    double d2C_refine_threshold = 200.;
-    double d2C_coarsen_threshold = 50.0;
+    double d2C_refine_threshold = 1000.;
+    double d2C_coarsen_threshold = 10.0;
 
     double dxyz_smallest[P4EST_DIM];
     dxyz_min(p4est_,dxyz_smallest);
@@ -1312,7 +1312,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
                                  "- Refine by d2T = %d \n"
                                  "    - refine_multiplier = %0.1f, refine_thresh = %0.2e\n"
                                  "    - coarsen_multiplier = %0.1f, coarsen_thresh = %0.2e \n"
-                                 "- Refine by d2C(comp 0) \n"
+                                 "- Refine by d2C(comp 0) = %d \n"
                                  "    - refine_multiplier = %0.1f, refine_thresh = %0.2e \n"
                                  "    - coarsen_multiplier = %0.1f, coarsen_thresh = %0.2e \n\n",
                                 refine_by_vorticity, vort_thresh_refine, vort_thresh_coarsen,
