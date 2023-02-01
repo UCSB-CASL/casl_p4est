@@ -2435,12 +2435,16 @@ int main (int argc, char* argv[])
   // TO-DO: revisit if we really want these dt limits or not
 
   // set initial conditions
-  mas.set_velocity(vn_cf, DIM(vx_cf, vy_cf, vz_cf), vf_cf);
-  mas.set_temperature(tl_cf, ts_cf, tf_cf);
-//  mas.set_temperature_solve_w_fluids(tl_cf, ts_cf, tf_cf);
+  MPI_Barrier(mpi.comm());
+  if(!loading_from_previous_state.val){
+    mas.set_velocity(vn_cf, DIM(vx_cf, vy_cf, vz_cf), vf_cf);
+    mas.set_temperature(tl_cf, ts_cf, tf_cf);
+    //  mas.set_temperature_solve_w_fluids(tl_cf, ts_cf, tf_cf);
 
-  mas.set_concentration(cl_cf_all, cs_cf_all);
-  mas.set_ft(ft_cf);
+    mas.set_concentration(cl_cf_all, cs_cf_all);
+    mas.set_ft(ft_cf);
+  }
+  PetscPrintf(mpi.comm(), "Elyce to-do: I think I might need to include the freeze time as a save/load field \n");
 
   // set solver parameters
   mas.set_bc_tolerance             (bc_tolerance.val);
@@ -2457,15 +2461,22 @@ int main (int argc, char* argv[])
   mas.set_dendrite_min_length      (dendrite_min_length.val);
 
   // compute container volume
+  PetscPrintf(mpi.comm(), "Elyce to-do: need to get the front phi and contr phi from mas in the laod state case. also need to actuall save contr phi to begin with which I have not done ... \n");
+  if(loading_from_previous_state.val){
+    front_phi.vec = mas.get_front_phi();
+    contr_phi.vec = mas.get_contr_phi();
+  }
   vec_and_ptr_t ones(front_phi.vec);
   VecSetGhost(ones.vec, 1.);
   double container_volume = integrate_over_negative_domain(p4est, nodes, contr_phi.vec, ones.vec);
   ones.destroy();
 
   // clear up memory
-  contr_phi.destroy();
-  front_phi.destroy();
-  seed_map.destroy();
+  if(!loading_from_previous_state.val){
+    contr_phi.destroy();
+    front_phi.destroy();
+    seed_map.destroy();
+  }
 
   // loop over time
   bool   keep_going     = true;
@@ -2491,6 +2502,7 @@ int main (int argc, char* argv[])
   std::vector<double> errors_max_over_time(2*num_comps.val+7, 0);
   int itn =1;
 
+  PetscPrintf(mpi.comm(), "Entering time loop ! \n");
   while (1)
   {
 //    PetscPrintf(mpi.comm(), "\n ------- \n Iteration: %d \n --------------- \n", iteration);
@@ -2515,6 +2527,7 @@ int main (int argc, char* argv[])
     // solve nonlinear system for temperature, concentration and velocity at t_n
     bc_error_max = 0;
     bc_error_avg = 0;
+    PetscPrintf(mpi.comm(), "About to call one step \n");
     if (!solve_w_fluids.val){
     sub_iterations += mas.one_step(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     }else{

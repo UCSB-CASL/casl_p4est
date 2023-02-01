@@ -383,7 +383,7 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   front_curvature_.create(front_phi_.vec);
   front_normal_.create(front_phi_dd_.vec);
 
-  contr_phi_.create(p4est_, nodes_);
+  if(!loading_from_previous_state) contr_phi_.create(p4est_, nodes_);
   contr_phi_dd_.create(p4est_, nodes_);
 
   //--------------------------------------------------
@@ -1953,9 +1953,14 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
   PetscPrintf(p4est_->mpicomm, "Solving nonlinear system:\n");
+  printf("hi \n");
   time_ += dt_[0];
+  PetscPrintf(p4est_->mpicomm, "time upd:\n");
+
 
   int num_nodes = nodes_->num_owned_indeps;
+  PetscPrintf(p4est_->mpicomm, "got num nodes:\n");
+
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
 
   PetscPrintf(p4est_->mpicomm, "\n Time = %3e, Number of Nodes = %d "
@@ -3707,6 +3712,13 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
   to_add.pointer_to_vecs = &front_phi_.vec;
   fields_to_save_n.push_back(to_add);
 
+  // The container:
+  to_add.name = "contr_phi";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = 1;
+  to_add.pointer_to_vecs = &contr_phi_.vec;
+  fields_to_save_n.push_back(to_add);
+
   // Seed map:
   to_add.name = "seed_map";
   to_add.DATA_SAMPLING = NODE_DATA;
@@ -3719,25 +3731,37 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
 
   // TO-DO: we may need to add the "solid" fields for the auxiliary grid
 
+  // NOTE: for physical fields, we save time layers 1 and 2, because we assume that save state is called
+  // after update  grid, and update grid essentially slides everything and puts the prepratory vector in time layer 0 to hold the solution for the next step
+  // so if we *do* load the state, we need to load layer 1 and 2 (the real physical solutions), and i suppose we can load layer 0 as well
+  // just so we already have the prepared empty vector on file and don't need to do extra bookkeeping in our initialize functions
+
   // Fields only present for the fluids case:
   if(solve_with_fluids){
     // Temperature and concentration fields:
     // NOTE: we assume that if we are solving with fluids, we are solving with two time layers
-    // Tl at time layer 0 (n):
+    // Tl at time layer 0 (anticipatory field for next solution np1):
     to_add.name = "tl_time_layer_0";
     to_add.DATA_SAMPLING = NODE_DATA;
     to_add.nvecs = 1;
     to_add.pointer_to_vecs = &tl_[0].vec;
     fields_to_save_n.push_back(to_add);
 
-    // Tl at time layer 1 (nm1):
+    // Tl at time layer 1 (n):
     to_add.name = "tl_time_layer_1";
     to_add.DATA_SAMPLING = NODE_DATA;
     to_add.nvecs = 1;
     to_add.pointer_to_vecs = &tl_[1].vec;
+    fields_to_save_n.push_back(to_add);
+
+    // Tl at time layer 2 (nm1):
+    to_add.name = "tl_time_layer_2";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &tl_[2].vec;
     fields_to_save_nm1.push_back(to_add);
 
-    // Ts at time layers 0 and 1: (both on the n grid, as per daniil's approach)
+    // Ts at time layers 0, 1, and 2: (all on the n grid, as per daniil's approach)
     for(int i=0; i<num_time_layers_; i++){
       char name[1000];
       sprintf(name, "ts_time_layer_%d", i);
@@ -3751,7 +3775,7 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
     for (int j=0; j<num_comps_; j++){
 
       char name[1000];
-      // Concentration components at time layer 0: (n grid)
+      // Concentration components at time layer 0: (anticipatory field to eventually hold soln for np1)
       sprintf(name, "cl_comp_%d_time_layer_%d", j, 0);
       to_add.name = name;
       to_add.DATA_SAMPLING = NODE_DATA;
@@ -3759,12 +3783,20 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
       to_add.pointer_to_vecs = &cl_[0].vec[j];
       fields_to_save_n.push_back(to_add);
 
-      // Concentration components at time layer 1: (nm1 grid)
+      // conc components at time layer 1 (n grid)
       sprintf(name, "cl_comp_%d_time_layer_%d", j, 1);
       to_add.name = name;
       to_add.DATA_SAMPLING = NODE_DATA;
       to_add.nvecs = 1;
       to_add.pointer_to_vecs = &cl_[1].vec[j];
+      fields_to_save_n.push_back(to_add);
+
+      // Concentration components at time layer 2: (nm1 grid)
+      sprintf(name, "cl_comp_%d_time_layer_%d", j, 2);
+      to_add.name = name;
+      to_add.DATA_SAMPLING = NODE_DATA;
+      to_add.nvecs = 1;
+      to_add.pointer_to_vecs = &cl_[2].vec[j];
       fields_to_save_nm1.push_back(to_add);
     }
 
