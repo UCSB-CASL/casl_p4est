@@ -3764,6 +3764,16 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
   to_add.pointer_to_vecs = &front_curvature_.vec;
   fields_to_save_n.push_back(to_add);
 
+  // The front velo norm:
+  for (int i=0; i<num_time_layers_; i++){
+    char name[1000];
+    sprintf(name, "front_velo_norm_time_layer_%d", i);
+    to_add.name = name;
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &front_velo_norm_[i].vec;
+    fields_to_save_n.push_back(to_add);
+  }
 
 
   // ALERT TO-DO: we need to sort out which list to add each field to ... in the case with solve with fluids, we will likely want to save the nm1 times to the nm1 grid, and etc. Need to recall which fields are on which grid. For the case without solving fluids, I think we can save them all on one grid
