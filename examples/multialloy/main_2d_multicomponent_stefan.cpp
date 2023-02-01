@@ -255,7 +255,7 @@ param_t<double> growth_limit         (pl, 15, "growth_limit", "");
 param_t<double> init_perturb         (pl, 1.e-10,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
-param_t<double> front_location         (pl, 0.100,     "front_location",         "");
+param_t<double> front_location         (pl, 0.500,     "front_location",         "");
 param_t<double> front_location_final   (pl, 0.25,     "front_location_final",   "");
 param_t<double> container_radius_inner (pl, 0.1,     "container_radius_inner", "");
 param_t<double> container_radius_outer (pl, 0.45,     "container_radius_outer", "");

@@ -2734,7 +2734,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   }
   vec_and_ptr_dim_t tl_dd;
   vec_and_ptr_dim_t cl0_dd;
-  bool save_second_deriv = true;
+  bool save_second_deriv = false;
   if(save_second_deriv){
     tl_dd.create(p4est_, nodes_);
     ngbd_->second_derivatives_central(tl_[0].vec, tl_dd.vec);
@@ -2758,10 +2758,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
                                point_fields,
                                cell_fields);
 
-  if(save_second_deriv){
-    tl_dd.destroy();
-    cl0_dd.destroy();
-  }
+
 
   VecScaleGhost(front_velo_norm_[0].vec, scaling_);
 
@@ -2769,6 +2766,10 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   cell_fields.clear();
   point_fields.clear();
   if(leaf_level!=NULL) {ierr = VecDestroy(leaf_level);       CHKERRXX(ierr); }
+  if(save_second_deriv){
+    tl_dd.destroy();
+    cl0_dd.destroy();
+  }
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
