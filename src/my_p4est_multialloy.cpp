@@ -2508,11 +2508,9 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   vec_and_ptr_dim_t vgamma_n_vec;
   vgamma_n_vec.create(p4est_, nodes_);
 
-  front_normal_.get_array();
-
-  PetscPrintf(mpi_->comm(), "bbb \n");
+//  front_normal_.get_array();
+  front_velo_norm_[0].get_array();
   vgamma_n_vec.get_array();
-  PetscPrintf(mpi_->comm(), "ccc \n");
 
   foreach_dimension(dim){
     VecCopyGhost(front_normal_.vec[dim], vgamma_n_vec.vec[dim]);
@@ -2521,11 +2519,11 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
       vgamma_n_vec.ptr[dim][n]*=front_velo_norm_[0].ptr[n];
     }
   }
-  PetscPrintf(mpi_->comm(), "ddd \n");
 
 
 //  std::cout<<"step_w_fluids line 2400\n";
-  front_normal_.restore_array();
+//  front_normal_.restore_array();
+  front_velo_norm_[0].restore_array();
   vgamma_n_vec.restore_array();
   stefan_w_fluids_solver->set_v_interface(vgamma_n_vec);
   PetscPrintf(mpi_->comm(), "BBB\n");
