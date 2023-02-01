@@ -2485,10 +2485,10 @@ int main (int argc, char* argv[])
   double base           = front_location.val;
   double bc_error_max   = 0;
   double bc_error_avg   = 0;
-  int    iteration      = 0;
+  int    iteration      = (loading_from_previous_state.val? mas.get_iteration_one_step(): 0);
   int    sub_iterations = 0;
-  int    vtk_idx        = 0;
-  int    save_state_idx = 1;
+  int    vtk_idx        = (loading_from_previous_state.val? mas.get_vtk_idx(): 0);
+  int    save_state_idx = 1; // start at 1 so we don't save the state of the initial condition
   int    mpiret;
 
   vector<double> bc_error_max_all;
@@ -2513,7 +2513,6 @@ int main (int argc, char* argv[])
         (save_type.val == 2 && tn           >= vtk_idx*save_every_dt.val);
 
     bool save_state_now = (save_vtk.val) && (iteration >= save_state_idx * save_state_every_dn.val);
-    PetscPrintf(mpi.comm(), "SAVE STATE NOW: %d \n save_state_idx = %d, save_state_every_dn = %d \n", save_state_now, save_state_idx, save_state_every_dn.val);
     if (!keep_going) break;
 
 //    // compute time step
@@ -2527,13 +2526,11 @@ int main (int argc, char* argv[])
     // solve nonlinear system for temperature, concentration and velocity at t_n
     bc_error_max = 0;
     bc_error_avg = 0;
-    PetscPrintf(mpi.comm(), "About to call one step \n");
     if (!solve_w_fluids.val){
     sub_iterations += mas.one_step(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     }else{
     sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     }
-    PetscPrintf(mpi.comm(), "One step is complete \n");
     tn             += mas.get_dt();
 
     if (save_step_convergence()) {
@@ -2583,10 +2580,10 @@ int main (int argc, char* argv[])
 
     total_growth -= base;
     */
-    ierr = PetscPrintf(mpi.comm(), "------------------------------------------------------------------------------------------------------\n"
-                                   "Time step %d: growth %e, simulation time %e, compute time %e\n"
-                                   "------------------------------------------------------------------------------------------------------\n",
-                       iteration, total_growth, tn, w1.get_duration_current()); CHKERRXX(ierr);
+//    ierr = PetscPrintf(mpi.comm(), "------------------------------------------------------------------------------------------------------\n"
+//                                   "Time step %d: growth %e, simulation time %e, compute time %e\n"
+//                                   "------------------------------------------------------------------------------------------------------\n",
+//                       iteration, total_growth, tn, w1.get_duration_current()); CHKERRXX(ierr);
 
     if (save_timings.val && save_now)
     {
@@ -2732,9 +2729,7 @@ int main (int argc, char* argv[])
     //std::cout << "Total growth :: "<< total_growth << " ; Growth Limit :: " << growth_limit.val << "\n";
     // Rochi :: moving compute_dt to a different location
     // compute time step
-    PetscPrintf(mpi.comm(), "AAA \n");
     mas.compute_dt();
-    PetscPrintf(mpi.comm(), "BBB \n");
     if (tn + mas.get_dt() > time_limit.val) {
       mas.set_dt(time_limit.val-tn);
       keep_going = false;
@@ -2743,9 +2738,7 @@ int main (int argc, char* argv[])
 
     if(keep_going){
       if(solve_w_fluids.val){
-        PetscPrintf(mpi.comm(), "CCC \n");
         mas.update_grid_w_fluids();
-        PetscPrintf(mpi.comm(), "Update grid with fluids is complete \n");
       }
       else{
         mas.update_grid();

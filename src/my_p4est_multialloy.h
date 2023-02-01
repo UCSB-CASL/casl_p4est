@@ -265,7 +265,9 @@ private:
   vec_and_ptr_t  front_phi_unsmooth_; // is used to track nodes that were artificially solidified during front regularization
 
   int iteration_w_fluids;
+  int iteration_one_step;
 
+  int vtk_idx;
 
   static my_p4est_node_neighbors_t *v_ngbd;
   static double **v_c_p, **v_c0_d_p, **v_c0_dd_p, **v_normal_p;
@@ -343,6 +345,16 @@ public:
     {
       solute_diff_[i] = solute_diff[i];
     }
+  }
+
+  void set_iteration_one_step(int iter){
+    iteration_one_step = iter;
+  }
+  int get_iteration_one_step(){
+    return iteration_one_step;
+  }
+  int get_vtk_idx(){
+    return vtk_idx;
   }
 
   void set_initial_NS_velocity_n_(CF_DIM* init_vel_n_[P4EST_DIM]){

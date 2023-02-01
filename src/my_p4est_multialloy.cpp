@@ -55,6 +55,8 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
   num_comps_       = num_comps;
   num_time_layers_ = time_order+1;
 
+  iteration_one_step = 0;
+
   ts_.resize(num_time_layers_);
   tl_.resize(num_time_layers_);
   cl_.resize(num_time_layers_, vec_and_ptr_array_t(num_comps_));
@@ -860,17 +862,16 @@ void my_p4est_multialloy_t::compute_dt()
   dt_[0] = MIN(dt_[0], dt_max_);
   dt_[0] = MAX(dt_[0], dt_min_);
 
-  PetscPrintf(p4est_->mpicomm, "dt_[0] = %0.3e, dt_max = %0.3e, dt_min = %0.3e \n", dt_[0], dt_max_, dt_min_);
 
+  double dt_NS=0.;
   if(solve_with_fluids){
     stefan_w_fluids_solver->get_ns_solver()->compute_dt();
-    double dt_NS= stefan_w_fluids_solver->get_ns_solver()->get_dt();
-    //std::cout<<"dt_NS :: "<< dt_NS<<"\n";
+    dt_NS= stefan_w_fluids_solver->get_ns_solver()->get_dt();
     dt_[0]=MIN(dt_NS,dt_[0]);
-
-    PetscPrintf(p4est_->mpicomm, "dt_NS = %0.3e \n", dt_NS);
-
   }
+
+  PetscPrintf(p4est_->mpicomm, "dt_[0] = %0.3e, dt_max = %0.3e, dt_min = %0.3e, dt_NS = %0.3e \n",
+              dt_[0], dt_max_, dt_min_, dt_NS);
 
   double cfl_tmp = dt_[0]*MAX(fabs(velo_norm_max),EPS)/dxyz_min_;
 
@@ -1277,55 +1278,65 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     int lmax = sp_new->max_lvl;
     int lint = -1;
     PetscPrintf(p4est_->mpicomm, "\nWarning: for refinement, the lint option is not implemented. You might want this later. \n");
-    PetscPrintf(p4est_->mpicomm, "INSIDE MULTI GRID UPDATE: "
-           "lmin = %d, lmax = %d, lint = %d \n", lmin, lmax, lint);
 
     double NS_norm= stefan_w_fluids_solver->get_NS_norm();
 
     // ------------------------------------------------------------
     // Add our instructions:
     // ------------------------------------------------------------
-    // Coarsening instructions: (for vorticity)
-    PetscPrintf(p4est_->mpicomm,"\nRefine by vort = %d, refine_by_d2T = %d, refine_by_d2C= %d \n", refine_by_vorticity, refine_by_d2T, refine_by_d2C);
 
     vorticity_threshold = 0.2;
 
+    double vort_thresh_refine = vorticity_threshold*NS_norm;
+    double vort_thresh_coarsen = vorticity_threshold*NS_norm/2.;
+
+    double d2T_refine_threshold = 200.;
+    double d2T_coarsen_threshold = 50.0;
+
+    double d2C_refine_threshold = 200.;
+    double d2C_coarsen_threshold = 50.0;
+
+    double dxyz_smallest[P4EST_DIM];
+    dxyz_min(p4est_,dxyz_smallest);
+
+    double refine_criteria_d2T = d2T_refine_threshold*dxyz_smallest[0];
+    double coarsen_criteria_d2T = d2T_coarsen_threshold*dxyz_smallest[0];
+
+    double refine_criteria_d2C = d2C_refine_threshold*dxyz_smallest[0];
+    double coarsen_criteria_d2C = d2C_coarsen_threshold*dxyz_smallest[0];
+
+    PetscPrintf(p4est_->mpicomm,"\nRefine/coarsen settings: \n"
+                                 "- Refine by vort = %d \n"
+                                 "    - refine_threshold = %0.2e \n"
+                                 "    - coarsen_threshold = %0.2e\n "
+                                 "- Refine by d2T = %d \n"
+                                 "    - refine_multiplier = %0.1f, refine_thresh = %0.2e\n"
+                                 "    - coarsen_multiplier = %0.1f, coarsen_thresh = %0.2e \n"
+                                 "- Refine by d2C(comp 0) \n"
+                                 "    - refine_multiplier = %0.1f, refine_thresh = %0.2e \n"
+                                 "    - coarsen_multiplier = %0.1f, coarsen_thresh = %0.2e \n\n",
+                                refine_by_vorticity, vort_thresh_refine, vort_thresh_coarsen,
+                                refine_by_d2T, d2T_refine_threshold, refine_criteria_d2C, d2T_coarsen_threshold, coarsen_criteria_d2T,
+                                refine_by_d2C, d2C_refine_threshold, refine_criteria_d2C, d2C_coarsen_threshold, coarsen_criteria_d2C);
+
+    // Coarsening instructions: (for vorticity)
     if(refine_by_vorticity){
       compare_opn.push_back(LESS_THAN);
       diag_opn.push_back(DIVIDE_BY);
-      criteria.push_back(vorticity_threshold*NS_norm/2.);
-      PetscPrintf(p4est_->mpicomm, "vort thresh coarsen: %0.2e , vort thresh refine: %0.2e \n", vorticity_threshold*NS_norm/2., vorticity_threshold*NS_norm);
+      criteria.push_back(vort_thresh_coarsen);
 
       // Refining instructions: (for vorticity)
       compare_opn.push_back(GREATER_THAN);
       diag_opn.push_back(DIVIDE_BY);
-      criteria.push_back(vorticity_threshold*NS_norm);
+      criteria.push_back(vort_thresh_refine);
 
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(lmax);}
     }
     if(refine_by_d2T){
-      double d2T_refine_threshold = 200.;
-      double d2T_coarsen_threshold = 50.0;
-
-      PetscPrintf(p4est_->mpicomm, "\nWarning: you have activated refine_by_d2T, but this has not been updated to the diimensional case \n");
-      double dxyz_smallest[P4EST_DIM];
-      dxyz_min(p4est_,dxyz_smallest);
-//      double theta_infty= stefan_w_fluids_solver->get_theta_infty();
-//      double theta_interface= stefan_w_fluids_solver->get_theta_interface();
-//      double theta0= stefan_w_fluids_solver->get_theta0();
-//      double deltaT= stefan_w_fluids_solver->get_deltaT();
-//      double dTheta= fabs(theta_infty - theta_interface)>0 ? fabs(theta_infty - theta_interface): 1.0;
-//      dTheta/=SQR(MIN(dxyz_smallest[0],dxyz_smallest[1])); // max d2Theta in liquid subdomain
-
       // Define variables for the refine/coarsen instructions for d2T fields:
       compare_diagonal_option_t diag_opn_d2T = ABSOLUTE;
       compare_option_t compare_opn_d2T = SIGN_CHANGE;
-
-      double refine_criteria_d2T = d2T_refine_threshold*dxyz_smallest[0];
-      double coarsen_criteria_d2T = d2T_coarsen_threshold*dxyz_smallest[0];
-
-      PetscPrintf(p4est_->mpicomm, "Temp refine: %0.2e, temp coarsen: %0.2e \n", refine_criteria_d2T, coarsen_criteria_d2T );
 
       // Coarsening instructions: (for d2T/dx2)
       compare_opn.push_back(compare_opn_d2T);
@@ -1354,18 +1365,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     if(refine_by_d2C){
       compare_diagonal_option_t diag_opn_d2C = ABSOLUTE;
       compare_option_t compare_opn_d2C = SIGN_CHANGE;
-
-      double d2C_refine_threshold = 200.;
-      double d2C_coarsen_threshold = 50.0;
-
-      double dxyz_smallest[P4EST_DIM];
-      dxyz_min(p4est_,dxyz_smallest);
-
-      double refine_criteria_d2C = d2C_refine_threshold*dxyz_smallest[0];
-      double coarsen_criteria_d2C = d2C_coarsen_threshold*dxyz_smallest[0];
-
-      PetscPrintf(p4est_->mpicomm, "Conc refine: %0.2e, conc coarsen: %0.2e \n", refine_criteria_d2C, coarsen_criteria_d2C );
-
 
       // Coarsening instructions: (for d2C/dx2)
       compare_opn.push_back(compare_opn_d2C);
@@ -1725,14 +1724,12 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   stefan_w_fluids_solver->set_ngbd_np1(ngbd_);
   stefan_w_fluids_solver->set_hierarchy_np1(hierarchy_);
 
-  PetscPrintf(p4est_->mpicomm, "update_grid_w_fluids done!\n");
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
 
   int num_nodes2 = nodes_->num_owned_indeps;
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes2,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
-  PetscPrintf(p4est_->mpicomm, "Number of nodes after: %d \n", num_nodes2);
-
+  PetscPrintf(p4est_->mpicomm, "update_grid_w_fluids done! (Number of nodes after: %d) \n", num_nodes2);
 
   if(0){
     PetscPrintf(p4est_->mpicomm," \n \n \n saving fields after grid update \n");
@@ -1973,8 +1970,8 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
   int num_nodes = nodes_->num_owned_indeps;
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
 
-  PetscPrintf(p4est_->mpicomm, "\n Time = %3e, Number of Nodes = %d "
-                               "\n -------------------------- \n", time_,num_nodes);
+  PetscPrintf(p4est_->mpicomm, "\n Iter = %d, Time = %3e, Number of Nodes = %d "
+                               "\n -------------------------- \n",   iteration_one_step, time_,num_nodes);
 
   PetscPrintf(p4est_->mpicomm, "dxyz_close_to_interface %3e \n \n", dxyz_close_interface_);
   // update time in interface and boundary conditions
@@ -2126,6 +2123,8 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
   compute_velocity();
   compute_solid();
 
+  iteration_one_step++;
+
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
   return one_step_iterations;
 }
@@ -2141,7 +2140,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
 
   PetscPrintf(p4est_->mpicomm, "\n ------------------------- \n Iteration = %d, Time = %3e, Number of Nodes = %d "
-                               "\n -------------------------- \n", iteration_w_fluids, time_,num_nodes);
+                               "\n -------------------------- \n", iteration_one_step, time_,num_nodes);
     PetscPrintf(p4est_->mpicomm, "Solving nonlinear system:\n");
 
 
@@ -2201,7 +2200,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   stefan_w_fluids_solver->set_nodes_n(nodes_nm1);
   stefan_w_fluids_solver->set_ngbd_n(ngbd_nm1);
 
-  stefan_w_fluids_solver->set_tstep(iteration_w_fluids);
+  stefan_w_fluids_solver->set_tstep(iteration_one_step);
 
    if(0){
      // -------------------------------
@@ -2234,7 +2233,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     }
 
     char filename[1000];
-    sprintf(filename, "%s/snapshot_before_backtrace_n_%d", out_dir, iteration_w_fluids);
+    sprintf(filename, "%s/snapshot_before_backtrace_n_%d", out_dir, iteration_one_step);
     my_p4est_vtk_write_all_lists(p4est_, nodes_, ngbd_->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
     point_fields.clear();
 
@@ -2248,7 +2247,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_nm1"));
 
     char filename2[1000];
-    sprintf(filename2, "%s/snapshot_before_backtrace_nm1_%d", out_dir, iteration_w_fluids);
+    sprintf(filename2, "%s/snapshot_before_backtrace_nm1_%d", out_dir, iteration_one_step);
     my_p4est_vtk_write_all_lists(p4est_nm1, nodes_nm1, ngbd_nm1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename2, point_fields, cell_fields);
     point_fields.clear();
   }
@@ -2256,7 +2255,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   stefan_w_fluids_solver->set_dt_nm1(dt_[2]);
   stefan_w_fluids_solver->set_dt(dt_[1]);
 
-  stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_, iteration_w_fluids);
+  stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_, iteration_one_step);
 
   if(0){
     // -------------------------------
@@ -2289,7 +2288,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     }
 
     char filename[1000];
-    sprintf(filename, "%s/snapshot_after_backtrace_n_%d", out_dir, iteration_w_fluids);
+    sprintf(filename, "%s/snapshot_after_backtrace_n_%d", out_dir, iteration_one_step);
     my_p4est_vtk_write_all_lists(p4est_, nodes_, ngbd_->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
     point_fields.clear();
 
@@ -2303,7 +2302,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     point_fields.push_back(Vec_for_vtk_export_t(v_nm1.vec[1], "vy_nm1"));
 
     char filename2[1000];
-    sprintf(filename2, "%s/snapshot_after_backtrace_nm1_%d", out_dir, iteration_w_fluids);
+    sprintf(filename2, "%s/snapshot_after_backtrace_nm1_%d", out_dir, iteration_one_step);
     my_p4est_vtk_write_all_lists(p4est_nm1, nodes_nm1, ngbd_nm1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename2, point_fields, cell_fields);
     point_fields.clear();
 
@@ -2503,8 +2502,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // (1) pass the computed interfacial velocity to stefan w fluids
   // Convert to a (vgamma,n) n to make it a vector still along the normal direction
 //  std::cout<<"step_w_fluids line 2384\n";
-  PetscPrintf(mpi_->comm(), "AAA\n");
-
   vec_and_ptr_dim_t vgamma_n_vec;
   vgamma_n_vec.create(p4est_, nodes_);
 
@@ -2520,15 +2517,11 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     }
   }
 
-
-//  std::cout<<"step_w_fluids line 2400\n";
 //  front_normal_.restore_array();
   front_velo_norm_[0].restore_array();
   vgamma_n_vec.restore_array();
   stefan_w_fluids_solver->set_v_interface(vgamma_n_vec);
-  PetscPrintf(mpi_->comm(), "BBB\n");
 
-//  std::cout<<"step_w_fluids line 2404\n";
 
   // (2) provide stefan_w_fluids w all other relevant things to solve the ns problem:
   // Things we will need: 
@@ -2565,10 +2558,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 */
   PetscPrintf(p4est_->mpicomm, "\nRED ALERT: Boussinesq is currently non-operational. We will want to fix this later \n");
 
-
-
   stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(false, nullptr, true);
-  PetscPrintf(mpi_->comm(), "CCC\n");
 
 
   // Now, get the velocity results back out of SWF (or do we need to? ) :
@@ -2650,7 +2640,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   compute_solid();
 
   // Increment the iteration count:
-  iteration_w_fluids++;
+  iteration_one_step++;
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
   vgamma_n_vec.destroy();
@@ -2662,17 +2652,18 @@ void my_p4est_multialloy_t::save_VTK(int iter)
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  if(solve_with_fluids)
-  {
-    ierr = PetscPrintf(p4est_->mpicomm, " solve_w_fluids \n");
-  }
+  // We have the multialloy class keep track of the vtk index so that if we need to save/load, we can get the
+  // last vtk idx we had
+  // TO-DO: there is a cleaner better way to handle this, but I'm doing it the quick and dirty way first
+  vtk_idx = iter;
+
   const char* out_dir = getenv("OUT_DIR");
   if (!out_dir)
   {
     ierr = PetscPrintf(p4est_->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
     return;
   }
-  //std:: cout<<"mas line 2024 \n";
+
   splitting_criteria_t *data = (splitting_criteria_t*)p4est_->user_pointer;
 
   char name[1000];
@@ -3618,6 +3609,8 @@ void my_p4est_multialloy_t::fill_or_load_integer_parameters(save_or_load flag, P
     data[idx++] = sp_crit_->max_lvl;
     data[idx++] = num_seeds_;
     data[idx++] = num_comps_;
+    data[idx++] = iteration_one_step;
+    data[idx++] = vtk_idx;
 //    data[idx++] = advection_sl_order;
 //    data[idx++] = tstep;
 //    data[idx++] = sp->min_lvl;
@@ -3630,6 +3623,8 @@ void my_p4est_multialloy_t::fill_or_load_integer_parameters(save_or_load flag, P
     sp_crit_->max_lvl = data[idx++];
     num_seeds_= data[idx++];
     num_comps_ = data[idx++];
+    iteration_one_step = data[idx++];
+    vtk_idx = data[idx++];
 
 //    advection_sl_order = data[idx++];
 //    tstep = data[idx++];
@@ -3649,7 +3644,7 @@ void my_p4est_multialloy_t::save_or_load_parameters(const char* filename, save_o
   PetscReal double_parameters[num_doubles];
 
   // Integer parameters we need to save:
-  PetscInt num_integers = 5;
+  PetscInt num_integers = 7;
   PetscInt integer_parameters[num_integers];
 
   int fd;
