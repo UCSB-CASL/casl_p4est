@@ -1675,7 +1675,6 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   }
 
   interp.interpolate(velocity_fields_new);
-
   interp.clear();
 
 
@@ -2505,8 +2504,13 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   vec_and_ptr_dim_t vgamma_n_vec;
   vgamma_n_vec.create(p4est_, nodes_);
 
+  VecView(front_normal_.vec[0], PETSC_VIEWER_STDOUT_WORLD);
   front_normal_.get_array();
+
+  PetscPrintf(mpi_->comm(), "bbb \n");
   vgamma_n_vec.get_array();
+  PetscPrintf(mpi_->comm(), "ccc \n");
+
   foreach_dimension(dim){
     VecCopyGhost(front_normal_.vec[dim], vgamma_n_vec.vec[dim]);
     // VecScaleGhost(vgamma_n_vec.vec[dim], front_velo_norm_[0]);
@@ -2514,6 +2518,8 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
       vgamma_n_vec.ptr[dim][n]*=front_velo_norm_[0].ptr[n];
     }
   }
+  PetscPrintf(mpi_->comm(), "ddd \n");
+
 
 //  std::cout<<"step_w_fluids line 2400\n";
   front_normal_.restore_array();
@@ -3732,6 +3738,24 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
   to_add.pointer_to_vecs = &seed_map_.vec;
   fields_to_save_n.push_back(to_add);
 
+  // Geometric properties of the front (and container):
+  to_add.name = "front_normal";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = P4EST_DIM;
+  to_add.pointer_to_vecs = front_normal_.vec;
+  fields_to_save_n.push_back(to_add);
+
+  to_add.name = "front_curvature";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = 1;
+  to_add.pointer_to_vecs = &front_curvature_.vec;
+  fields_to_save_n.push_back(to_add);
+
+  to_add.name = "contr_phi_dd";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = P4EST_DIM;
+  to_add.pointer_to_vecs = contr_phi_dd_.vec;
+  fields_to_save_n.push_back(to_add);
 
   // ALERT TO-DO: we need to sort out which list to add each field to ... in the case with solve with fluids, we will likely want to save the nm1 times to the nm1 grid, and etc. Need to recall which fields are on which grid. For the case without solving fluids, I think we can save them all on one grid
 
