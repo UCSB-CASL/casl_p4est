@@ -584,9 +584,14 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
 
   // irrelevant since we don't know Re, we nondim by diffusivity stefan_w_fluids_solver->set_Re(1.);
   // ALERT :: Pr hard coded and set here
-  Pr=23.1;
+  Pr=1.0;
+  RaT=1.0;
   PetscPrintf(p4est_->mpicomm, "ALERT ALERT: PRANDTL NUMBER IS HARD CODED AND SET TO 23.1. THIS IS A SHORT TERM FIX AND MUST BE UPDATED \n");
   stefan_w_fluids_solver->set_Pr(Pr);
+
+  stefan_w_fluids_solver->set_RaT(RaT);
+
+  stefan_w_fluids_solver->set_use_boussinesq(true);
 
   stefan_w_fluids_solver->set_NS_advection_order(2);
 
@@ -857,7 +862,7 @@ void my_p4est_multialloy_t::compute_dt()
   }
 
   double cfl_tmp = dt_[0]*MAX(fabs(velo_norm_max),EPS)/dxyz_min_;
-
+  PetscPrintf(mpi_->comm(), "velo_norm_max = %0.2e \n, scaling = %0.2e \n", velo_norm_max, scaling_);
   PetscPrintf(p4est_->mpicomm, "curvature max = %e, velo max = %e, dt = %e, eff cfl = %e done!\n", curvature_max, velo_norm_max/scaling_, dt_[0], cfl_tmp);
 
   //std::cout<< "Plotting contents of dt\n";

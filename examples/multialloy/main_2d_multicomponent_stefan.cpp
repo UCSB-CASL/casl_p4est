@@ -1310,7 +1310,8 @@ public:
     return eps_c.val*(1.0-4.0*eps_a.val*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
 #else
     double theta = atan2(ny, nx);
-    return eps_c.val*(1.-15.*eps_a.val*cos(symmetry.val*(theta-theta0)))/(1.+15.*eps_a.val);
+//    return eps_c.val*(1.-15.*eps_a.val*cos(symmetry.val*(theta-theta0)))/(1.+15.*eps_a.val);
+    return eps_c.val;
 #endif
   }
 };
@@ -1349,11 +1350,11 @@ public:
 #endif
       case -2: return analytic::cl_exact(idx, t, ABS2(x-xc(), y-yc()));
       case -1: return analytic::cl_exact(idx, t, ABS1(y-ymin()));
-      case  0:
-        if (start_from_moving_front.val) {
-          return (*initial_conc_all[idx])*(1. + (1.-analytic::kp[idx])/analytic::kp[idx]*
-                                           exp(-cooling_velocity.val/(*solute_diff_all[idx])*(-front_phi_cf(DIM(x,y,z)-0*cooling_velocity.val*t))));
-        }
+      case  0: return 0.05 + (1 - 0.05)*0.5 * (1 - tanh(10.*(y - 0.5*front_location.val)));
+//        if (start_from_moving_front.val) {
+//          return (*initial_conc_all[idx])*(1. + (1.-analytic::kp[idx])/analytic::kp[idx]*
+//                                           exp(-cooling_velocity.val/(*solute_diff_all[idx])*(-front_phi_cf(DIM(x,y,z)-0*cooling_velocity.val*t))));
+//        }
       case  1:
       case  2:
       case  3:
@@ -1429,7 +1430,7 @@ public:
 #endif
       case -2: return analytic::tl_exact(t, ABS2(x-xc.val, y-yc.val));
       case -1: return analytic::tl_exact(t, ABS1(y-ymin.val));
-      case  0: return analytic::Tstar+ front_location.val - y +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//front_location.val - y; +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
+      case  0: return /*analytic::Tstar+*/ front_location.val - y +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//front_location.val - y; +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
       case  1: return analytic::Tstar;
       case  2: return analytic::Tstar;
       case  3: return analytic::Tstar - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())));
@@ -1456,7 +1457,7 @@ public:
 #endif
       case -2: return analytic::ts_exact(t, ABS2(x-xc(), y-yc()));
       case -1: return analytic::ts_exact(t, ABS1(y-ymin()));
-      case  0: return analytic::Tstar+ front_location.val - y +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
+      case  0: return /*analytic::Tstar+*/ front_location.val - y +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
       case  1: return analytic::Tstar;
       case  2: return analytic::Tstar;
       case  3: return analytic::Tstar - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())))*thermal_cond_l()/thermal_cond_s();
@@ -1481,8 +1482,8 @@ public:
       case -3:
 #endif
       case -2:
-      case -1:
-      case  0:
+      case -1: return analytic::Tstar;
+      case  0: return 0.;
       case  1:
       case  2:
       case  3:
@@ -1490,7 +1491,7 @@ public:
       case  5:
       case  6:
       case  7:
-      case  8: return analytic::Tstar;;
+      case  8: return analytic::Tstar;
       default: throw;
     }
   }
@@ -1847,7 +1848,7 @@ bool is_y_wall(DIM(double x, double y, double z)){
 };
 // For velocity BCs/ICs
 double u0=0.;
-double v0=-1.0e-4;
+double v0=0.;
 
 double outflow_u=0.;
 double outflow_v=0.;
@@ -1882,7 +1883,7 @@ struct INITIAL_VELOCITY : CF_DIM
 
 bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
     // Dirichlet on y upper wall (where bulk flow is incoming
-    return ( yupper_wall(DIM(x,y,z)) /*|| xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z))*/);
+    return ( ylower_wall(DIM(x,y,z)) /*|| xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z))*/);
 
 };
 class BC_WALL_VALUE_VELOCITY: public CF_DIM
