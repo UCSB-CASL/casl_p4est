@@ -538,6 +538,33 @@ void set_alloy_parameters()
       part_coeff_3.val     = 0.80;
 
       break;
+  case 8: // made up alloy
+    density_l.val       = 1; // kg.cm-3
+    density_s.val       = 1; // kg.cm-3
+    heat_capacity_l.val = 1;  // J.kg-1.K-1
+    heat_capacity_s.val = 1;  // J.kg-1.K-1
+    thermal_cond_l.val  = 1.e-2; // W.cm-1.K-1
+    thermal_cond_s.val  = 1.e-2; // W.cm-1.K-1
+    latent_heat.val     = 1;    // J.cm-3
+
+    num_comps.val = 1;
+
+    solute_diff_0.val    = 1.e-2;  // cm2.s-1 - concentration diffusion coefficient
+    initial_conc_0.val   = 0.4;    // at frac.
+
+    eps_c.val = 1.0e-2;
+    eps_v.val = 0;
+    eps_a.val = 0;
+    symmetry.val = 0;
+
+    // linearized phase diagram
+    melting_temp.val     = 1728;   // K
+    linearized_liquidus.val  = 1;
+    const_part_coeff.val = 1;
+    liquidus_slope_0.val = -357;   // K / at frac. - liquidous slope
+    part_coeff_0.val     = 0.86;   // partition coefficient
+
+    break;
     default:
       throw std::invalid_argument("Undefined alloy\n");
   }
