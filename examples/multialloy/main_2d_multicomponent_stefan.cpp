@@ -2749,6 +2749,7 @@ int main (int argc, char* argv[])
 
 
     if(save_state_now){
+      PetscPrintf(mpi.comm(), "Beginning save state process ... \n");
       char output[1000];
       const char* out_dir_save_state = getenv("OUT_DIR_SAVE_STATE");
       if(!out_dir_save_state){

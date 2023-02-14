@@ -1976,6 +1976,7 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
   PetscPrintf(p4est_->mpicomm, "dxyz_close_to_interface %3e \n \n", dxyz_close_interface_);
   // update time in interface and boundary conditions
 //  gibbs_thomson_->t = time_;
+
   vol_heat_gen_ ->t = time_;
   contr_bc_value_temp_->t = time_;
   wall_bc_value_temp_ ->t = time_;
@@ -1984,9 +1985,12 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
     contr_bc_value_conc_[i]->t = time_;
     wall_bc_value_conc_ [i]->t = time_;
   }
+
   // compute right-hand sides
   vec_and_ptr_t       rhs_tl(tl_[0].vec);
+
   vec_and_ptr_t       rhs_ts(ts_[0].vec);
+
   vec_and_ptr_array_t rhs_cl(num_comps_, cl_[0].vec.data());
 
   rhs_tl.get_array();
@@ -3886,6 +3890,7 @@ void my_p4est_multialloy_t::prepare_fields_for_save_or_load(vector<save_or_load_
         to_add.DATA_SAMPLING = NODE_DATA;
         to_add.nvecs = 1;
         to_add.pointer_to_vecs = &cl_[i].vec[j];
+        fields_to_save_n.push_back(to_add);
       } // end of loop over num components
     } // end of loop over time layers
   } // end of case with no fluids
@@ -3979,9 +3984,11 @@ void my_p4est_multialloy_t::load_state(const char* path_to_folder){
                                   fields_to_load_nm1, fields_to_load_solid);
 
   // Load the time nm1 grid:
-  my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
-                                p4est_nm1, connectivity_, P4EST_TRUE, ghost_nm1, nodes_nm1,
-                                "p4est_nm1", fields_to_load_nm1);
+  if(solve_with_fluids){
+    my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
+                                  p4est_nm1, connectivity_, P4EST_TRUE, ghost_nm1, nodes_nm1,
+                                  "p4est_nm1", fields_to_load_nm1);
+  }
 
   // Load the np1 grid:
   my_p4est_load_forest_and_data(mpi_->comm(), path_to_folder,
@@ -4001,7 +4008,7 @@ void my_p4est_multialloy_t::load_state(const char* path_to_folder){
   // TO-DO: may need to fix how this is handled later but I'm leaving it for now
 
 //  splitting_criteria_cf_t* sp_new = new splitting_criteria_cf_and_uniform_band_t(*sp_crit_);
-  p4est_nm1->user_pointer = (void*) sp_crit_;
+  if(solve_with_fluids) p4est_nm1->user_pointer = (void*) sp_crit_;
   p4est_->user_pointer = (void*) sp_crit_;
   solid_p4est_->user_pointer = (void*) sp_crit_;
 
@@ -4108,8 +4115,10 @@ void my_p4est_multialloy_t::save_state(const char* path_to_directory, unsigned i
   my_p4est_save_forest_and_data(path_to_folder, p4est_, nodes_, NULL,
                                 "p4est_n", fields_to_save_n);
 
-  my_p4est_save_forest_and_data(path_to_folder, p4est_nm1, nodes_nm1, NULL,
-                                "p4est_nm1", fields_to_save_nm1);
+  if(solve_with_fluids){
+    my_p4est_save_forest_and_data(path_to_folder, p4est_nm1, nodes_nm1, NULL,
+                                  "p4est_nm1", fields_to_save_nm1);
+  }
 
   ierr = PetscPrintf(mpi_->comm(),"Saved solver state in ... %s \n",path_to_folder);CHKERRXX(ierr);
 
