@@ -295,6 +295,7 @@ private:
     for (int j = 0; j < v_num_comps; ++j) {
       cl_all[j] = qnnn.interpolate_in_dir(dir, dist, v_c_p[j]);
     }
+    // ELYCE TO-DO: add the source term for front_conc_flux here to get the correct interface velocity expression when including the source term hC1
     return -v_factor/(1.-v_part_coeff(0, cl_all.data()))*
         ( qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
         + qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1]))
