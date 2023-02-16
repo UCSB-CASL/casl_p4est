@@ -1,4 +1,4 @@
-// System
+﻿// System
 #include <stdexcept>
 #include <iostream>
 #include <sys/stat.h>
@@ -264,7 +264,7 @@ param_t<double> growth_limit         (pl, 15, "growth_limit", "");
 param_t<double> init_perturb         (pl, 1.e-10,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
-param_t<double> front_location         (pl, 0.100,     "front_location",         "");
+param_t<double> front_location         (pl, 0.500,     "front_location",         "");
 param_t<double> front_location_final   (pl, 0.25,     "front_location_final",   "");
 param_t<double> container_radius_inner (pl, 0.1,     "container_radius_inner", "");
 param_t<double> container_radius_outer (pl, 0.45,     "container_radius_outer", "");
@@ -547,6 +547,33 @@ void set_alloy_parameters()
       part_coeff_3.val     = 0.80;
 
       break;
+  case 8: // made up alloy
+    density_l.val       = 1; // kg.cm-3
+    density_s.val       = 1; // kg.cm-3
+    heat_capacity_l.val = 1;  // J.kg-1.K-1
+    heat_capacity_s.val = 1;  // J.kg-1.K-1
+    thermal_cond_l.val  = 1.e-2; // W.cm-1.K-1
+    thermal_cond_s.val  = 1.e-2; // W.cm-1.K-1
+    latent_heat.val     = 1;    // J.cm-3
+
+    num_comps.val = 1;
+
+    solute_diff_0.val    = 1.e-2;  // cm2.s-1 - concentration diffusion coefficient
+    initial_conc_0.val   = 0.4;    // at frac.
+
+    eps_c.val = 1.0e-2;
+    eps_v.val = 0;
+    eps_a.val = 0;
+    symmetry.val = 0;
+
+    // linearized phase diagram
+    melting_temp.val     = 1728;   // K
+    linearized_liquidus.val  = 1;
+    const_part_coeff.val = 1;
+    liquidus_slope_0.val = -357;   // K / at frac. - liquidous slope
+    part_coeff_0.val     = 0.0;   // partition coefficient
+
+    break;
     default:
       throw std::invalid_argument("Undefined alloy\n");
   }
@@ -1026,6 +1053,323 @@ inline double dcl_exact(int i, double t, double r) { return Bi[i] * Fp(nu(*solut
 
 }
 
+class Convergence_soln{
+    struct temperature: CF_DIM{
+        const double factor=1.;
+        const double N=1.;
+        const unsigned char dom;
+        temperature(const unsigned char& dom_) : dom(dom_){
+            P4EST_ASSERT(dom >= 0 && dom <=1);
+        }
+        double T(DIM(double x, double y,double z))const{
+            switch(dom){
+                case LIQUID_DOMAIN: return cos(N*PI*t*x*y)*sin(N*PI*t*x*y)+((x-1)*(y+1))/factor;
+                case SOLID_DOMAIN: return sin(N*PI*t*x*y)+((x-1)*(y+1))/factor;
+                default:
+                  throw std::runtime_error("analytical solution temperature unknown domain \n");
+            }
+        }
+        double operator()(DIM(double x, double y, double z))const{
+            return T(DIM(x,y,z));
+        }
+        double dT_d(const unsigned char& dir, DIM(double x,double y, double z)){
+            switch(dom){
+                case LIQUID_DOMAIN:
+                    switch(dir){
+                        case dir::x: return (y+N*factor*PI*t*y*cos(2*N*PI*t*x*y)+1)/factor;
+                        case dir::y: return (x+N*factor*PI*t*x*cos(2*N*PI*t*x*y)-1)/factor;
+                        default:
+                           throw std::runtime_error("dT_d of analytical temperature field: unrecognized Cartesian direction \n");
+                    }
+                case SOLID_DOMAIN:
+                    switch(dir){
+                        case dir::x: return (y+1)/factor + N*PI*t*y*cos(N*PI*t*x*y);
+                        case dir::y: return (x-1)/factor + N*PI*t*x*cos(N*PI*t*x*y);
+                        default:
+                           throw std::runtime_error("dT_d of analytical temperature field: unrecognized Cartesian direction \n");
+                    }
+            }
+        }
+        double dT_dt(DIM(double x, double y, double z)){
+            switch(dom){
+                case LIQUID_DOMAIN: N*PI*x*y*pow(cos(N*PI*t*x*y),2) - N*PI*x*y*pow(sin(N*PI*t*x*y),2);
+                case SOLID_DOMAIN: N*PI*x*y*cos(N*PI*t*x*y);
+                default:
+                    throw std::runtime_error("dT_dt in analytical temperature: unrecognized domain \n");
+            }
+        }
+        double laplace(DIM(double x, double y, double z)){
+            switch(dom){
+                case LIQUID_DOMAIN: -2*pow(N,2)*pow(PI,2)*pow(t,2)*sin(2*N*PI*t*x*y)*(pow(x,2)+pow(y,2));
+                case SOLID_DOMAIN: -pow(N,2)*pow(PI,2)*pow(t,2)*sin(N*PI*t*x*y)*(pow(x,2)+pow(y,2));
+                default:
+                    throw std::runtime_error("laplace for analytical temperature field: unrecognized domain \n");
+            }
+        }
+    };
+    struct concentration1: CF_DIM{
+        const double factor=1.;
+        const double N=1.;
+        const unsigned char dom;
+        concentration1(const unsigned char& dom_) : dom(dom_){
+            P4EST_ASSERT(dom >= 0 && dom <=1);
+        }
+        double C1(DIM(double x, double y,double z))const{
+            switch(dom){
+                case LIQUID_DOMAIN: return cos(y)*sin(x)*sin(t);
+                case SOLID_DOMAIN: return 0.0;
+                default:
+                    throw std::runtime_error("analytical solution concentration unknown domain \n");
+            }
+        }
+        double operator()(DIM(double x,double y, double z))const{
+            return C1(DIM(x,y,z));
+        }
+        double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)){
+            switch(dom){
+                case LIQUID_DOMAIN:
+                    switch(dir){
+                        case dir::x: return cos(y)*cos(x)*sin(t);
+                        case dir::y: return -sin(y)*sin(x)*sin(t);
+                        default:
+                           throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian direction \n");}
+                case SOLID_DOMAIN:
+                    switch(dir){
+                        case dir::x: return 0.0;
+                        case dir::y: return 0.0;
+                        default:
+                           throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian direction \n");}
+                default:
+                    throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian direction \n");
+            }
+        }
+        double dC1_dt(DIM(double x, double y, double z)){
+            switch(dom){
+                case LIQUID_DOMAIN: cos(t)*cos(y)*sin(x);
+                case SOLID_DOMAIN: 0.0;
+                default:
+                    throw std::runtime_error("dC1_dt in analytical concentration1: unrecognized domain \n");
+            }
+        }
+        double laplace(DIM(double x, double y, double z)){
+            switch(dom){
+                case LIQUID_DOMAIN: -2*cos(y)*sin(t)*sin(x);
+                case SOLID_DOMAIN: 0.0;
+                default:
+                    throw std::runtime_error("laplace for analytical concentration1 field: unrecognized domain \n");
+            }
+        }
+    };
+    struct concentration2: CF_DIM{
+        const double factor=1.;
+        const double N=1.;
+        const unsigned char dom;
+        concentration2(const unsigned char& dom_) : dom(dom_){
+            P4EST_ASSERT(dom >= 0 && dom <=1);
+        }
+        double C2(DIM(double x, double y,double z))const{
+            switch(dom){
+                case LIQUID_DOMAIN: return cos(y)*cos(x)*cos(t);
+                case SOLID_DOMAIN: return 0.0;
+                default:
+                    throw std::runtime_error("analytical solution concentration2 unknown domain \n");
+            }
+        }
+        double operator()(DIM(double x,double y, double z))const{
+            return C2(DIM(x,y,z));
+        }
+        double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)){
+            switch(dom){
+                case LIQUID_DOMAIN:
+                    switch(dir){
+                        case dir::x: return cos(y)*sin(x)*cos(t);
+                        case dir::y: return -sin(y)*cos(x)*cos(t);
+                        default:
+                           throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");}
+                case SOLID_DOMAIN:
+                    switch(dir){
+                        case dir::x: return 0.0;
+                        case dir::y: return 0.0;
+                        default:
+                           throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");}
+                default:
+                    throw std::runtime_error("dC2_d of analytical concentration1 field: unrecognized Cartesian direction \n");
+            }
+        }
+        double dC2_dt(DIM(double x, double y, double z)){
+            switch(dom){
+                case LIQUID_DOMAIN: -sin(t)*cos(y)*sin(x);
+                case SOLID_DOMAIN: 0.0;
+                default:
+                    throw std::runtime_error("dC2_dt in analytical concentration1: unrecognized domain \n");
+            }
+        }
+        double laplace(DIM(double x, double y, double z)){
+            switch(dom){
+                case LIQUID_DOMAIN: -2*cos(t)*cos(x)*cos(y);
+                case SOLID_DOMAIN: 0.0;
+                default:
+                    throw std::runtime_error("laplace for concentration2 field : unrecognized domain");
+            }
+        }
+    };
+    struct velocity_component: CF_DIM{
+        const unsigned char dir;
+        const double factor=10.0;
+        velocity_component(const unsigned char& dir_): dir(dir_){
+            P4EST_ASSERT(dir<P4EST_DIM);
+        }
+        double v(DIM(double x,double y,double z))const{
+            switch(dir){
+                case dir::x:
+                    return sin(2*PI*(y-t))*(x/2)+pow(x,3)*(y-1)*(1/16.0);
+                case dir::y:
+                    return (1/(4.0*PI))*cos(2*PI*(y-t))-3*pow(x,2)*(0.5*pow(y,2)-y)/16.0;
+                default:
+                    throw std::runtime_error("analytical solution of velocity: unknown cartesian direction \n");
+            }
+        }
+        double operator()(DIM(double x, double y, double z))const{
+            return v(DIM(x,y,z));
+        }
+        double dv_d(const unsigned char& dirr, DIM(double x,double y, double z)){
+            switch(dir){
+                case dir::x: {
+                    switch(dirr){
+                        case dir::x: return 3*pow(x,2)*(y-1)/16 - sin(2*PI*(t-y))/2.0;
+                        case dir::y: return pow(x,3)/16 - cos(2*PI*(t-y))*PI*x;
+                        default:
+                            throw std::runtime_error("dvx_d not defined in this direction \n)");
+                    }
+                }
+                case dir::y: {
+                    switch(dirr){
+                        case dir::x: return 3*x*(-pow(y,2)+y)/8;
+                        case dir::y: return sin(2*PI*(t-y))/2 - (3*pow(x,2)*(y-1))/16;
+                        default:
+                            throw std::runtime_error("dvx_d not defined in this direction \n)");
+                    }
+                }
+                default:
+                    throw std::runtime_error("analytical solution of dv_d :unknown cartesian direction \n");
+            }
+        }
+       double dv_dt(DIM(double x, double y, double z)){
+           switch(dir){
+                case dir::x:
+                    return -PI*x*cos(2*PI*(t-y));
+                case dir::y:
+                    return -sin(2*PI*(t-y))/2;
+                default:
+                    throw std::runtime_error("analytical solution of velocity: unknown cartesian direction \n");
+            }
+       }
+       double laplace(DIM(double x, double y, double z)){
+           switch(dir){
+               case dir::x:{
+                   return 3*x*(y-1)/8 +2*pow(PI,2)*x*sin(2*PI*(t-y));
+               }
+               case dir::y:{
+                   return 3*y/8-PI*cos(2*PI*(t-y))-(3*pow(x,2))/16.0-(3*pow(y,2))/16;
+               }
+               default:{
+                   throw std::runtime_error("laplace of velocity not defined in this direction \n");
+               }
+           }
+       }
+    };
+    struct external_force_temperature: CF_DIM{
+        const unsigned char dom;
+        temperature** temperature_;
+        velocity_component** velocity_component_;
+        external_force_temperature(const unsigned char &dom_,temperature** analytical_T,velocity_component** analytical_v):dom(dom_),temperature_(analytical_T),velocity_component_(analytical_v){
+            P4EST_ASSERT(dom>=0 && dom<=1);
+        }
+        double operator()(DIM(double x, double y, double z)) const {
+            double advective_term;
+            switch(dom){
+            case LIQUID_DOMAIN:
+                advective_term= (*velocity_component_[dir::x])(DIM(x,y,z))*temperature_[LIQUID_DOMAIN]->dT_d(dir::x,x,y) + (*velocity_component_[dir::y])(DIM(x,y,z))*temperature_[LIQUID_DOMAIN]->dT_d(dir::y,x,y);
+                break;
+            case SOLID_DOMAIN:
+                advective_term= 0.;
+                break;
+            default:
+                throw std::runtime_error("external heat source : advective term : unrecognized domain \n");
+            }
+            return temperature_[dom]->dT_dt(DIM(x,y,z)) + advective_term - temperature_[dom]->laplace(DIM(x,y,z));
+        }
+    };
+    struct external_force_concentration1: CF_DIM{
+        const unsigned char dom;
+        concentration1** concentration1_;
+        velocity_component** velocity_component_;
+        external_force_concentration1(const unsigned char &dom_,concentration1** analytical_C1,velocity_component** analytical_v):dom(dom_),concentration1_(analytical_C1),velocity_component_(analytical_v){
+            P4EST_ASSERT(dom>=0 && dom<=1);
+        }
+        double operator()(DIM(double x, double y, double z)) const {
+            double advective_term;
+            switch(dom){
+            case LIQUID_DOMAIN:
+                advective_term= (*velocity_component_[dir::x])(DIM(x,y,z))*concentration1_[LIQUID_DOMAIN]->dC1_d(dir::x,x,y) + (*velocity_component_[dir::y])(DIM(x,y,z))*concentration1_[LIQUID_DOMAIN]->dC1_d(dir::y,x,y);
+                break;
+            case SOLID_DOMAIN:
+                advective_term= 0.;
+                break;
+            default:
+                throw std::runtime_error("external heat source : advective term : unrecognized domain \n");
+            }
+            return concentration1_[dom]->dC1_dt(DIM(x,y,z)) + advective_term - concentration1_[dom]->laplace(DIM(x,y,z));
+        }
+    };
+    struct external_force_concentration2: CF_DIM{
+        const unsigned char dom;
+        concentration2** concentration2_;
+        velocity_component** velocity_component_;
+        external_force_concentration2(const unsigned char &dom_,concentration2** analytical_C2,velocity_component** analytical_v):dom(dom_),concentration2_(analytical_C2),velocity_component_(analytical_v){
+            P4EST_ASSERT(dom>=0 && dom<=1);
+        }
+        double operator()(DIM(double x, double y, double z)) const {
+            double advective_term;
+            switch(dom){
+            case LIQUID_DOMAIN:
+                advective_term= (*velocity_component_[dir::x])(DIM(x,y,z))*concentration2_[LIQUID_DOMAIN]->dC2_d(dir::x,x,y) + (*velocity_component_[dir::y])(DIM(x,y,z))*concentration2_[LIQUID_DOMAIN]->dC2_d(dir::y,x,y);
+                break;
+            case SOLID_DOMAIN:
+                advective_term= 0.;
+                break;
+            default:
+                throw std::runtime_error("external heat source : advective term : unrecognized domain \n");
+            }
+            return concentration2_[dom]->dC2_dt(DIM(x,y,z)) + advective_term - concentration2_[dom]->laplace(DIM(x,y,z));
+        }
+    };
+
+    struct pressure_field: CF_DIM{
+      public:
+      double operator()(DIM(double x,double y, double z)) const {
+        return 0.0;
+      }
+      double gradP(const unsigned char& dir,DIM(double x, double y, double z)){
+        return 0.0;
+      }
+    }pressure_field_analytical;
+
+    struct external_force_NS: CF_DIM{
+        const unsigned dir;
+        velocity_component** velocity_field;
+        external_force_NS(const unsigned char& dir_,velocity_component** analytical_v):dir(dir_),velocity_field(analytical_v){
+            P4EST_ASSERT(dir<P4EST_DIM);
+        }
+        double operator()(DIM(double x, double y, double z)) const{
+            return velocity_field[dir]->dv_dt(DIM(x,y,z)) +
+            SUMD((*velocity_field[0])(DIM(x,y,z))*velocity_field[dir]->dv_d(dir::x,DIM(x,y,z)),
+            (*velocity_field[1])(DIM(x,y,z))*velocity_field[dir]->dv_d(dir::y,DIM(x,y,z)),
+            (*velocity_field[2])(DIM(x,y,z))*velocity_field[dir]->dv_d(dir::z,DIM(x,y,z))) -
+            velocity_field[dir]->laplace(DIM(x,y,z));
+        }
+    };
+};
 // ----------------------------------------
 // define problem geometry
 // ----------------------------------------
@@ -1066,7 +1410,7 @@ public:
       case -2: return analytic::rf_exact(t) - ABS2(x-xc(),
                                                    y-yc());
       case -1: return analytic::rf_exact(t) - ABS1(y-ymin());
-      case 0: return -(y - front_location()) + 0.000/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.000/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
+      case 0: return (y - front_location()) + 0.000/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.000/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
       case 1: return -(ABS2(x-xc(), y-yc())-seed_radius());
       case 2: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
       case 3: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
@@ -1078,13 +1422,11 @@ public:
         double dist2 = ABS2(x-(xc()+seed_dist()*cos(2.*PI/3.*2. + seed_rot())), y-(yc()+seed_dist()*sin(2.*PI/3.*2. + seed_rot())));
 
         //return seed_radius() - MIN(dist0, dist1, dist2);
-//        return -(ABS2(x-xc(), y-yc())-seed_radius());
+        //return -(ABS2(x-xc(), y-yc())-seed_radius());
         double noise = 0.001;
-//        double xc =xmax.val/2.0;
-//        double yc =ymax.val/2.0;
         double theta = atan2(y-yc(),x-xc());
-
-        return seed_radius.val*(1.0 - noise*fabs(pow(sin(2*theta),2)))- sqrt(SQR(x - xc()) + SQR(y - yc()));
+        //return r0*(1.0 - noise*fabs(sin(theta)) - noise*fabs(cos(theta))) - sqrt(SQR(x - xc) + SQR(y - yc));
+        return seed_radius()*(1.0 - noise*fabs(pow(sin(2*theta),2)))- sqrt(SQR(x - xc()) + SQR(y - yc()));
       }
       case 6:
       {
@@ -1294,7 +1636,8 @@ public:
     return eps_c.val*(1.0-4.0*eps_a.val*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
 #else
     double theta = atan2(ny, nx);
-    return eps_c.val*(1.-15.*eps_a.val*cos(symmetry.val*(theta-theta0)))/(1.+15.*eps_a.val);
+//    return eps_c.val*(1.-15.*eps_a.val*cos(symmetry.val*(theta-theta0)))/(1.+15.*eps_a.val);
+    return eps_c.val;
 #endif
   }
 };
@@ -1333,11 +1676,11 @@ public:
 #endif
       case -2: return analytic::cl_exact(idx, t, ABS2(x-xc(), y-yc()));
       case -1: return analytic::cl_exact(idx, t, ABS1(y-ymin()));
-      case  0:
-        if (start_from_moving_front.val) {
-          return (*initial_conc_all[idx])*(1. + (1.-analytic::kp[idx])/analytic::kp[idx]*
-                                           exp(-cooling_velocity.val/(*solute_diff_all[idx])*(-front_phi_cf(DIM(x,y,z)-0*cooling_velocity.val*t))));
-        }
+      case  0: return 0.05 + (1 - 0.05)*0.5 * (1 - tanh(10.*(y - 0.5*front_location.val)));
+//        if (start_from_moving_front.val) {
+//          return (*initial_conc_all[idx])*(1. + (1.-analytic::kp[idx])/analytic::kp[idx]*
+//                                           exp(-cooling_velocity.val/(*solute_diff_all[idx])*(-front_phi_cf(DIM(x,y,z)-0*cooling_velocity.val*t))));
+//        }
       case  1:
       case  2:
       case  3:
@@ -1413,7 +1756,7 @@ public:
 #endif
       case -2: return analytic::tl_exact(t, ABS2(x-xc.val, y-yc.val));
       case -1: return analytic::tl_exact(t, ABS1(y-ymin.val));
-      case  0: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
+      case  0: return /*analytic::Tstar+*/ front_location.val - y +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//front_location.val - y; +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
       case  1: return analytic::Tstar;
       case  2: return analytic::Tstar;
       case  3: return analytic::Tstar - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())));
@@ -1440,7 +1783,7 @@ public:
 #endif
       case -2: return analytic::ts_exact(t, ABS2(x-xc(), y-yc()));
       case -1: return analytic::ts_exact(t, ABS1(y-ymin()));
-      case  0: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
+      case  0: return /*analytic::Tstar+*/ front_location.val - y +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
       case  1: return analytic::Tstar;
       case  2: return analytic::Tstar;
       case  3: return analytic::Tstar - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())))*thermal_cond_l()/thermal_cond_s();
@@ -1465,8 +1808,8 @@ public:
       case -3:
 #endif
       case -2:
-      case -1:
-      case  0:
+      case -1: return analytic::Tstar;
+      case  0: return 0.;
       case  1:
       case  2:
       case  3:
@@ -1866,7 +2209,7 @@ struct INITIAL_VELOCITY : CF_DIM
 
 bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
     // Dirichlet on y upper wall (where bulk flow is incoming
-    return ( yupper_wall(DIM(x,y,z)) /*|| xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z))*/);
+    return ( ylower_wall(DIM(x,y,z)) /*|| xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z))*/);
 
 };
 class BC_WALL_VALUE_VELOCITY: public CF_DIM
