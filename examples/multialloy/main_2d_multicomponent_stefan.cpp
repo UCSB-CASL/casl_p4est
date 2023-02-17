@@ -1364,16 +1364,16 @@ class Convergence_soln{
 
     struct external_force_NS: CF_DIM{
         const unsigned dir;
-        velocity_component** velocity_field;
-        external_force_NS(const unsigned char& dir_,velocity_component** analytical_v):dir(dir_),velocity_field(analytical_v){
+        velocity_component* velocity_field;
+        external_force_NS(const unsigned char& dir_,velocity_component* analytical_v):dir(dir_),velocity_field(analytical_v){
             P4EST_ASSERT(dir<P4EST_DIM);
         }
         double operator()(DIM(double x, double y, double z)) const{
-            return velocity_field[dir]->dv_dt(DIM(x,y,z)) +
-            SUMD((*velocity_field[0])(DIM(x,y,z))*velocity_field[dir]->dv_d(dir::x,DIM(x,y,z)),
-            (*velocity_field[1])(DIM(x,y,z))*velocity_field[dir]->dv_d(dir::y,DIM(x,y,z)),
-            (*velocity_field[2])(DIM(x,y,z))*velocity_field[dir]->dv_d(dir::z,DIM(x,y,z))) -
-            velocity_field[dir]->laplace(DIM(x,y,z));
+            return velocity_field[dir].dv_dt(DIM(x,y,z)) +
+            SUMD((velocity_field[0])(DIM(x,y,z))*velocity_field[dir].dv_d(dir::x,DIM(x,y,z)),
+            (velocity_field[1])(DIM(x,y,z))*velocity_field[dir].dv_d(dir::y,DIM(x,y,z)),
+            (velocity_field[2])(DIM(x,y,z))*velocity_field[dir].dv_d(dir::z,DIM(x,y,z))) -
+            velocity_field[dir].laplace(DIM(x,y,z));
         }
     };
 };
@@ -1388,8 +1388,8 @@ Convergence_soln::temperature convergence_ts(SOLID_DOMAIN);
 Convergence_soln::temperature convergence_temp[2] = {convergence_tl, convergence_ts};
 
 // Fluid velocity:
-Convergence_soln::velocity_component convergence_vx(0);
-Convergence_soln::velocity_component convergence_vy(1);
+Convergence_soln::velocity_component convergence_vx(dir::x);
+Convergence_soln::velocity_component convergence_vy(dir::y);
 Convergence_soln::velocity_component convergence_vel[2] = {convergence_vx, convergence_vy};
 
 // External source terms:
@@ -1398,6 +1398,11 @@ Convergence_soln::external_force_concentration convergence_force_c1(convergence_
 
 Convergence_soln::external_force_temperature convergence_force_tl(LIQUID_DOMAIN, convergence_temp, convergence_vel);
 Convergence_soln::external_force_temperature convergence_force_ts(SOLID_DOMAIN, convergence_temp, convergence_vel);
+
+Convergence_soln::external_force_NS external_force_NS_x(dir::x, convergence_vel);
+Convergence_soln::external_force_NS external_force_NS_y(dir::y, convergence_vel);
+Convergence_soln::external_force_NS convergence_force_NS[2] = {external_force_NS_x, external_force_NS_y};
+
 // ----------------------------------------
 // define problem geometry
 // ----------------------------------------
