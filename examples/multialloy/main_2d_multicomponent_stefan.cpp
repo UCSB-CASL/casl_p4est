@@ -1172,7 +1172,12 @@ class Convergence_soln{
           return (comp == 0? C1(DIM(x,y,z)) : C2(DIM(x,y,z)));
         }
     };
-
+    struct interface_velocity: CF_DIM{
+//      public:
+          double operator()(DIM(double x,double y,double z)) const{
+            return sin(t) * cos(t);
+          }
+    } /*convergence_vgamma*/;
 //    struct concentration2: CF_DIM{
 //        const double factor=1.;
 //        const double N=1.;
@@ -1387,6 +1392,9 @@ Convergence_soln::temperature convergence_tl(LIQUID_DOMAIN);
 Convergence_soln::temperature convergence_ts(SOLID_DOMAIN);
 Convergence_soln::temperature convergence_temp[2] = {convergence_tl, convergence_ts};
 
+// Interfacevelocity:
+Convergence_soln::interface_velocity convergence_vgamma;
+
 // Fluid velocity:
 Convergence_soln::velocity_component convergence_vx(dir::x);
 Convergence_soln::velocity_component convergence_vy(dir::y);
@@ -1402,6 +1410,7 @@ Convergence_soln::external_force_temperature convergence_force_ts(SOLID_DOMAIN, 
 Convergence_soln::external_force_NS external_force_NS_x(dir::x, convergence_vel);
 Convergence_soln::external_force_NS external_force_NS_y(dir::y, convergence_vel);
 Convergence_soln::external_force_NS convergence_force_NS[2] = {external_force_NS_x, external_force_NS_y};
+
 
 // ----------------------------------------
 // define problem geometry
@@ -1699,9 +1708,9 @@ public:
 class cl_cf_t : public CF_DIM
 {
   int idx;
-  Convergence_soln::concentration concentration;
+  Convergence_soln::concentration* concentration;
 public:
-    cl_cf_t(int idx, Convergence_soln::concentration concentration_=NULL ) :
+    cl_cf_t(int idx, Convergence_soln::concentration* concentration_=NULL ) :
         idx(idx), concentration(concentration_){
 //      concentration = new Convergence_soln::concentration((unsigned char)idx);
     }/*, concentration(concentration_*/
@@ -1730,7 +1739,7 @@ public:
 //        Convergence_soln::concentration concentration((const unsigned char) idx);
 //        concentration.
 
-        return (concentration)(DIM(x,y,z));
+        return (*concentration)(DIM(x,y,z));
       }
 
       default: throw;
@@ -1738,9 +1747,8 @@ public:
   }
 };
 //Convergence_soln::concentration convergence_conc0(0);
-cl_cf_t cl_cf_0(0, convergence_conc0);
-
-cl_cf_t cl_cf_1(1);
+cl_cf_t cl_cf_0(0, &convergence_conc0);
+cl_cf_t cl_cf_1(1, &convergence_conc1);
 cl_cf_t cl_cf_2(2);
 cl_cf_t cl_cf_3(3);
 
@@ -1748,6 +1756,7 @@ CF_DIM* cl_cf_all[] = { &cl_cf_0,
                         &cl_cf_1,
                         &cl_cf_2,
                         &cl_cf_3 };
+
 // Solid concentration
 class cs_cf_t : public CF_DIM
 {
@@ -1786,7 +1795,9 @@ CF_DIM* cs_cf_all[] = { &cs_cf_0,
 // Liquid temp:
 class tl_cf_t : public CF_DIM
 {
+  Convergence_soln::temperature* temperature_;
 public:
+  tl_cf_t(Convergence_soln::temperature* temperature=NULL): temperature_(temperature){}
   double operator()(DIM(double x, double y, double z)) const
   {
     switch (geometry())
@@ -1804,16 +1815,19 @@ public:
       case  5: return analytic::Tstar;
       case  6: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
       case  7: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
-      case  8: return analytic::Tstar;
+      case  8: return (*temperature_)(DIM(x,y,z));
       default: throw;
     }
   }
-} tl_cf;
+} /*tl_cf*/;
+tl_cf_t tl_cf(&convergence_tl);
 
 // Solid temp:
 class ts_cf_t : public CF_DIM
 {
+  Convergence_soln::temperature* temperature_;
 public:
+  ts_cf_t(Convergence_soln::temperature* temperature=NULL):temperature_(temperature){}
   double operator()(DIM(double x, double y, double z)) const
   {
     switch (geometry())
@@ -1831,11 +1845,13 @@ public:
       case  5: return analytic::Tstar;
       case  6: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
       case  7: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
-      case  8: return analytic::Tstar;
+      case  8: return (*temperature_)(DIM(x,y,z));
       default: throw;
     }
   }
-} ts_cf;
+} /*ts_cf*/;
+ts_cf_t ts_cf(&convergence_ts);
+
 
 // Solid tf: (temperature at which alloy solidified)
 class tf_cf_t : public CF_DIM
@@ -1856,8 +1872,8 @@ public:
       case  4:
       case  5:
       case  6:
-      case  7:
-      case  8: return analytic::Tstar;
+      case  7: return analytic::Tstar;
+      case  8: return 0;
       default: throw;
     }
   }
@@ -1867,8 +1883,10 @@ public:
 class v_cf_t : public CF_DIM
 {
   cf_value_type_t what;
+  Convergence_soln::interface_velocity* vgamma_;
 public:
-  v_cf_t(cf_value_type_t what) : what(what) {}
+    v_cf_t(cf_value_type_t what, Convergence_soln::interface_velocity* vgamma) :
+        what(what), vgamma_(vgamma) {}
   double operator()(DIM(double x, double y, double z)) const
   {
     switch (geometry()) {
@@ -1903,15 +1921,25 @@ public:
             default:  return 0;
           }
         }
+      case 8:{
+        switch(what){
+        case VAL: return (*vgamma_)(DIM(x,y,z));
+          case DDX: return 0.;
+          case DDY: return 0.;
+          default: return 0.;
+
+        }
+
+      }
       default: return 0;
     }
   }
 };
 
-v_cf_t vn_cf(VAL);
-v_cf_t vx_cf(DDX);
-v_cf_t vy_cf(DDY);
-v_cf_t vz_cf(DDZ);
+v_cf_t vn_cf(VAL, &convergence_vgamma );
+v_cf_t vx_cf(DDX, &convergence_vgamma);
+v_cf_t vy_cf(DDY, &convergence_vgamma);
+v_cf_t vz_cf(DDZ, &convergence_vgamma);
 
 // Solid front velo norm:
 class vf_cf_t : public CF_DIM
@@ -1973,6 +2001,9 @@ class BC_WALL_TYPE_TEMP: public WallBCDIM
           return NEUMANN;
         }
       }
+      case 8:{
+        return DIRICHLET;
+      }
       default:{
         return bc_type_temp.val;
       }
@@ -1997,6 +2028,9 @@ class BC_WALL_TYPE_CONC: public WallBCDIM
           return NEUMANN;
         }
       }
+      case 8:{
+        return DIRICHLET;
+      }
       default:{
         return bc_type_conc.val;
       }
@@ -2019,9 +2053,9 @@ public:
     // If you find yourself needing to implement such a thing, please refer to the class my_p4est_stefan_with_fluids_t and particularly, the
     // fluid velocity interface BC which uses such a strategy to interpolate the interfacial velocity to use in the navier stokes velocity boundary condition at the interface.
 
-//    bc_value_temp_t(const unsigned char& dom, Convergence_soln** convergence_soln=NULL): dom_(dom), convergence_soln_(convergence_soln){
-//      P4EST_ASSERT(dom>=0 && dom<=1);
-//    }
+
+  Convergence_soln::temperature* temperature_;
+  bc_value_temp_t(Convergence_soln::temperature* temperature=NULL) : temperature_(temperature){}
   double operator()(DIM(double x, double y, double z)) const
   {
     // case 5 is treated seperately because we need different BC on different walls
@@ -2054,7 +2088,9 @@ public:
           case  5: return 0;
           case  6:
           case  7:
-          case  8: return 0;
+          case  8: {
+            return (*temperature_)(DIM(x,y,z));
+          }
           default: throw;
         }
       case NEUMANN:
@@ -2095,15 +2131,18 @@ public:
       default: throw;
     }
   }
-} bc_value_temp;
+} /*bc_value_temp*/;
 
-//bc_value_temp_t bc_value_temp();
+// we only need to provide tl for convergence bc we only specify tl at the walls, never ts
+bc_value_temp_t bc_value_temp(&convergence_tl);
 
 class bc_value_conc_t : public CF_DIM
 {
   int idx;
+  Convergence_soln::concentration* concentration_;
 public:
-  bc_value_conc_t(int idx) : idx(idx) {}
+    bc_value_conc_t(int idx, Convergence_soln::concentration* concentration=NULL) :
+        idx(idx), concentration_(concentration) {}
   double operator()(DIM(double x, double y, double z)) const
   {
     if (geometry.val==5){
@@ -2130,6 +2169,7 @@ public:
           case  5:
           case  6:
           case  7: return *initial_conc_all[idx];
+          case 8: return (*concentration_)(DIM(x,y,z));
           default: throw;
         }
       case NEUMANN:
@@ -2154,8 +2194,8 @@ public:
   }
 };
 
-bc_value_conc_t bc_value_conc_0(0);
-bc_value_conc_t bc_value_conc_1(1);
+bc_value_conc_t bc_value_conc_0(0, &convergence_conc0);
+bc_value_conc_t bc_value_conc_1(1, &convergence_conc1);
 bc_value_conc_t bc_value_conc_2(2);
 bc_value_conc_t bc_value_conc_3(3);
 
@@ -2180,16 +2220,27 @@ public:
 // ----------------------------------------
 
 // Velocity
+// Elyce TO-DO: couple the fluid velocity interface condition with vgamma and make sure that's working w stefan correctly
 class BC_INTERFACE_VALUE_VELOCITY: public my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t{
 
+  Convergence_soln::velocity_component* velocity_field_;
   public:
     unsigned char dir;
-    BC_INTERFACE_VALUE_VELOCITY(my_p4est_stefan_with_fluids_t* parent_solver,bool do_we_use_vgamma_for_bc) : interfacial_bc_fluid_velocity_t(parent_solver, do_we_use_vgamma_for_bc=true){}
+    BC_INTERFACE_VALUE_VELOCITY(my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_vgamma_for_bc, Convergence_soln::velocity_component* velocity_field=NULL) :
+        interfacial_bc_fluid_velocity_t(parent_solver, do_we_use_vgamma_for_bc=false), velocity_field_(velocity_field){}
     double operator()(double x, double y) const
     {
-      return 0.0;
+      if(geometry.val == 8){
+        return (*velocity_field_)(DIM(x,y,z));
+
+      }
+      else{
+        return 0.0;
+      }
+
     }
 };
+
 // Type:
 BoundaryConditionType interface_bc_type_velocity[P4EST_DIM];
 void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
@@ -2236,22 +2287,26 @@ double outflow_v=0.;
 struct INITIAL_VELOCITY : CF_DIM
 {
   const unsigned char dir;
+  Convergence_soln::velocity_component* velocity_;
 
-  INITIAL_VELOCITY(const unsigned char& dir_):dir(dir_){
+  INITIAL_VELOCITY(const unsigned char& dir_, Convergence_soln::velocity_component* velocity=NULL): dir(dir_), velocity_(velocity)  {
     P4EST_ASSERT(dir<P4EST_DIM);
   }
 
   double operator() (DIM(double x, double y,double z)) const{
+    if(geometry.val == 8){
+      return (*velocity_)(DIM(x,y,z));
+    }
+    else{
       switch(dir){
       case dir::x:
-        //printf("sets u0 = %0.2e \n", u0);
         return u0;
       case dir::y:
-        //printf("sets v0 = %0.2e \n", v0);
         return v0;
       default:
         throw std::runtime_error("initial velocity direction unrecognized \n");
       }
+    }
   }
 };
 //----------------
@@ -2261,36 +2316,48 @@ struct INITIAL_VELOCITY : CF_DIM
 
 bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
     // Dirichlet on y upper wall (where bulk flow is incoming
-    return ( ylower_wall(DIM(x,y,z)) /*|| xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z))*/);
-
+    if(geometry.val == 8){
+      return true;
+    }
+    else{
+      return ( ylower_wall(DIM(x,y,z)) /*|| xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z))*/);
+    }
 };
+
 class BC_WALL_VALUE_VELOCITY: public CF_DIM
 {
   public:
   const unsigned char dir;
+  Convergence_soln::velocity_component* velocity_;
 
-  BC_WALL_VALUE_VELOCITY(const unsigned char& dir_):dir(dir_){
+  BC_WALL_VALUE_VELOCITY(const unsigned char& dir_, Convergence_soln::velocity_component* velocity=NULL): dir(dir_), velocity_(velocity){
     P4EST_ASSERT(dir<P4EST_DIM);
   }
   double operator()(DIM(double x, double y, double z)) const
   {
-    if(dirichlet_velocity_walls(DIM(x,y,z))){
-      switch(dir){
-      case dir::x:{
-        return u0;
-      }
-      case dir::y:{
-        return v0;
-      }
-      default:
-        throw std::runtime_error("unrecognized cartesian direction for bc wall value velocity \n");
-      }
-    }
+    if(geometry.val == 8){
+      return (*velocity_)(DIM(x,y,z));
+    } // end of geometry 8 case
     else{
-      return 0.0; // homogeneous neumann
+      if(dirichlet_velocity_walls(DIM(x,y,z))){
+        switch(dir){
+        case dir::x:{
+          return u0;
+        }
+        case dir::y:{
+          return v0;
+        }
+        default:
+          throw std::runtime_error("unrecognized cartesian direction for bc wall value velocity \n");
+        }
+      }
+      else{
+        return 0.0; // homogeneous neumann
+      }
     }
   }
 };
+
 // Type:
 class BC_WALL_TYPE_VELOCITY: public WallBCDIM
 {
@@ -2301,17 +2368,12 @@ public:
   }
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
-
-//    printf("bc wall type velocity (dir = %d) gets called at (%0.2f, %0.2f) \n", dir, x, y);
-
     if(dirichlet_velocity_walls(DIM(x,y,z))){
-//        printf("dirichlet bc wall type velocity gets called at (%0.2f, %0.2f) \n", x, y);
        return DIRICHLET;
     }
     else{
      return NEUMANN;
     }
-
   }
 };
 
@@ -2342,10 +2404,10 @@ class BC_WALL_VALUE_PRESSURE: public CF_DIM
   public:
   double operator()(DIM(double x, double y, double z)) const
   {
-//      printf("accesses wall value pressure \n");
       return 0.0; // homogeneous dirichlet or neumann
   }
 };
+
 // Type:
 class BC_WALL_TYPE_PRESSURE: public WallBCDIM
 {
@@ -2361,6 +2423,8 @@ public:
     }
   }
 };
+
+
 void initialize_all_relevant_ics_and_bcs_for_fluids(my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver,BC_INTERFACE_VALUE_VELOCITY* bc_interface_value_velocity[P4EST_DIM],
                                                     BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
                                                     BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM],
@@ -2373,13 +2437,13 @@ void initialize_all_relevant_ics_and_bcs_for_fluids(my_p4est_stefan_with_fluids_
 
   for(unsigned char d=0;d<P4EST_DIM;d++){
         // Set the BC types:
-        bc_interface_value_velocity[d] = new BC_INTERFACE_VALUE_VELOCITY(stefan_w_fluids_solver,true);
+        bc_interface_value_velocity[d] = new BC_INTERFACE_VALUE_VELOCITY(stefan_w_fluids_solver,true, &convergence_vel[d]);
         BC_INTERFACE_TYPE_VELOCITY(d);
 
         bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
-        bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d);
+        bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d, &convergence_vel[d]);
 
-        v_init_cf[d]= new INITIAL_VELOCITY(d);
+        v_init_cf[d]= new INITIAL_VELOCITY(d, &convergence_vel[d]);
     }
 
     interface_bc_pressure();
@@ -2676,7 +2740,9 @@ int main (int argc, char* argv[])
 
   int lmin_new = lmin.val-lvl_decrease;
   int lmax_new = lmax.val-lvl_decrease;
+
   // Boundary condition for the fluid problem :: Rochi
+  PetscPrintf(mpi.comm(), "\nWarning: The bc interface velocity for Navier-Stokes is not currently coupled with vgamma. We will want to fix this before running real physical applications \n");
   BC_INTERFACE_VALUE_VELOCITY* bc_interface_value_velocity[P4EST_DIM];
   BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM];
   BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM];
