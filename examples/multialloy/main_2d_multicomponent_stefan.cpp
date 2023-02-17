@@ -236,7 +236,7 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
                                     "6: a made-up tetra-alloy, "", "
                                     "7: a made-up penta-alloy");
 
-double scale = 30;
+double scale = 1./*30*/; // [Elyce  2/16/23] changing this to 1 bc it seems dangerous lol
 
 //-------------------------------------
 // problem parameters
@@ -288,7 +288,7 @@ param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidifi
                                               " 5 - three spherical seeds,"
                                               " 6 - planar front and three spherical seeds,"
                                               " 7 - daniil has not defined this case - no comments - need to see what it is,"
-                                              " 8 - single dendrite growth <new addition>");
+                                              " 8 - convergence test for multicomp solidification with fluids ");
 
 param_t<bool> solve_w_fluids (pl, 0, "solve_w_fluids", "");
 
@@ -547,19 +547,19 @@ void set_alloy_parameters()
       part_coeff_3.val     = 0.80;
 
       break;
-  case 8: // made up alloy
-    density_l.val       = 1; // kg.cm-3
-    density_s.val       = 1; // kg.cm-3
-    heat_capacity_l.val = 1;  // J.kg-1.K-1
-    heat_capacity_s.val = 1;  // J.kg-1.K-1
-    thermal_cond_l.val  = 1.e-2; // W.cm-1.K-1
-    thermal_cond_s.val  = 1.e-2; // W.cm-1.K-1
-    latent_heat.val     = 1;    // J.cm-3
+  case 8: // made up alloy -- by Elyce and Rochi for convergence test with fluids
+    density_l.val       = 1.; // kg.cm-3
+    density_s.val       = 1.; // kg.cm-3
+    heat_capacity_l.val = 1.;  // J.kg-1.K-1
+    heat_capacity_s.val = 1.;  // J.kg-1.K-1
+    thermal_cond_l.val  = 1.; // W.cm-1.K-1
+    thermal_cond_s.val  = 1.; // W.cm-1.K-1
+    latent_heat.val     = 1.;    // J.cm-3
 
     num_comps.val = 1;
 
-    solute_diff_0.val    = 1.e-2;  // cm2.s-1 - concentration diffusion coefficient
-    initial_conc_0.val   = 0.4;    // at frac.
+    solute_diff_0.val    = 1.;  // cm2.s-1 - concentration diffusion coefficient
+    initial_conc_0.val   = 1.;    // at frac.
 
     eps_c.val = 1.0e-2;
     eps_v.val = 0;
@@ -567,10 +567,10 @@ void set_alloy_parameters()
     symmetry.val = 0;
 
     // linearized phase diagram
-    melting_temp.val     = 1728;   // K
+    melting_temp.val     = 0;   // K
     linearized_liquidus.val  = 1;
     const_part_coeff.val = 1;
-    liquidus_slope_0.val = -357;   // K / at frac. - liquidous slope
+    liquidus_slope_0.val = 1.;   // K / at frac. - liquidous slope
     part_coeff_0.val     = 0.0;   // partition coefficient
 
     break;
@@ -650,6 +650,7 @@ double liquidus_value(double *c)
       case 5: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
       case 6: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
       case 7: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
+      case 8: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
       default:
         throw std::invalid_argument("Invalid liquidus surface\n");
     }
@@ -748,6 +749,7 @@ double liquidus_slope(int which_comp, double *c)
       case 5: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
       case 6: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
       case 7: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
+      case 8: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
       default: throw std::invalid_argument("Invalid liquidus surface\n");
     }
   }
@@ -885,6 +887,8 @@ double part_coeff(int which_comp, double *c)
       case 5: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
       case 6: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
       case 7: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
+      case 8: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
+
       default: throw std::invalid_argument("Invalid liquidus surface\n");
     }
   }
@@ -943,6 +947,7 @@ void compute_nondimensional_groups(int mpicomm, my_p4est_multialloy_t* multiallo
                                                RaT, RaC_0, RaC_1, RaC_2, RaC_3,
                                                deltaT, deltaC_0, deltaC_1, deltaC_2, deltaC_3);
 }
+
 // ----------------------------------------
 // analytical solution
 // ----------------------------------------
@@ -1054,6 +1059,7 @@ inline double dcl_exact(int i, double t, double r) { return Bi[i] * Fp(nu(*solut
 }
 
 class Convergence_soln{
+  public:
     struct temperature: CF_DIM{
         const double factor=1.;
         const double N=1.;
@@ -1107,112 +1113,118 @@ class Convergence_soln{
             }
         }
     };
-    struct concentration1: CF_DIM{
+    struct concentration: CF_DIM{
         const double factor=1.;
         const double N=1.;
-        const unsigned char dom;
-        concentration1(const unsigned char& dom_) : dom(dom_){
-            P4EST_ASSERT(dom >= 0 && dom <=1);
+        const unsigned char comp;
+        concentration(const unsigned char& comp_) : comp(comp_){
+            P4EST_ASSERT(comp == 0 || comp == 1);
         }
         double C1(DIM(double x, double y,double z))const{
-            switch(dom){
-                case LIQUID_DOMAIN: return cos(y)*sin(x)*sin(t);
-                case SOLID_DOMAIN: return 0.0;
-                default:
-                    throw std::runtime_error("analytical solution concentration unknown domain \n");
-            }
-        }
-        double operator()(DIM(double x,double y, double z))const{
-            return C1(DIM(x,y,z));
-        }
-        double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)){
-            switch(dom){
-                case LIQUID_DOMAIN:
-                    switch(dir){
-                        case dir::x: return cos(y)*cos(x)*sin(t);
-                        case dir::y: return -sin(y)*sin(x)*sin(t);
-                        default:
-                           throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian direction \n");}
-                case SOLID_DOMAIN:
-                    switch(dir){
-                        case dir::x: return 0.0;
-                        case dir::y: return 0.0;
-                        default:
-                           throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian direction \n");}
-                default:
-                    throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian direction \n");
-            }
-        }
-        double dC1_dt(DIM(double x, double y, double z)){
-            switch(dom){
-                case LIQUID_DOMAIN: cos(t)*cos(y)*sin(x);
-                case SOLID_DOMAIN: 0.0;
-                default:
-                    throw std::runtime_error("dC1_dt in analytical concentration1: unrecognized domain \n");
-            }
-        }
-        double laplace(DIM(double x, double y, double z)){
-            switch(dom){
-                case LIQUID_DOMAIN: -2*cos(y)*sin(t)*sin(x);
-                case SOLID_DOMAIN: 0.0;
-                default:
-                    throw std::runtime_error("laplace for analytical concentration1 field: unrecognized domain \n");
-            }
-        }
-    };
-    struct concentration2: CF_DIM{
-        const double factor=1.;
-        const double N=1.;
-        const unsigned char dom;
-        concentration2(const unsigned char& dom_) : dom(dom_){
-            P4EST_ASSERT(dom >= 0 && dom <=1);
+            return cos(y)*sin(x)*sin(t);
         }
         double C2(DIM(double x, double y,double z))const{
-            switch(dom){
-                case LIQUID_DOMAIN: return cos(y)*cos(x)*cos(t);
-                case SOLID_DOMAIN: return 0.0;
-                default:
-                    throw std::runtime_error("analytical solution concentration2 unknown domain \n");
-            }
+          return cos(y)*cos(x)*cos(t);
         }
+
         double operator()(DIM(double x,double y, double z))const{
-            return C2(DIM(x,y,z));
+          return (comp == 0? C1(DIM(x,y,z)) : C2(DIM(x,y,z)));
+        }
+        double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)){  
+          switch(dir){
+              case dir::x: return cos(y)*cos(x)*sin(t);
+              case dir::y: return -sin(y)*sin(x)*sin(t);
+              default:
+                throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian");
+              }
         }
         double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)){
-            switch(dom){
-                case LIQUID_DOMAIN:
-                    switch(dir){
-                        case dir::x: return cos(y)*sin(x)*cos(t);
-                        case dir::y: return -sin(y)*cos(x)*cos(t);
-                        default:
-                           throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");}
-                case SOLID_DOMAIN:
-                    switch(dir){
-                        case dir::x: return 0.0;
-                        case dir::y: return 0.0;
-                        default:
-                           throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");}
-                default:
-                    throw std::runtime_error("dC2_d of analytical concentration1 field: unrecognized Cartesian direction \n");
-            }
+            switch(dir){
+              case dir::x: return cos(y)*sin(x)*cos(t);
+              case dir::y: return -sin(y)*cos(x)*cos(t);
+              default:
+                throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");
+              }
+        }
+
+        double dC_d(const unsigned char& dir, DIM(double x,double y,double z)){
+          return (comp==0? dC1_d(dir, DIM(x,y,z)) : dC2_d(dir, DIM(x,y,z)) );
+        }
+
+        double dC1_dt(DIM(double x, double y, double z)){
+               return cos(t)*cos(y)*sin(x);
         }
         double dC2_dt(DIM(double x, double y, double z)){
-            switch(dom){
-                case LIQUID_DOMAIN: -sin(t)*cos(y)*sin(x);
-                case SOLID_DOMAIN: 0.0;
-                default:
-                    throw std::runtime_error("dC2_dt in analytical concentration1: unrecognized domain \n");
-            }
+          return -sin(t)*cos(y)*sin(x);
+        }
+        double dC_dt(DIM(double x, double y, double z)){
+          return (comp == 0? dC1_dt(DIM(x,y,z)) : dC2_dt(DIM(x,y,z)));
+        }
+
+        double laplace_C1(DIM(double x, double y, double z)){
+              return -2.*cos(y)*sin(t)*sin(x);
+        }
+        double laplace_C2(DIM(double x, double y, double z)){
+          return -2.*cos(t)*cos(x)*cos(y);
         }
         double laplace(DIM(double x, double y, double z)){
-            switch(dom){
-                case LIQUID_DOMAIN: -2*cos(t)*cos(x)*cos(y);
-                case SOLID_DOMAIN: 0.0;
-                default:
-                    throw std::runtime_error("laplace for concentration2 field : unrecognized domain");
-            }
+          return (comp == 0? laplace_C1(DIM(x,y,z)) : laplace_C2(DIM(x,y,z)));
         }
     };
+
+//    struct concentration2: CF_DIM{
+//        const double factor=1.;
+//        const double N=1.;
+//        const unsigned char dom;
+//        concentration2(const unsigned char& dom_) : dom(dom_){
+//            P4EST_ASSERT(dom >= 0 && dom <=1);
+//        }
+//        double C2(DIM(double x, double y,double z))const{
+//            switch(dom){
+//                case LIQUID_DOMAIN: return cos(y)*cos(x)*cos(t);
+//                case SOLID_DOMAIN: return 0.0;
+//                default:
+//                    throw std::runtime_error("analytical solution concentration2 unknown domain \n");
+//            }
+//        }
+//        double operator()(DIM(double x,double y, double z))const{
+//            return C2(DIM(x,y,z));
+//        }
+//        double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)){
+//            switch(dom){
+//                case LIQUID_DOMAIN:
+//                    switch(dir){
+//                        case dir::x: return cos(y)*sin(x)*cos(t);
+//                        case dir::y: return -sin(y)*cos(x)*cos(t);
+//                        default:
+//                           throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");}
+//                case SOLID_DOMAIN:
+//                    switch(dir){
+//                        case dir::x: return 0.0;
+//                        case dir::y: return 0.0;
+//                        default:
+//                           throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");}
+//                default:
+//                    throw std::runtime_error("dC2_d of analytical concentration1 field: unrecognized Cartesian direction \n");
+//            }
+//        }
+//        double dC2_dt(DIM(double x, double y, double z)){
+//            switch(dom){
+//                case LIQUID_DOMAIN: -sin(t)*cos(y)*sin(x);
+//                case SOLID_DOMAIN: 0.0;
+//                default:
+//                    throw std::runtime_error("dC2_dt in analytical concentration1: unrecognized domain \n");
+//            }
+//        }
+//        double laplace(DIM(double x, double y, double z)){
+//            switch(dom){
+//                case LIQUID_DOMAIN: -2*cos(t)*cos(x)*cos(y);
+//                case SOLID_DOMAIN: 0.0;
+//                default:
+//                    throw std::runtime_error("laplace for concentration2 field : unrecognized domain");
+//            }
+//        }
+//    };
     struct velocity_component: CF_DIM{
         const unsigned char dir;
         const double factor=10.0;
@@ -1370,6 +1382,8 @@ class Convergence_soln{
         }
     };
 };
+
+//Convergence_soln::concentration convergence_conc0(0);
 // ----------------------------------------
 // define problem geometry
 // ----------------------------------------
@@ -1390,7 +1404,7 @@ bool periodicity(int dir)
     case  5: return (dir == 0? 1: 0); /*true*/;
     case  6: return (dir == 0 ? 1 : 0);
     case  7: return (dir == 0 ? 1 : 0);
-    case  8: return true;
+    case  8: return false;
     default: throw;
   }
 }
@@ -1447,7 +1461,7 @@ public:
       }
       case 8:
       {
-        return -(ABS2(x-xc(), y-yc())-seed_radius());
+        return seed_radius() - sqrt(SQR(x - xc()) + SQR(y - yc()))/*-(ABS2(x-xc(), y-yc())-seed_radius())*/;
       }
       default: throw;
     }
@@ -1478,7 +1492,7 @@ public:
       case  5: return -1;
       case  6: return -1;
       case  7: return -1;
-      case  8: return -1*(xmax()); // RochiNewExample
+      case  8: return -1*(xmax()); // We multiply by xmax bc the -1 by itself was causing some issues .. (altho we don't remember ... )(to revisit)
       default: throw;
     }
   }
@@ -1618,7 +1632,7 @@ double theta0(int seed)
           case 2: return 0.;
           default: throw;
         }
-      case 8: return crystal_orientation.val;
+      case 8: return 0.; // we just have uniform growth for this case
       default: throw;
     }
   }
@@ -1666,8 +1680,9 @@ public:
 class cl_cf_t : public CF_DIM
 {
   int idx;
+//  Convergence_soln::concentration* concentration;
 public:
-  cl_cf_t(int idx) : idx(idx) {}
+    cl_cf_t(int idx/*, Convergence_soln::concentration* concentration_=NULL*/ ) : idx(idx)/*, concentration(concentration_*/) {}
   double operator()(DIM(double x, double y, double z)) const
   {
     switch (geometry()) {
@@ -1688,12 +1703,12 @@ public:
       case  5:
       case  6:
       case  7:
-      case  8:
-        if (start_from_moving_front.val) {
-          return (*initial_conc_all[idx])*(1. + (1.-analytic::kp[idx])/analytic::kp[idx]*
-                                           exp(-cooling_velocity.val/(*solute_diff_all[idx])*(-front_phi_cf(DIM(x,y,z)-0*cooling_velocity.val*t))));
-        }
-      return *initial_conc_all[idx];
+          return *initial_conc_all[idx];
+      case  8:{
+        Convergence_soln::concentration concentration((const unsigned char) idx);
+        return (concentration)(DIM(x,y,z));
+      }
+
       default: throw;
     }
   }
@@ -1727,8 +1742,8 @@ public:
       case  4:
       case  5:
       case  6:
-      case  7:
-      case  8: return analytic::Cstar[idx];
+      case  7:return analytic::Cstar[idx];
+      case  8: return 0. ; // E: not sure what this is ...
       default: throw;
     }
   }
@@ -1971,9 +1986,19 @@ class BC_WALL_TYPE_CONC: public WallBCDIM
 class bc_value_temp_t : public CF_DIM
 {
 public:
+//    const unsigned char dom_;
+//    Convergence_soln** convergence_soln_;
+
+    // NOTE: [Elyce] you will notice here that the boundary conditions are not trivially added for cases where you may not know if you are in the solid or liquid domain at a given location. The reason this has been avoided up till this point is because all of Daniil's examples have periodic x walls and he knows that the bottom boundary will be solid and the top boundary will be liquid.
+    // However, this will not hold in a general setting. If you wanted to run a general simulation where the BC's at any given wall depend on the phase, and the location of the interface is not analytically known, the approach would be to take the Vec phi as an input to this boundary condition class, and have this class own a my_p4est_interpolation_nodes_t object which could interpolate the phi value to your given xy point of interest and then apply a BC value depending on whether phi is less than or greater than zero.
+    // If you find yourself needing to implement such a thing, please refer to the class my_p4est_stefan_with_fluids_t and particularly, the
+    // fluid velocity interface BC which uses such a strategy to interpolate the interfacial velocity to use in the navier stokes velocity boundary condition at the interface.
+
+//    bc_value_temp_t(const unsigned char& dom, Convergence_soln** convergence_soln=NULL): dom_(dom), convergence_soln_(convergence_soln){
+//      P4EST_ASSERT(dom>=0 && dom<=1);
+//    }
   double operator()(DIM(double x, double y, double z)) const
   {
-//    printf("bc temp value accessed \n");
     // case 5 is treated seperately because we need different BC on different walls
     if (geometry.val==5){
       if((fabs(y-ymax.val) < EPS)){
@@ -2046,6 +2071,8 @@ public:
     }
   }
 } bc_value_temp;
+
+//bc_value_temp_t bc_value_temp();
 
 class bc_value_conc_t : public CF_DIM
 {

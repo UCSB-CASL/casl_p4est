@@ -589,7 +589,7 @@ public:
     wall_bc_type_temp_  =  bc_type;
     wall_bc_value_temp_ = &bc_value;
 
-    double test_val = (bc_value)(1.0, 1.0);
+//    double test_val = (bc_value)(1.0, 1.0);
     //printf("Sets wall bc temp: Testing wall bc value temp : %0.2f \n", test_val);
   }
 
