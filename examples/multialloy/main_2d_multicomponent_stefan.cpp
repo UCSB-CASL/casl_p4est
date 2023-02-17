@@ -1078,7 +1078,7 @@ class Convergence_soln{
         double operator()(DIM(double x, double y, double z))const{
             return T(DIM(x,y,z));
         }
-        double dT_d(const unsigned char& dir, DIM(double x,double y, double z)){
+        double dT_d(const unsigned char& dir, DIM(double x,double y, double z)) const{
             switch(dom){
                 case LIQUID_DOMAIN:
                     switch(dir){
@@ -1096,7 +1096,7 @@ class Convergence_soln{
                     }
             }
         }
-        double dT_dt(DIM(double x, double y, double z)){
+        double dT_dt(DIM(double x, double y, double z)) const{
             switch(dom){
                 case LIQUID_DOMAIN: N*PI*x*y*pow(cos(N*PI*t*x*y),2) - N*PI*x*y*pow(sin(N*PI*t*x*y),2);
                 case SOLID_DOMAIN: N*PI*x*y*cos(N*PI*t*x*y);
@@ -1104,7 +1104,7 @@ class Convergence_soln{
                     throw std::runtime_error("dT_dt in analytical temperature: unrecognized domain \n");
             }
         }
-        double laplace(DIM(double x, double y, double z)){
+        double laplace(DIM(double x, double y, double z)) const {
             switch(dom){
                 case LIQUID_DOMAIN: -2*pow(N,2)*pow(PI,2)*pow(t,2)*sin(2*N*PI*t*x*y)*(pow(x,2)+pow(y,2));
                 case SOLID_DOMAIN: -pow(N,2)*pow(PI,2)*pow(t,2)*sin(N*PI*t*x*y)*(pow(x,2)+pow(y,2));
@@ -1127,10 +1127,7 @@ class Convergence_soln{
           return cos(y)*cos(x)*cos(t);
         }
 
-        double operator()(DIM(double x,double y, double z))const{
-          return (comp == 0? C1(DIM(x,y,z)) : C2(DIM(x,y,z)));
-        }
-        double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)){  
+        double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
           switch(dir){
               case dir::x: return cos(y)*cos(x)*sin(t);
               case dir::y: return -sin(y)*sin(x)*sin(t);
@@ -1138,7 +1135,7 @@ class Convergence_soln{
                 throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian");
               }
         }
-        double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)){
+        double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
             switch(dir){
               case dir::x: return cos(y)*sin(x)*cos(t);
               case dir::y: return -sin(y)*cos(x)*cos(t);
@@ -1147,28 +1144,32 @@ class Convergence_soln{
               }
         }
 
-        double dC_d(const unsigned char& dir, DIM(double x,double y,double z)){
+        double dC_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
           return (comp==0? dC1_d(dir, DIM(x,y,z)) : dC2_d(dir, DIM(x,y,z)) );
         }
 
-        double dC1_dt(DIM(double x, double y, double z)){
+        double dC1_dt(DIM(double x, double y, double z)) const{
                return cos(t)*cos(y)*sin(x);
         }
-        double dC2_dt(DIM(double x, double y, double z)){
+        double dC2_dt(DIM(double x, double y, double z)) const{
           return -sin(t)*cos(y)*sin(x);
         }
-        double dC_dt(DIM(double x, double y, double z)){
+        double dC_dt(DIM(double x, double y, double z)) const{
           return (comp == 0? dC1_dt(DIM(x,y,z)) : dC2_dt(DIM(x,y,z)));
         }
 
-        double laplace_C1(DIM(double x, double y, double z)){
+        double laplace_C1(DIM(double x, double y, double z))const{
               return -2.*cos(y)*sin(t)*sin(x);
         }
-        double laplace_C2(DIM(double x, double y, double z)){
+        double laplace_C2(DIM(double x, double y, double z))const{
           return -2.*cos(t)*cos(x)*cos(y);
         }
-        double laplace(DIM(double x, double y, double z)){
+        double laplace(DIM(double x, double y, double z))const{
           return (comp == 0? laplace_C1(DIM(x,y,z)) : laplace_C2(DIM(x,y,z)));
+        }
+
+        double operator()(DIM(double x,double y, double z))const{
+          return (comp == 0? C1(DIM(x,y,z)) : C2(DIM(x,y,z)));
         }
     };
 
@@ -1292,16 +1293,17 @@ class Convergence_soln{
     };
     struct external_force_temperature: CF_DIM{
         const unsigned char dom;
-        temperature** temperature_;
-        velocity_component** velocity_component_;
-        external_force_temperature(const unsigned char &dom_,temperature** analytical_T,velocity_component** analytical_v):dom(dom_),temperature_(analytical_T),velocity_component_(analytical_v){
+        temperature* temperature_;
+        velocity_component* velocity_component_;
+        external_force_temperature(const unsigned char &dom_, temperature* analytical_T, velocity_component* analytical_v):
+            dom(dom_),temperature_(analytical_T),velocity_component_(analytical_v){
             P4EST_ASSERT(dom>=0 && dom<=1);
         }
         double operator()(DIM(double x, double y, double z)) const {
             double advective_term;
             switch(dom){
             case LIQUID_DOMAIN:
-                advective_term= (*velocity_component_[dir::x])(DIM(x,y,z))*temperature_[LIQUID_DOMAIN]->dT_d(dir::x,x,y) + (*velocity_component_[dir::y])(DIM(x,y,z))*temperature_[LIQUID_DOMAIN]->dT_d(dir::y,x,y);
+              advective_term= (velocity_component_[dir::x])(DIM(x,y,z))*temperature_[LIQUID_DOMAIN].dT_d(dir::x,x,y) + (velocity_component_[dir::y])(DIM(x,y,z))*temperature_[LIQUID_DOMAIN].dT_d(dir::y,x,y);
                 break;
             case SOLID_DOMAIN:
                 advective_term= 0.;
@@ -1309,53 +1311,46 @@ class Convergence_soln{
             default:
                 throw std::runtime_error("external heat source : advective term : unrecognized domain \n");
             }
-            return temperature_[dom]->dT_dt(DIM(x,y,z)) + advective_term - temperature_[dom]->laplace(DIM(x,y,z));
+            return temperature_[dom].dT_dt(DIM(x,y,z)) + advective_term - temperature_[dom].laplace(DIM(x,y,z));
         }
     };
-    struct external_force_concentration1: CF_DIM{
-        const unsigned char dom;
-        concentration1** concentration1_;
-        velocity_component** velocity_component_;
-        external_force_concentration1(const unsigned char &dom_,concentration1** analytical_C1,velocity_component** analytical_v):dom(dom_),concentration1_(analytical_C1),velocity_component_(analytical_v){
-            P4EST_ASSERT(dom>=0 && dom<=1);
+    struct external_force_concentration: CF_DIM{
+        concentration concentration_;
+        velocity_component* velocity_component_;
+        external_force_concentration(concentration concentration=NULL, velocity_component* velocity_component=NULL ):
+            concentration_(concentration), velocity_component_(velocity_component){
+            P4EST_ASSERT(comp == 0 || comp == 1);
         }
         double operator()(DIM(double x, double y, double z)) const {
             double advective_term;
-            switch(dom){
-            case LIQUID_DOMAIN:
-                advective_term= (*velocity_component_[dir::x])(DIM(x,y,z))*concentration1_[LIQUID_DOMAIN]->dC1_d(dir::x,x,y) + (*velocity_component_[dir::y])(DIM(x,y,z))*concentration1_[LIQUID_DOMAIN]->dC1_d(dir::y,x,y);
-                break;
-            case SOLID_DOMAIN:
-                advective_term= 0.;
-                break;
-            default:
-                throw std::runtime_error("external heat source : advective term : unrecognized domain \n");
-            }
-            return concentration1_[dom]->dC1_dt(DIM(x,y,z)) + advective_term - concentration1_[dom]->laplace(DIM(x,y,z));
+
+            advective_term = (velocity_component_[dir::x])(DIM(x,y,z)) * concentration_.dC_d(dir::x,x,y) + (velocity_component_[dir::y])(DIM(x,y,z))*concentration_.dC_d(dir::y,x,y);
+
+            return concentration_.dC_dt(DIM(x,y,z)) + advective_term - concentration_.laplace(DIM(x,y,z));
         }
     };
-    struct external_force_concentration2: CF_DIM{
-        const unsigned char dom;
-        concentration2** concentration2_;
-        velocity_component** velocity_component_;
-        external_force_concentration2(const unsigned char &dom_,concentration2** analytical_C2,velocity_component** analytical_v):dom(dom_),concentration2_(analytical_C2),velocity_component_(analytical_v){
-            P4EST_ASSERT(dom>=0 && dom<=1);
-        }
-        double operator()(DIM(double x, double y, double z)) const {
-            double advective_term;
-            switch(dom){
-            case LIQUID_DOMAIN:
-                advective_term= (*velocity_component_[dir::x])(DIM(x,y,z))*concentration2_[LIQUID_DOMAIN]->dC2_d(dir::x,x,y) + (*velocity_component_[dir::y])(DIM(x,y,z))*concentration2_[LIQUID_DOMAIN]->dC2_d(dir::y,x,y);
-                break;
-            case SOLID_DOMAIN:
-                advective_term= 0.;
-                break;
-            default:
-                throw std::runtime_error("external heat source : advective term : unrecognized domain \n");
-            }
-            return concentration2_[dom]->dC2_dt(DIM(x,y,z)) + advective_term - concentration2_[dom]->laplace(DIM(x,y,z));
-        }
-    };
+//    struct external_force_concentration2: CF_DIM{
+//        const unsigned char dom;
+//        concentration2** concentration2_;
+//        velocity_component** velocity_component_;
+//        external_force_concentration2(const unsigned char &dom_,concentration2** analytical_C2,velocity_component** analytical_v):dom(dom_),concentration2_(analytical_C2),velocity_component_(analytical_v){
+//            P4EST_ASSERT(dom>=0 && dom<=1);
+//        }
+//        double operator()(DIM(double x, double y, double z)) const {
+//            double advective_term;
+//            switch(dom){
+//            case LIQUID_DOMAIN:
+//                advective_term= (*velocity_component_[dir::x])(DIM(x,y,z))*concentration2_[LIQUID_DOMAIN]->dC2_d(dir::x,x,y) + (*velocity_component_[dir::y])(DIM(x,y,z))*concentration2_[LIQUID_DOMAIN]->dC2_d(dir::y,x,y);
+//                break;
+//            case SOLID_DOMAIN:
+//                advective_term= 0.;
+//                break;
+//            default:
+//                throw std::runtime_error("external heat source : advective term : unrecognized domain \n");
+//            }
+//            return concentration2_[dom]->dC2_dt(DIM(x,y,z)) + advective_term - concentration2_[dom]->laplace(DIM(x,y,z));
+//        }
+//    };
 
     struct pressure_field: CF_DIM{
       public:
@@ -1383,7 +1378,26 @@ class Convergence_soln{
     };
 };
 
-//Convergence_soln::concentration convergence_conc0(0);
+// Concentrations:
+Convergence_soln::concentration convergence_conc0(0);
+Convergence_soln::concentration convergence_conc1(1);
+
+// Temperatures:
+Convergence_soln::temperature convergence_tl(LIQUID_DOMAIN);
+Convergence_soln::temperature convergence_ts(SOLID_DOMAIN);
+Convergence_soln::temperature convergence_temp[2] = {convergence_tl, convergence_ts};
+
+// Fluid velocity:
+Convergence_soln::velocity_component convergence_vx(0);
+Convergence_soln::velocity_component convergence_vy(1);
+Convergence_soln::velocity_component convergence_vel[2] = {convergence_vx, convergence_vy};
+
+// External source terms:
+Convergence_soln::external_force_concentration convergence_force_c0(convergence_conc0, convergence_vel);
+Convergence_soln::external_force_concentration convergence_force_c1(convergence_conc1, convergence_vel);
+
+Convergence_soln::external_force_temperature convergence_force_tl(LIQUID_DOMAIN, convergence_temp, convergence_vel);
+Convergence_soln::external_force_temperature convergence_force_ts(SOLID_DOMAIN, convergence_temp, convergence_vel);
 // ----------------------------------------
 // define problem geometry
 // ----------------------------------------
@@ -1680,9 +1694,12 @@ public:
 class cl_cf_t : public CF_DIM
 {
   int idx;
-//  Convergence_soln::concentration* concentration;
+  Convergence_soln::concentration concentration;
 public:
-    cl_cf_t(int idx/*, Convergence_soln::concentration* concentration_=NULL*/ ) : idx(idx)/*, concentration(concentration_*/) {}
+    cl_cf_t(int idx, Convergence_soln::concentration concentration_=NULL ) :
+        idx(idx), concentration(concentration_){
+//      concentration = new Convergence_soln::concentration((unsigned char)idx);
+    }/*, concentration(concentration_*/
   double operator()(DIM(double x, double y, double z)) const
   {
     switch (geometry()) {
@@ -1705,7 +1722,9 @@ public:
       case  7:
           return *initial_conc_all[idx];
       case  8:{
-        Convergence_soln::concentration concentration((const unsigned char) idx);
+//        Convergence_soln::concentration concentration((const unsigned char) idx);
+//        concentration.
+
         return (concentration)(DIM(x,y,z));
       }
 
@@ -1713,8 +1732,9 @@ public:
     }
   }
 };
+//Convergence_soln::concentration convergence_conc0(0);
+cl_cf_t cl_cf_0(0, convergence_conc0);
 
-cl_cf_t cl_cf_0(0);
 cl_cf_t cl_cf_1(1);
 cl_cf_t cl_cf_2(2);
 cl_cf_t cl_cf_3(3);
