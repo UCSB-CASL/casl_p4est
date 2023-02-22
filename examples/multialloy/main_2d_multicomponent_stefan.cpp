@@ -3094,6 +3094,24 @@ int main (int argc, char* argv[])
 //      mas.set_dt(time_limit.val-tn);
 //      keep_going = false;
 //    }
+    // for convergence study, update the time variable for each of the fields:
+    if(geometry.val == 8){
+      // temps
+      convergence_temp[LIQUID_DOMAIN].t = tn;
+      convergence_temp[SOLID_DOMAIN].t = tn;
+
+      // concs:
+      convergence_conc0.t = tn;
+      convergence_conc1.t = tn;
+
+      // interface vel
+      convergence_vgamma.t = tn;
+
+      // ns vels
+      foreach_dimension(d){
+        convergence_vel[d].t = tn;
+      }
+    }
 
     // solve nonlinear system for temperature, concentration and velocity at t_n
     bc_error_max = 0;
