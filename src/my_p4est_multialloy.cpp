@@ -49,6 +49,8 @@ double **my_p4est_multialloy_t::v_c_p, **my_p4est_multialloy_t::v_c0_d_p, **my_p
 double my_p4est_multialloy_t::v_factor;
 int my_p4est_multialloy_t::v_num_comps;
 double (*my_p4est_multialloy_t::v_part_coeff)(int, double *);
+bool my_p4est_multialloy_t::is_there_convergence_v;
+CF_DIM* my_p4est_multialloy_t::external_conc0_robin_term;
 
 my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
 {
@@ -141,6 +143,12 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
   nodes_nm1 = NULL;
   hierarchy_nm1 = NULL;
   ngbd_nm1 = NULL;
+
+  // convergence field default values:
+  there_is_convergence_test = false;
+  convergence_external_source_conc_robin[0] = &zero_cf;
+  convergence_external_source_conc_robin[1] = &zero_cf;
+
 
 }
 // end of constructor
@@ -551,6 +559,43 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
 
   stefan_w_fluids_solver->set_bc_interface_type_pressure(bc_interface_type_fluid_press);
   stefan_w_fluids_solver->set_bc_interface_value_pressure(bc_interface_val_fluid_press);
+
+  // ------------
+  // Pass along source terms for convergence test (if we have one) to stefan w fluids
+  // ------------
+  if(there_is_convergence_test){
+    // Verify that all the proper source terms are set before allowing convergence test to continue:
+    bool NS_sources_valid = true;
+    foreach_dimension(d){
+      NS_sources_valid = NS_sources_valid && (convergence_external_forces_NS[d]!=NULL);
+    }
+
+    bool conc_sources_valid = true;
+    for(unsigned int j=0; j<num_comps_; j++){
+      conc_sources_valid = conc_sources_valid && (convergence_external_source_conc[j]!=NULL);
+    }
+
+    bool temp_sources_valid = true;
+    for(unsigned int j=0; j<2; j++){
+      temp_sources_valid = temp_sources_valid && (convergence_external_source_temp[j] !=NULL);
+    }
+
+    bool bc_terms_valid = (convergence_external_source_temp!=NULL ) &&
+                          (convergence_external_source_temperature_flux_jump!=NULL) &&
+                          (convergence_external_source_conc_robin[0]!=NULL) &&
+                          (convergence_external_source_conc[1]!=NULL) &&
+                          (convergence_external_source_Gibbs_Thomson!=NULL);
+
+
+
+
+    bool all_sources_valid = NS_sources_valid && conc_sources_valid && temp_sources_valid && bc_terms_valid;
+
+    if(!all_sources_valid){
+      throw std::runtime_error("my_p4est_multialloy:initialize_for_fluids: all the convergence source terms must not be null to run a convergence test. \n");
+    }
+    stefan_w_fluids_solver->set_user_provided_external_force_NS(convergence_external_forces_NS);
+  }
 
   // -------------
   // (2) Pass along all the necessary grid variables:
@@ -2425,6 +2470,18 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
       rhs_cl.ptr[j][n] = 0;
     }
 
+    // Add the source terms to the RHS if we have a convergence test:
+    if(there_is_convergence_test){
+      rhs_ts.ptr[n] += (*convergence_external_source_temp[SOLID_DOMAIN])(xyz[0], xyz[1]);
+      rhs_tl.ptr[n] += (*convergence_external_source_temp[LIQUID_DOMAIN])(xyz[0], xyz[1]);
+
+      for (int j = 0; j < num_comps_; ++j)
+      {
+        rhs_cl.ptr[j][n] = (*convergence_external_source_conc[j])(xyz[0], xyz[1]);
+      }
+
+    }
+
     // Daniils usual treatment for the solid temp:
     for (int i = 1; i < num_time_layers_; ++i){
       rhs_ts.ptr[n] -= time_coeffs[i]*ts_[i].ptr[n];
@@ -2485,6 +2542,17 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   // solve coupled system of equations
   my_p4est_poisson_nodes_multialloy_t solver_all_in_one(ngbd_, num_comps_);
+
+  // If we have a convergence test, set the appropriate BC source terms:
+  // ----------------
+  if(there_is_convergence_test){
+    // TO-DO:
+    // gibs got handled
+    // we need to handle: (1) temp jump, (2) temp flux jump, (3) conc_robin (both components)
+  }
+
+  // ----------------
+
   solver_all_in_one.set_iteration_scheme(it_scheme);
 
   solver_all_in_one.set_front(front_phi_.vec, front_phi_dd_.vec, front_normal_.vec, front_curvature_.vec);
@@ -2496,7 +2564,9 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
                                            density_l_*heat_capacity_l_*SL_alpha/dt_[0], thermal_cond_l_,
                                            density_s_*heat_capacity_s_*time_coeffs[0]/dt_[0], thermal_cond_s_);
   solver_all_in_one.set_density_parameters(density_l_,density_s_);
-  solver_all_in_one.set_gibbs_thomson(zero_cf);
+
+  solver_all_in_one.set_gibbs_thomson(there_is_convergence_test? *convergence_external_source_Gibbs_Thomson : zero_cf);
+
   solver_all_in_one.set_liquidus(liquidus_value_, liquidus_slope_, part_coeff_);
   solver_all_in_one.set_undercoolings(num_seeds_, seed_map_.vec, eps_v_.data(), eps_c_.data());
 
@@ -2511,7 +2581,14 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   vector<CF_DIM *> zeros_cf(num_comps_, &zero_cf);
 
-  solver_all_in_one.set_front_conditions(zero_cf, zero_cf, zeros_cf.data());
+  if(there_is_convergence_test){
+    solver_all_in_one.set_front_conditions(*convergence_external_source_temperature_jump,
+                                           *convergence_external_source_temperature_flux_jump,
+                                           convergence_external_source_conc_robin);
+  }
+  else{
+    solver_all_in_one.set_front_conditions(zero_cf, zero_cf, zeros_cf.data());
+  }
 
   solver_all_in_one.set_wall_conditions_thermal(wall_bc_type_temp_, *wall_bc_value_temp_);
   solver_all_in_one.set_wall_conditions_composition(wall_bc_type_conc_, wall_bc_value_conc_.data());

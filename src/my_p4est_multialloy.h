@@ -290,6 +290,8 @@ private:
   static double v_factor;
   static double (*v_part_coeff)(int, double *);
   static int v_num_comps;
+  static bool is_there_convergence_v;
+  static CF_DIM* external_conc0_robin_term;
 
   void set_velo_interpolation(my_p4est_node_neighbors_t *ngbd, double **c_p, double **c0_d_p, double **c0_dd_p,
                               double **normal_p, double factor)
@@ -302,6 +304,11 @@ private:
     v_factor     = factor;
     v_part_coeff = part_coeff_;
     v_num_comps  = num_comps_;
+
+    is_there_convergence_v = there_is_convergence_test;
+    if(is_there_convergence_v){
+      external_conc0_robin_term = convergence_external_source_conc_robin[0];
+    }
   }
 
   static double velo(p4est_locidx_t n, int dir, double dist)
@@ -311,11 +318,20 @@ private:
     for (int j = 0; j < v_num_comps; ++j) {
       cl_all[j] = qnnn.interpolate_in_dir(dir, dist, v_c_p[j]);
     }
+
+    double source_term=0.;
+    if(is_there_convergence_v){
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, v_ngbd->p4est, v_ngbd->nodes, xyz);
+      source_term += (*external_conc0_robin_term)(xyz[0], xyz[1]);
+    }
+
     // ELYCE TO-DO: add the source term for front_conc_flux here to get the correct interface velocity expression when including the source term hC1
     return -v_factor/(1.-v_part_coeff(0, cl_all.data()))*
         ( qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
-        + qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1]))
-        / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p[0], v_c0_dd_p[1]), 1e-7);
+        + qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1])
+        - source_term)
+        / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p[0], v_c0_dd_p[1]), 1e-7 ) ;
   }
 
   // input[] = { cl_{0}, ..., cl_{num_comps-1}, c0x, c0y, c0z, nx, ny, nz };

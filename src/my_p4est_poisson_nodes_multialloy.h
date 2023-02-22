@@ -133,6 +133,21 @@ private:
   CF_DIM           *wall_bc_value_temp_;
   vector<CF_DIM *>  wall_bc_value_conc_;
 
+  // Source terms for convergence test with fluids:
+  // -----------------------------------
+  bool there_is_convergence_test;
+  CF_DIM* convergence_external_source_conc[2]; // for conc0 and conc1
+  CF_DIM* convergence_external_source_temp[2]; // for liquid domain and solid domain
+
+  // Source terms to play into the boundary conditions at the interface:
+  CF_DIM* convergence_external_source_temperature_jump;
+  CF_DIM* convergence_external_source_temperature_flux_jump;
+
+  CF_DIM* convergence_external_source_conc_robin[2]; // for conc0 and conc1
+  CF_DIM* convergence_external_source_Gibbs_Thomson; // source term in the Gibbs Thomson relation
+
+  // -----------------------------------
+
 public:
 
   inline void set_composition_parameters(double conc_diag[], double conc_diff[])
@@ -247,6 +262,51 @@ public:
 
 //  inline void set_c0_guess(CF_DIM &c0_guess) { c0_guess_ = &c0_guess; }
   inline void set_c0_guess(Vec c0_guess) { c0_guess_ = c0_guess; }
+
+  // ----------------------
+  // For convergence test
+  // ----------------------
+  void set_there_is_convergence_test(bool is_conv_test){
+    there_is_convergence_test = is_conv_test;
+    if(there_is_convergence_test){
+      if(num_comps_ != 2){
+        throw std::runtime_error("my_p4est_poisson_nodes_multialloy: you have attempted to run a convergence test with an invalid number of components. Currently, only one convergence test with 2 components has been implemented. \n");
+      }
+    }
+  }
+
+  void set_convergence_source_conc(CF_DIM* source_conc[2]){
+    for(unsigned int i = 0; i<2; i++){
+      convergence_external_source_conc[i] = source_conc[i];
+    }
+  }
+
+  void set_convergence_source_temp(CF_DIM* source_temp[2]){
+    for(unsigned int i = 0; i<2; i++){
+      convergence_external_source_temp[i] = source_temp[i];
+    }
+  }
+
+  void set_convergence_source_temp_jump(CF_DIM* temp_jump){
+    convergence_external_source_temperature_jump = temp_jump;
+  }
+
+  void set_convergence_source_temp_flux_jump(CF_DIM* temp_flux_jump){
+    convergence_external_source_temperature_flux_jump = temp_flux_jump;
+  }
+
+  void set_convergence_source_conc_robin(CF_DIM* source_conc_robin[2]){
+    for(unsigned int i=0; i<2; i++){
+      convergence_external_source_conc_robin[i] = source_conc_robin[i];
+    }
+  }
+
+  void set_convergence_source_Gibbs_Thomson(CF_DIM* source_Gibbs){
+    convergence_external_source_Gibbs_Thomson = source_Gibbs;
+  }
+  // ----------------------
+
+
 private:
 
   //--------------------------------------------------
