@@ -210,6 +210,22 @@ private:
   double scaling_;
 
   // -------------------------------------------------
+  // Terms related to the coupled convergence test
+  // -------------------------------------------------
+  bool there_is_convergence_test;
+  // Source terms for the RHS of the PDE's:
+  CF_DIM* convergence_external_source_conc[2]; // for conc0 and conc1
+  CF_DIM* convergence_external_source_temp[2]; // for liquid domain and solid domain
+  CF_DIM* convergence_external_forces_NS[2]; // one per cartesian direction
+
+  // Source terms to play into the boundary conditions at the interface:
+  CF_DIM* convergence_external_source_temperature_jump;
+  CF_DIM* convergence_external_source_temperature_flux_jump;
+
+  CF_DIM* convergence_external_source_conc_robin[2]; // for conc0 and conc1
+  CF_DIM* convergence_external_source_Gibbs_Thomson; // source term in the Gibbs Thomson relation
+
+  // -------------------------------------------------
   // Physical parameters and nondim groups for problem coupled with fluids
   // -------------------------------------------------
   double mu_l; // fluid viscosity
@@ -875,6 +891,55 @@ public:
   inline void set_volumetric_heat          (CF_DIM &value){ vol_heat_gen_              =&value; }
   inline void set_proximity_smoothing      (double value) { proximity_smoothing_       = value; }
 
+  // ---------------------------------------------
+  // For setting convergence test related things:
+  // ---------------------------------------------
+  void set_there_is_convergence_test(bool is_conv_test){
+    there_is_convergence_test = is_conv_test;
+    if(there_is_convergence_test){
+      if(num_comps_ != 2){
+        throw std::runtime_error("my_p4est_multialloy: you have attempted to run a convergence test with an invalid number of components. Currently, only one convergence test with 2 components has been implemented. \n");
+      }
+    }
+  }
+
+  void set_convergence_source_NS(CF_DIM* source_NS[2]){
+    foreach_dimension(d){
+      convergence_external_forces_NS[d] = source_NS[d];
+    }
+  }
+
+  void set_convergence_source_conc(CF_DIM* source_conc[2]){
+    for(unsigned int i = 0; i<2; i++){
+      convergence_external_source_conc[i] = source_conc[i];
+    }
+  }
+
+  void set_convergence_source_temp(CF_DIM* source_temp[2]){
+    for(unsigned int i = 0; i<2; i++){
+      convergence_external_source_temp[i] = source_temp[i];
+    }
+  }
+
+  void set_convergence_source_temp_jump(CF_DIM* temp_jump){
+    convergence_external_source_temperature_jump = temp_jump;
+  }
+
+  void set_convergence_source_temp_flux_jump(CF_DIM* temp_flux_jump){
+    convergence_external_source_temperature_flux_jump = temp_flux_jump;
+  }
+
+  void set_convergence_source_conc_robin(CF_DIM* source_conc_robin[2]){
+    for(unsigned int i=0; i<2; i++){
+      convergence_external_source_conc_robin[i] = source_conc_robin[i];
+    }
+  }
+
+  void set_convergence_source_Gibbs_Thomson(CF_DIM* source_Gibbs){
+    convergence_external_source_Gibbs_Thomson = source_Gibbs;
+  }
+
+  // ---------------------------------------------
   void regularize_front(Vec front_phi_old);
   void compute_geometric_properties_front();
   void compute_geometric_properties_contr();

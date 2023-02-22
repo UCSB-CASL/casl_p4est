@@ -1486,13 +1486,17 @@ Convergence_soln::velocity_component convergence_vel[2] = {convergence_vx, conve
 // External source terms:
 Convergence_soln::external_force_concentration convergence_force_c0(convergence_conc0, convergence_vel);
 Convergence_soln::external_force_concentration convergence_force_c1(convergence_conc1, convergence_vel);
+/*Convergence_soln::external_force_concentration*/CF_DIM* convergence_forces_conc[2] = {&convergence_force_c0, &convergence_force_c1};
 
 Convergence_soln::external_force_temperature convergence_force_tl(LIQUID_DOMAIN, convergence_temp, convergence_vel);
 Convergence_soln::external_force_temperature convergence_force_ts(SOLID_DOMAIN, convergence_temp, convergence_vel);
+CF_DIM* convergence_forces_temp[2] = {&convergence_force_tl, &convergence_force_ts};
 
 Convergence_soln::external_force_NS external_force_NS_x(dir::x, convergence_vel);
 Convergence_soln::external_force_NS external_force_NS_y(dir::y, convergence_vel);
-Convergence_soln::external_force_NS convergence_force_NS[2] = {external_force_NS_x, external_force_NS_y};
+CF_DIM* convergence_force_NS[2]= {&external_force_NS_x, &external_force_NS_y};
+
+//Convergence_soln::external_force_NS* convergence_force_NS[2];
 
 // External interface bc terms:
 Convergence_soln::external_source_temperature_jump external_source_temperature_jump(convergence_temp);
@@ -1500,6 +1504,7 @@ Convergence_soln::external_source_temperature_flux_jump external_source_temperat
 
 Convergence_soln::external_source_concentration_robin external_source_c0_robin(&convergence_conc0, &convergence_vgamma);
 Convergence_soln::external_source_concentration_robin external_source_c1_robin(&convergence_conc1, &convergence_vgamma);
+CF_DIM* external_source_conc_robin[2] = {&external_source_c0_robin, &external_source_c1_robin};
 
 Convergence_soln::external_source_Gibbs_Thomson external_source_Gibbs_Thomson(&convergence_tl, &convergence_conc0, &convergence_conc1);
 // ----------------------------------------
@@ -2856,6 +2861,22 @@ int main (int argc, char* argv[])
 
   mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin_new, lmax_new, lip.val, band.val, solve_w_fluids.val);
 
+  // Convergence test (for geometry
+  if(geometry.val == 8){
+    mas.set_there_is_convergence_test(true);
+
+    // Set PDE sources:
+    mas.set_convergence_source_NS(convergence_force_NS);
+    mas.set_convergence_source_conc(convergence_forces_conc);
+    mas.set_convergence_source_temp(convergence_forces_temp);
+
+    // Set interface BC sources:
+    mas.set_convergence_source_temp_jump(&external_source_temperature_jump);
+    mas.set_convergence_source_temp_flux_jump(&external_source_temperature_flux_jump);
+    mas.set_convergence_source_conc_robin(external_source_conc_robin);
+    mas.set_convergence_source_Gibbs_Thomson(&external_source_Gibbs_Thomson);
+
+  }
   ierr = PetscPrintf(mpi.comm(), "initialize complete \n"); CHKERRXX(ierr);
 
   my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver;
