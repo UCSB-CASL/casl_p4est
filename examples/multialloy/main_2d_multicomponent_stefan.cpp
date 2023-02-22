@@ -1334,29 +1334,6 @@ class Convergence_soln{
             return concentration_.dC_dt(DIM(x,y,z)) + advective_term - concentration_.laplace(DIM(x,y,z));
         }
     };
-//    struct external_force_concentration2: CF_DIM{
-//        const unsigned char dom;
-//        concentration2** concentration2_;
-//        velocity_component** velocity_component_;
-//        external_force_concentration2(const unsigned char &dom_,concentration2** analytical_C2,velocity_component** analytical_v):dom(dom_),concentration2_(analytical_C2),velocity_component_(analytical_v){
-//            P4EST_ASSERT(dom>=0 && dom<=1);
-//        }
-//        double operator()(DIM(double x, double y, double z)) const {
-//            double advective_term;
-//            switch(dom){
-//            case LIQUID_DOMAIN:
-//                advective_term= (*velocity_component_[dir::x])(DIM(x,y,z))*concentration2_[LIQUID_DOMAIN]->dC2_d(dir::x,x,y) + (*velocity_component_[dir::y])(DIM(x,y,z))*concentration2_[LIQUID_DOMAIN]->dC2_d(dir::y,x,y);
-//                break;
-//            case SOLID_DOMAIN:
-//                advective_term= 0.;
-//                break;
-//            default:
-//                throw std::runtime_error("external heat source : advective term : unrecognized domain \n");
-//            }
-//            return concentration2_[dom]->dC2_dt(DIM(x,y,z)) + advective_term - concentration2_[dom]->laplace(DIM(x,y,z));
-//        }
-//    };
-
     struct pressure_field: CF_DIM{
       public:
       double operator()(DIM(double x,double y, double z)) const {
@@ -1381,6 +1358,112 @@ class Convergence_soln{
             velocity_field[dir].laplace(DIM(x,y,z));
         }
     };
+
+    // Below are the external source terms associated with BC's (i.e. Robin BC source terms, jump condition source terms, etc. etc.)
+
+    // NOte: from poisson nodes mls main file, we see the convention of jump = [Plus - minus], which we interpret to mean [solid domain - liquid domain]
+    struct external_source_temperature_jump : CF_DIM{
+      temperature* temperature_;
+
+      external_source_temperature_jump(temperature* temperature=NULL): temperature_(temperature){}
+
+      double operator()(DIM(double x, double y, double z)) const{
+        return (temperature_[SOLID_DOMAIN](DIM(x,y,z)) - temperature_[LIQUID_DOMAIN](DIM(x,y,z)));
+      }
+    };
+
+    struct external_source_temperature_flux_jump : CF_DIM{
+      temperature* temperature_;
+      interface_velocity* vgamma_;
+
+      my_p4est_interpolation_nodes_t* nx_interp;
+      my_p4est_interpolation_nodes_t* ny_interp;
+
+      external_source_temperature_flux_jump(temperature* temperature=NULL, interface_velocity* vgamma=NULL) : temperature_(temperature), vgamma_(vgamma){}
+
+      void set_inputs(my_p4est_node_neighbors_t* ngbd, Vec& nx, Vec& ny){
+        nx_interp = new my_p4est_interpolation_nodes_t(ngbd);
+        ny_interp = new my_p4est_interpolation_nodes_t(ngbd);
+
+        nx_interp->set_input(nx, linear);
+        ny_interp->set_input(ny, linear);
+      }
+      void clear_inputs(){
+        nx_interp->clear();
+        delete nx_interp;
+
+        ny_interp->clear();
+        delete ny_interp;
+      }
+      double operator() (DIM(double x, double y, double z)) const{
+        double source_x, source_y;
+
+        // x-dir jump in flux
+        source_x = (temperature_[SOLID_DOMAIN].dT_d(dir::x, DIM(x,y,z)) - temperature_[LIQUID_DOMAIN].dT_d(dir::x, DIM(x,y,z)));
+
+        // y-dir jump in flux
+        source_y = (temperature_[SOLID_DOMAIN].dT_d(dir::y, DIM(x,y,z)) - temperature_[LIQUID_DOMAIN].dT_d(dir::y, DIM(x,y,z)));
+
+        // actual normal direction jump minux the interface velocity --> to get our source term
+        double source_term = (source_x * (*nx_interp)(DIM(x,y,z))) + (source_y * (*ny_interp)(DIM(x,y,z))) - (*vgamma_)(DIM(x,y,z));
+
+        return source_term;
+      }
+
+    }; // end of external source temperature flux jump
+
+    struct external_source_concentration_robin : CF_DIM{
+      concentration* concentration_;
+      interface_velocity* vgamma_;
+
+      my_p4est_interpolation_nodes_t* nx_interp;
+      my_p4est_interpolation_nodes_t* ny_interp;
+
+
+      external_source_concentration_robin(concentration* concentration=NULL, interface_velocity* vgamma=NULL): concentration_(concentration), vgamma_(vgamma){}
+
+      void set_inputs(my_p4est_node_neighbors_t* ngbd, Vec& nx, Vec& ny){
+        nx_interp = new my_p4est_interpolation_nodes_t(ngbd);
+        ny_interp = new my_p4est_interpolation_nodes_t(ngbd);
+
+        nx_interp->set_input(nx, linear);
+        ny_interp->set_input(ny, linear);
+      }
+      void clear_inputs(){
+        nx_interp->clear();
+        delete nx_interp;
+
+        ny_interp->clear();
+        delete ny_interp;
+      }
+
+      double operator()(DIM(double x, double y, double z)) const {
+        // Note: this operator assumes the diffusivities for each concentration are 1, and the partition coefficients for each component are 0
+
+        return (concentration_->dC_d(dir::x, DIM(x,y,z)) * (*nx_interp)(DIM(x,y,z)) +
+                concentration_->dC_d(dir::y, DIM(x,y,z)) * (*ny_interp)(DIM(x,y,z))) -
+               (*vgamma_)(DIM(x,y,z))*(*concentration_)(DIM(x,y,z));
+      }
+    };
+
+    struct external_source_Gibbs_Thomson : CF_DIM{
+      temperature* temperature_l_;
+      concentration* concentration_0_;
+      concentration* concentration_1_;
+
+      external_source_Gibbs_Thomson(temperature* temperature_l = NULL,
+                                    concentration* concentration_0 = NULL,
+                                    concentration* concentration_1 = NULL):
+          temperature_l_(temperature_l), concentration_0_(concentration_0), concentration_1_(concentration_1){}
+      // NOTE: this function assumes a Tm of 0
+
+      double operator()(DIM(double x, double y, double z)) const {
+        return (*temperature_l_)(DIM(x,y,z)) -
+               (liquidus_slope_0.val * (*concentration_0_)(DIM(x,y,z)) + liquidus_slope_1.val * (*concentration_1_)(DIM(x,y,z)));
+      }
+
+    };
+
 };
 
 // Concentrations:
@@ -1411,7 +1494,14 @@ Convergence_soln::external_force_NS external_force_NS_x(dir::x, convergence_vel)
 Convergence_soln::external_force_NS external_force_NS_y(dir::y, convergence_vel);
 Convergence_soln::external_force_NS convergence_force_NS[2] = {external_force_NS_x, external_force_NS_y};
 
+// External interface bc terms:
+Convergence_soln::external_source_temperature_jump external_source_temperature_jump(convergence_temp);
+Convergence_soln::external_source_temperature_flux_jump external_source_temperature_flux_jump(convergence_temp, &convergence_vgamma); // note: this one requires us to "set_inputs" and "clear_inputs"
 
+Convergence_soln::external_source_concentration_robin external_source_c0_robin(&convergence_conc0, &convergence_vgamma);
+Convergence_soln::external_source_concentration_robin external_source_c1_robin(&convergence_conc1, &convergence_vgamma);
+
+Convergence_soln::external_source_Gibbs_Thomson external_source_Gibbs_Thomson(&convergence_tl, &convergence_conc0, &convergence_conc1);
 // ----------------------------------------
 // define problem geometry
 // ----------------------------------------
