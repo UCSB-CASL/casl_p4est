@@ -1324,7 +1324,7 @@ class Convergence_soln{
         velocity_component* velocity_component_;
         external_force_concentration(concentration concentration=NULL, velocity_component* velocity_component=NULL ):
             concentration_(concentration), velocity_component_(velocity_component){
-            P4EST_ASSERT(comp == 0 || comp == 1);
+            P4EST_ASSERT(concentration_.comp == 0 || concentration_.comp == 1);
         }
         double operator()(DIM(double x, double y, double z)) const {
             double advective_term;
