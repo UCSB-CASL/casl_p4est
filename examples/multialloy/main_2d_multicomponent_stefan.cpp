@@ -252,7 +252,7 @@ param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooli
 
 param_t<BoundaryConditionType> bc_type_conc (pl, NEUMANN, "bc_type_conc", "DIRICHLET/NEUMANN");
 param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRICHLET/NEUMANN");
-param_t<BoundaryConditionType> bc_wall_type_vel  (pl, NEUMANN, "bc_wall_type_vel", "DIRICHLET/NEUMANN");
+//param_t<BoundaryConditionType> bc_wall_type_vel  (pl, NEUMANN, "bc_wall_type_vel", "DIRICHLET/NEUMANN");
 // all the above are usually neumann
 
 //param_t<BoundaryConditionType> bc_type_temp (pl, DIRICHLET, "bc_type_temp", "DIRICHLET/NEUMANN");
@@ -1376,8 +1376,8 @@ class Convergence_soln{
       temperature* temperature_;
       interface_velocity* vgamma_;
 
-      my_p4est_interpolation_nodes_t* nx_interp;
-      my_p4est_interpolation_nodes_t* ny_interp;
+      my_p4est_interpolation_nodes_t* nx_interp=NULL;
+      my_p4est_interpolation_nodes_t* ny_interp=NULL;
 
       external_source_temperature_flux_jump(temperature* temperature=NULL, interface_velocity* vgamma=NULL) : temperature_(temperature), vgamma_(vgamma){}
 
@@ -1391,11 +1391,17 @@ class Convergence_soln{
       void clear_inputs(){
         nx_interp->clear();
         delete nx_interp;
+        nx_interp=NULL;
 
         ny_interp->clear();
         delete ny_interp;
+        ny_interp=NULL;
       }
       double operator() (DIM(double x, double y, double z)) const{
+        if(nx_interp == NULL || ny_interp == NULL){
+          throw std::runtime_error("external source temperature flux jump: you cannot call this operator because the normal interpolators have not been set \n");
+        }
+
         double source_x, source_y;
 
         // x-dir jump in flux
@@ -1416,8 +1422,8 @@ class Convergence_soln{
       concentration* concentration_;
       interface_velocity* vgamma_;
 
-      my_p4est_interpolation_nodes_t* nx_interp;
-      my_p4est_interpolation_nodes_t* ny_interp;
+      my_p4est_interpolation_nodes_t* nx_interp=NULL;
+      my_p4est_interpolation_nodes_t* ny_interp=NULL;
 
 
       external_source_concentration_robin(concentration* concentration=NULL, interface_velocity* vgamma=NULL): concentration_(concentration), vgamma_(vgamma){}
@@ -1432,13 +1438,18 @@ class Convergence_soln{
       void clear_inputs(){
         nx_interp->clear();
         delete nx_interp;
+        nx_interp=NULL;
 
         ny_interp->clear();
         delete ny_interp;
+        ny_interp=NULL;
       }
 
       double operator()(DIM(double x, double y, double z)) const {
         // Note: this operator assumes the diffusivities for each concentration are 1, and the partition coefficients for each component are 0
+        if(nx_interp==NULL || ny_interp==NULL){
+          throw std::runtime_error("external source concentration robin: you cannot call this operator because the normal interpolators have not been set \n");
+        }
 
         return (concentration_->dC_d(dir::x, DIM(x,y,z)) * (*nx_interp)(DIM(x,y,z)) +
                 concentration_->dC_d(dir::y, DIM(x,y,z)) * (*ny_interp)(DIM(x,y,z))) -
@@ -2097,6 +2108,7 @@ class BC_WALL_TYPE_TEMP: public WallBCDIM
         }
       }
       case 8:{
+        bc_type_temp.val = DIRICHLET;
         return DIRICHLET;
       }
       default:{
@@ -2124,6 +2136,7 @@ class BC_WALL_TYPE_CONC: public WallBCDIM
         }
       }
       case 8:{
+        bc_type_conc.val = DIRICHLET;
         return DIRICHLET;
       }
       default:{
@@ -2264,8 +2277,10 @@ public:
           case  5:
           case  6:
           case  7: return *initial_conc_all[idx];
-          case 8: return (*concentration_)(DIM(x,y,z));
-          default: throw;
+          case 8: {
+            return (*concentration_)(DIM(x,y,z));
+          }
+          default: throw std::invalid_argument("bc value conc (neumann): geometry case not recognized \n");
         }
       case NEUMANN:
         switch (geometry.val) {
@@ -2282,7 +2297,7 @@ public:
           case  5:
           case  6:
           case  7: return 0;
-          default: throw;
+          default: throw std::invalid_argument("bc value conc (neumann): geometry case not recognized \n");
         }
       default: throw;
     }
@@ -2981,6 +2996,7 @@ int main (int argc, char* argv[])
 
   mas.set_wall_conditions_thermal(bc_wall_type_temp/*bc_type_temp.val*/, bc_value_temp);
   mas.set_wall_conditions_composition(bc_wall_type_conc, bc_value_conc_all);
+  printf("MAIN: bc_value_conc_all = %p \n", bc_value_conc_all[0]);
   mas.set_volumetric_heat(volumetric_heat_cf);
 
   // Initialize everything for the fluids
@@ -3074,6 +3090,10 @@ int main (int argc, char* argv[])
   std::vector<double> errors_max_over_time(2*num_comps.val+7, 0);
   int itn =1;
 
+  // save initial conditon:
+//  PetscPrintf(mpi.comm(), "Saving the initial condition to vtk ... \n");
+//  mas.save_VTK(-1);
+
   PetscPrintf(mpi.comm(), "Entering time loop ! \n");
   while (1)
   {
@@ -3095,6 +3115,8 @@ int main (int argc, char* argv[])
 //      keep_going = false;
 //    }
     // for convergence study, update the time variable for each of the fields:
+    vec_and_ptr_dim_t front_normals_;
+    my_p4est_node_neighbors_t* ngbd_;
     if(geometry.val == 8){
       // temps
       convergence_temp[LIQUID_DOMAIN].t = tn;
@@ -3111,6 +3133,16 @@ int main (int argc, char* argv[])
       foreach_dimension(d){
         convergence_vel[d].t = tn;
       }
+
+      // Update the front normals as needed for the external bc source terms:
+      front_normals_ = mas.get_front_normals();
+      ngbd_ = mas.get_ngbd();
+
+      external_source_c0_robin.set_inputs(ngbd, front_normals_.vec[0], front_normals_.vec[1]);
+      external_source_c1_robin.set_inputs(ngbd, front_normals_.vec[0], front_normals_.vec[1]);
+      external_source_temperature_flux_jump.set_inputs(ngbd, front_normals_.vec[0], front_normals_.vec[1]);
+
+
     }
 
     // solve nonlinear system for temperature, concentration and velocity at t_n
@@ -3122,6 +3154,12 @@ int main (int argc, char* argv[])
     sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     }
     tn             += mas.get_dt();
+
+    if(geometry.val == 8){
+      external_source_c0_robin.clear_inputs();
+      external_source_c1_robin.clear_inputs();
+      external_source_temperature_flux_jump.clear_inputs();
+    }
 
     if (save_step_convergence()) {
       // max bc error

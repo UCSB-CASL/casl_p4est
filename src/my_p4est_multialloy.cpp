@@ -2198,7 +2198,7 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
 
   solver_all_in_one.set_wall_conditions_thermal(wall_bc_type_temp_, *wall_bc_value_temp_);
   solver_all_in_one.set_wall_conditions_composition(wall_bc_type_conc_, wall_bc_value_conc_.data());
-
+  printf("MULTI: wall_bc_value_conc_ = %p \n", wall_bc_type_conc_);
   solver_all_in_one.set_tolerance(bc_tolerance_, max_iterations_);
   solver_all_in_one.set_use_points_on_interface(use_points_on_interface_);
   solver_all_in_one.set_update_c0_robin(update_c0_robin_);
@@ -2262,9 +2262,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     contr_bc_value_conc_[i]->t = time_;
     wall_bc_value_conc_ [i]->t = time_;
   }
-  MPI_Barrier(mpi_->comm());
-  PetscPrintf(mpi_->comm(), "AAA \n");
-  // TO-DO MULTICOMP: // DID IT
 
   // Get the backtraced values for conc components and temperature from 
   // stefan with fluids solver
@@ -2310,9 +2307,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   stefan_w_fluids_solver->set_ngbd_n(ngbd_nm1);
 
   stefan_w_fluids_solver->set_tstep(iteration_one_step);
-
-  MPI_Barrier(mpi_->comm());
-  PetscPrintf(mpi_->comm(), "BBB \n");
 
    if(0){
      // -------------------------------
@@ -2369,8 +2363,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   stefan_w_fluids_solver->do_backtrace_for_scalar_temp_conc_problem(true, num_comps_, iteration_one_step);
 
-  MPI_Barrier(mpi_->comm());
-  PetscPrintf(mpi_->comm(), "CCC \n");
   if(0){
     // -------------------------------
     // TEMPORARY: save fields after backtrace
@@ -2450,9 +2442,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   double xyz[P4EST_DIM];
   double heat_gen = 0;
-
-  MPI_Barrier(mpi_->comm());
-  PetscPrintf(mpi_->comm(), "DDD \n");
 
   // get coefficients for time discretization
   std::vector<double> time_coeffs;
@@ -2548,8 +2537,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // MULTICOMP ALERT: we have changed the diag below
   //std::exit(EXIT_FAILURE);
 
-  MPI_Barrier(mpi_->comm());
-  PetscPrintf(mpi_->comm(), "EEE \n");
   vector<double> conc_diag(num_comps_, SL_alpha/dt_[0]);
 
   // solve coupled system of equations
@@ -2581,8 +2568,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     solver_all_in_one.set_container_conditions_composition(contr_bc_type_conc_, contr_bc_value_conc_.data());
   }
 
-  MPI_Barrier(mpi_->comm());
-  PetscPrintf(mpi_->comm(), "FFF \n");
   vector<CF_DIM *> zeros_cf(num_comps_, &zero_cf);
 
   if(there_is_convergence_test){
@@ -2604,15 +2589,11 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   solver_all_in_one.set_c0_guess(cl_[1].vec[0]);
 
-  MPI_Barrier(mpi_->comm());
-  PetscPrintf(mpi_->comm(), "GGG \n");
   int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, true,
       bc_error_.vec, bc_error_max, bc_error_avg,
       num_pdes, bc_error_max_all, bc_error_avg_all,
       psi_tl_.vec, psi_ts_.vec, psi_cl_.vec.data());
 
-  MPI_Barrier(mpi_->comm());
-  PetscPrintf(mpi_->comm(), "HHH \n");
   rhs_tl.destroy();
   rhs_ts.destroy();
   rhs_cl.destroy();

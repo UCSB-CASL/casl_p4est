@@ -1298,6 +1298,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
       case WALL_DIRICHLET:
       {
+//        printf("node %d wall dirichlet start \n", n);
         if (assembling_main) {
           row_main->push_back(mat_entry_t(petsc_gloidx_[n], 1));
           if (bdry_phi_eff_000 < 0. || bdry_.num_phi == 0) {
@@ -1308,7 +1309,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
         if (setup_rhs) {
           rhs_ptr[n] = wc_value_->value(xyz_C);
         }
-
         break;
       }
 

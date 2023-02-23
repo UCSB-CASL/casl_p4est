@@ -390,6 +390,9 @@ public:
     return vtk_idx;
   }
 
+  vec_and_ptr_dim_t get_front_normals(){return front_normal_;}
+//  my_p4est_node_neighbors_t* get_ngbd(){return ngbd_;}
+
   void set_initial_NS_velocity_n_(CF_DIM* init_vel_n_[P4EST_DIM]){
 
     foreach_dimension(d){
