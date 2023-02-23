@@ -1098,16 +1098,16 @@ class Convergence_soln{
         }
         double dT_dt(DIM(double x, double y, double z)) const{
             switch(dom){
-                case LIQUID_DOMAIN: N*PI*x*y*pow(cos(N*PI*t*x*y),2) - N*PI*x*y*pow(sin(N*PI*t*x*y),2);
-                case SOLID_DOMAIN: N*PI*x*y*cos(N*PI*t*x*y);
+                case LIQUID_DOMAIN: return N*PI*x*y*pow(cos(N*PI*t*x*y),2) - N*PI*x*y*pow(sin(N*PI*t*x*y),2);
+                case SOLID_DOMAIN: return N*PI*x*y*cos(N*PI*t*x*y);
                 default:
                     throw std::runtime_error("dT_dt in analytical temperature: unrecognized domain \n");
             }
         }
         double laplace(DIM(double x, double y, double z)) const {
             switch(dom){
-                case LIQUID_DOMAIN: -2*pow(N,2)*pow(PI,2)*pow(t,2)*sin(2*N*PI*t*x*y)*(pow(x,2)+pow(y,2));
-                case SOLID_DOMAIN: -pow(N,2)*pow(PI,2)*pow(t,2)*sin(N*PI*t*x*y)*(pow(x,2)+pow(y,2));
+                case LIQUID_DOMAIN: return -2*pow(N,2)*pow(PI,2)*pow(t,2)*sin(2*N*PI*t*x*y)*(pow(x,2)+pow(y,2));
+                case SOLID_DOMAIN: return -pow(N,2)*pow(PI,2)*pow(t,2)*sin(N*PI*t*x*y)*(pow(x,2)+pow(y,2));
                 default:
                     throw std::runtime_error("laplace for analytical temperature field: unrecognized domain \n");
             }

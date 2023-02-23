@@ -270,6 +270,9 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
   poisson_use_nonzero_guess_ = use_non_zero_guess;
   second_derivatives_owned_ = true;
 
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "aaa \n");
+
   // create level sets for liquid and solid
   liquid_phi_.create(front_phi_.vec);
   solid_phi_.create(front_phi_.vec);
@@ -290,6 +293,8 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
   compute_normals(*node_neighbors_, liquid_phi_.vec, liquid_normal_.vec);
   compute_normals(*node_neighbors_, solid_phi_.vec,  solid_normal_.vec);
 
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "bbb \n");
   // get input Vec's
   tl_ .set(tl);
   ts_ .set(ts);
@@ -310,6 +315,9 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
   ts_dd_.destroy();
   ts_dd_.create(tl_dd_.vec.data());
 
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "ccc \n");
+
   for (int i = 0; i < num_comps_; ++i)
   {
     c_d_[i].destroy();
@@ -318,6 +326,8 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
     c_dd_[i].create(tl_dd_.vec.data());
   }
 
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "ddd \n");
   // allocate memory for lagrangian multipliers
   if (psi_tl == NULL) psi_tl_.create(tl_.vec);
   else                psi_tl_.set(psi_tl);
@@ -341,6 +351,8 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
 
   psi_c0d_.create(front_normal_.vec);
 
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "eee \n");
   // precompute first and second derivatives for extension purposes
   my_p4est_level_set_t ls(node_neighbors_);
   ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, tl_.vec, 0, 1, extension_band_use_, extension_band_extend_, liquid_normal_.vec, NULL, NULL, 1, tl_d_.vec, tl_dd_.vec.data());
@@ -361,6 +373,8 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
     }
   }
 
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "fff \n");
   // for logging purposes
   if (num_pdes != NULL) num_pdes->clear();
   if (bc_error_max_all != NULL) bc_error_max_all->clear();
@@ -375,14 +389,23 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
   int conc_start = update_c0_robin_ == 2 ? 0 : 1;
   int conc_num   = num_comps_ - conc_start;
 
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "ggg \n");
   while (bc_error_max_ > bc_tolerance_ &&
          iteration < max_iterations_)
   {
     ++iteration;
 
+    MPI_Barrier(p4est_->mpicomm);
+    PetscPrintf(p4est_->mpicomm, "111 \n");
     // solve for physical quantities
     solve_c0(); ++num_pdes_solved;
+    MPI_Barrier(p4est_->mpicomm);
+    PetscPrintf(p4est_->mpicomm, "222 \n");
     compute_c0n();
+    MPI_Barrier(p4est_->mpicomm);
+    PetscPrintf(p4est_->mpicomm, "333 \n");
+
     compute_pw_bc_values(conc_start, conc_num);
     solve_t();  ++num_pdes_solved;
     solve_c(conc_start, conc_num);  ++num_pdes_solved;
@@ -465,6 +488,8 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
     ierr = PetscPrintf(p4est_->mpicomm, "Iteration %d: max bc error = %2.3e, avg bc error = %2.3e, max velo = %2.5e\n", iteration, bc_error_max_, bc_error_avg_, velo_max_); CHKERRXX(ierr);
   }
 
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "hhh \n");
   if (update_c0_robin_ == 1)
   {
     compute_pw_bc_values(0, 1);
@@ -857,15 +882,32 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
   }
 
 //  solver_conc_leading_->set_wc(wall_bc_type_conc_, *wall_bc_value_conc_[0], false);
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "c0(a) \n");
   solver_conc_leading_->set_wc(*wall_bc_type_conc_, *wall_bc_value_conc_[0], false);
+
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "c0(b) \n");
   solver_conc_leading_->set_bc(0, DIRICHLET, pw_c0_values_);
+
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "c0(c) \n");
+
   solver_conc_leading_->set_rhs(rhs_c_[0].vec);
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "c0(d) \n");
 
   if (contr_phi_.vec != NULL) {
     solver_conc_leading_->set_bc(1, contr_bc_type_conc_, *contr_bc_value_conc_[0], zero_cf);
   }
 
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "c0(e) \n");
+
   solver_conc_leading_->solve(c_[0].vec, poisson_use_nonzero_guess_);
+
+  MPI_Barrier(p4est_->mpicomm);
+  PetscPrintf(p4est_->mpicomm, "c0(f) \n");
 
   my_p4est_level_set_t ls(node_neighbors_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
