@@ -766,6 +766,8 @@ void my_p4est_multialloy_t::compute_velocity()
   ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec, 50,
       NULL, 0, 0, &velo);
 
+//  VecView(front_velo_norm_[0].vec, PETSC_VIEWER_STDOUT_WORLD);
+
 
   cl_[0]       .restore_array();
   cl0_grad_    .restore_array();
@@ -2587,10 +2589,12 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   solver_all_in_one.set_wall_conditions_thermal(wall_bc_type_temp_, *wall_bc_value_temp_);
   solver_all_in_one.set_wall_conditions_composition(wall_bc_type_conc_, wall_bc_value_conc_.data());
 
-  solver_all_in_one.set_tolerance(100./*bc_tolerance_*/, max_iterations_);
+  solver_all_in_one.set_tolerance(/*100.*/bc_tolerance_, max_iterations_);
   solver_all_in_one.set_use_points_on_interface(use_points_on_interface_);
   solver_all_in_one.set_update_c0_robin(update_c0_robin_);
   solver_all_in_one.set_use_superconvergent_robin(use_superconvergent_robin_);
+
+//  VecView(cl_[1].vec[0], PETSC_VIEWER_STDOUT_WORLD);
 
   solver_all_in_one.set_c0_guess(cl_[1].vec[0]);
 

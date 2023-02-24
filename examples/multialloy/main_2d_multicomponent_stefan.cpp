@@ -559,8 +559,10 @@ void set_alloy_parameters()
 
     num_comps.val = 2;
 
-    solute_diff_0.val    = 1.;  // cm2.s-1 - concentration diffusion coefficient
+    solute_diff_0.val    = 0.1;  // cm2.s-1 - concentration diffusion coefficient
+    solute_diff_1.val    = 1.;
     initial_conc_0.val   = 1.;    // at frac.
+    initial_conc_1.val = 1.;
 
     eps_c.val = 0.;
     eps_v.val = 0;
@@ -1124,24 +1126,24 @@ class Convergence_soln{
             P4EST_ASSERT(comp == 0 || comp == 1);
         }
         double C1(DIM(double x, double y,double z))const{
-          return cos(y)*sin(x)*sin(t) + 0.1;
+          return cos(y)*sin(x)*sin(t + PI/4.) + 1.;
         }
         double C2(DIM(double x, double y,double z))const{
-          return cos(y)*cos(x)*cos(t) + 1.;
+          return cos(y)*cos(x)*cos(t + PI/4.) + 1.;
         }
 
         double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
           switch(dir){
-              case dir::x: return cos(y)*cos(x)*sin(t);
-              case dir::y: return -sin(y)*sin(x)*sin(t);
+              case dir::x: return cos(y)*cos(x)*sin(t + PI/4.);
+              case dir::y: return -sin(y)*sin(x)*sin(t + PI/4.);
               default:
                 throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian");
               }
         }
         double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
             switch(dir){
-              case dir::x: return cos(y)*sin(x)*cos(t);
-              case dir::y: return -sin(y)*cos(x)*cos(t);
+              case dir::x: return cos(y)*sin(x)*cos(t + PI/4.);
+              case dir::y: return -sin(y)*cos(x)*cos(t + PI/4.);
               default:
                 throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");
               }
@@ -1152,20 +1154,20 @@ class Convergence_soln{
         }
 
         double dC1_dt(DIM(double x, double y, double z)) const{
-               return cos(t)*cos(y)*sin(x);
+               return cos(t + PI/4.)*cos(y)*sin(x);
         }
         double dC2_dt(DIM(double x, double y, double z)) const{
-          return -sin(t)*cos(y)*sin(x);
+          return -sin(t + PI/4.)*cos(y)*sin(x);
         }
         double dC_dt(DIM(double x, double y, double z)) const{
           return (comp == 0? dC1_dt(DIM(x,y,z)) : dC2_dt(DIM(x,y,z)));
         }
 
         double laplace_C1(DIM(double x, double y, double z))const{
-              return -2.*cos(y)*sin(t)*sin(x);
+              return -2.*cos(y)*sin(t + PI/4.)*sin(x);
         }
         double laplace_C2(DIM(double x, double y, double z))const{
-          return -2.*cos(t)*cos(x)*cos(y);
+          return -2.*cos(t+ PI/4.)*cos(x)*cos(y);
         }
         double laplace(DIM(double x, double y, double z))const{
           return (comp == 0? laplace_C1(DIM(x,y,z)) : laplace_C2(DIM(x,y,z)));
@@ -1178,7 +1180,7 @@ class Convergence_soln{
     struct interface_velocity: CF_DIM{
 //      public:
           double operator()(DIM(double x,double y,double z)) const{
-            return sin(t) * cos(t);
+            return 0.1/*sin(t) * cos(t)*/;
           }
     } /*convergence_vgamma*/;
 
@@ -1280,9 +1282,12 @@ class Convergence_soln{
         double operator()(DIM(double x, double y, double z)) const {
             double advective_term;
 
+            int comp = concentration_.comp;
+            double D = (comp == 0? solute_diff_0.val : solute_diff_1.val);
+
             advective_term = (velocity_component_[dir::x])(DIM(x,y,z)) * concentration_.dC_d(dir::x,x,y) + (velocity_component_[dir::y])(DIM(x,y,z))*concentration_.dC_d(dir::y,x,y);
 
-            return concentration_.dC_dt(DIM(x,y,z)) + advective_term - concentration_.laplace(DIM(x,y,z));
+            return concentration_.dC_dt(DIM(x,y,z)) + advective_term - D*concentration_.laplace(DIM(x,y,z));
         }
     };
     struct pressure_field: CF_DIM{
@@ -1397,14 +1402,27 @@ class Convergence_soln{
       }
 
       double operator()(DIM(double x, double y, double z)) const {
-        // Note: this operator assumes the diffusivities for each concentration are 1, and the partition coefficients for each component are 0
         if(nx_interp==NULL || ny_interp==NULL){
           throw std::runtime_error("external source concentration robin: you cannot call this operator because the normal interpolators have not been set \n");
         }
+        printf("accesses conc robin source term \n");
 
-        return (concentration_->dC_d(dir::x, DIM(x,y,z)) * (*nx_interp)(DIM(x,y,z)) +
+        int comp = concentration_->comp;
+        printf("hi \n");
+        double D = (comp == 0? solute_diff_0.val : solute_diff_1.val);
+        printf(" hi hi \n");
+        double part_coeff = (comp == 0? part_coeff_0.val : part_coeff_1.val);
+        printf("hi hi hi \n");
+        printf("nx interp = %p \n", nx_interp);
+        printf("ny interp = %p \n", ny_interp);
+//        printf("nx interp = %0.2f \n", (*nx_interp)(DIM(x,y,z)));
+//        printf("ny interp = %0.2f \n", (*ny_interp)(DIM(x,y,z)));
+        printf("concentration = %0.2f \n", (*concentration_)(DIM(x,y,z)));
+        printf("vgamma = %0.2f \n", (*vgamma_)(DIM(x,y,z)));
+
+        return D*(concentration_->dC_d(dir::x, DIM(x,y,z)) * (*nx_interp)(DIM(x,y,z)) +
                 concentration_->dC_d(dir::y, DIM(x,y,z)) * (*ny_interp)(DIM(x,y,z))) -
-               (*vgamma_)(DIM(x,y,z))*(*concentration_)(DIM(x,y,z));
+               (1. - part_coeff)*(*vgamma_)(DIM(x,y,z))*(*concentration_)(DIM(x,y,z));
       }
     };
 

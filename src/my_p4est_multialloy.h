@@ -324,8 +324,13 @@ private:
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, v_ngbd->p4est, v_ngbd->nodes, xyz);
       source_term += (*external_conc0_robin_term)(xyz[0], xyz[1]);
+//      printf("Node %d, (%0.2f, %0.2f) : front velo source term = %0.2e \n", n, xyz[0], xyz[1],source_term);
     }
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(n, v_ngbd->p4est, v_ngbd->nodes, xyz);
 
+//    printf("Node %d, (%0.2f, %0.2f)  denominator = %0.3e \n", n, xyz[0], xyz[1],
+//           MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p[0], v_c0_dd_p[1]), 1e-7 ));
     // ELYCE TO-DO: add the source term for front_conc_flux here to get the correct interface velocity expression when including the source term hC1
     return -v_factor/(1.-v_part_coeff(0, cl_all.data()))*
         ( qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
