@@ -234,7 +234,8 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
                                     "4: Ni - 15.2wt%Al -  5.8wt%Ta tri-alloy, "
                                     "5: Ni -  5.8wt%Ta - 15.2wt%Al tri-alloy, "
                                     "6: a made-up tetra-alloy, "", "
-                                    "7: a made-up penta-alloy");
+                                    "7: a made-up penta-alloy"
+                                   "8: an alloy with values all = 1 for convergence test with fluids");
 
 double scale = 1./*30*/; // [Elyce  2/16/23] changing this to 1 bc it seems dangerous lol
 
@@ -556,12 +557,12 @@ void set_alloy_parameters()
     thermal_cond_s.val  = 1.; // W.cm-1.K-1
     latent_heat.val     = 1.;    // J.cm-3
 
-    num_comps.val = 1;
+    num_comps.val = 2;
 
     solute_diff_0.val    = 1.;  // cm2.s-1 - concentration diffusion coefficient
     initial_conc_0.val   = 1.;    // at frac.
 
-    eps_c.val = 1.0e-2;
+    eps_c.val = 0.;
     eps_v.val = 0;
     eps_a.val = 0;
     symmetry.val = 0;
@@ -570,8 +571,10 @@ void set_alloy_parameters()
     melting_temp.val     = 0;   // K
     linearized_liquidus.val  = 1;
     const_part_coeff.val = 1;
-    liquidus_slope_0.val = 1.;   // K / at frac. - liquidous slope
+    liquidus_slope_0.val = 0.5;   // K / at frac. - liquidous slope
+    liquidus_slope_1.val = 0.5;
     part_coeff_0.val     = 0.0;   // partition coefficient
+    part_coeff_1.val = 0.;
 
     break;
     default:
@@ -1121,10 +1124,10 @@ class Convergence_soln{
             P4EST_ASSERT(comp == 0 || comp == 1);
         }
         double C1(DIM(double x, double y,double z))const{
-            return cos(y)*sin(x)*sin(t);
+          return cos(y)*sin(x)*sin(t) + 0.1;
         }
         double C2(DIM(double x, double y,double z))const{
-          return cos(y)*cos(x)*cos(t);
+          return cos(y)*cos(x)*cos(t) + 1.;
         }
 
         double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
@@ -1178,59 +1181,7 @@ class Convergence_soln{
             return sin(t) * cos(t);
           }
     } /*convergence_vgamma*/;
-//    struct concentration2: CF_DIM{
-//        const double factor=1.;
-//        const double N=1.;
-//        const unsigned char dom;
-//        concentration2(const unsigned char& dom_) : dom(dom_){
-//            P4EST_ASSERT(dom >= 0 && dom <=1);
-//        }
-//        double C2(DIM(double x, double y,double z))const{
-//            switch(dom){
-//                case LIQUID_DOMAIN: return cos(y)*cos(x)*cos(t);
-//                case SOLID_DOMAIN: return 0.0;
-//                default:
-//                    throw std::runtime_error("analytical solution concentration2 unknown domain \n");
-//            }
-//        }
-//        double operator()(DIM(double x,double y, double z))const{
-//            return C2(DIM(x,y,z));
-//        }
-//        double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)){
-//            switch(dom){
-//                case LIQUID_DOMAIN:
-//                    switch(dir){
-//                        case dir::x: return cos(y)*sin(x)*cos(t);
-//                        case dir::y: return -sin(y)*cos(x)*cos(t);
-//                        default:
-//                           throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");}
-//                case SOLID_DOMAIN:
-//                    switch(dir){
-//                        case dir::x: return 0.0;
-//                        case dir::y: return 0.0;
-//                        default:
-//                           throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");}
-//                default:
-//                    throw std::runtime_error("dC2_d of analytical concentration1 field: unrecognized Cartesian direction \n");
-//            }
-//        }
-//        double dC2_dt(DIM(double x, double y, double z)){
-//            switch(dom){
-//                case LIQUID_DOMAIN: -sin(t)*cos(y)*sin(x);
-//                case SOLID_DOMAIN: 0.0;
-//                default:
-//                    throw std::runtime_error("dC2_dt in analytical concentration1: unrecognized domain \n");
-//            }
-//        }
-//        double laplace(DIM(double x, double y, double z)){
-//            switch(dom){
-//                case LIQUID_DOMAIN: -2*cos(t)*cos(x)*cos(y);
-//                case SOLID_DOMAIN: 0.0;
-//                default:
-//                    throw std::runtime_error("laplace for concentration2 field : unrecognized domain");
-//            }
-//        }
-//    };
+
     struct velocity_component: CF_DIM{
         const unsigned char dir;
         const double factor=10.0;
@@ -1462,15 +1413,32 @@ class Convergence_soln{
       concentration* concentration_0_;
       concentration* concentration_1_;
 
+      interface_velocity* vgamma_;
+
       external_source_Gibbs_Thomson(temperature* temperature_l = NULL,
                                     concentration* concentration_0 = NULL,
-                                    concentration* concentration_1 = NULL):
-          temperature_l_(temperature_l), concentration_0_(concentration_0), concentration_1_(concentration_1){}
-      // NOTE: this function assumes a Tm of 0
+                                    concentration* concentration_1 = NULL,
+                                    interface_velocity* vgamma=NULL):
+          temperature_l_(temperature_l), concentration_0_(concentration_0), concentration_1_(concentration_1), vgamma_(vgamma){}
+      // NOTE: this function assumes there is no curvature affect on the Gibbs
 
       double operator()(DIM(double x, double y, double z)) const {
+        if(temperature_l_== NULL ||
+            concentration_0_ == NULL ||
+            concentration_1_ == NULL ||
+            vgamma_ ==NULL){
+          throw std::invalid_argument("external source Gibbs Thomson : you cannot return the operator because some of the dependent fiels are null \n");
+        }
+
+
+        if(eps_c.val>0){
+          throw std::invalid_argument("external source gibbs thomson: you are trying to run with an eps_c value greater than 0, but the curvature affect is not implemented in this convergence test");
+        }
+
+
         return (*temperature_l_)(DIM(x,y,z)) -
-               (liquidus_slope_0.val * (*concentration_0_)(DIM(x,y,z)) + liquidus_slope_1.val * (*concentration_1_)(DIM(x,y,z)));
+               (melting_temp.val +  liquidus_slope_0.val * (*concentration_0_)(DIM(x,y,z)) + liquidus_slope_1.val * (*concentration_1_)(DIM(x,y,z))) -
+               eps_v.val * (*vgamma_)(DIM(x,y,z));
       }
 
     };
@@ -1517,7 +1485,7 @@ Convergence_soln::external_source_concentration_robin external_source_c0_robin(&
 Convergence_soln::external_source_concentration_robin external_source_c1_robin(&convergence_conc1, &convergence_vgamma);
 CF_DIM* external_source_conc_robin[2] = {&external_source_c0_robin, &external_source_c1_robin};
 
-Convergence_soln::external_source_Gibbs_Thomson external_source_Gibbs_Thomson(&convergence_tl, &convergence_conc0, &convergence_conc1);
+Convergence_soln::external_source_Gibbs_Thomson external_source_Gibbs_Thomson(&convergence_tl, &convergence_conc0, &convergence_conc1, &convergence_vgamma);
 // ----------------------------------------
 // define problem geometry
 // ----------------------------------------
@@ -3023,7 +2991,6 @@ int main (int argc, char* argv[])
   // TO-DO: revisit if we really want these dt limits or not
 
   // set initial conditions
-  MPI_Barrier(mpi.comm());
   if(!loading_from_previous_state.val){
     mas.set_velocity(vn_cf, DIM(vx_cf, vy_cf, vz_cf), vf_cf);
     mas.set_temperature(tl_cf, ts_cf, tf_cf);

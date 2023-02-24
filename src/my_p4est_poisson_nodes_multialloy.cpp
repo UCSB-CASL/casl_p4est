@@ -381,12 +381,17 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
     ++iteration;
 
     // solve for physical quantities
+    PetscPrintf(p4est_->mpicomm, "Solving c0 ... \n");
     solve_c0(); ++num_pdes_solved;
     compute_c0n();
 
     compute_pw_bc_values(conc_start, conc_num);
+    PetscPrintf(p4est_->mpicomm, "Solving t ... \n");
     solve_t();  ++num_pdes_solved;
+    PetscPrintf(p4est_->mpicomm, "Solving c ... \n");
     solve_c(conc_start, conc_num);  ++num_pdes_solved;
+
+    PetscPrintf(p4est_->mpicomm, "Solving lagrange multipliers ... \n");
 
     // solve for lagrangian multipliers
     if ((iteration-1)%1 == 0)
@@ -451,14 +456,22 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
       }
     }
 
+    MPI_Barrier(p4est_->mpicomm);
+    PetscPrintf(p4est_->mpicomm, "Adjusting c0 boundary conditions ... \n");
 
     // adjust boundary conditions
     compute_c0_change(iteration_scheme_);
+
+    MPI_Barrier(p4est_->mpicomm);
+    PetscPrintf(p4est_->mpicomm, "Updating pw c0 values ... \n");
 
 
     for (int i = 0; i < solver_conc_leading_->pw_bc_num_value_pts(0); ++i) {
       pw_c0_values_[i] -= pw_c0_change_[i];
     }
+    MPI_Barrier(p4est_->mpicomm);
+    PetscPrintf(p4est_->mpicomm, "Done. \n");
+
 
     // logging for convergence studies
     if (num_pdes != NULL) { num_pdes->push_back(num_pdes_solved); }
@@ -1282,7 +1295,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       }
 
       // Compute actual interfacial velocity now as "vn_pr", as specified by the solute rejection equation
-      vn_pr = (conc_diff_[0]*vn_pr - front_conc_flux_[0]->value(xyz_pr))/c_all[0]/(1.0-part_coeff_(0, c_all.data()));
+      vn_pr = (conc_diff_[0]*vn_pr - front_conc_flux_[0]->value(xyz_pr))/(c_all[0] + EPS)/(1.0-part_coeff_(0, c_all.data()));
 
 //      // ---------------------
 //      // Elyce Modification:
@@ -1295,6 +1308,11 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
 
       pw_t_sol_jump_taylor_[idx] = front_temp_value_jump_->value(xyz_pr);
       pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) - latent_heat_*density_s_*vn_pr;
+
+//      printf("PW BC VALUES: front_temp_value = %0.2f \n", front_temp_value_jump_->value(xyz_pr) );
+//      printf("PW BC VALUES: front_temp_flux_value = %0.2f \n",front_temp_flux_jump_->value(xyz_pr) );
+//      printf("PW BC VALUES: front_temp_flux_value - stuff = %0.2f \n",front_temp_flux_jump_->value(xyz_pr) - latent_heat_*density_s_*vn_pr );
+//      printf("latent heat = %0.2e, density_s = %0.2e, vn_pr = %0.2e \n", latent_heat_, density_s_, vn_pr);
 
       // TO FIX !! NEED TO MULTIPLY LATENT_HEAT_*VN*DENSITY_S --> NOTE : THIS CODE IS DUPLICATED IN ABOUT 100X PLACES SO MAKE SURE THEYRE ALL CHANGED
 
@@ -1335,7 +1353,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       }
 
 
-      vn_cd = (conc_diff_[0]*vn_cd - front_conc_flux_[0]->value(xyz_cd))/c_all[0]/(1.0-part_coeff_(0, c_all.data()));
+      vn_cd = (conc_diff_[0]*vn_cd - front_conc_flux_[0]->value(xyz_cd))/(c_all[0] + EPS)/(1.0-part_coeff_(0, c_all.data()));
 
 //      // ---------------------
 //      // Elyce Modification:
@@ -1385,7 +1403,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
           c_all[j] = interp_local.value(xyz_cd);
         }
 
-        vn_cd = (conc_diff_[0]*vn_cd - front_conc_flux_[0]->value(xyz_cd))/c_all[0]/(1.0-part_coeff_(0, c_all.data()));
+        vn_cd = (conc_diff_[0]*vn_cd - front_conc_flux_[0]->value(xyz_cd))/(c_all[0]+EPS)/(1.0-part_coeff_(0, c_all.data()));
 //        // ---------------------
 //        // Elyce Modification:
 //        // ---------------------
@@ -1747,6 +1765,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
   interp_bc_points.interpolate(output_all.data());
 
   bc_error_.get_array();
+  printf("AAAAA\n");
 
   foreach_local_node(n, nodes_)
   {
@@ -1759,7 +1778,6 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
       // fetch boundary point
       double xyz[P4EST_DIM];
       solver_conc_leading_->pw_bc_xyz_value_pt(0, idx, xyz);
-
       interface_point_cartesian_t *pt;
       solver_conc_leading_->pw_bc_get_boundary_pt(0, idx, pt);
 
@@ -1769,7 +1787,6 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
       for (int k = update_c0_robin_ == 2 ? 0 : 1; k < num_comps_; ++k) {
         c_all[k] = c_pw[k][idx];
       }
-
       // interpolate temperature
       double tl_val = tl_pw[idx];
 
@@ -1781,7 +1798,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
                        normal[1]*grad_c0_pw[1][idx],
                        normal[2]*grad_c0_pw[2][idx]);
 
-      vn = ( (conc_diff_[0]*vn - front_conc_flux_[0]->value(xyz))/(1.-(*part_coeff_)(0, c_all.data()))/pw_c0_values_[idx] );
+      vn = ( (conc_diff_[0]*vn - front_conc_flux_[0]->value(xyz))/(1.-(*part_coeff_)(0, c_all.data()))/(pw_c0_values_[idx] + EPS) );
 
       // curvature
       double kappa = curv_pw[idx];
@@ -1790,16 +1807,29 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
       double eps_v = eps_v_[round(seed_pw[idx])]->value(normal);
       double eps_c = eps_c_[round(seed_pw[idx])]->value(normal);
 
+//      printf("tl_val = %0.2e \n", tl_val);
+//      printf("liquidus = %0.2e \n", liquidus_value_(c_all.data()));
+//      printf("eps_v = %0.2e \n", eps_v);
+//      printf("vn = %0.2e \n", vn);
+//      printf("eps_c = %0.2e \n", eps_c);
+//      printf("kappa = %0.2e \n", kappa);
+//      printf("gibbs_thomson_ = %p \n", gibbs_thomson_);
+//      printf("gibbs_thomson_ = %0.2e \n", gibbs_thomson_->value(xyz));
+
       // error
       double error = tl_val
                      - liquidus_value_(c_all.data())
                      - eps_v*vn
                      - eps_c*kappa
                      - gibbs_thomson_->value(xyz);
+//      printf("Node %d, (%0.2f, %0.2f) -- error = %0.2e \n", n, xyz[0], xyz[1], error);
+
+
 
       bc_error_.ptr[n] = MAX(bc_error_.ptr[n], fabs(error));
       bc_error_max_    = MAX(bc_error_max_,    fabs(error));
       bc_error_avg_   += fabs(error);
+
 
       pw_c0_change_[idx] = error;
 
@@ -1902,6 +1932,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
   }
   bc_error_.restore_array();
 
+  printf("BBBBB\n");
   double buffer[4] = { bc_error_max_, bc_error_avg_, velo_max_, double(solver_conc_leading_->pw_bc_num_value_pts(0)) };
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, buffer, 4, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
   bc_error_max_  = buffer[0];

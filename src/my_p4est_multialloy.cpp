@@ -2250,7 +2250,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
                                "\n -------------------------- \n", iteration_one_step, time_,num_nodes);
     PetscPrintf(p4est_->mpicomm, "Solving nonlinear system:\n");
 
-
   // update time in interface and boundary conditions
   //gibbs_thomson_->t = time_;
   vol_heat_gen_ ->t = time_;
@@ -2472,6 +2471,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     // Add the source terms to the RHS if we have a convergence test:
     if(there_is_convergence_test){
       rhs_ts.ptr[n] += (*convergence_external_source_temp[SOLID_DOMAIN])(xyz[0], xyz[1]);
+//      printf("rhs_ts[%d] = %0.2f \n", n, rhs_ts.ptr[n]);
       rhs_tl.ptr[n] += (*convergence_external_source_temp[LIQUID_DOMAIN])(xyz[0], xyz[1]);
 
       for (int j = 0; j < num_comps_; ++j)
@@ -2511,6 +2511,8 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     // TO-DO MULTICOMP: will change this later to reflect nondim setup
     rhs_tl.ptr[n] = rhs_tl.ptr[n]*density_l_*heat_capacity_l_ + heat_gen;
     rhs_ts.ptr[n] = rhs_ts.ptr[n]*density_s_*heat_capacity_s_/dt_[0] + heat_gen;
+//    printf("rhs_ts[%d] = %0.2f (density = %0.2f, heat_capacity = %0.2f, heat_gen = %0.2f, dt = %0.3e) \n \n",
+//           n, rhs_ts.ptr[n], density_s_, heat_capacity_s_, heat_gen, dt_[0]);
     //std::cout<< rhs_tl.ptr[n]<<"\n";
     //std::cout << "conc rhs"<< rhs_cl.ptr[0][n]<<"\n";
 
@@ -2532,6 +2534,8 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 //    cl_[i].restore_array();
   }
 
+//  VecView(rhs_ts.vec, PETSC_VIEWER_STDOUT_WORLD);
+
   //std::cout<< "Diagonal data :: " << SL_alpha/dt_[0] <<"\n";
 
   // MULTICOMP ALERT: we have changed the diag below
@@ -2549,6 +2553,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   solver_all_in_one.set_composition_parameters(conc_diag.data(), solute_diff_.data());
   // MULTICOMP ALERT: we have changed the diag below
   //std::cout<< "Diagonal data :: " << density_l_*heat_capacity_l_*SL_alpha/dt_[0] <<"\n";
+  printf("DIAG: %0.3e, thermal_cond = %0.3e \n", density_s_*heat_capacity_s_*time_coeffs[0]/dt_[0], thermal_cond_s_);
   solver_all_in_one.set_thermal_parameters(latent_heat_,
                                            density_l_*heat_capacity_l_*SL_alpha/dt_[0], thermal_cond_l_,
                                            density_s_*heat_capacity_s_*time_coeffs[0]/dt_[0], thermal_cond_s_);
@@ -2582,7 +2587,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   solver_all_in_one.set_wall_conditions_thermal(wall_bc_type_temp_, *wall_bc_value_temp_);
   solver_all_in_one.set_wall_conditions_composition(wall_bc_type_conc_, wall_bc_value_conc_.data());
 
-  solver_all_in_one.set_tolerance(bc_tolerance_, max_iterations_);
+  solver_all_in_one.set_tolerance(100./*bc_tolerance_*/, max_iterations_);
   solver_all_in_one.set_use_points_on_interface(use_points_on_interface_);
   solver_all_in_one.set_update_c0_robin(update_c0_robin_);
   solver_all_in_one.set_use_superconvergent_robin(use_superconvergent_robin_);
