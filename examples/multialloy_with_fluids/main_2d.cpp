@@ -226,6 +226,11 @@ DEFINE_PARAMETER(pl, bool, start_w_merged_grains, false, "If true, we assume the
 
 DEFINE_PARAMETER(pl, double, porous_media_initial_thickness, 4.0 , "The initial thickness outer interface in relation to the inner interface, in number of smallest grid cells. Default value: 4.0 ");
 
+
+// Potential for phi advection subiterations (for slow evolving interfaces and quasi-steady approach)
+DEFINE_PARAMETER(pl, bool, do_phi_advection_substeps, false, "do phi advection substeps? ");
+DEFINE_PARAMETER(pl, int, num_phi_advection_substeps, 0, "Number of phi advection substeps per timestep \n");
+
 // ---------------------------------------
 // Booleans that we select to simplify logic in the main program for different processes that are required for different examples:
 // ---------------------------------------
@@ -4460,6 +4465,10 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
 
   // Reinitialization:
   stefan_w_fluids_solver->set_reinit_every_iter(reinit_every_iter);
+
+  // Phi advection substeps:
+  stefan_w_fluids_solver->set_do_phi_advection_substeps(do_phi_advection_substeps);
+  stefan_w_fluids_solver->set_num_phi_advection_substeps(num_phi_advection_substeps);
 
 
 

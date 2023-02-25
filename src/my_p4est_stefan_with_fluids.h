@@ -350,6 +350,8 @@ private:
   double cfl_Stefan;
   double cfl_NS;
 
+  bool do_phi_advection_substeps;
+  int num_phi_advection_substeps;
 
   // ----------------------------------------------
   // Related to dimensionalization type:
@@ -1205,6 +1207,9 @@ public:
   void set_advection_sl_order(int order_){
     advection_sl_order = order_;
   }
+
+  void set_do_phi_advection_substeps(bool do_substeps){do_phi_advection_substeps = do_substeps;}
+  void set_num_phi_advection_substeps(int num_substeps){num_phi_advection_substeps = num_substeps;}
 
   // ----------------------------------------------
   // Other misc parameters
