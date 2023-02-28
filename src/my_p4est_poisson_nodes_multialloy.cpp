@@ -1267,7 +1267,6 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
     c_[j]           .get_array();
     c_dd_[j]        .get_array();
   }
-
   foreach_local_node(n, nodes_)
   {
     interp_initialized = false;
@@ -1276,7 +1275,6 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
     // iterate through points that impose jump conditions for temperature
     if (solver_temp_->pw_jc_num_taylor_pts(0, n) > 0)
     {
-      printf("aaa \n");
       interp_local.initialize(n);
       interp_initialized = true;
 
@@ -1293,7 +1291,6 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
         // Compute dC0/dn and temporarily set it as "vn_pr"
         interp_local.set_input(c0d_.ptr[dim],          linear); vn_pr += normal[dim]*interp_local.value(xyz_pr);
       }
-      printf("bbb \n");
 
       // interpolate concenrtations
       vector<double> c_all(num_comps_);
@@ -1302,10 +1299,6 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
         c_all[i] = interp_local.value(xyz_pr);
       }
 
-      printf("ccc \n");
-      printf("front flux = %p \n", front_conc_flux_[0]);
-      printf("xyz_pr = (%0.2f, %0.2f) \n", xyz_pr[0], xyz_pr[1]);
-      printf("front flux = %0.2e \n", front_conc_flux_[0]->value(xyz_pr));
       // Compute actual interfacial velocity now as "vn_pr", as specified by the solute rejection equation
       vn_pr = (conc_diff_[0]*vn_pr - front_conc_flux_[0]->value(xyz_pr))/(c_all[0] + EPS)/(1.0-part_coeff_(0, c_all.data()));
 
@@ -1317,16 +1310,8 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
 //                (c_all[0] + Cinf_char[0]/delta_C_char[0])/(1.0-part_coeff_(0, c_all.data()));
 //      }
 //      // ---------------------
-      printf("ddd \n");
       pw_t_sol_jump_taylor_[idx] = front_temp_value_jump_->value(xyz_pr);
       pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) - latent_heat_*density_s_*vn_pr;
-
-      printf("eee \n");
-
-//      printf("PW BC VALUES: front_temp_value = %0.2f \n", front_temp_value_jump_->value(xyz_pr) );
-//      printf("PW BC VALUES: front_temp_flux_value = %0.2f \n",front_temp_flux_jump_->value(xyz_pr) );
-//      printf("PW BC VALUES: front_temp_flux_value - stuff = %0.2f \n",front_temp_flux_jump_->value(xyz_pr) - latent_heat_*density_s_*vn_pr );
-//      printf("latent heat = %0.2e, density_s = %0.2e, vn_pr = %0.2e \n", latent_heat_, density_s_, vn_pr);
 
       // TO FIX !! NEED TO MULTIPLY LATENT_HEAT_*VN*DENSITY_S --> NOTE : THIS CODE IS DUPLICATED IN ABOUT 100X PLACES SO MAKE SURE THEYRE ALL CHANGED
 
@@ -1351,8 +1336,6 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       idx = solver_temp_->pw_jc_idx_integr_pt(0, n, 0);
       solver_temp_->pw_jc_xyz_integr_pt(0, idx, xyz_cd);
 
-      printf("fff \n");
-
       vn_cd = 0;
       foreach_dimension(dim)
       {
@@ -1362,17 +1345,13 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
         interp_local.set_input(c0d_.ptr[dim],          linear);
         vn_cd += normal[dim]*interp_local.value(xyz_cd);
       }
-      printf("ggg \n");
 
       for (int i = 0; i < num_comps_; ++i) {
         interp_local.set_input(c_[i].ptr, DIM(c_dd_[i].ptr[0], c_dd_[i].ptr[1], c_dd_[i].ptr[2]), quadratic_non_oscillatory_continuous_v2);
         c_all[i] = interp_local.value(xyz_cd);
       }
-      printf("hhh \n");
-
 
       vn_cd = (conc_diff_[0]*vn_cd - front_conc_flux_[0]->value(xyz_cd))/(c_all[0] + EPS)/(1.0-part_coeff_(0, c_all.data()));
-      printf("iii \n");
 //      // ---------------------
 //      // Elyce Modification:
 //      // ---------------------
@@ -1387,8 +1366,6 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       // Rochi:: updating this because the stefan condition for temp flux was modified to include density_s_ by Rochi and Elyce
       // ALERT: need to modify the above ^ in the same way I address the other one
       //PetscPrintf(p4est_->mpicomm, "ALERT: multialloy: temp jump is nontrivial to modify for nondimensionalization. Need to address this. \n");
-      printf("jjj \n");
-
     }
 
 
@@ -1785,7 +1762,6 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
   interp_bc_points.interpolate(output_all.data());
 
   bc_error_.get_array();
-  printf("AAAAA\n");
 
   foreach_local_node(n, nodes_)
   {
@@ -1955,7 +1931,6 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
   }
   bc_error_.restore_array();
 
-  printf("BBBBB\n");
   double buffer[4] = { bc_error_max_, bc_error_avg_, velo_max_, double(solver_conc_leading_->pw_bc_num_value_pts(0)) };
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, buffer, 4, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
   bc_error_max_  = buffer[0];

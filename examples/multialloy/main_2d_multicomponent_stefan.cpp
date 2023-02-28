@@ -1357,6 +1357,7 @@ class Convergence_soln{
         if(nx_interp == NULL || ny_interp == NULL){
           throw std::runtime_error("external source temperature flux jump: you cannot call this operator because the normal interpolators have not been set \n");
         }
+//        printf("accesses temp flux term \n");
 
         double source_x, source_y;
 
@@ -1366,8 +1367,9 @@ class Convergence_soln{
         // y-dir jump in flux
         source_y = (temperature_[SOLID_DOMAIN].dT_d(dir::y, DIM(x,y,z)) - temperature_[LIQUID_DOMAIN].dT_d(dir::y, DIM(x,y,z)));
 
+//        printf("source_x = %0.2f, source_y = %0.2f \n", source_x, source_y);
         // actual normal direction jump minux the interface velocity --> to get our source term
-        double source_term = (source_x * (*nx_interp)(DIM(x,y,z))) + (source_y * (*ny_interp)(DIM(x,y,z))) - (*vgamma_)(DIM(x,y,z));
+        double source_term = (source_x  * (*nx_interp)(DIM(x,y,z))) + (source_y * (*ny_interp)(DIM(x,y,z))) - (*vgamma_)(DIM(x,y,z));
 
         return source_term;
       }
@@ -1405,23 +1407,21 @@ class Convergence_soln{
         if(nx_interp==NULL || ny_interp==NULL){
           throw std::runtime_error("external source concentration robin: you cannot call this operator because the normal interpolators have not been set \n");
         }
-        printf("accesses conc robin source term \n");
+//        printf("accesses conc robin source term \n");
 
         int comp = concentration_->comp;
-        printf("hi \n");
         double D = (comp == 0? solute_diff_0.val : solute_diff_1.val);
-        printf(" hi hi \n");
         double part_coeff = (comp == 0? part_coeff_0.val : part_coeff_1.val);
-        printf("hi hi hi \n");
-        printf("nx interp = %p \n", nx_interp);
-        printf("ny interp = %p \n", ny_interp);
+
+//        printf("nx interp = %p \n", nx_interp);
+//        printf("ny interp = %p \n", ny_interp);
 //        printf("nx interp = %0.2f \n", (*nx_interp)(DIM(x,y,z)));
 //        printf("ny interp = %0.2f \n", (*ny_interp)(DIM(x,y,z)));
-        printf("concentration = %0.2f \n", (*concentration_)(DIM(x,y,z)));
-        printf("vgamma = %0.2f \n", (*vgamma_)(DIM(x,y,z)));
+//        printf("concentration = %0.2f \n", (*concentration_)(DIM(x,y,z)));
+//        printf("vgamma = %0.2f \n", (*vgamma_)(DIM(x,y,z)));
 
-        return D*(concentration_->dC_d(dir::x, DIM(x,y,z)) * (*nx_interp)(DIM(x,y,z)) +
-                concentration_->dC_d(dir::y, DIM(x,y,z)) * (*ny_interp)(DIM(x,y,z))) -
+        return D*(concentration_->dC_d(dir::x, DIM(x,y,z))  * (*nx_interp)(DIM(x,y,z))  +
+                concentration_->dC_d(dir::y, DIM(x,y,z))  * (*ny_interp)(DIM(x,y,z))) -
                (1. - part_coeff)*(*vgamma_)(DIM(x,y,z))*(*concentration_)(DIM(x,y,z));
       }
     };
@@ -3099,7 +3099,7 @@ int main (int argc, char* argv[])
 //      mas.set_dt(time_limit.val-tn);
 //      keep_going = false;
 //    }
-    // for convergence study, update the time variable for each of the fields:
+    // for convergence study, update the time variable for each of the fields, and the normals for fields that require it:
     vec_and_ptr_dim_t front_normals_;
     my_p4est_node_neighbors_t* ngbd_;
     if(geometry.val == 8){
@@ -3123,11 +3123,9 @@ int main (int argc, char* argv[])
       front_normals_ = mas.get_front_normals();
       ngbd_ = mas.get_ngbd();
 
-      external_source_c0_robin.set_inputs(ngbd, front_normals_.vec[0], front_normals_.vec[1]);
-      external_source_c1_robin.set_inputs(ngbd, front_normals_.vec[0], front_normals_.vec[1]);
-      external_source_temperature_flux_jump.set_inputs(ngbd, front_normals_.vec[0], front_normals_.vec[1]);
-
-
+      external_source_c0_robin.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
+      external_source_c1_robin.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
+      external_source_temperature_flux_jump.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
     }
 
     // solve nonlinear system for temperature, concentration and velocity at t_n
@@ -3139,12 +3137,6 @@ int main (int argc, char* argv[])
     sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     }
     tn             += mas.get_dt();
-
-    if(geometry.val == 8){
-      external_source_c0_robin.clear_inputs();
-      external_source_c1_robin.clear_inputs();
-      external_source_temperature_flux_jump.clear_inputs();
-    }
 
     if (save_step_convergence()) {
       // max bc error
@@ -3376,6 +3368,13 @@ int main (int argc, char* argv[])
       mas.save_state(output, num_state_backups.val);
 
       save_state_idx++;
+    }
+
+    // Clear out the boundary condition info now that we are done w this timestep
+    if(geometry.val == 8){
+      external_source_c0_robin.clear_inputs();
+      external_source_c1_robin.clear_inputs();
+      external_source_temperature_flux_jump.clear_inputs();
     }
 
 
