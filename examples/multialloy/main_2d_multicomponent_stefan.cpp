@@ -1193,9 +1193,12 @@ class Convergence_soln{
         double v(DIM(double x,double y,double z))const{
             switch(dir){
                 case dir::x:
-                    return sin(2*PI*(y-t))*(x/2)+pow(x,3)*(y-1)*(1/16.0);
+                  return cos(t) * cos(y) * sin(x);
+//                    return sin(2*PI*(y-t))*(x/2)+pow(x,3)*(y-1)*(1/16.0);
                 case dir::y:
-                    return (1/(4.0*PI))*cos(2*PI*(y-t))-3*pow(x,2)*(0.5*pow(y,2)-y)/16.0;
+                  return - cos(t) * cos(x) * sin(y);
+
+//                    return (1/(4.0*PI))*cos(2*PI*(y-t))-3*pow(x,2)*(0.5*pow(y,2)-y)/16.0;
                 default:
                     throw std::runtime_error("analytical solution of velocity: unknown cartesian direction \n");
             }
@@ -1207,16 +1210,24 @@ class Convergence_soln{
             switch(dir){
                 case dir::x: {
                     switch(dirr){
-                        case dir::x: return 3*pow(x,2)*(y-1)/16 - sin(2*PI*(t-y))/2.0;
-                        case dir::y: return pow(x,3)/16 - cos(2*PI*(t-y))*PI*x;
+                        case dir::x: // du_dx
+                          return cos(t) * cos(x) * cos(y);
+                          /*return 3*pow(x,2)*(y-1)/16 - sin(2*PI*(t-y))/2.0;*/
+                        case dir::y: // du_dy
+                          return -cos(t)*sin(x)*sin(y);
+//                          return pow(x,3)/16 - cos(2*PI*(t-y))*PI*x;
                         default:
                             throw std::runtime_error("dvx_d not defined in this direction \n)");
                     }
                 }
                 case dir::y: {
                     switch(dirr){
-                        case dir::x: return 3*x*(-pow(y,2)+y)/8;
-                        case dir::y: return sin(2*PI*(t-y))/2 - (3*pow(x,2)*(y-1))/16;
+                        case dir::x: // dv_dx
+                          return cos(t)*sin(x)*sin(y);
+                          // return 3*x*(-pow(y,2)+y)/8;
+                        case dir::y: // dv_dy
+                          return -cos(t)*cos(x)*cos(y);
+//                          return sin(2*PI*(t-y))/2 - (3*pow(x,2)*(y-1))/16;
                         default:
                             throw std::runtime_error("dvx_d not defined in this direction \n)");
                     }
@@ -1227,10 +1238,12 @@ class Convergence_soln{
         }
        double dv_dt(DIM(double x, double y, double z)){
            switch(dir){
-                case dir::x:
-                    return -PI*x*cos(2*PI*(t-y));
+                case dir::x: // du_dt
+                  return -sin(t)*cos(y)*sin(x);
+//                    return -PI*x*cos(2*PI*(t-y));
                 case dir::y:
-                    return -sin(2*PI*(t-y))/2;
+                  return sin(t)*cos(x)*sin(y);
+//                    return -sin(2*PI*(t-y))/2;
                 default:
                     throw std::runtime_error("analytical solution of velocity: unknown cartesian direction \n");
             }
@@ -1238,10 +1251,13 @@ class Convergence_soln{
        double laplace(DIM(double x, double y, double z)){
            switch(dir){
                case dir::x:{
-                   return 3*x*(y-1)/8 +2*pow(PI,2)*x*sin(2*PI*(t-y));
+                 return -2.*cos(t)*cos(y)*sin(x);
+
+//                   return 3*x*(y-1)/8 +2*pow(PI,2)*x*sin(2*PI*(t-y));
                }
                case dir::y:{
-                   return 3*y/8-PI*cos(2*PI*(t-y))-(3*pow(x,2))/16.0-(3*pow(y,2))/16;
+                 return 2*cos(t)*cos(x)*sin(y);
+//                   return 3*y/8-PI*cos(2*PI*(t-y))-(3*pow(x,2))/16.0-(3*pow(y,2))/16;
                }
                default:{
                    throw std::runtime_error("laplace of velocity not defined in this direction \n");

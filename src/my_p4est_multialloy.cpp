@@ -1246,7 +1246,7 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
   PetscInt num_fields = 0;
   //refine_by_vorticity = vorticity.vec!=NULL;
 
-  refine_by_vorticity = false;
+  refine_by_vorticity = true;
   refine_by_d2C = true;
   refine_by_d2T = true;
 
