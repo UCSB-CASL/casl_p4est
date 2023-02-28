@@ -214,6 +214,7 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
 
   do_phi_advection_substeps= false;
   num_phi_advection_substeps = 0;
+  phi_advection_substeps_coeff = 0.;
 
   // ----------------------------------------------
   // Related to dimensionalization type:
@@ -2513,7 +2514,11 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
       // Create a phi to hold the new value:
       vec_and_ptr_t phi_new;
 
-      for(int i=0; i<num_phi_advection_substeps; i++){
+      // Calculate the current number of substeps to take:
+      num_phi_advection_substeps = (int) floor(phi_advection_substeps_coeff * dt_Stefan/dt_NS);
+
+      PetscPrintf(mpi->comm(), "Beginning %e LSF advection substeps --> dt = %0.2e ... \n", (double) num_phi_advection_substeps, (double) num_phi_advection_substeps*dt_NS);
+//      for(int i=0; i< num_phi_advection_substeps; i++){
           phi_new.create(p4est_n, nodes_n);
 
           // Get second derivatives of phi
@@ -2522,7 +2527,7 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
 
           // Advect the LSF:
           phi_new.get_array();
-          sl.advect_from_n_to_np1(dt, v_interface.vec, v_interface_dd, phi.vec, phi_dd.vec, phi_new.ptr);
+          sl.advect_from_n_to_np1(dt*num_phi_advection_substeps, v_interface.vec, v_interface_dd, phi.vec, phi_dd.vec, phi_new.ptr);
           phi_new.restore_array();
 
           // Slide the phi's:
@@ -2533,9 +2538,9 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
           phi_dd.destroy();
 
           // Increment the total time:
-          tn+=dt;
+          tn+=(dt*num_phi_advection_substeps);
 //          PetscPrintf(mpi->comm(), "Phi advection subiteration %d \n", i);
-      }
+//      }
 
 
       // Destroy the velocity derivatives:

@@ -229,8 +229,9 @@ DEFINE_PARAMETER(pl, double, porous_media_initial_thickness, 4.0 , "The initial 
 
 // Potential for phi advection subiterations (for slow evolving interfaces and quasi-steady approach)
 DEFINE_PARAMETER(pl, bool, do_phi_advection_substeps, false, "do phi advection substeps? ");
-DEFINE_PARAMETER(pl, int, num_phi_advection_substeps, 0, "Number of phi advection substeps per timestep \n");
-
+//DEFINE_PARAMETER(pl, int, num_phi_advection_substeps, 0, "Number of phi advection substeps per timestep \n");
+DEFINE_PARAMETER(pl, double, phi_advection_substeps_coeff, 0., "Number of phi advection substeps per timestep \n");
+DEFINE_PARAMETER(pl, double, phi_advection_substep_startup_time, 0., "dimensional startup time in seconds before activating LSF substeps");
 // ---------------------------------------
 // Booleans that we select to simplify logic in the main program for different processes that are required for different examples:
 // ---------------------------------------
@@ -3386,6 +3387,12 @@ void handle_any_startup_t_dt_and_bc_cases(mpi_environment_t& mpi, my_p4est_stefa
   stefan_w_fluids_solver->set_hodge_percentage_of_max_u(hodge_percentage_of_max_u);
   stefan_w_fluids_solver->set_force_interfacial_velocity_to_zero(force_interfacial_velocity_to_zero);
 
+  if(do_phi_advection_substeps){
+    // Only allow if we have passed the startup time
+    stefan_w_fluids_solver->set_do_phi_advection_substeps((tn*time_nondim_to_dim) > phi_advection_substep_startup_time);
+  }
+
+
 } // handle_any_startup_t_dt_and_bc_cases()
 
 
@@ -4468,7 +4475,8 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
 
   // Phi advection substeps:
   stefan_w_fluids_solver->set_do_phi_advection_substeps(do_phi_advection_substeps);
-  stefan_w_fluids_solver->set_num_phi_advection_substeps(num_phi_advection_substeps);
+//  stefan_w_fluids_solver->set_num_phi_advection_substeps(num_phi_advection_substeps);
+  stefan_w_fluids_solver->set_phi_advection_substeps_coeff(phi_advection_substeps_coeff);
 
 
 
@@ -5408,6 +5416,20 @@ int main(int argc, char** argv) {
       if(tstep!=last_tstep){
         // If we are on the last timestep and tn==tfinal (more or less), we will skip this last step
         stefan_w_fluids_solver->perform_lsf_advection_grid_update_and_interp_of_fields();
+
+        // Get the current time (in case it was updated by doing phi subiterations)
+        tn = stefan_w_fluids_solver->get_tn();
+
+        // Get the number of substeps:
+        if(do_phi_advection_substeps){
+          int substeps = stefan_w_fluids_solver->get_num_phi_advection_substeps();
+          PetscPrintf(mpi.comm(), "Number of LSF advection substeps: %d \n", phi_advection_substeps_coeff);
+
+          if(save_using_dt && ((substeps * dt) > save_every_dt)){
+            PetscPrintf(mpi.comm(), "WARNING: tstep taken by phi advection substeps is larger than save_every_dt. VTK output may be not as predicted. \n");
+
+          }
+        }
       }
 
       // -------------------------------

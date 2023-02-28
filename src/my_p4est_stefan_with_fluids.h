@@ -351,6 +351,7 @@ private:
   double cfl_NS;
 
   bool do_phi_advection_substeps;
+  double phi_advection_substeps_coeff;
   int num_phi_advection_substeps;
 
   // ----------------------------------------------
@@ -1209,8 +1210,13 @@ public:
   }
 
   void set_do_phi_advection_substeps(bool do_substeps){do_phi_advection_substeps = do_substeps;}
-  void set_num_phi_advection_substeps(int num_substeps){num_phi_advection_substeps = num_substeps;}
-
+//  void set_num_phi_advection_substeps(int num_substeps){num_phi_advection_substeps = num_substeps;}
+  void set_phi_advection_substeps_coeff(double substeps_coeff){
+    phi_advection_substeps_coeff = substeps_coeff;
+  }
+  int get_num_phi_advection_substeps(){
+    return num_phi_advection_substeps;
+  }
   // ----------------------------------------------
   // Other misc parameters
   // ----------------------------------------------
