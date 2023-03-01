@@ -232,6 +232,9 @@ DEFINE_PARAMETER(pl, bool, do_phi_advection_substeps, false, "do phi advection s
 //DEFINE_PARAMETER(pl, int, num_phi_advection_substeps, 0, "Number of phi advection substeps per timestep \n");
 DEFINE_PARAMETER(pl, double, phi_advection_substeps_coeff, 0., "Number of phi advection substeps per timestep \n");
 DEFINE_PARAMETER(pl, double, phi_advection_substep_startup_time, 0., "dimensional startup time in seconds before activating LSF substeps");
+DEFINE_PARAMETER(pl, double, cfl_phi_advection_substep, 0.8, "CFL for choosing the timestep of the phi advection substep ");
+
+
 // ---------------------------------------
 // Booleans that we select to simplify logic in the main program for different processes that are required for different examples:
 // ---------------------------------------
@@ -4476,8 +4479,8 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   // Phi advection substeps:
   stefan_w_fluids_solver->set_do_phi_advection_substeps(do_phi_advection_substeps);
 //  stefan_w_fluids_solver->set_num_phi_advection_substeps(num_phi_advection_substeps);
-  stefan_w_fluids_solver->set_phi_advection_substeps_coeff(phi_advection_substeps_coeff);
-
+//  stefan_w_fluids_solver->set_phi_advection_substeps_coeff(phi_advection_substeps_coeff);
+  stefan_w_fluids_solver->set_CFL_phi_advection_substep(cfl_phi_advection_substep);
 
 
   // -----------------------------------------------
@@ -5422,10 +5425,11 @@ int main(int argc, char** argv) {
 
         // Get the number of substeps:
         if(do_phi_advection_substeps){
-          int substeps = stefan_w_fluids_solver->get_num_phi_advection_substeps();
-          PetscPrintf(mpi.comm(), "Number of LSF advection substeps: %d \n", phi_advection_substeps_coeff);
+//          int substeps = stefan_w_fluids_solver->get_num_phi_advection_substeps();
+//          PetscPrintf(mpi.comm(), "Number of LSF advection substeps: %d \n", phi_advection_substeps_coeff);
+          double dt_phi_adv = stefan_w_fluids_solver->get_dt_phi_advection_substep();
 
-          if(save_using_dt && ((substeps * dt) > save_every_dt)){
+          if(save_using_dt && (dt_phi_adv > save_every_dt)){
             PetscPrintf(mpi.comm(), "WARNING: tstep taken by phi advection substeps is larger than save_every_dt. VTK output may be not as predicted. \n");
 
           }

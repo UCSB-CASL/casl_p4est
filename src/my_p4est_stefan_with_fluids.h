@@ -354,6 +354,9 @@ private:
   double phi_advection_substeps_coeff;
   int num_phi_advection_substeps;
 
+  double CFL_phi_advection_substep;
+  double dt_phi_advection_substep;
+
   // ----------------------------------------------
   // Related to dimensionalization type:
   // ----------------------------------------------
@@ -1216,6 +1219,12 @@ public:
   }
   int get_num_phi_advection_substeps(){
     return num_phi_advection_substeps;
+  }
+  void set_CFL_phi_advection_substep(double CFL){
+      CFL_phi_advection_substep = CFL;
+  }
+  double get_dt_phi_advection_substep(){
+      return dt_phi_advection_substep;
   }
   // ----------------------------------------------
   // Other misc parameters

@@ -215,6 +215,8 @@ my_p4est_stefan_with_fluids_t::my_p4est_stefan_with_fluids_t(mpi_environment_t* 
   do_phi_advection_substeps= false;
   num_phi_advection_substeps = 0;
   phi_advection_substeps_coeff = 0.;
+  dt_phi_advection_substep=0.;
+  CFL_phi_advection_substep=0.;
 
   // ----------------------------------------------
   // Related to dimensionalization type:
@@ -2515,32 +2517,38 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
       vec_and_ptr_t phi_new;
 
       // Calculate the current number of substeps to take:
-      num_phi_advection_substeps = (int) floor(phi_advection_substeps_coeff * dt_Stefan/dt_NS);
+//      num_phi_advection_substeps = (int) floor(phi_advection_substeps_coeff * dt_Stefan/dt_NS);
 
-      PetscPrintf(mpi->comm(), "Beginning %e LSF advection substeps --> dt = %0.2e ... \n", (double) num_phi_advection_substeps, (double) num_phi_advection_substeps*dt_NS);
+      dt_phi_advection_substep = CFL_phi_advection_substep* MIN(dxyz_smallest[0], dxyz_smallest[1]) / v_interface_max_norm;
+
+//      PetscPrintf(mpi->comm(), "Beginning %e LSF advection substeps --> dt = %0.2e ... \n", (double) num_phi_advection_substeps, (double) num_phi_advection_substeps*dt_NS);
 //      for(int i=0; i< num_phi_advection_substeps; i++){
-          phi_new.create(p4est_n, nodes_n);
+      phi_new.create(p4est_n, nodes_n);
 
-          // Get second derivatives of phi
-          phi_dd.create(p4est_n, nodes_n);
-          ngbd_n->second_derivatives_central(phi.vec, phi_dd.vec);
+      // Get second derivatives of phi
+      phi_dd.create(p4est_n, nodes_n);
+      ngbd_n->second_derivatives_central(phi.vec, phi_dd.vec);
 
-          // Advect the LSF:
-          phi_new.get_array();
-          sl.advect_from_n_to_np1(dt*num_phi_advection_substeps, v_interface.vec, v_interface_dd, phi.vec, phi_dd.vec, phi_new.ptr);
-          phi_new.restore_array();
+      // Advect the LSF:
+      phi_new.get_array();
+      sl.advect_from_n_to_np1(dt_phi_advection_substep/*dt*num_phi_advection_substeps*/, v_interface.vec, v_interface_dd, phi.vec, phi_dd.vec, phi_new.ptr);
+      phi_new.restore_array();
 
-          // Slide the phi's:
-          phi.destroy();
-          phi.set(phi_new.vec);
+      // Slide the phi's:
+      phi.destroy();
+      phi.set(phi_new.vec);
 
-          // Destroy the phi derivatives:
-          phi_dd.destroy();
+      // Destroy the phi derivatives:
+      phi_dd.destroy();
 
-          // Increment the total time:
-          tn+=(dt*num_phi_advection_substeps);
+      // Increment the total time:
+      tn+=(dt_phi_advection_substep  /*dt*num_phi_advection_substeps*/);
 //          PetscPrintf(mpi->comm(), "Phi advection subiteration %d \n", i);
 //      }
+
+      PetscPrintf(mpi->comm(), "\n -- dt_phi_advection_substep = %0.2e , dt_phi_adv/dt_NS = %0.2e \n",
+                  dt_phi_advection_substep, dt_phi_advection_substep/dt_NS);
+
 
 
       // Destroy the velocity derivatives:
