@@ -939,7 +939,7 @@ void set_physical_properties(){
       rho_l = 1000.0;
       rho_s = 2710.0;
 
-      gamma_diss = molar_volume_diss*Tinfty/stoich_coeff_diss;
+//      gamma_diss = molar_volume_diss*Tinfty/stoich_coeff_diss;
       break;
     }
     case PLANE_POIS_FLOW:{
