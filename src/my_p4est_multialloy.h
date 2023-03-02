@@ -326,17 +326,31 @@ private:
       source_term += (*external_conc0_robin_term)(xyz[0], xyz[1]);
 //      printf("Node %d, (%0.2f, %0.2f) : front velo source term = %0.2e \n", n, xyz[0], xyz[1],source_term);
     }
-    double xyz[P4EST_DIM];
-    node_xyz_fr_n(n, v_ngbd->p4est, v_ngbd->nodes, xyz);
+//    double xyz[P4EST_DIM];
+//    node_xyz_fr_n(n, v_ngbd->p4est, v_ngbd->nodes, xyz);
 
 //    printf("Node %d, (%0.2f, %0.2f)  denominator = %0.3e \n", n, xyz[0], xyz[1],
 //           MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p[0], v_c0_dd_p[1]), 1e-7 ));
     // ELYCE TO-DO: add the source term for front_conc_flux here to get the correct interface velocity expression when including the source term hC1
-    return -v_factor/(1.-v_part_coeff(0, cl_all.data()))*
-        ( qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
-        + qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1])
-        - source_term)
-        / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p[0], v_c0_dd_p[1]), 1e-7 ) ;
+
+    double dC_dn = (qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[0]) * qnnn.interpolate_in_dir(dir, dist, v_normal_p[0]) +
+                    qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1]));
+
+//    double vn_no_source = -1./(1.-v_part_coeff(0, cl_all.data())) *
+//                          ( v_factor * dC_dn)
+//                          / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p[0], v_c0_dd_p[1]), 1e-7 );
+    double vn = -1./(1.-v_part_coeff(0, cl_all.data())) *
+                ( v_factor * dC_dn - source_term)
+                / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p[0], v_c0_dd_p[1]), 1e-7 );
+
+//    printf("vn without source = %0.3f , vn with source = %0.3f \n", vn_no_source, vn);
+
+//    return -1./(1.-v_part_coeff(0, cl_all.data()))*
+//           ( v_factor * (qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
+//             + qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1]))
+//        - source_term)
+//        / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p[0], v_c0_dd_p[1]), 1e-7 ) ;
+    return vn;
   }
 
   // input[] = { cl_{0}, ..., cl_{num_comps-1}, c0x, c0y, c0z, nx, ny, nz };

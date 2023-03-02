@@ -1074,8 +1074,15 @@ class Convergence_soln{
         }
         double T(DIM(double x, double y,double z))const{
             switch(dom){
-                case LIQUID_DOMAIN: return cos(N*PI*t*x*y)*sin(N*PI*t*x*y)+((x-1)*(y+1))/factor;
-                case SOLID_DOMAIN: return sin(N*PI*t*x*y)+((x-1)*(y+1))/factor;
+                case LIQUID_DOMAIN:
+                  return sin(x)*sin(y)*(x + (cos(N*y)*cos(t)*cos(x - PI/2.))/factor);
+
+//                  return cos(N*PI*t*x*y)*sin(N*PI*t*x*y)+((x-1)*(y+1))/factor;
+                case SOLID_DOMAIN:
+                  return 0.;
+                  return cos(x)*cos(y)*((sin(N*y)*cos(t)*sin(x - PI/2))/factor - 1);
+
+//                  return sin(N*PI*t*x*y)+((x-1)*(y+1))/factor;
                 default:
                   throw std::runtime_error("analytical solution temperature unknown domain \n");
             }
@@ -1087,15 +1094,28 @@ class Convergence_soln{
             switch(dom){
                 case LIQUID_DOMAIN:
                     switch(dir){
-                        case dir::x: return (y+N*factor*PI*t*y*cos(2*N*PI*t*x*y)+1)/factor;
-                        case dir::y: return (x+N*factor*PI*t*x*cos(2*N*PI*t*x*y)-1)/factor;
+                        case dir::x:
+                          return (sin(y)*(factor*sin(x) + factor*x*cos(x) + 2*cos(N*y)*cos(t)*cos(x)*sin(x)))/factor;
+
+//                          return (y+N*factor*PI*t*y*cos(2*N*PI*t*x*y)+1)/factor;
+                        case dir::y:
+                          return (sin(x)*(factor*x*cos(y) + cos(N*y)*cos(t)*cos(y)*sin(x) - N*sin(N*y)*cos(t)*sin(x)*sin(y)))/factor;
+//                          return (x+N*factor*PI*t*x*cos(2*N*PI*t*x*y)-1)/factor;
                         default:
                            throw std::runtime_error("dT_d of analytical temperature field: unrecognized Cartesian direction \n");
                     }
                 case SOLID_DOMAIN:
                     switch(dir){
-                        case dir::x: return (y+1)/factor + N*PI*t*y*cos(N*PI*t*x*y);
-                        case dir::y: return (x-1)/factor + N*PI*t*x*cos(N*PI*t*x*y);
+                        case dir::x:
+                          return 0.;
+                          return (cos(y)*sin(x)*(factor + 2*sin(N*y)*cos(t)*cos(x)))/factor;
+
+//                          return (y+1)/factor + N*PI*t*y*cos(N*PI*t*x*y);
+                        case dir::y:
+                          return 0.;
+                          return (cos(x)*(factor*sin(y) + sin(N*y)*cos(t)*cos(x)*sin(y) - N*cos(N*y)*cos(t)*cos(x)*cos(y)))/factor;
+
+//                          return (x-1)/factor + N*PI*t*x*cos(N*PI*t*x*y);
                         default:
                            throw std::runtime_error("dT_d of analytical temperature field: unrecognized Cartesian direction \n");
                     }
@@ -1103,16 +1123,38 @@ class Convergence_soln{
         }
         double dT_dt(DIM(double x, double y, double z)) const{
             switch(dom){
-                case LIQUID_DOMAIN: return N*PI*x*y*pow(cos(N*PI*t*x*y),2) - N*PI*x*y*pow(sin(N*PI*t*x*y),2);
-                case SOLID_DOMAIN: return N*PI*x*y*cos(N*PI*t*x*y);
+                case LIQUID_DOMAIN:
+                  return -(cos(N*y)*sin(t)*cos(x - PI/2)*sin(x)*sin(y))/factor;
+//                  return N*PI*x*y*pow(cos(N*PI*t*x*y),2) - N*PI*x*y*pow(sin(N*PI*t*x*y),2);
+                case SOLID_DOMAIN:
+                  return 0.;
+                  return -(sin(N*y)*cos(x)*cos(y)*sin(t)*sin(x - PI/2))/factor;
+//                  return N*PI*x*y*cos(N*PI*t*x*y);
                 default:
                     throw std::runtime_error("dT_dt in analytical temperature: unrecognized domain \n");
             }
         }
         double laplace(DIM(double x, double y, double z)) const {
             switch(dom){
-                case LIQUID_DOMAIN: return -2*pow(N,2)*pow(PI,2)*pow(t,2)*sin(2*N*PI*t*x*y)*(pow(x,2)+pow(y,2));
-                case SOLID_DOMAIN: return -pow(N,2)*pow(PI,2)*pow(t,2)*sin(N*PI*t*x*y)*(pow(x,2)+pow(y,2));
+                case LIQUID_DOMAIN:
+                  return -( 2*factor*x*sin(x)*sin(y) -
+                           2*factor*cos(x)*sin(y) -
+                           2*cos(N*y)*cos(t)*pow(cos(x),2)*sin(y) +
+                           3*cos(N*y)*cos(t)*pow(sin(x),2)*sin(y) +
+                           2*N*sin(N*y)*cos(t)*cos(y)*pow(sin(x),2) +
+                           pow(N,2)*cos(N*y)*cos(t)*pow(sin(x),2)*sin(y))
+                         /factor;
+//                  return -2*pow(N,2)*pow(PI,2)*pow(t,2)*sin(2*N*PI*t*x*y)*(pow(x,2)+pow(y,2));
+                case SOLID_DOMAIN:
+                  return 0.;
+                  return (2*factor*cos(x)*cos(y) -
+                          2*sin(N*y)*cos(t)*cos(y) +
+                          5*sin(N*y)*cos(t)*pow(cos(x),2)*cos(y) +
+                          2*N*cos(N*y)*cos(t)*pow(cos(x),2)*sin(y) +
+                          pow(N,2)*sin(N*y)*cos(t)*pow(cos(x),2)*cos(y))
+                         /factor;
+
+//                  return -pow(N,2)*pow(PI,2)*pow(t,2)*sin(N*PI*t*x*y)*(pow(x,2)+pow(y,2));
                 default:
                     throw std::runtime_error("laplace for analytical temperature field: unrecognized domain \n");
             }
@@ -1126,24 +1168,35 @@ class Convergence_soln{
             P4EST_ASSERT(comp == 0 || comp == 1);
         }
         double C1(DIM(double x, double y,double z))const{
-          return cos(y)*sin(x)*sin(t + PI/4.) + 1.;
+          return cos(y)*sin(x)*sin(t + PI/4) + 1;
+
+//          return cos(y)*sin(x)*sin(t + PI/4.) + 1.;
         }
         double C2(DIM(double x, double y,double z))const{
-          return cos(y)*cos(x)*cos(t + PI/4.) + 1.;
+          return cos(x)*cos(t + PI/4)*sin(y) + 1;
+//          return cos(y)*cos(x)*cos(t + PI/4.) + 1.;
         }
 
         double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
           switch(dir){
-              case dir::x: return cos(y)*cos(x)*sin(t + PI/4.);
-              case dir::y: return -sin(y)*sin(x)*sin(t + PI/4.);
+              case dir::x:
+                return cos(x)*cos(y)*sin(t + PI/4);
+//                return cos(y)*cos(x)*sin(t + PI/4.);
+              case dir::y:
+                return -sin(x)*sin(y)*sin(t + PI/4);
+//                return -sin(y)*sin(x)*sin(t + PI/4.);
               default:
                 throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian");
               }
         }
         double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
             switch(dir){
-              case dir::x: return cos(y)*sin(x)*cos(t + PI/4.);
-              case dir::y: return -sin(y)*cos(x)*cos(t + PI/4.);
+              case dir::x:
+                return -cos(t + PI/4)*sin(x)*sin(y);
+//                return cos(y)*sin(x)*cos(t + PI/4.);
+              case dir::y:
+                return cos(x)*cos(y)*cos(t + PI/4);
+//                return -sin(y)*cos(x)*cos(t + PI/4.);
               default:
                 throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");
               }
@@ -1154,20 +1207,26 @@ class Convergence_soln{
         }
 
         double dC1_dt(DIM(double x, double y, double z)) const{
-               return cos(t + PI/4.)*cos(y)*sin(x);
+//               return cos(t + PI/4.)*cos(y)*sin(x);
+          return cos(y)*cos(t + PI/4)*sin(x);
+
         }
         double dC2_dt(DIM(double x, double y, double z)) const{
-          return -sin(t + PI/4.)*cos(y)*sin(x);
+          return -cos(x)*sin(y)*sin(t + PI/4);
+//          return -sin(t + PI/4.)*cos(y)*sin(x);
         }
         double dC_dt(DIM(double x, double y, double z)) const{
           return (comp == 0? dC1_dt(DIM(x,y,z)) : dC2_dt(DIM(x,y,z)));
         }
 
         double laplace_C1(DIM(double x, double y, double z))const{
-              return -2.*cos(y)*sin(t + PI/4.)*sin(x);
+          return -2*cos(y)*sin(x)*sin(t + PI/4);
+
+//              return -2.*cos(y)*sin(t + PI/4.)*sin(x);
         }
         double laplace_C2(DIM(double x, double y, double z))const{
-          return -2.*cos(t+ PI/4.)*cos(x)*cos(y);
+          return -2*cos(x)*cos(t + PI/4)*sin(y);
+//          return -2.*cos(t+ PI/4.)*cos(x)*cos(y);
         }
         double laplace(DIM(double x, double y, double z))const{
           return (comp == 0? laplace_C1(DIM(x,y,z)) : laplace_C2(DIM(x,y,z)));
@@ -1180,7 +1239,7 @@ class Convergence_soln{
     struct interface_velocity: CF_DIM{
 //      public:
           double operator()(DIM(double x,double y,double z)) const{
-            return 0.1/*sin(t) * cos(t)*/;
+            return 5./*sin(t) * cos(t)*/;
           }
     } /*convergence_vgamma*/;
 
@@ -1385,7 +1444,8 @@ class Convergence_soln{
 
 //        printf("source_x = %0.2f, source_y = %0.2f \n", source_x, source_y);
         // actual normal direction jump minux the interface velocity --> to get our source term
-        double source_term = (source_x  * (*nx_interp)(DIM(x,y,z))) + (source_y * (*ny_interp)(DIM(x,y,z))) - (*vgamma_)(DIM(x,y,z));
+//        printf("latent heat * rho * vn = %0.2e \n", latent_heat.val * density_s.val * (*vgamma_)(DIM(x,y,z)));
+        double source_term = (source_x  * (*nx_interp)(DIM(x,y,z))) + (source_y * (*ny_interp)(DIM(x,y,z))) + latent_heat.val * density_s.val * (*vgamma_)(DIM(x,y,z));
 
         return source_term;
       }
@@ -1469,10 +1529,14 @@ class Convergence_soln{
           throw std::invalid_argument("external source gibbs thomson: you are trying to run with an eps_c value greater than 0, but the curvature affect is not implemented in this convergence test");
         }
 
+//        printf("\n temperature = %0.2e \n", (*temperature_l_)(DIM(x,y,z)));
+//        printf("liquidus = %0.2e \n",(melting_temp.val +  liquidus_slope_0.val * (*concentration_0_)(DIM(x,y,z)) + liquidus_slope_1.val * (*concentration_1_)(DIM(x,y,z))));
 
-        return (*temperature_l_)(DIM(x,y,z)) -
-               (melting_temp.val +  liquidus_slope_0.val * (*concentration_0_)(DIM(x,y,z)) + liquidus_slope_1.val * (*concentration_1_)(DIM(x,y,z))) -
-               eps_v.val * (*vgamma_)(DIM(x,y,z));
+        double Gibbs = (*temperature_l_)(DIM(x,y,z)) -
+                       (melting_temp.val +  liquidus_slope_0.val * (*concentration_0_)(DIM(x,y,z)) + liquidus_slope_1.val * (*concentration_1_)(DIM(x,y,z))) -
+                       eps_v.val * (*vgamma_)(DIM(x,y,z));
+//        printf("Gibbs = %0.2e \n\n", Gibbs);
+        return Gibbs;
       }
 
     };
@@ -1520,6 +1584,124 @@ Convergence_soln::external_source_concentration_robin external_source_c1_robin(&
 CF_DIM* external_source_conc_robin[2] = {&external_source_c0_robin, &external_source_c1_robin};
 
 Convergence_soln::external_source_Gibbs_Thomson external_source_Gibbs_Thomson(&convergence_tl, &convergence_conc0, &convergence_conc1, &convergence_vgamma);
+
+
+void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_environment_t& mpi, int iter){
+
+  PetscPrintf(mpi.comm(), "Checking convergence fields errors \n");
+  vec_and_ptr_t phi;
+
+  vec_and_ptr_t tl, ts, c0, c1;
+  vec_and_ptr_t tl_ana, ts_ana, c0_ana, c1_ana;
+  vec_and_ptr_t tl_err, ts_err, c0_err, c1_err;
+
+  p4est_t* p4est = mas->get_p4est();
+  p4est_nodes_t* nodes = mas->get_nodes();
+  my_p4est_node_neighbors_t* ngbd = mas->get_ngbd();
+
+
+  tl_ana.create(p4est,nodes); ts_ana.create(p4est, nodes);
+  c0_ana.create(p4est, nodes); c1_ana.create(p4est, nodes);
+
+  sample_cf_on_nodes(p4est, nodes, convergence_temp[LIQUID_DOMAIN], tl_ana.vec);
+  sample_cf_on_nodes(p4est, nodes, convergence_temp[SOLID_DOMAIN], ts_ana.vec);
+  sample_cf_on_nodes(p4est, nodes, convergence_conc0, c0_ana.vec);
+  sample_cf_on_nodes(p4est, nodes, convergence_conc1, c1_ana.vec);
+
+
+  tl_err.create(p4est, nodes); ts_err.create(p4est, nodes);
+  c0_err.create(p4est, nodes); c1_err.create(p4est, nodes);
+
+  phi.vec = mas->get_front_phi();
+  tl.vec = mas->get_tl();
+  ts.vec = mas->get_ts();
+  c0.vec = mas->get_cl(0);
+  c1.vec = mas->get_cl(1);
+
+
+
+  VecSet(tl_err.vec, 0.);
+  VecSet(ts_err.vec, 0.);
+  VecSet(c0_err.vec, 0.);
+  VecSet(c1_err.vec, 0);
+
+  phi.get_array();
+  tl.get_array(); ts.get_array(); c0.get_array(); c1.get_array();
+  tl_ana.get_array(); ts_ana.get_array(); c0_ana.get_array(); c1_ana.get_array();
+  tl_err.get_array(); ts_err.get_array(); c0_err.get_array(); c1_err.get_array();
+
+  foreach_node(n, nodes){
+    if(phi.ptr[n] < 0.){
+      tl_err.ptr[n] = fabs(tl.ptr[n] - tl_ana.ptr[n]);
+      c0_err.ptr[n] = fabs(c0.ptr[n] - c0_ana.ptr[n]);
+      c1_err.ptr[n] = fabs(c1.ptr[n] - c1_ana.ptr[n]);
+    }
+    else{
+      ts_err.ptr[n] = fabs(ts.ptr[n] - ts_ana.ptr[n]);
+    }
+  }
+
+  int ierr;
+  ierr = VecGhostUpdateBegin(tl_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(ts_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(c0_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(c1_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecGhostUpdateEnd(tl_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(ts_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(c0_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(c1_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  phi.restore_array();
+  tl.restore_array(); ts.restore_array(); c0.restore_array(); c1.restore_array();
+  tl_ana.restore_array(); ts_ana.restore_array(); c0_ana.restore_array(); c1_ana.restore_array();
+  tl_err.restore_array(); ts_err.restore_array(); c0_err.restore_array(); c1_err.restore_array();
+
+  // Save to vtk:
+  const char* out_dir = getenv("OUT_DIR");
+  if (!out_dir)
+  {
+    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
+    return;
+  }
+  char name[1000];
+  sprintf(name, "%s/vtu/multialloy_convergence_test_lvl_%d_%d.%05d", out_dir, lmin.val , lmax.val, iter);
+
+  std::vector<Vec_for_vtk_export_t> point_fields;
+  std::vector<Vec_for_vtk_export_t> cell_fields;
+
+  point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+
+  point_fields.push_back(Vec_for_vtk_export_t(tl_ana.vec, "tl_ana"));
+  point_fields.push_back(Vec_for_vtk_export_t(tl.vec, "tl"));
+  point_fields.push_back(Vec_for_vtk_export_t(tl_err.vec, "tl_err"));
+
+  point_fields.push_back(Vec_for_vtk_export_t(ts_ana.vec, "ts_ana"));
+  point_fields.push_back(Vec_for_vtk_export_t(ts.vec, "ts"));
+  point_fields.push_back(Vec_for_vtk_export_t(ts_err.vec, "ts_err"));
+
+  point_fields.push_back(Vec_for_vtk_export_t(c0_ana.vec, "c0_ana"));
+  point_fields.push_back(Vec_for_vtk_export_t(c0.vec, "c0"));
+  point_fields.push_back(Vec_for_vtk_export_t(c0_err.vec, "c0_err"));
+
+  point_fields.push_back(Vec_for_vtk_export_t(c1_ana.vec, "c1_ana"));
+  point_fields.push_back(Vec_for_vtk_export_t(c1.vec, "c1"));
+  point_fields.push_back(Vec_for_vtk_export_t(c1_err.vec, "c1_err"));
+
+  my_p4est_vtk_write_all_lists(p4est, nodes, ngbd->get_ghost(),
+                               P4EST_TRUE, P4EST_TRUE,
+                               name, point_fields, cell_fields);
+
+
+
+  tl_ana.destroy(); ts_ana.destroy(); c0_ana.destroy(); c1_ana.destroy();
+  tl_err.destroy(); ts_err.destroy(); c0_err.destroy(); c1_err.destroy();
+
+}
+
+
+
+
 // ----------------------------------------
 // define problem geometry
 // ----------------------------------------
@@ -2280,6 +2462,7 @@ public:
           case  6:
           case  7: return *initial_conc_all[idx];
           case 8: {
+//            printf("accesses wall value concentration \n");
             return (*concentration_)(DIM(x,y,z));
           }
           default: throw std::invalid_argument("bc value conc (neumann): geometry case not recognized \n");
@@ -2298,7 +2481,9 @@ public:
           case  4:
           case  5:
           case  6:
-          case  7: return 0;
+          case  7:
+          case  8:
+            return 0;
           default: throw std::invalid_argument("bc value conc (neumann): geometry case not recognized \n");
         }
       default: throw;
@@ -3153,6 +3338,11 @@ int main (int argc, char* argv[])
     sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     }
     tn             += mas.get_dt();
+
+
+    if(geometry.val == 8){
+      check_convergence_errors_and_save_to_vtk(&mas, mpi, iteration);
+    }
 
     if (save_step_convergence()) {
       // max bc error

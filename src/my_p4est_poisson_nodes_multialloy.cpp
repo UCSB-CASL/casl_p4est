@@ -1301,7 +1301,8 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
 
       // Compute actual interfacial velocity now as "vn_pr", as specified by the solute rejection equation
       vn_pr = (conc_diff_[0]*vn_pr - front_conc_flux_[0]->value(xyz_pr))/(c_all[0] + EPS)/(1.0-part_coeff_(0, c_all.data()));
-
+//      printf("vn_pr = %0.3f \n", vn_pr);
+//      printf("latent heat * density_s * vn_pr = %0.2e \n", latent_heat_ * density_s_ * vn_pr);
 //      // ---------------------
 //      // Elyce Modification:
 //      // ---------------------
@@ -1312,6 +1313,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
 //      // ---------------------
       pw_t_sol_jump_taylor_[idx] = front_temp_value_jump_->value(xyz_pr);
       pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) - latent_heat_*density_s_*vn_pr;
+//      printf("Tl jump = %0.2e \n, Tl_flux_jump = %0.2e \n", pw_t_sol_jump_taylor_[idx], pw_t_flx_jump_taylor_[idx]);
 
       // TO FIX !! NEED TO MULTIPLY LATENT_HEAT_*VN*DENSITY_S --> NOTE : THIS CODE IS DUPLICATED IN ABOUT 100X PLACES SO MAKE SURE THEYRE ALL CHANGED
 
@@ -1352,7 +1354,9 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       }
 
       vn_cd = (conc_diff_[0]*vn_cd - front_conc_flux_[0]->value(xyz_cd))/(c_all[0] + EPS)/(1.0-part_coeff_(0, c_all.data()));
-//      // ---------------------
+//      printf("vn_cd = %0.3f \n", vn_cd);
+
+      //      // ---------------------
 //      // Elyce Modification:
 //      // ---------------------
 //      if(solving_with_nondim_for_fluid) {
@@ -1401,6 +1405,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
         }
 
         vn_cd = (conc_diff_[0]*vn_cd - front_conc_flux_[0]->value(xyz_cd))/(c_all[0]+EPS)/(1.0-part_coeff_(0, c_all.data()));
+//        printf("vn_cd = %0.3f \n", vn_cd);
 //        // ---------------------
 //        // Elyce Modification:
 //        // ---------------------
@@ -1803,14 +1808,6 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
       double eps_v = eps_v_[round(seed_pw[idx])]->value(normal);
       double eps_c = eps_c_[round(seed_pw[idx])]->value(normal);
 
-//      printf("tl_val = %0.2e \n", tl_val);
-//      printf("liquidus = %0.2e \n", liquidus_value_(c_all.data()));
-//      printf("eps_v = %0.2e \n", eps_v);
-//      printf("vn = %0.2e \n", vn);
-//      printf("eps_c = %0.2e \n", eps_c);
-//      printf("kappa = %0.2e \n", kappa);
-//      printf("gibbs_thomson_ = %p \n", gibbs_thomson_);
-//      printf("gibbs_thomson_ = %0.2e \n", gibbs_thomson_->value(xyz));
 
       // error
       double error = tl_val
@@ -1818,7 +1815,20 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
                      - eps_v*vn
                      - eps_c*kappa
                      - gibbs_thomson_->value(xyz);
-//      printf("Node %d, (%0.2f, %0.2f) -- error = %0.2e \n", n, xyz[0], xyz[1], error);
+      if(0){
+        printf("\n--------------------------------------------------------\n");
+        printf("Node %d, (%0.2f, %0.2f) -- error = %0.2e \n", n, xyz[0], xyz[1], error);
+
+        printf("tl_val = %0.2e \n", tl_val);
+        printf("liquidus = %0.2e \n", liquidus_value_(c_all.data()));
+        printf("eps_v = %0.2e \n", eps_v);
+        printf("vn = %0.2e \n", vn);
+        printf("eps_c = %0.2e \n", eps_c);
+        printf("kappa = %0.2e \n", kappa);
+//        printf("gibbs_thomson_ = %p \n", gibbs_thomson_);
+        printf("gibbs_thomson_ = %0.2e \n", gibbs_thomson_->value(xyz));
+        printf("\n--------------------------------------------------------\n");
+      }
 
 
 
