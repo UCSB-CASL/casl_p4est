@@ -538,11 +538,9 @@ void set_geometry(){
     }
     case DISSOLVING_DISK_BENCHMARK:{
       // Domain size:
-      xmin = 0.0; xmax = 10.0; // should technically be 33.0, but that would yield weird cell aspect ratios
+      xmin = 0.0; xmax = 10.0;
       ymin = 0.0; ymax = 5.0;
 
-      // It is 1.9 because the char length scale is 20 mm, and the physical length is 38 mm, so
-      // it takes 1.9 nondim length units to get the domain size
 
       // Number of trees:
       nx = 2.0;
@@ -553,7 +551,7 @@ void set_geometry(){
       py = 0;
 
       // Problem geometry:
-      r0 = 1.0; // radius of the disk ( in comp domain)
+      r0 = 1.0; // radius of the disk ( in comp domain) -- r = 0.01 cm, so 1.0 unit in comp domain = 0.1 mm in physical
       break;
 
     }
@@ -2541,17 +2539,27 @@ class BC_INTERFACE_VALUE_TEMP: public my_p4est_stefan_with_fluids_t::interfacial
 
     double dissolution_bc_expression() const {
       if(example_ == DISSOLVING_DISK_BENCHMARK){
-        // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
-        // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
-        if(fabs(deltaT/Tinfty) < EPS){
-          return 0.0;
-        }
-        else{
-          return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
-        }
+//        // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
+//        // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
+//        if(fabs(deltaT/Tinfty) < EPS){
+//          return 0.0;
+//        }
+//        else{
+//          return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
+//        }
+
+        // This corresponds to the Robin BC: dC/dn + Da(C) = 0,
+        // which arises from the surface reaction model R = k*C, where C_nondim = C/Cin, and
+        // D dC/dn = - R = - k * C, which when nondimensionalized reduces to:
+        // dC/dn = -(k * l_char/D) * C
+        // dC/dn + (Da * C) = 0
+
+        return 0.;
       }
       else{
-        return Da; // this corresponds to the Robin BC condition (dC/dn + Da(C-1) = 0) --> (dC/dn + Da(C) = Da)
+        // This corresponds to the Robin BC condition (dC/dn + Da(C-1) = 0) --> (dC/dn + Da(C) = Da),
+        // which arises from the surface reaction model R = k(C - Csat) , when C_nondim = C/Csat
+        return Da;
       }
     }
     double operator()(DIM(double x, double y, double z)) const
