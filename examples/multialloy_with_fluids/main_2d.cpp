@@ -5283,7 +5283,8 @@ int main(int argc, char** argv) {
     // ---------------------------------------
     // Begin time loop
     // ---------------------------------------
-    while((tfinal - tn)>-EPS){
+    bool keep_going = true;
+    while(/*keep_going*/ (tfinal - tn)>-EPS){
       if((timing_every_n>0) && (tstep%timing_every_n == 0)) {
         PetscPrintf(mpi.comm(),"Current time info : \n");
         w.read_duration_current();
@@ -5407,11 +5408,28 @@ int main(int argc, char** argv) {
       // If the resulting timestep will be too small, we just allow to end naturally
       // --------------------------------
       dt = stefan_w_fluids_solver->get_dt();
+
+      // account for phi subiter dt if we are doing that *and* it is currently activated in SWF
+      double dt_phi_subiter=0.;
+      if(do_phi_advection_substeps && stefan_w_fluids_solver->get_do_phi_advection_substeps()){
+        dt_phi_subiter = stefan_w_fluids_solver->get_dt_phi_advection_substep();
+      }
+
+      // if phi subiter dt is going to exceed final time, let's now deactivate for end of run
+      if((tn+ dt + dt_phi_subiter) > tfinal && (last_tstep<0)){
+        PetscPrintf(mpi.comm(), "Exceeds: dt_phi_subiter = %0.3e \n", dt_phi_subiter);
+//        stefan_w_fluids_solver->set_do_phi_advection_substeps(false);
+        stefan_w_fluids_solver->set_dt_phi_advection_substep(tfinal - dt);
+        last_tstep = tstep+1;
+      }
+
+      // Normal end:
       if((tn + dt > tfinal) && (last_tstep<0)){
-        dt = max(tfinal - tn,dt_min_allowed);
+        // This computed value below is what will get set in SWF
+        dt = max(tfinal - tn, dt_min_allowed);
 
         // if time remaining is too small for one more step, end here. otherwise, do one more step and clip timestep to end on exact ending time
-        if(fabs(tfinal-tn)>dt_min_allowed){
+        if(fabs(dt)>dt_min_allowed){
           last_tstep = tstep+1;
         }
         else{
@@ -5419,6 +5437,22 @@ int main(int argc, char** argv) {
         }
         PetscPrintf(mpi.comm(),"Final tstep will be %d \n",last_tstep);
       }
+
+      PetscPrintf(mpi.comm(), "\n \n tn = %0.3e, dt = %0.3e, dt_phi = %0.3e \n tfinal = %0.3e,  tn + dt + dt_phi = %0.3e \n Last tstep = %d \n",
+                  tn, dt, dt_phi_subiter, tfinal, tn + dt+ dt_phi_subiter, last_tstep);
+
+//      if(do_phi_advection_substeps && (tn + dt + dt_phi_subiter > tfinal) && (last_tstep<0)){
+//        // if time remaining is too small for one more step, end here. otherwise, do one more step and clip timestep to end on exact ending time
+//        if(fabs(tfinal-(tn + dt + dt_phi_subiter))>dt_min_allowed){
+//          last_tstep = tstep+1;
+//        }
+//        else{
+//          last_tstep = tstep;
+//        }
+//        PetscPrintf(mpi.comm(),"Final tstep will be %d \n",last_tstep);
+//      }
+
+
 
       // -------------------------------
       // Update the grid if this is not the last timestep
@@ -5447,10 +5481,18 @@ int main(int argc, char** argv) {
       // -------------------------------
       // Update time:
       // -------------------------------
+//      keep_going = ((tfinal - tn + dt) > -EPS) && (tstep!=last_tstep);
+
+
       tn+=dt;
+      // Increment if we are doing the phi advection substep, and if it is actually activated inside SWF
+//      if(do_phi_advection_substeps && stefan_w_fluids_solver->get_do_phi_advection_substeps()){
+//        tn+=dt_phi_subiter;
+//      }
       tstep++;
       stefan_w_fluids_solver->set_tstep(tstep); // Required for reinit_every_iter to be processed properly
       stefan_w_fluids_solver->set_tn(tn); // Update tn in case of save state (so save state has accurate time)
+
 
       // --------------------------------------------------------------------------------------------------------------
       // Save simulation state every specified number of iterations

@@ -1213,6 +1213,8 @@ public:
   }
 
   void set_do_phi_advection_substeps(bool do_substeps){do_phi_advection_substeps = do_substeps;}
+  bool get_do_phi_advection_substeps(){return do_phi_advection_substeps;}
+
 //  void set_num_phi_advection_substeps(int num_substeps){num_phi_advection_substeps = num_substeps;}
   void set_phi_advection_substeps_coeff(double substeps_coeff){
     phi_advection_substeps_coeff = substeps_coeff;
@@ -1225,6 +1227,9 @@ public:
   }
   double get_dt_phi_advection_substep(){
       return dt_phi_advection_substep;
+  }
+  void set_dt_phi_advection_substep(double dt_phi){
+    dt_phi_advection_substep = dt_phi;
   }
   // ----------------------------------------------
   // Other misc parameters

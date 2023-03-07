@@ -1933,6 +1933,7 @@ void my_p4est_stefan_with_fluids_t::compute_timestep(){
     PetscPrintf(mpi->comm(), " \n"
                              "(Max NS vel)/(Interface vel) = %0.2e \n", NS_norm/v_interface_max_norm);
   }
+  dt_phi_advection_substep = CFL_phi_advection_substep* MIN(dxyz_smallest[0], dxyz_smallest[1]) / v_interface_max_norm;
 
   // Print the timestep info:
   PetscPrintf(mpi->comm(),"\n"
@@ -2496,85 +2497,44 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
   if(solve_stefan){
     my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd_n);
 
-    // Check if we are doing dissolution subiterations on interfacial evolution. If so, do that:
-//    bool do_phi_advection_substeps = true;
-//    int num_phi_advection_substeps = 1000;
-
-    if(do_phi_advection_substeps){
-      // Get second derivatives of interface velocity
-      Vec* v_interface_dd[P4EST_DIM];
-      foreach_dimension(d1){
-          v_interface_dd[d1] = new Vec[P4EST_DIM];
-          foreach_dimension(d2){
-              ierr = VecCreateGhostNodes(p4est_n, nodes_n, &v_interface_dd[d1][d2]); CHKERRXX(ierr);
-          }
-      }
-      // Get the second derivatives of interface velocity:
-      ngbd_n->second_derivatives_central(v_interface.vec, v_interface_dd[0], v_interface_dd[1], P4EST_DIM);
-
-
-      // Create a phi to hold the new value:
-      vec_and_ptr_t phi_new;
-
-      // Calculate the current number of substeps to take:
-//      num_phi_advection_substeps = (int) floor(phi_advection_substeps_coeff * dt_Stefan/dt_NS);
-
-      dt_phi_advection_substep = CFL_phi_advection_substep* MIN(dxyz_smallest[0], dxyz_smallest[1]) / v_interface_max_norm;
-
-//      PetscPrintf(mpi->comm(), "Beginning %e LSF advection substeps --> dt = %0.2e ... \n", (double) num_phi_advection_substeps, (double) num_phi_advection_substeps*dt_NS);
-//      for(int i=0; i< num_phi_advection_substeps; i++){
-      phi_new.create(p4est_n, nodes_n);
-
-      // Get second derivatives of phi
-      phi_dd.create(p4est_n, nodes_n);
-      ngbd_n->second_derivatives_central(phi.vec, phi_dd.vec);
-
-      // Advect the LSF:
-      phi_new.get_array();
-      sl.advect_from_n_to_np1(dt_phi_advection_substep/*dt*num_phi_advection_substeps*/, v_interface.vec, v_interface_dd, phi.vec, phi_dd.vec, phi_new.ptr);
-      phi_new.restore_array();
-
-      // Slide the phi's:
-      phi.destroy();
-      phi.set(phi_new.vec);
-
-      // Destroy the phi derivatives:
-      phi_dd.destroy();
-
-      // Increment the total time:
-      tn+=(dt_phi_advection_substep  /*dt*num_phi_advection_substeps*/);
-//          PetscPrintf(mpi->comm(), "Phi advection subiteration %d \n", i);
-//      }
-
-      PetscPrintf(mpi->comm(), "\n -- dt_phi_advection_substep = %0.2e , dt_phi_adv/dt_NS = %0.2e \n",
-                  dt_phi_advection_substep, dt_phi_advection_substep/dt_NS);
-
-
-
-      // Destroy the velocity derivatives:
-      foreach_dimension(d1){
-          foreach_dimension(d2){
-              ierr = VecDestroy(v_interface_dd[d1][d1]); CHKERRXX(ierr);
-          }
-          delete[] v_interface_dd[d1];
-      }
-
-//      // Destroy the phi derivatives:
-//      phi_dd.destroy();
-
-
-    } // end of phi advection substeps
-
-
-
-
     // Create second derivatives for phi in the case that we are using update_p4est:
     phi_dd.create(p4est_n, nodes_n);
     ngbd_n->second_derivatives_central(phi.vec, phi_dd.vec);
 
-//    if(there_is_a_substrate){
-//            if(start_w_merged_grains){regularize_front(p4est, nodes, ngbd, phi_substrate.vec);}
-//    }
+    // If applicable, do the phi advection subiterations step
+    // Note: this comes first so that the update_p4est step can go ahead and clean up the refinement/coarsening afterwards as needed
+    if(do_phi_advection_substeps){
+      // Get second derivatives of interface velocity
+      Vec* v_interface_dd[P4EST_DIM];
+      foreach_dimension(d1){
+        v_interface_dd[d1] = new Vec[P4EST_DIM];
+        foreach_dimension(d2){
+          ierr = VecCreateGhostNodes(p4est_n, nodes_n, &v_interface_dd[d1][d2]); CHKERRXX(ierr);
+        }
+      }
+      // Get the second derivatives of interface velocity:
+      ngbd_n->second_derivatives_central(v_interface.vec, v_interface_dd[0], v_interface_dd[1], P4EST_DIM);
+
+      // Advect the LSF:
+      phi.get_array();
+      sl.advect_from_n_to_np1(dt_phi_advection_substep, v_interface.vec, v_interface_dd, phi.vec, phi_dd.vec, phi.ptr);
+      phi.restore_array();
+
+      // COmmented out below -- let's have main handle the timestepping appropriately, to be consistent with how the rest of the class works
+      //      // Increment the total time:
+      tn+=(dt_phi_advection_substep);
+
+      PetscPrintf(mpi->comm(), "\n -- dt_phi_advection_substep = %0.2e , dt_phi_adv/dt_NS = %0.2e \n",
+                  dt_phi_advection_substep, dt_phi_advection_substep/dt_NS);
+
+      // Destroy the velocity derivatives:
+      foreach_dimension(d1){
+        foreach_dimension(d2){
+          ierr = VecDestroy(v_interface_dd[d1][d2]); CHKERRXX(ierr);
+        }
+        delete[] v_interface_dd[d1];
+      }
+    } // end of phi advection substeps
 
     // Call advection and refinement
     sl.update_p4est(v_interface.vec, dt,
@@ -2586,6 +2546,7 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
                     expand_ghost_layer);
 
     if(print_checkpoints) PetscPrintf(mpi->comm(),"Grid update completed \n");
+
 
     // Destroy 2nd derivatives of LSF now that not needed
     phi_dd.destroy();
