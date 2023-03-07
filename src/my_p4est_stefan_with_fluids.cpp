@@ -2522,7 +2522,7 @@ void my_p4est_stefan_with_fluids_t::refine_and_coarsen_grid_and_advect_lsf_if_ap
 
       // COmmented out below -- let's have main handle the timestepping appropriately, to be consistent with how the rest of the class works
       //      // Increment the total time:
-      tn+=(dt_phi_advection_substep);
+//      tn+=(dt_phi_advection_substep);
 
       PetscPrintf(mpi->comm(), "\n -- dt_phi_advection_substep = %0.2e , dt_phi_adv/dt_NS = %0.2e \n",
                   dt_phi_advection_substep, dt_phi_advection_substep/dt_NS);

@@ -5486,9 +5486,9 @@ int main(int argc, char** argv) {
 
       tn+=dt;
       // Increment if we are doing the phi advection substep, and if it is actually activated inside SWF
-//      if(do_phi_advection_substeps && stefan_w_fluids_solver->get_do_phi_advection_substeps()){
-//        tn+=dt_phi_subiter;
-//      }
+      if(do_phi_advection_substeps && stefan_w_fluids_solver->get_do_phi_advection_substeps()){
+        tn+=dt_phi_subiter;
+      }
       tstep++;
       stefan_w_fluids_solver->set_tstep(tstep); // Required for reinit_every_iter to be processed properly
       stefan_w_fluids_solver->set_tn(tn); // Update tn in case of save state (so save state has accurate time)
