@@ -188,7 +188,7 @@ double* solute_diff_all[] = { &solute_diff_0.val,
                               &solute_diff_1.val,
                               &solute_diff_2.val,
                               &solute_diff_3.val };
-
+double tn = 0.;
 param_t<double> eps_c    (pl, 0, "eps_c",    "Curvature undercooling coefficient - cm.K");
 param_t<double> eps_v    (pl, 0, "eps_v",    "Kinetic undercooling coefficient - s.K.cm-1");
 param_t<double> eps_a    (pl, 0, "eps_a",    "Anisotropy coefficient");
@@ -1069,17 +1069,19 @@ class Convergence_soln{
         const double factor=1.;
         const double N=1.;
         const unsigned char dom;
+        bool make_Ts_zero = false;
         temperature(const unsigned char& dom_) : dom(dom_){
             P4EST_ASSERT(dom >= 0 && dom <=1);
         }
         double T(DIM(double x, double y,double z))const{
             switch(dom){
                 case LIQUID_DOMAIN:
+//                  return 0.;
                   return sin(x)*sin(y)*(x + (cos(N*y)*cos(t)*cos(x - PI/2.))/factor);
 
 //                  return cos(N*PI*t*x*y)*sin(N*PI*t*x*y)+((x-1)*(y+1))/factor;
                 case SOLID_DOMAIN:
-                  return 0.;
+                  if(make_Ts_zero) return 0.;
                   return cos(x)*cos(y)*((sin(N*y)*cos(t)*sin(x - PI/2))/factor - 1);
 
 //                  return sin(N*PI*t*x*y)+((x-1)*(y+1))/factor;
@@ -1095,10 +1097,12 @@ class Convergence_soln{
                 case LIQUID_DOMAIN:
                     switch(dir){
                         case dir::x:
+//                          return 0.;
                           return (sin(y)*(factor*sin(x) + factor*x*cos(x) + 2*cos(N*y)*cos(t)*cos(x)*sin(x)))/factor;
 
 //                          return (y+N*factor*PI*t*y*cos(2*N*PI*t*x*y)+1)/factor;
                         case dir::y:
+//                          return 0.;
                           return (sin(x)*(factor*x*cos(y) + cos(N*y)*cos(t)*cos(y)*sin(x) - N*sin(N*y)*cos(t)*sin(x)*sin(y)))/factor;
 //                          return (x+N*factor*PI*t*x*cos(2*N*PI*t*x*y)-1)/factor;
                         default:
@@ -1107,12 +1111,12 @@ class Convergence_soln{
                 case SOLID_DOMAIN:
                     switch(dir){
                         case dir::x:
-                          return 0.;
+                          if(make_Ts_zero) return 0.;
                           return (cos(y)*sin(x)*(factor + 2*sin(N*y)*cos(t)*cos(x)))/factor;
 
 //                          return (y+1)/factor + N*PI*t*y*cos(N*PI*t*x*y);
                         case dir::y:
-                          return 0.;
+                          if(make_Ts_zero) return 0.;
                           return (cos(x)*(factor*sin(y) + sin(N*y)*cos(t)*cos(x)*sin(y) - N*cos(N*y)*cos(t)*cos(x)*cos(y)))/factor;
 
 //                          return (x-1)/factor + N*PI*t*x*cos(N*PI*t*x*y);
@@ -1124,10 +1128,11 @@ class Convergence_soln{
         double dT_dt(DIM(double x, double y, double z)) const{
             switch(dom){
                 case LIQUID_DOMAIN:
+//                  return 0.;
                   return -(cos(N*y)*sin(t)*cos(x - PI/2)*sin(x)*sin(y))/factor;
 //                  return N*PI*x*y*pow(cos(N*PI*t*x*y),2) - N*PI*x*y*pow(sin(N*PI*t*x*y),2);
                 case SOLID_DOMAIN:
-                  return 0.;
+                  if(make_Ts_zero) return 0.;
                   return -(sin(N*y)*cos(x)*cos(y)*sin(t)*sin(x - PI/2))/factor;
 //                  return N*PI*x*y*cos(N*PI*t*x*y);
                 default:
@@ -1137,6 +1142,7 @@ class Convergence_soln{
         double laplace(DIM(double x, double y, double z)) const {
             switch(dom){
                 case LIQUID_DOMAIN:
+//                  return 0.;
                   return -( 2*factor*x*sin(x)*sin(y) -
                            2*factor*cos(x)*sin(y) -
                            2*cos(N*y)*cos(t)*pow(cos(x),2)*sin(y) +
@@ -1146,7 +1152,7 @@ class Convergence_soln{
                          /factor;
 //                  return -2*pow(N,2)*pow(PI,2)*pow(t,2)*sin(2*N*PI*t*x*y)*(pow(x,2)+pow(y,2));
                 case SOLID_DOMAIN:
-                  return 0.;
+                  if(make_Ts_zero) return 0.;
                   return (2*factor*cos(x)*cos(y) -
                           2*sin(N*y)*cos(t)*cos(y) +
                           5*sin(N*y)*cos(t)*pow(cos(x),2)*cos(y) +
@@ -1239,7 +1245,7 @@ class Convergence_soln{
     struct interface_velocity: CF_DIM{
 //      public:
           double operator()(DIM(double x,double y,double z)) const{
-            return 5./*sin(t) * cos(t)*/;
+            return 0./*sin(t) * cos(t)*/;
           }
     } /*convergence_vgamma*/;
 
@@ -1344,7 +1350,8 @@ class Convergence_soln{
             default:
                 throw std::runtime_error("external heat source : advective term : unrecognized domain \n");
             }
-            return temperature_[dom].dT_dt(DIM(x,y,z)) + advective_term - temperature_[dom].laplace(DIM(x,y,z));
+
+            return (temperature_[dom].dT_dt(DIM(x,y,z)) + advective_term - temperature_[dom].laplace(DIM(x,y,z)));
         }
     };
     struct external_force_concentration: CF_DIM{
@@ -1399,7 +1406,9 @@ class Convergence_soln{
       external_source_temperature_jump(temperature* temperature=NULL): temperature_(temperature){}
 
       double operator()(DIM(double x, double y, double z)) const{
-        return (temperature_[SOLID_DOMAIN](DIM(x,y,z)) - temperature_[LIQUID_DOMAIN](DIM(x,y,z)));
+//        printf("(%0.2f, %0.2f) jump in temp = %0.2e \n", x, y, (temperature_[SOLID_DOMAIN](DIM(x,y,z)) - temperature_[LIQUID_DOMAIN](DIM(x,y,z))));
+          return (temperature_[SOLID_DOMAIN](DIM(x,y,z)) - temperature_[LIQUID_DOMAIN](DIM(x,y,z)));
+
       }
     };
 
@@ -1445,9 +1454,13 @@ class Convergence_soln{
 //        printf("source_x = %0.2f, source_y = %0.2f \n", source_x, source_y);
         // actual normal direction jump minux the interface velocity --> to get our source term
 //        printf("latent heat * rho * vn = %0.2e \n", latent_heat.val * density_s.val * (*vgamma_)(DIM(x,y,z)));
+
         double source_term = (source_x  * (*nx_interp)(DIM(x,y,z))) + (source_y * (*ny_interp)(DIM(x,y,z))) + latent_heat.val * density_s.val * (*vgamma_)(DIM(x,y,z));
 
+//        printf("jump in temp flux : (%0.2f, %0.2f) = %0.2e --> source_term = %0.2e \n", x, y, (source_x  * (*nx_interp)(DIM(x,y,z))) + (source_y * (*ny_interp)(DIM(x,y,z))), source_term);
+
         return source_term;
+
       }
 
     }; // end of external source temperature flux jump
@@ -1550,6 +1563,8 @@ Convergence_soln::concentration convergence_conc1(1);
 // Temperatures:
 Convergence_soln::temperature convergence_tl(LIQUID_DOMAIN);
 Convergence_soln::temperature convergence_ts(SOLID_DOMAIN);
+//Convergence_soln::temperature convergence_ts(LIQUID_DOMAIN);
+
 Convergence_soln::temperature convergence_temp[2] = {convergence_tl, convergence_ts};
 
 // Interfacevelocity:
@@ -1591,6 +1606,8 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   PetscPrintf(mpi.comm(), "Checking convergence fields errors \n");
   vec_and_ptr_t phi;
 
+  vec_and_ptr_t ts_forcing, tl_forcing;
+
   vec_and_ptr_t tl, ts, c0, c1;
   vec_and_ptr_t tl_ana, ts_ana, c0_ana, c1_ana;
   vec_and_ptr_t tl_err, ts_err, c0_err, c1_err;
@@ -1603,10 +1620,30 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   tl_ana.create(p4est,nodes); ts_ana.create(p4est, nodes);
   c0_ana.create(p4est, nodes); c1_ana.create(p4est, nodes);
 
+  ts_forcing.create(p4est, nodes); tl_forcing.create(p4est, nodes);
+
+  // update the time held by all the fields we want to use:
+  convergence_temp[LIQUID_DOMAIN].t = tn;
+  convergence_temp[SOLID_DOMAIN].t = tn;
+
+  convergence_conc0.t = tn;
+  convergence_conc1.t = tn;
+
+  // interface vel
+  convergence_vgamma.t = tn;
+
+  // ns vels
+  foreach_dimension(d){
+    convergence_vel[d].t = tn;
+  }
+
   sample_cf_on_nodes(p4est, nodes, convergence_temp[LIQUID_DOMAIN], tl_ana.vec);
   sample_cf_on_nodes(p4est, nodes, convergence_temp[SOLID_DOMAIN], ts_ana.vec);
   sample_cf_on_nodes(p4est, nodes, convergence_conc0, c0_ana.vec);
   sample_cf_on_nodes(p4est, nodes, convergence_conc1, c1_ana.vec);
+
+  sample_cf_on_nodes(p4est, nodes, *convergence_forces_temp[SOLID_DOMAIN], ts_forcing.vec);
+  sample_cf_on_nodes(p4est, nodes, *convergence_forces_temp[LIQUID_DOMAIN], tl_forcing.vec);
 
 
   tl_err.create(p4est, nodes); ts_err.create(p4est, nodes);
@@ -1632,12 +1669,12 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
 
   foreach_node(n, nodes){
     if(phi.ptr[n] < 0.){
-      tl_err.ptr[n] = fabs(tl.ptr[n] - tl_ana.ptr[n]);
-      c0_err.ptr[n] = fabs(c0.ptr[n] - c0_ana.ptr[n]);
-      c1_err.ptr[n] = fabs(c1.ptr[n] - c1_ana.ptr[n]);
+      tl_err.ptr[n] = /*fabs*/(tl.ptr[n] - tl_ana.ptr[n]);
+      c0_err.ptr[n] = /*fabs*/(c0.ptr[n] - c0_ana.ptr[n]);
+      c1_err.ptr[n] = /*fabs*/(c1.ptr[n] - c1_ana.ptr[n]);
     }
     else{
-      ts_err.ptr[n] = fabs(ts.ptr[n] - ts_ana.ptr[n]);
+      ts_err.ptr[n] = /*fabs*/(ts.ptr[n] - ts_ana.ptr[n]);
     }
   }
 
@@ -1688,6 +1725,9 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   point_fields.push_back(Vec_for_vtk_export_t(c1.vec, "c1"));
   point_fields.push_back(Vec_for_vtk_export_t(c1_err.vec, "c1_err"));
 
+  point_fields.push_back(Vec_for_vtk_export_t(tl_forcing.vec, "tl_forcing"));
+  point_fields.push_back(Vec_for_vtk_export_t(ts_forcing.vec, "ts_forcing"));
+
   my_p4est_vtk_write_all_lists(p4est, nodes, ngbd->get_ghost(),
                                P4EST_TRUE, P4EST_TRUE,
                                name, point_fields, cell_fields);
@@ -1696,6 +1736,8 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
 
   tl_ana.destroy(); ts_ana.destroy(); c0_ana.destroy(); c1_ana.destroy();
   tl_err.destroy(); ts_err.destroy(); c0_err.destroy(); c1_err.destroy();
+
+  tl_forcing.destroy(); ts_forcing.destroy();
 
 }
 
@@ -1777,9 +1819,17 @@ public:
 
         return MAX(front, seed_radius() - MIN(dist0, dist1));
       }
-      case 8:
-      {
-        return seed_radius() - sqrt(SQR(x - xc()) + SQR(y - yc()))/*-(ABS2(x-xc(), y-yc())-seed_radius())*/;
+      case 8:{
+//        if(y < yc()){
+//          return 1.;
+//        }
+//        else{
+//          return 0.;
+//        }
+        return -1.*(seed_radius() - sqrt(SQR(x - xc()) + SQR(y - yc())))/*-(ABS2(x-xc(), y-yc())-seed_radius())*/;
+//          return y - yc();
+
+
       }
       default: throw;
     }
@@ -1810,7 +1860,7 @@ public:
       case  5: return -1;
       case  6: return -1;
       case  7: return -1;
-      case  8: return -1*(xmax()); // We multiply by xmax bc the -1 by itself was causing some issues .. (altho we don't remember ... )(to revisit)
+      case  8: return -100*(xmax()); // We multiply by xmax bc the -1 by itself was causing some issues .. (altho we don't remember ... )(to revisit)
       default: throw;
     }
   }
@@ -2347,7 +2397,18 @@ public:
 
 
   Convergence_soln::temperature* temperature_;
+
+  my_p4est_interpolation_nodes_t* phi_interp;
   bc_value_temp_t(Convergence_soln::temperature* temperature=NULL) : temperature_(temperature){}
+  void set_inputs(my_p4est_node_neighbors_t* ngbd, Vec& phi){
+    phi_interp = new my_p4est_interpolation_nodes_t(ngbd);
+    phi_interp->set_input(phi, linear);
+  }
+  void clear_inputs(){
+    phi_interp->clear();
+    delete phi_interp;
+  }
+
   double operator()(DIM(double x, double y, double z)) const
   {
     // case 5 is treated seperately because we need different BC on different walls
@@ -2381,7 +2442,21 @@ public:
           case  6:
           case  7:
           case  8: {
-            return (*temperature_)(DIM(x,y,z));
+            if(temperature_ == NULL){
+              throw std::invalid_argument("bc_value_temp_t for geom 8: you must provide the analytical temperature fields \n");
+            }
+            if(phi_interp == NULL){
+              throw std::invalid_argument("bc_value_temp_t for geom 8: you must provide the level set function for determining the domain \n");
+            }
+            double phi_val = (*phi_interp)(DIM(x,y,z));
+//            printf("(%0.2f, %0.2f) -- phi val = %0.2e \n", x,y, phi_val);
+            if(phi_val<0.){
+              return temperature_[LIQUID_DOMAIN](DIM(x,y,z));
+            }
+            else{
+              return temperature_[SOLID_DOMAIN](DIM(x,y,z));
+            }
+            // return (*temperature_)(DIM(x,y,z));
           }
           default: throw;
         }
@@ -2426,7 +2501,7 @@ public:
 } /*bc_value_temp*/;
 
 // we only need to provide tl for convergence bc we only specify tl at the walls, never ts
-bc_value_temp_t bc_value_temp(&convergence_tl);
+bc_value_temp_t bc_value_temp(convergence_temp);
 
 class bc_value_conc_t : public CF_DIM
 {
@@ -3254,7 +3329,7 @@ int main (int argc, char* argv[])
 
   // loop over time
   bool   keep_going     = true;
-  double tn             = 0;
+  /*double */tn             = 0;
   double total_growth   = 0;
   double base           = front_location.val;
   double bc_error_max   = 0;
@@ -3283,6 +3358,9 @@ int main (int argc, char* argv[])
   PetscPrintf(mpi.comm(), "Entering time loop ! \n");
   while (1)
   {
+//    // CHeck to make sure the convergence fields are at least initialized correctly
+    check_convergence_errors_and_save_to_vtk(&mas, mpi, 10000);
+
 //    PetscPrintf(mpi.comm(), "\n ------- \n Iteration: %d \n --------------- \n", iteration);
     // determine to save or not
     bool save_now =
@@ -3303,6 +3381,7 @@ int main (int argc, char* argv[])
     // for convergence study, update the time variable for each of the fields, and the normals for fields that require it:
     vec_and_ptr_dim_t front_normals_;
     my_p4est_node_neighbors_t* ngbd_;
+    vec_and_ptr_t phi_;
     if(geometry.val == 8){
       // temps
       convergence_temp[LIQUID_DOMAIN].t = tn;
@@ -3327,6 +3406,10 @@ int main (int argc, char* argv[])
       external_source_c0_robin.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
       external_source_c1_robin.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
       external_source_temperature_flux_jump.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
+
+      // ANd update the temperature wall bc:
+      phi_.vec = mas.get_front_phi();
+      bc_value_temp.set_inputs(ngbd_, phi_.vec );
     }
 
     // solve nonlinear system for temperature, concentration and velocity at t_n
@@ -3581,6 +3664,7 @@ int main (int argc, char* argv[])
       external_source_c0_robin.clear_inputs();
       external_source_c1_robin.clear_inputs();
       external_source_temperature_flux_jump.clear_inputs();
+      bc_value_temp.clear_inputs();
     }
 
 

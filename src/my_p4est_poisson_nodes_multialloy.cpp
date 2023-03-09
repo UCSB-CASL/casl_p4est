@@ -583,6 +583,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   if (contr_phi_.vec != NULL)
   {
     solver_conc_leading_->add_boundary(MLS_INTERSECTION, contr_phi_.vec, contr_phi_dd_.vec, contr_bc_type_conc_, zero_cf, zero_cf);
+    printf("ADDS CONTR BOUNDARY \n");
   }
 
   solver_conc_leading_->preassemble_linear_system();
@@ -591,6 +592,9 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   solver_temp_->add_interface(MLS_INTERSECTION, front_phi_.vec, front_phi_dd_.vec, zero_cf, zero_cf);
   solver_temp_->set_diag(temp_diag_l_, temp_diag_s_);
   solver_temp_->set_mu(temp_diff_l_, temp_diff_s_);
+
+  printf("TEMP_DIAG_L = %0.3e, TEMP_DIAG_S=%0.3e \n", temp_diag_l_, temp_diag_s_);
+  printf("mu_l = %0.3e, mu_s = %0.3e \n", temp_diff_l_, temp_diff_s_);
   solver_temp_->set_integration_order(integration_order_);
   solver_temp_->set_use_sc_scheme(0);
   solver_temp_->set_cube_refinement(cube_refinement_);
@@ -769,6 +773,37 @@ void my_p4est_poisson_nodes_multialloy_t::solve_t()
   sol        .restore_array();
 
   sol.destroy();
+
+
+  if(0){
+    PetscPrintf(p4est_->mpicomm, "\n \n Saving fields after T solution \n");
+    // -------------------------------
+    // TEMPORARY: save fields before grid update
+    // -------------------------------
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+    point_fields.push_back(Vec_for_vtk_export_t(liquid_phi_.vec, "phi_l"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(tl_.vec, "Tl"));
+    point_fields.push_back(Vec_for_vtk_export_t(ts_.vec, "Ts"));
+
+    const char* out_dir = getenv("OUT_DIR");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
+
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_after_solve_T_%d", out_dir, 0);
+    my_p4est_vtk_write_all_lists(p4est_, nodes_, node_neighbors_->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+
+
+    PetscPrintf(p4est_->mpicomm, "Done! \n \n \n");
+
+  }
+
+
+
 
   my_p4est_level_set_t ls(node_neighbors_);
   ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, tl_.vec, num_extend_iterations_, 2,
@@ -1313,7 +1348,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
 //      // ---------------------
       pw_t_sol_jump_taylor_[idx] = front_temp_value_jump_->value(xyz_pr);
       pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) - latent_heat_*density_s_*vn_pr;
-//      printf("Tl jump = %0.2e \n, Tl_flux_jump = %0.2e \n", pw_t_sol_jump_taylor_[idx], pw_t_flx_jump_taylor_[idx]);
+//      printf("Tl jump = %0.2e, Tl_flux_jump = %0.2e, vn_pr = %0.2e \n", pw_t_sol_jump_taylor_[idx], pw_t_flx_jump_taylor_[idx], vn_pr);
 
       // TO FIX !! NEED TO MULTIPLY LATENT_HEAT_*VN*DENSITY_S --> NOTE : THIS CODE IS DUPLICATED IN ABOUT 100X PLACES SO MAKE SURE THEYRE ALL CHANGED
 
