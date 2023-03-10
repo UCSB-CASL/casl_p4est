@@ -2449,26 +2449,10 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // we will still use the usual BDF for the solid temperature
   variable_step_BDF_implicit(num_time_layers_-1, dt_, time_coeffs);
 
-
   // Compute the time coefficients associated with the Semi-Lagragian advective disc
   double SL_alpha = (2.*dt_[0] + dt_[1])/(dt_[0] + dt_[1]); // SL alpha coeff
   double SL_beta = (-1.*dt_[0])/(dt_[0] + dt_[1]); // SL beta coefff
 
-  printf("num_time_layers = %d \n", num_time_layers_);
-
-//  // Overwrite with backward euler:
-//  time_coeffs[0] =  1.;
-//  time_coeffs[1] = -1.;
-//  time_coeffs[2] = 0.;
-  for (int i = 0; i < num_time_layers_; ++i){
-    printf("time_coeffs[%d] = %0.2f \n", i, time_coeffs[i]);
-    printf("dt[%d] = %0.3e \n",i, dt_[i]);
-  }
-  printf("SL_alpha = %0.3e, SL_beta = %0.3e \n", SL_alpha, SL_beta);
-
-
-  double max_rhs_tl = 0.;
-  double max_rhs_ts = 0.;
   front_phi_.get_array();
   foreach_node(n, nodes_)
   {
@@ -2499,12 +2483,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     for(int j = 0; j<num_comps_; ++j){
       rhs_cl.ptr[j][n] = cl_backtrace_n.ptr[j][n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1])) +
                     cl_backtrace_nm1.ptr[j][n]*(SL_beta/dt_[1]);
-
-//      printf("rhs cl %d : %0.3e \n", j, rhs_cl.ptr[j][n]);
     }
-
-
-//    printf("rhs cl %d : %0.3e, rhs tl : %0.3e \n", 0, rhs_cl.ptr[0][n], rhs_tl.ptr[n]);
 
 
     // Multiply by relevant quantities:
@@ -2516,23 +2495,15 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     if(there_is_convergence_test){
       node_xyz_fr_n(n, p4est_, nodes_, xyz);
 
-      if(front_phi_.ptr[n] < 0.) rhs_tl.ptr[n] += (*convergence_external_source_temp[LIQUID_DOMAIN])(xyz[0], xyz[1]);
-
-      if(front_phi_.ptr[n] > 0. ) rhs_ts.ptr[n] += (*convergence_external_source_temp[SOLID_DOMAIN])(xyz[0], xyz[1]);
-
-      max_rhs_tl = MAX(max_rhs_tl, rhs_tl.ptr[n]);
-      max_rhs_ts = MAX(max_rhs_ts, rhs_ts.ptr[n]);
-      //      printf("rhs_ts[%d] = %0.2f , rhs_tl[%d] = %0.2f \n", n, rhs_ts.ptr[n],n, rhs_tl.ptr[n]);
+      rhs_tl.ptr[n] += (*convergence_external_source_temp[LIQUID_DOMAIN])(xyz[0], xyz[1]);
+      rhs_ts.ptr[n] += (*convergence_external_source_temp[SOLID_DOMAIN])(xyz[0], xyz[1]);
 
       for (int j = 0; j < num_comps_; ++j)
       {
-        rhs_cl.ptr[j][n] = (*convergence_external_source_conc[j])(xyz[0], xyz[1]);
+        rhs_cl.ptr[j][n] += (*convergence_external_source_conc[j])(xyz[0], xyz[1]);
       }
-
     }
-
   }
-  printf("rank %d, max rhs tl = %0.3e, max rhs ts = %0.3e \n", mpi_->rank(), max_rhs_tl, max_rhs_ts);
   front_phi_.restore_array();
 
   // Restore arrays:
@@ -2557,14 +2528,14 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   solver_all_in_one.set_composition_parameters(conc_diag.data(), solute_diff_.data());
 
-  printf("Latent heat = %0.2e \n "
-         "Density_l = %0.2e, heat_capacity_l = %0.2e, thermal_cond_l = %0.2e \n"
-         "Density_s = %0.2e, heat_capacity_s = %0.2e, thermal_cond_s = %0.2e \n"
-         "SL_alpha/dt = %0.2e , time_coeffs/dt = %0.2e \n\n",
-         latent_heat_,
-         density_l_, heat_capacity_l_, thermal_cond_l_,
-         density_s_, heat_capacity_s_, thermal_cond_s_,
-         SL_alpha/dt_[0], time_coeffs[0]/dt_[0]);
+//  printf("Latent heat = %0.2e \n "
+//         "Density_l = %0.2e, heat_capacity_l = %0.2e, thermal_cond_l = %0.2e \n"
+//         "Density_s = %0.2e, heat_capacity_s = %0.2e, thermal_cond_s = %0.2e \n"
+//         "SL_alpha/dt = %0.2e , time_coeffs/dt = %0.2e \n\n",
+//         latent_heat_,
+//         density_l_, heat_capacity_l_, thermal_cond_l_,
+//         density_s_, heat_capacity_s_, thermal_cond_s_,
+//         SL_alpha/dt_[0], time_coeffs[0]/dt_[0]);
 
   solver_all_in_one.set_thermal_parameters(latent_heat_,
                                            density_l_*heat_capacity_l_*SL_alpha/dt_[0], thermal_cond_l_,

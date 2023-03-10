@@ -1245,7 +1245,7 @@ class Convergence_soln{
     struct interface_velocity: CF_DIM{
 //      public:
           double operator()(DIM(double x,double y,double z)) const{
-            return 0./*sin(t) * cos(t)*/;
+            return 5.0; //sin(t) * cos(t)/*sin(t) * cos(t)*/;
           }
     } /*convergence_vgamma*/;
 
@@ -1542,7 +1542,7 @@ class Convergence_soln{
           throw std::invalid_argument("external source gibbs thomson: you are trying to run with an eps_c value greater than 0, but the curvature affect is not implemented in this convergence test");
         }
 
-//        printf("\n temperature = %0.2e \n", (*temperature_l_)(DIM(x,y,z)));
+//        printf("From BC:\n temperature = %0.2e \n", (*temperature_l_)(DIM(x,y,z)));
 //        printf("liquidus = %0.2e \n",(melting_temp.val +  liquidus_slope_0.val * (*concentration_0_)(DIM(x,y,z)) + liquidus_slope_1.val * (*concentration_1_)(DIM(x,y,z))));
 
         double Gibbs = (*temperature_l_)(DIM(x,y,z)) -
@@ -1606,11 +1606,15 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   PetscPrintf(mpi.comm(), "Checking convergence fields errors \n");
   vec_and_ptr_t phi;
 
-  vec_and_ptr_t ts_forcing, tl_forcing;
+  vec_and_ptr_t tl, ts, c0, c1, vgamma;
+  vec_and_ptr_dim_t u;
 
-  vec_and_ptr_t tl, ts, c0, c1;
-  vec_and_ptr_t tl_ana, ts_ana, c0_ana, c1_ana;
-  vec_and_ptr_t tl_err, ts_err, c0_err, c1_err;
+
+  vec_and_ptr_t tl_ana, ts_ana, c0_ana, c1_ana, vgamma_ana;
+  vec_and_ptr_dim_t u_ana;
+
+  vec_and_ptr_t tl_err, ts_err, c0_err, c1_err, vgamma_err;
+  vec_and_ptr_dim_t u_err;
 
   p4est_t* p4est = mas->get_p4est();
   p4est_nodes_t* nodes = mas->get_nodes();
@@ -1619,8 +1623,8 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
 
   tl_ana.create(p4est,nodes); ts_ana.create(p4est, nodes);
   c0_ana.create(p4est, nodes); c1_ana.create(p4est, nodes);
-
-  ts_forcing.create(p4est, nodes); tl_forcing.create(p4est, nodes);
+  vgamma_ana.create(p4est, nodes);
+  u_ana.create(p4est, nodes);
 
   // update the time held by all the fields we want to use:
   convergence_temp[LIQUID_DOMAIN].t = tn;
@@ -1641,40 +1645,69 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   sample_cf_on_nodes(p4est, nodes, convergence_temp[SOLID_DOMAIN], ts_ana.vec);
   sample_cf_on_nodes(p4est, nodes, convergence_conc0, c0_ana.vec);
   sample_cf_on_nodes(p4est, nodes, convergence_conc1, c1_ana.vec);
+  sample_cf_on_nodes(p4est, nodes, convergence_vgamma, vgamma_ana.vec);
 
-  sample_cf_on_nodes(p4est, nodes, *convergence_forces_temp[SOLID_DOMAIN], ts_forcing.vec);
-  sample_cf_on_nodes(p4est, nodes, *convergence_forces_temp[LIQUID_DOMAIN], tl_forcing.vec);
-
+  foreach_dimension(d){
+    sample_cf_on_nodes(p4est, nodes, convergence_vel[d], u_ana.vec[d]);
+  }
 
   tl_err.create(p4est, nodes); ts_err.create(p4est, nodes);
   c0_err.create(p4est, nodes); c1_err.create(p4est, nodes);
+  vgamma_err.create(p4est, nodes);
+  u_err.create(p4est, nodes);
 
+  // Get the fields from multialloy:
   phi.vec = mas->get_front_phi();
   tl.vec = mas->get_tl();
   ts.vec = mas->get_ts();
   c0.vec = mas->get_cl(0);
   c1.vec = mas->get_cl(1);
+  vgamma.vec = mas->get_normal_velocity();
+  u = mas->get_v_n_NS();
 
 
-
+  // Initialize the error values to zero:
   VecSet(tl_err.vec, 0.);
   VecSet(ts_err.vec, 0.);
   VecSet(c0_err.vec, 0.);
   VecSet(c1_err.vec, 0);
+  VecSet(vgamma_err.vec, 0.);
+  foreach_dimension(d){
+    VecSet(u_err.vec[d], 0.);
+  }
+
 
   phi.get_array();
+
   tl.get_array(); ts.get_array(); c0.get_array(); c1.get_array();
+  vgamma.get_array(); u.get_array();
+
   tl_ana.get_array(); ts_ana.get_array(); c0_ana.get_array(); c1_ana.get_array();
+  vgamma_ana.get_array(); u_ana.get_array();
+
   tl_err.get_array(); ts_err.get_array(); c0_err.get_array(); c1_err.get_array();
+  vgamma_err.get_array(); u_err.get_array();
+
+  double xyz_min[P4EST_DIM];
+  dxyz_min(p4est, xyz_min);
+
+  double dxyz_close_to_interface = 2.0 * MIN(xyz_min[0], xyz_min[1]);
 
   foreach_node(n, nodes){
     if(phi.ptr[n] < 0.){
-      tl_err.ptr[n] = /*fabs*/(tl.ptr[n] - tl_ana.ptr[n]);
-      c0_err.ptr[n] = /*fabs*/(c0.ptr[n] - c0_ana.ptr[n]);
-      c1_err.ptr[n] = /*fabs*/(c1.ptr[n] - c1_ana.ptr[n]);
+      tl_err.ptr[n] = fabs(tl.ptr[n] - tl_ana.ptr[n]);
+      c0_err.ptr[n] = fabs(c0.ptr[n] - c0_ana.ptr[n]);
+      c1_err.ptr[n] = fabs(c1.ptr[n] - c1_ana.ptr[n]);
+
+      foreach_dimension(d){
+        u_err.ptr[d][n] = fabs(u.ptr[d][n] - u_ana.ptr[d][n]);
+      }
     }
     else{
-      ts_err.ptr[n] = /*fabs*/(ts.ptr[n] - ts_ana.ptr[n]);
+      ts_err.ptr[n] = (ts.ptr[n] - ts_ana.ptr[n]);
+    }
+    if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
+      vgamma_err.ptr[n] = fabs(vgamma.ptr[n] - vgamma_ana.ptr[n]);
     }
   }
 
@@ -1683,61 +1716,89 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   ierr = VecGhostUpdateBegin(ts_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateBegin(c0_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateBegin(c1_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(vgamma_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  foreach_dimension(d){
+    ierr = VecGhostUpdateBegin(u_err.vec[d], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
 
   ierr = VecGhostUpdateEnd(tl_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(ts_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(c0_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(c1_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(vgamma_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  foreach_dimension(d){
+    ierr = VecGhostUpdateEnd(u_err.vec[d], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
 
   phi.restore_array();
+
   tl.restore_array(); ts.restore_array(); c0.restore_array(); c1.restore_array();
+  vgamma.restore_array(); u.restore_array();
+
   tl_ana.restore_array(); ts_ana.restore_array(); c0_ana.restore_array(); c1_ana.restore_array();
+  vgamma_ana.restore_array(); u_ana.restore_array();
+
   tl_err.restore_array(); ts_err.restore_array(); c0_err.restore_array(); c1_err.restore_array();
+  vgamma_err.restore_array(); u_err.restore_array();
 
-  // Save to vtk:
-  const char* out_dir = getenv("OUT_DIR");
-  if (!out_dir)
-  {
-    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
-    return;
+  if(save_vtk.val){
+    // Save to vtk:
+    const char* out_dir = getenv("OUT_DIR");
+    if (!out_dir)
+    {
+      ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
+      return;
+    }
+    char name[1000];
+    sprintf(name, "%s/vtu/multialloy_convergence_test_lvl_%d_%d.%05d", out_dir, lmin.val , lmax.val, iter);
+
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields;
+
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(tl_ana.vec, "tl_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(tl.vec, "tl"));
+    point_fields.push_back(Vec_for_vtk_export_t(tl_err.vec, "tl_err"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(ts_ana.vec, "ts_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(ts.vec, "ts"));
+    point_fields.push_back(Vec_for_vtk_export_t(ts_err.vec, "ts_err"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(c0_ana.vec, "c0_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(c0.vec, "c0"));
+    point_fields.push_back(Vec_for_vtk_export_t(c0_err.vec, "c0_err"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(c1_ana.vec, "c1_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(c1.vec, "c1"));
+    point_fields.push_back(Vec_for_vtk_export_t(c1_err.vec, "c1_err"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(vgamma_ana.vec, "vgamma_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(vgamma.vec, "vgamma"));
+    point_fields.push_back(Vec_for_vtk_export_t(vgamma_err.vec, "vgamma_err"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(u_ana.vec[0], "vx"));
+    point_fields.push_back(Vec_for_vtk_export_t(u.vec[0], "vx"));
+    point_fields.push_back(Vec_for_vtk_export_t(u_err.vec[0], "vx"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(u_ana.vec[1], "vy"));
+    point_fields.push_back(Vec_for_vtk_export_t(u.vec[1], "vy"));
+    point_fields.push_back(Vec_for_vtk_export_t(u_err.vec[1], "vy"));
+
+
+    my_p4est_vtk_write_all_lists(p4est, nodes, ngbd->get_ghost(),
+                                 P4EST_TRUE, P4EST_TRUE,
+                                 name, point_fields, cell_fields);
   }
-  char name[1000];
-  sprintf(name, "%s/vtu/multialloy_convergence_test_lvl_%d_%d.%05d", out_dir, lmin.val , lmax.val, iter);
-
-  std::vector<Vec_for_vtk_export_t> point_fields;
-  std::vector<Vec_for_vtk_export_t> cell_fields;
-
-  point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
-
-  point_fields.push_back(Vec_for_vtk_export_t(tl_ana.vec, "tl_ana"));
-  point_fields.push_back(Vec_for_vtk_export_t(tl.vec, "tl"));
-  point_fields.push_back(Vec_for_vtk_export_t(tl_err.vec, "tl_err"));
-
-  point_fields.push_back(Vec_for_vtk_export_t(ts_ana.vec, "ts_ana"));
-  point_fields.push_back(Vec_for_vtk_export_t(ts.vec, "ts"));
-  point_fields.push_back(Vec_for_vtk_export_t(ts_err.vec, "ts_err"));
-
-  point_fields.push_back(Vec_for_vtk_export_t(c0_ana.vec, "c0_ana"));
-  point_fields.push_back(Vec_for_vtk_export_t(c0.vec, "c0"));
-  point_fields.push_back(Vec_for_vtk_export_t(c0_err.vec, "c0_err"));
-
-  point_fields.push_back(Vec_for_vtk_export_t(c1_ana.vec, "c1_ana"));
-  point_fields.push_back(Vec_for_vtk_export_t(c1.vec, "c1"));
-  point_fields.push_back(Vec_for_vtk_export_t(c1_err.vec, "c1_err"));
-
-  point_fields.push_back(Vec_for_vtk_export_t(tl_forcing.vec, "tl_forcing"));
-  point_fields.push_back(Vec_for_vtk_export_t(ts_forcing.vec, "ts_forcing"));
-
-  my_p4est_vtk_write_all_lists(p4est, nodes, ngbd->get_ghost(),
-                               P4EST_TRUE, P4EST_TRUE,
-                               name, point_fields, cell_fields);
 
 
 
   tl_ana.destroy(); ts_ana.destroy(); c0_ana.destroy(); c1_ana.destroy();
+  vgamma_ana.destroy(); u_ana.destroy();
   tl_err.destroy(); ts_err.destroy(); c0_err.destroy(); c1_err.destroy();
+  vgamma_err.destroy(); u_err.destroy();
 
-  tl_forcing.destroy(); ts_forcing.destroy();
 
 }
 
@@ -1826,7 +1887,7 @@ public:
 //        else{
 //          return 0.;
 //        }
-        return -1.*(seed_radius() - sqrt(SQR(x - xc()) + SQR(y - yc())))/*-(ABS2(x-xc(), y-yc())-seed_radius())*/;
+        return 1.*(seed_radius() - sqrt(SQR(x - xc()) + SQR(y - yc())))/*-(ABS2(x-xc(), y-yc())-seed_radius())*/;
 //          return y - yc();
 
 
@@ -3383,6 +3444,8 @@ int main (int argc, char* argv[])
     my_p4est_node_neighbors_t* ngbd_;
     vec_and_ptr_t phi_;
     if(geometry.val == 8){
+      PetscPrintf(mpi.comm(), "\n---------------------------\nConvergence test: %0.2f Percent Done \n---------------------------\n", (tn/time_limit.val) * 100.);
+
       // temps
       convergence_temp[LIQUID_DOMAIN].t = tn;
       convergence_temp[SOLID_DOMAIN].t = tn;

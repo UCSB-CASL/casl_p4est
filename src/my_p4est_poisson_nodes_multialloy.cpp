@@ -583,7 +583,6 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   if (contr_phi_.vec != NULL)
   {
     solver_conc_leading_->add_boundary(MLS_INTERSECTION, contr_phi_.vec, contr_phi_dd_.vec, contr_bc_type_conc_, zero_cf, zero_cf);
-    printf("ADDS CONTR BOUNDARY \n");
   }
 
   solver_conc_leading_->preassemble_linear_system();
@@ -592,9 +591,6 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   solver_temp_->add_interface(MLS_INTERSECTION, front_phi_.vec, front_phi_dd_.vec, zero_cf, zero_cf);
   solver_temp_->set_diag(temp_diag_l_, temp_diag_s_);
   solver_temp_->set_mu(temp_diff_l_, temp_diff_s_);
-
-  printf("TEMP_DIAG_L = %0.3e, TEMP_DIAG_S=%0.3e \n", temp_diag_l_, temp_diag_s_);
-  printf("mu_l = %0.3e, mu_s = %0.3e \n", temp_diff_l_, temp_diff_s_);
   solver_temp_->set_integration_order(integration_order_);
   solver_temp_->set_use_sc_scheme(0);
   solver_temp_->set_cube_refinement(cube_refinement_);
@@ -1860,7 +1856,6 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
         printf("vn = %0.2e \n", vn);
         printf("eps_c = %0.2e \n", eps_c);
         printf("kappa = %0.2e \n", kappa);
-//        printf("gibbs_thomson_ = %p \n", gibbs_thomson_);
         printf("gibbs_thomson_ = %0.2e \n", gibbs_thomson_->value(xyz));
         printf("\n--------------------------------------------------------\n");
       }

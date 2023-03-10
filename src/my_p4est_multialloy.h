@@ -883,6 +883,8 @@ public:
   inline Vec  get_ts() { return ts_[0].vec; }
   inline Vec* get_cl() { return cl_[0].vec.data(); }
   inline Vec  get_cl(int idx) { return cl_[0].vec[idx]; }
+  vec_and_ptr_dim_t get_v_n_NS(){return v_n;}
+
 
   inline Vec  get_ft() { return solid_time_.vec; }
   inline Vec  get_tf() { return solid_tf_.vec; }
