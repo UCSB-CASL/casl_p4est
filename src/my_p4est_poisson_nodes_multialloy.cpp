@@ -381,22 +381,22 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
     ++iteration;
 
     // solve for physical quantities
-    PetscPrintf(p4est_->mpicomm, "Solving c0 ... \n");
+//    PetscPrintf(p4est_->mpicomm, "Solving c0 ... \n");
     solve_c0(); ++num_pdes_solved;
 
-    PetscPrintf(p4est_->mpicomm, "Computing c0n ... \n");
+//    PetscPrintf(p4est_->mpicomm, "Computing c0n ... \n");
     compute_c0n();
 
-    PetscPrintf(p4est_->mpicomm, "Computing pw bc values ... \n");
+//    PetscPrintf(p4est_->mpicomm, "Computing pw bc values ... \n");
 
 
     compute_pw_bc_values(conc_start, conc_num);
-    PetscPrintf(p4est_->mpicomm, "Solving t ... \n");
+//    PetscPrintf(p4est_->mpicomm, "Solving t ... \n");
     solve_t();  ++num_pdes_solved;
-    PetscPrintf(p4est_->mpicomm, "Solving c ... \n");
+//    PetscPrintf(p4est_->mpicomm, "Solving c ... \n");
     solve_c(conc_start, conc_num);  ++num_pdes_solved;
 
-    PetscPrintf(p4est_->mpicomm, "Solving lagrange multipliers ... \n");
+//    PetscPrintf(p4est_->mpicomm, "Solving lagrange multipliers ... \n");
 
     // solve for lagrangian multipliers
     if ((iteration-1)%1 == 0)
@@ -461,21 +461,21 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
       }
     }
 
-    MPI_Barrier(p4est_->mpicomm);
-    PetscPrintf(p4est_->mpicomm, "Adjusting c0 boundary conditions ... \n");
+//    MPI_Barrier(p4est_->mpicomm);
+//    PetscPrintf(p4est_->mpicomm, "Adjusting c0 boundary conditions ... \n");
 
     // adjust boundary conditions
     compute_c0_change(iteration_scheme_);
 
-    MPI_Barrier(p4est_->mpicomm);
-    PetscPrintf(p4est_->mpicomm, "Updating pw c0 values ... \n");
+//    MPI_Barrier(p4est_->mpicomm);
+//    PetscPrintf(p4est_->mpicomm, "Updating pw c0 values ... \n");
 
 
     for (int i = 0; i < solver_conc_leading_->pw_bc_num_value_pts(0); ++i) {
       pw_c0_values_[i] -= pw_c0_change_[i];
     }
-    MPI_Barrier(p4est_->mpicomm);
-    PetscPrintf(p4est_->mpicomm, "Done. \n");
+//    MPI_Barrier(p4est_->mpicomm);
+//    PetscPrintf(p4est_->mpicomm, "Done. \n");
 
 
     // logging for convergence studies

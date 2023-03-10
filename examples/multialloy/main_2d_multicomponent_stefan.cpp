@@ -1601,9 +1601,10 @@ CF_DIM* external_source_conc_robin[2] = {&external_source_c0_robin, &external_so
 Convergence_soln::external_source_Gibbs_Thomson external_source_Gibbs_Thomson(&convergence_tl, &convergence_conc0, &convergence_conc1, &convergence_vgamma);
 
 
-void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_environment_t& mpi, int iter){
+void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_environment_t& mpi, int iter,
+                                              FILE* fich_errors, char name_errors[]){
 
-  PetscPrintf(mpi.comm(), "Checking convergence fields errors \n");
+  PetscPrintf(mpi.comm(), "Checking convergence fields errors ... \n");
   vec_and_ptr_t phi;
 
   vec_and_ptr_t tl, ts, c0, c1, vgamma;
@@ -1662,7 +1663,11 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   ts.vec = mas->get_ts();
   c0.vec = mas->get_cl(0);
   c1.vec = mas->get_cl(1);
+
   vgamma.vec = mas->get_normal_velocity();
+  // We scale the front velo by -1 bc mas multiplies it by the normal outward from the fluid domain, and we want to check the opposite
+  VecScaleGhost(vgamma.vec, -1.);
+
   u = mas->get_v_n_NS();
 
 
@@ -1675,7 +1680,6 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   foreach_dimension(d){
     VecSet(u_err.vec[d], 0.);
   }
-
 
   phi.get_array();
 
@@ -1693,6 +1697,8 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
 
   double dxyz_close_to_interface = 2.0 * MIN(xyz_min[0], xyz_min[1]);
 
+
+  double tl_Linf = 0., ts_Linf = 0., c0_Linf = 0., c1_Linf = 0., vgamma_Linf = 0., vx_Linf = 0., vy_Linf = 0.;
   foreach_node(n, nodes){
     if(phi.ptr[n] < 0.){
       tl_err.ptr[n] = fabs(tl.ptr[n] - tl_ana.ptr[n]);
@@ -1702,12 +1708,20 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
       foreach_dimension(d){
         u_err.ptr[d][n] = fabs(u.ptr[d][n] - u_ana.ptr[d][n]);
       }
+
+      tl_Linf = max(tl_Linf, tl_err.ptr[n]);
+      c0_Linf = max(c0_Linf, c0_err.ptr[n]);
+      c1_Linf = max(c1_Linf, c1_err.ptr[n]);
+      vx_Linf = max(vx_Linf, u_err.ptr[0][n]);
+      vy_Linf = max(vy_Linf, u_err.ptr[1][n]);
     }
     else{
       ts_err.ptr[n] = (ts.ptr[n] - ts_ana.ptr[n]);
+      ts_Linf = max(ts_Linf, ts_err.ptr[n]);
     }
     if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
       vgamma_err.ptr[n] = fabs(vgamma.ptr[n] - vgamma_ana.ptr[n]);
+      vgamma_Linf = max(vgamma_Linf, vgamma_err.ptr[n]);
     }
   }
 
@@ -1730,7 +1744,6 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
     ierr = VecGhostUpdateEnd(u_err.vec[d], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
-
   phi.restore_array();
 
   tl.restore_array(); ts.restore_array(); c0.restore_array(); c1.restore_array();
@@ -1741,6 +1754,54 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
 
   tl_err.restore_array(); ts_err.restore_array(); c0_err.restore_array(); c1_err.restore_array();
   vgamma_err.restore_array(); u_err.restore_array();
+
+  // Scale back vgamma now that we are done with it
+  // (Not sure this is entirely necessary, i think we might just have a copy of it and not the actual vec, I need to double check)
+  VecScaleGhost(vgamma.vec, -1.);
+
+  // Get the global Linf errors:
+  double local_Linf_errors[7] = {tl_Linf, ts_Linf, c0_Linf, c1_Linf, vgamma_Linf, vx_Linf, vy_Linf};
+  double global_Linf_errors[7] = {0., 0., 0., 0., 0., 0., 0.};
+
+  int mpi_err;
+
+  mpi_err = MPI_Allreduce(local_Linf_errors,global_Linf_errors,7,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);SC_CHECK_MPI(mpi_err);
+
+  // Print errors to application output:
+  int num_nodes = nodes->num_owned_indeps;
+  MPI_Allreduce(MPI_IN_PLACE, &num_nodes, 1, MPI_INT, MPI_SUM, p4est->mpicomm);
+
+  PetscPrintf(p4est->mpicomm,"\n -------------------------------------\n"
+                              "Errors on Coupled Validation "
+                              "\n -------------------------------------\n"
+                              "Linf on Tl: %0.3e \n"
+                              "Linf on Ts: %0.3e \n"
+                              "Linf on C0: %0.3e \n"
+                              "Linf on C1: %0.3e \n"
+                              "Linf on vgamma: %0.3e \n"
+                              "Linf on vx: %0.3e \n"
+                              "Linf on vy: %0.3e \n \n"
+                              "Number grid points used: %d \n"
+                              "dxyz_min : %0.3e \n",
+              global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],
+              global_Linf_errors[3],global_Linf_errors[4],global_Linf_errors[5],
+              global_Linf_errors[6],
+              num_nodes, min(xyz_min[0], xyz_min[1]));
+
+  // Print errors to file:
+  ierr = PetscFOpen(p4est->mpicomm, name_errors,"a",&fich_errors);CHKERRXX(ierr);
+  ierr = PetscFPrintf(p4est->mpicomm, fich_errors, "%g %g %d "
+                                                   "%g %g %g "
+                                                   "%g %g %g "
+                                                   "%d %g \n",
+                      tn, mas->get_dt(), iter,
+                      global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],
+                      global_Linf_errors[3],global_Linf_errors[4],global_Linf_errors[5],
+                      global_Linf_errors[6],
+                      num_nodes, min(xyz_min[0], xyz_min[1]));CHKERRXX(ierr);
+  ierr = PetscFClose(p4est->mpicomm,fich_errors); CHKERRXX(ierr);
+
+
 
   if(save_vtk.val){
     // Save to vtk:
@@ -1778,13 +1839,13 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
     point_fields.push_back(Vec_for_vtk_export_t(vgamma.vec, "vgamma"));
     point_fields.push_back(Vec_for_vtk_export_t(vgamma_err.vec, "vgamma_err"));
 
-    point_fields.push_back(Vec_for_vtk_export_t(u_ana.vec[0], "vx"));
+    point_fields.push_back(Vec_for_vtk_export_t(u_ana.vec[0], "vx_ana"));
     point_fields.push_back(Vec_for_vtk_export_t(u.vec[0], "vx"));
-    point_fields.push_back(Vec_for_vtk_export_t(u_err.vec[0], "vx"));
+    point_fields.push_back(Vec_for_vtk_export_t(u_err.vec[0], "vx_err"));
 
-    point_fields.push_back(Vec_for_vtk_export_t(u_ana.vec[1], "vy"));
+    point_fields.push_back(Vec_for_vtk_export_t(u_ana.vec[1], "vy_ana"));
     point_fields.push_back(Vec_for_vtk_export_t(u.vec[1], "vy"));
-    point_fields.push_back(Vec_for_vtk_export_t(u_err.vec[1], "vy"));
+    point_fields.push_back(Vec_for_vtk_export_t(u_err.vec[1], "vy_err"));
 
 
     my_p4est_vtk_write_all_lists(p4est, nodes, ngbd->get_ghost(),
@@ -1793,9 +1854,10 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   }
 
 
-
+  // Destroy the vectors that we created to evaluate the convergence errors:
   tl_ana.destroy(); ts_ana.destroy(); c0_ana.destroy(); c1_ana.destroy();
   vgamma_ana.destroy(); u_ana.destroy();
+
   tl_err.destroy(); ts_err.destroy(); c0_err.destroy(); c1_err.destroy();
   vgamma_err.destroy(); u_err.destroy();
 
@@ -3037,6 +3099,19 @@ int main (int argc, char* argv[])
     ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
   }
 
+  // Initialize the separate file to save if we are doing a coupled convergence test:
+  FILE *fich_errors = NULL;
+  char name_errors[1000];
+  if(geometry.val == 8){
+    sprintf(name_errors, "%s/coupled_convergence_test_lmin%d_lmax%d.dat", out_dir, lmin.val, lmax.val);
+    ierr = PetscFOpen(mpi.comm(), name_errors, "w", &fich_errors); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(),fich_errors,"tn " "dt " "iteration "
+                                                 "Tl_err " "Ts_err " "C0_err " "C1_err "
+                                                 "vgamma_err " "vx_err " "vy_err " "num_nodes " "dxyz_min \n");CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(),fich_errors); CHKERRXX(ierr);
+
+  }
+
   if (mpi.rank() == 0 && save_params.val) {
     std::ostringstream file;
     file << out_dir << "/parameters.dat";
@@ -3420,7 +3495,7 @@ int main (int argc, char* argv[])
   while (1)
   {
 //    // CHeck to make sure the convergence fields are at least initialized correctly
-    check_convergence_errors_and_save_to_vtk(&mas, mpi, 10000);
+//    check_convergence_errors_and_save_to_vtk(&mas, mpi, 10000);
 
 //    PetscPrintf(mpi.comm(), "\n ------- \n Iteration: %d \n --------------- \n", iteration);
     // determine to save or not
@@ -3487,7 +3562,8 @@ int main (int argc, char* argv[])
 
 
     if(geometry.val == 8){
-      check_convergence_errors_and_save_to_vtk(&mas, mpi, iteration);
+      check_convergence_errors_and_save_to_vtk(&mas, mpi, iteration,
+                                               fich_errors, name_errors);
     }
 
     if (save_step_convergence()) {
