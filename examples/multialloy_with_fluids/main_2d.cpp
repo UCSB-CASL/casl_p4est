@@ -4635,6 +4635,30 @@ void initialize_error_files_for_test_cases(mpi_environment_t& mpi,
           throw std::invalid_argument("Output file initialization: unknown problem dimensionalization type \n");
         }
       }
+      // Test if the file exists, change it accordingly:
+      // Note: we copy the file name over first because on Pod for whatever reason, it doesn't like when you sprintf a string into itself and it fails, so that's why I have to do this here even though it's weird
+
+      bool file_exists = true;
+
+      char name_data_test[1000];
+      int i = 1;
+      while(file_exists){
+        sprintf(name_data_test, "%s", name_data);
+
+
+        if(mpi.rank() == 0){
+          std::ifstream file2check(name_data_test);
+          file_exists = file2check.good();
+        }
+        int mpi_err = MPI_Bcast(&file_exists, 1, MPI_INTEGER, 0, mpi.comm());
+
+        if(file_exists){
+          sprintf(name_data, "%s-%d", name_data_test, i);
+          i++;
+        }
+      }
+
+
       // TO-DO: adjust this logic appropriately
       ierr = PetscFOpen(mpi.comm(),name_data,"w",&fich_data); CHKERRXX(ierr);
       ierr = PetscFPrintf(mpi.comm(),fich_data,"tn ");CHKERRXX(ierr);
