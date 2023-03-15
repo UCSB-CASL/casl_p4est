@@ -5535,6 +5535,7 @@ int main(int argc, char** argv) {
                 out_dir_save_state,
                 stefan_w_fluids_solver->get_lmin(), stefan_w_fluids_solver->get_lmax(),
                 advection_sl_order,example_);
+        PetscPrintf(mpi.comm(), "Output directory is %s \n", output);
 
         stefan_w_fluids_solver->save_state(output, num_save_states);
 

@@ -4288,6 +4288,7 @@ void my_p4est_stefan_with_fluids_t::prepare_fields_for_save_or_load(vector<save_
 void my_p4est_stefan_with_fluids_t::save_state(const char* path_to_directory,unsigned int n_saved){
   PetscErrorCode ierr;
 
+  PetscPrintf(mpi->comm(), "Checking that our directory exists ...\n");
   if(!file_exists(path_to_directory)){
     create_directory(path_to_directory,p4est_np1->mpirank, p4est_np1->mpicomm);
   }
@@ -4305,6 +4306,7 @@ void my_p4est_stefan_with_fluids_t::save_state(const char* path_to_directory,uns
   // ------------------------------------------
   char path_to_directory_NS[PATH_MAX];
   sprintf(path_to_directory_NS,"%s_navier_stokes", path_to_directory);
+  PetscPrintf(mpi->comm(), "Checking that our NS directory exists ...\n");
   if(solve_navier_stokes){
     if(!file_exists(path_to_directory_NS)){
       create_directory(path_to_directory_NS,p4est_np1->mpirank, p4est_np1->mpicomm);
@@ -4322,6 +4324,7 @@ void my_p4est_stefan_with_fluids_t::save_state(const char* path_to_directory,uns
 
   unsigned int backup_idx = 0;
 
+  PetscPrintf(mpi->comm(), "Sliding the backups ... \n");
   if(mpi->rank() ==0){
     unsigned int n_backup_subfolders = 0;
 
@@ -4381,28 +4384,30 @@ void my_p4est_stefan_with_fluids_t::save_state(const char* path_to_directory,uns
   } // end of operations only on rank 0
 
   int mpiret = MPI_Bcast(&backup_idx, 1, MPI_INT, 0, p4est_np1->mpicomm); SC_CHECK_MPI(mpiret);// acts as a MPI_Barrier, too
-
+  PetscPrintf(mpi->comm(), "Creating the backup for idx %d ... \n", backup_idx);
   char path_to_folder[PATH_MAX];
   sprintf(path_to_folder, "%s/backup_%d", path_to_directory, (int) backup_idx);
   create_directory(path_to_folder, p4est_np1->mpirank, p4est_np1->mpicomm);
-
+  PetscPrintf(mpi->comm(), "Created the directory %s ... \n", path_to_folder);
   char filename[PATH_MAX];
 
   // save the solver parameters
   sprintf(filename, "%s/solver_parameters", path_to_folder);
+  PetscPrintf(mpi->comm(), "Saving solver parameters ... \n");
   save_or_load_parameters(filename, SAVE);
 
   // Save the p4est and corresponding data:
 
   vector<save_or_load_element_t> fields_to_save_n, fields_to_save_np1;
-
+  PetscPrintf(mpi->comm(), "Preparing fields for save ... \n");
   prepare_fields_for_save_or_load(fields_to_save_np1, fields_to_save_n);
 
   // Save the state:
   // choosing not to save the faces because we don't need them saved ? Elyce to-do double check this, 1/6/21
+  PetscPrintf(mpi->comm(), "Saving the np1 forest and data ... \n");
   my_p4est_save_forest_and_data(path_to_folder, p4est_np1, nodes_np1, NULL,
                                 "p4est_np1", fields_to_save_np1);
-
+  PetscPrintf(mpi->comm(), "Saving the n forest and data... \n");
   my_p4est_save_forest_and_data(path_to_folder, p4est_n, nodes_n, NULL,
                                 "p4est_n", fields_to_save_n);
 
@@ -4410,6 +4415,7 @@ void my_p4est_stefan_with_fluids_t::save_state(const char* path_to_directory,uns
   // Elyce TEMP --> adding NS save state folder:
   // ------------------------------------------
   if(solve_navier_stokes){
+    PetscPrintf(mpi->comm(), "Saving the NS state ... \n");
     ns->save_state(path_to_directory_NS, tn, n_saved);
   }
 
