@@ -359,9 +359,16 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
 
   char absolute_path_to_file[PATH_MAX];
 
+
+
   // save the p4est object with global order of dofs saved as cell-level data to recover correct data localization at reload stage
   sprintf(absolute_path_to_file, "%s/%s", absolute_path_to_folder, forest_filename);
+  MPI_Barrier(forest->mpicomm);
+  PetscPrintf(forest->mpicomm, "Attempting to save the forest at %s ...  \n", absolute_path_to_file);
   my_p4est_save_forest(absolute_path_to_file, forest, nodes, faces);
+
+  MPI_Barrier(forest->mpicomm);
+  PetscPrintf(forest->mpicomm, "Saves the forest. Now trying the fields \n");
 
   // export the Petsc vectors
   for (size_t k = 0; k < elements.size(); k++) {
