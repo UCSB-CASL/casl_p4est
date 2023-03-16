@@ -5433,19 +5433,7 @@ int main(int argc, char** argv) {
       // --------------------------------
       dt = stefan_w_fluids_solver->get_dt();
 
-      // account for phi subiter dt if we are doing that *and* it is currently activated in SWF
-      double dt_phi_subiter=0.;
-      if(do_phi_advection_substeps && stefan_w_fluids_solver->get_do_phi_advection_substeps()){
-        dt_phi_subiter = stefan_w_fluids_solver->get_dt_phi_advection_substep();
-      }
 
-      // if phi subiter dt is going to exceed final time, let's now deactivate for end of run
-      if((tn+ dt + dt_phi_subiter) > tfinal && (last_tstep<0)){
-        PetscPrintf(mpi.comm(), "Exceeds: dt_phi_subiter = %0.3e \n", dt_phi_subiter);
-//        stefan_w_fluids_solver->set_do_phi_advection_substeps(false);
-        stefan_w_fluids_solver->set_dt_phi_advection_substep(tfinal - dt);
-        last_tstep = tstep+1;
-      }
 
       // Normal end:
       if((tn + dt > tfinal) && (last_tstep<0)){
@@ -5460,6 +5448,23 @@ int main(int argc, char** argv) {
           last_tstep = tstep;
         }
         PetscPrintf(mpi.comm(),"Final tstep will be %d \n",last_tstep);
+      }
+
+      // account for phi subiter dt if we are doing that *and* it is currently activated in SWF
+      // This gets checked after the "normal end" bc it's a bit less restrictive
+      double dt_phi_subiter=0.;
+      if(do_phi_advection_substeps && stefan_w_fluids_solver->get_do_phi_advection_substeps()){
+        dt_phi_subiter = stefan_w_fluids_solver->get_dt_phi_advection_substep();
+      }
+
+      // if phi subiter dt is going to exceed final time, let's now deactivate for end of run
+      if((tn+ dt + dt_phi_subiter) > tfinal && (last_tstep<0)){
+        PetscPrintf(mpi.comm(), "Exceeds: dt_phi_subiter = %0.3e \n", dt_phi_subiter);
+
+        stefan_w_fluids_solver->set_dt_phi_advection_substep(tfinal - dt);
+        last_tstep = tstep+1;
+        PetscPrintf(mpi.comm(),"Final tstep will be %d \n",last_tstep);
+
       }
 
       PetscPrintf(mpi.comm(), "\n \n tn = %0.3e, dt = %0.3e, dt_phi = %0.3e \n tfinal = %0.3e,  tn + dt + dt_phi = %0.3e \n Last tstep = %d \n",
@@ -5523,7 +5528,7 @@ int main(int argc, char** argv) {
       // We save the state here to be consistent with how states are loaded -- a state that is loaded will be loaded as if its an initial condition, and then the temperature problem will be solved, and so on and so forth.
       // Thus we save the state here, since the natural next step would be as described above
       // --------------------------------------------------------------------------------------------------------------
-      if(tstep>0 && ((tstep%save_state_every_iter)==0) && tstep!=load_tstep){
+      if(tstep>0 && ((tstep%save_state_every_iter)==0) && tstep!=load_tstep && tstep<last_tstep){
         char output[1000];
         const char* out_dir_save_state = getenv("OUT_DIR_SAVE_STATE");
         if(!out_dir_save_state){
