@@ -4404,9 +4404,11 @@ void my_p4est_stefan_with_fluids_t::save_state(const char* path_to_directory,uns
 
   // Save the state:
   // choosing not to save the faces because we don't need them saved ? Elyce to-do double check this, 1/6/21
+  MPI_Barrier(mpi->comm());
   PetscPrintf(mpi->comm(), "Saving the np1 forest and data ... \n");
   my_p4est_save_forest_and_data(path_to_folder, p4est_np1, nodes_np1, NULL,
                                 "p4est_np1", fields_to_save_np1);
+  MPI_Barrier(mpi->comm());
   PetscPrintf(mpi->comm(), "Saving the n forest and data... \n");
   my_p4est_save_forest_and_data(path_to_folder, p4est_n, nodes_n, NULL,
                                 "p4est_n", fields_to_save_n);
@@ -4415,6 +4417,7 @@ void my_p4est_stefan_with_fluids_t::save_state(const char* path_to_directory,uns
   // Elyce TEMP --> adding NS save state folder:
   // ------------------------------------------
   if(solve_navier_stokes){
+    MPI_Barrier(mpi->comm());
     PetscPrintf(mpi->comm(), "Saving the NS state ... \n");
     ns->save_state(path_to_directory_NS, tn, n_saved);
   }

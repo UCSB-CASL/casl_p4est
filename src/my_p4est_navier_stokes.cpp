@@ -25,6 +25,7 @@
 #endif
 
 #include <algorithm>
+#include <linux/limits.h>
 
 #ifndef CASL_LOG_EVENTS
 #undef PetscLogEventBegin
