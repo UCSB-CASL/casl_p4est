@@ -5528,7 +5528,15 @@ int main(int argc, char** argv) {
       // We save the state here to be consistent with how states are loaded -- a state that is loaded will be loaded as if its an initial condition, and then the temperature problem will be solved, and so on and so forth.
       // Thus we save the state here, since the natural next step would be as described above
       // --------------------------------------------------------------------------------------------------------------
-      if(tstep>0 && ((tstep%save_state_every_iter)==0) && tstep!=load_tstep && tstep<last_tstep){
+
+      bool do_we_save_state = tstep>0 &&
+                              ((tstep%save_state_every_iter)==0) &&
+                              tstep!=load_tstep &&
+                              (last_tstep>0 ? (tstep<last_tstep): true);
+      // the last condition above is bc last_tstep is initialized to be negative, except when we are getting close to it, so we can
+      // only compare tstep to last_tstep if last_tstep has been updated to some non-negative value
+
+      if(do_we_save_state){
         char output[1000];
         const char* out_dir_save_state = getenv("OUT_DIR_SAVE_STATE");
         if(!out_dir_save_state){
