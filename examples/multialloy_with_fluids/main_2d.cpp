@@ -5375,9 +5375,9 @@ int main(int argc, char** argv) {
       compute_pressure_ = are_we_saving_vtk(tstep, tn, tstep == load_tstep, out_idx, false ) || example_is_a_test_case;
       stefan_w_fluids_solver->set_compute_pressure(compute_pressure_);
 
-      MPI_Barrier(mpi.comm());
+
       stefan_w_fluids_solver->solve_all_fields_for_one_timestep();
-      MPI_Barrier(mpi.comm());
+
       dt = stefan_w_fluids_solver->get_dt();
 
       // -------------------------------
