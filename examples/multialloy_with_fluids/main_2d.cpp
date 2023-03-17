@@ -5308,7 +5308,7 @@ int main(int argc, char** argv) {
     // Begin time loop
     // ---------------------------------------
     bool keep_going = true;
-    while(/*keep_going*/ (tfinal - tn)>-EPS){
+    while(keep_going /*(tfinal - tn)>-EPS*/){
       if((timing_every_n>0) && (tstep%timing_every_n == 0)) {
         PetscPrintf(mpi.comm(),"Current time info : \n");
         w.read_duration_current();
@@ -5554,6 +5554,8 @@ int main(int argc, char** argv) {
 
         PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
       }
+      keep_going = (tfinal - tn > -EPS) &&
+                   (last_tstep > 0 ? (tstep<last_tstep):true);
 
     } // <-- End of for loop through time
 
