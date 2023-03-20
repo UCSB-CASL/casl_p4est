@@ -5511,7 +5511,8 @@ int main(int argc, char** argv) {
       // Update time:
       // -------------------------------
 //      keep_going = ((tfinal - tn + dt) > -EPS) && (tstep!=last_tstep);
-
+      keep_going = (tfinal - tn > -EPS) &&
+                   (last_tstep > 0 ? (tstep<last_tstep):true);
 
       tn+=dt;
       // Increment if we are doing the phi advection substep, and if it is actually activated inside SWF
@@ -5554,8 +5555,7 @@ int main(int argc, char** argv) {
 
         PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
       }
-      keep_going = (tfinal - tn > -EPS) &&
-                   (last_tstep > 0 ? (tstep<last_tstep):true);
+
 
     } // <-- End of for loop through time
 
