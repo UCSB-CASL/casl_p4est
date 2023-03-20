@@ -140,7 +140,12 @@ DEFINE_PARAMETER(pl, bool, track_evolving_geometries, false, "Flag to track isla
 DEFINE_PARAMETER(pl, bool, wrap_up_simulation_if_solid_has_vanished, false, "If set to true, the simulation will check if the solid region has vanished and pause the simulation at that point \n");
 
 // Save state options
-DEFINE_PARAMETER(pl, int, save_state_every_iter, 10000, "Saves simulation state every n number of iterations (default is 500)");
+DEFINE_PARAMETER(pl, bool, save_state, false, "Saves the simulation state (as per other specified options). Default: false");
+DEFINE_PARAMETER(pl, bool, save_state_using_iter, false, "Saves the simulation state every specified number of iterations \n");
+DEFINE_PARAMETER(pl, bool, save_state_using_dt, false, "Saves the simulation state using every specified dt \n");
+
+DEFINE_PARAMETER(pl, int, save_state_every_iter, -1., "Saves simulation state every n number of iterations (default is -1)");
+DEFINE_PARAMETER(pl, double, save_state_every_dt, -1., "Save state every dt -- tells us how often (in seconds) to save the simulation state. Default is -1. ");
 DEFINE_PARAMETER(pl, int, num_save_states, 20, "Number of save states we keep on file (default is 20)");
 
 // Load state options
@@ -3469,7 +3474,7 @@ void setup_analytical_ics_and_bcs_for_this_tstep(BC_INTERFACE_VALUE_TEMP* bc_int
 
 
 // Want to handle this in main (V)
-bool are_we_saving_vtk(double tstep_, double tn_, bool is_load_step, int& out_idx, bool get_new_outidx){
+bool are_we_saving_vtk(int tstep_, double tn_, bool is_load_step, int& out_idx, bool get_new_outidx){
   bool out = false;
   if(save_to_vtk){
     if(save_using_dt){
@@ -3487,6 +3492,22 @@ bool are_we_saving_vtk(double tstep_, double tn_, bool is_load_step, int& out_id
   }
   return out;
 }
+
+bool are_we_saving_simulation_state(int tstep_, double tn_, bool is_load_step, int& out_state_idx){
+  bool out = false;
+
+  if(save_state_using_dt){
+    out = (((int) (floor(tn_/save_state_every_dt) )) !=out_state_idx) && (!is_load_step);
+    out_state_idx = int (floor(tn_/save_state_every_dt) );
+  }
+  else if(save_state_using_iter){
+    out = (( (int) floor(tstep_/save_state_every_iter) ) != out_state_idx) && (!is_load_step);
+    out_state_idx = ((int) floor(tstep_/save_state_every_iter) );
+  }
+
+  return out;
+};
+
 // Want to handle this in main (V)
 bool are_we_saving_data(double& tn_,bool is_load_step, int& out_idx, bool get_new_outidx){
   bool out = false;
@@ -4515,6 +4536,11 @@ void setup_initial_parameters_and_report(mpi_environment_t& mpi, my_p4est_stefan
   // Other:
   stefan_w_fluids_solver->set_print_checkpoints(print_checkpoints);
 
+//  // Tell the user if they've chosen some incompatible save options:
+  if(save_state_using_dt>0 && save_state_using_iter){
+    throw std::invalid_argument("main_2d.cpp: you have chosen save_state_using_dt and save_state_using_iter. You can only choose one of these \n");
+  }
+
 
   // -----------------------------------------------
   // Report relevant information:
@@ -5244,6 +5270,8 @@ int main(int argc, char** argv) {
 
     // Initialize output file numbering:
     int out_idx = -1;
+    int state_idx = -1;
+
     int data_save_out_idx = -1;
     bool compute_pressure_ = false; // will be updated by the NS
 
@@ -5290,6 +5318,9 @@ int main(int argc, char** argv) {
       PetscPrintf(mpi.comm(), "save_every_dt = %f  nondim ", save_every_dt);
 
       stefan_w_fluids_solver->set_dt_max_allowed(save_every_dt - EPS);
+    }
+    if(save_state_using_dt){
+      save_state_every_dt/=time_nondim_to_dim;
     }
 
     // -----------------------------------------------
@@ -5530,10 +5561,13 @@ int main(int argc, char** argv) {
       // Thus we save the state here, since the natural next step would be as described above
       // --------------------------------------------------------------------------------------------------------------
 
-      bool do_we_save_state = tstep>0 &&
-                              ((tstep%save_state_every_iter)==0) &&
-                              tstep!=load_tstep &&
-                              (last_tstep>0 ? (tstep<last_tstep): true);
+//      bool do_we_save_state = tstep>0 &&
+//                              ((tstep%save_state_every_iter)==0) &&
+//                              tstep!=load_tstep &&
+//                              (last_tstep>0 ? (tstep<last_tstep): true);
+
+      bool do_we_save_state = are_we_saving_simulation_state(tstep, tn, ((tstep==0) || (tstep==load_tstep)), state_idx);
+      PetscPrintf(mpi.comm(), "Do we save: %d , state_idx = %d \n", do_we_save_state, state_idx);
       // the last condition above is bc last_tstep is initialized to be negative, except when we are getting close to it, so we can
       // only compare tstep to last_tstep if last_tstep has been updated to some non-negative value
 
