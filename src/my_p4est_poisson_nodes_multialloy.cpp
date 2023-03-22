@@ -1610,7 +1610,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values(int start, in
               /c_all[0]/(1.0-part_coeff_(0, c_all.data()));
 
           pw_psi_t_sol_jump_taylor_[idx] = 0;
-          pw_psi_t_flx_jump_taylor_[idx] = del_vn*latent_heat_*density_s_;
+          pw_psi_t_flx_jump_taylor_[idx] = -del_vn*latent_heat_*density_s_;
           // Rochi:: updating this because the stefan condition for temp flux was modified to include density_s_ by Rochi and Elyce
 
           // centroid

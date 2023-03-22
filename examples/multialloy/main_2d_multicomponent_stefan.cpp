@@ -565,7 +565,7 @@ void set_alloy_parameters()
     initial_conc_1.val = 1.;
 
     eps_c.val = 0.;
-    eps_v.val = 0;
+    eps_v.val = 0.01;
     eps_a.val = 0;
     symmetry.val = 0;
 
@@ -1245,7 +1245,7 @@ class Convergence_soln{
     struct interface_velocity: CF_DIM{
 //      public:
           double operator()(DIM(double x,double y,double z)) const{
-            return 5.0; //sin(t) * cos(t)/*sin(t) * cos(t)*/;
+            return sin(t) * cos(t); //sin(t) * cos(t)/**/sin(t) * cos(t)*/;
           }
     } /*convergence_vgamma*/;
 
