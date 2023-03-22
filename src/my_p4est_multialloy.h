@@ -323,7 +323,7 @@ private:
     if(is_there_convergence_v){
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, v_ngbd->p4est, v_ngbd->nodes, xyz);
-      source_term += (*external_conc0_robin_term)(xyz[0], xyz[1]);
+      source_term = (*external_conc0_robin_term)(xyz[0], xyz[1]);
 //      printf("Node %d, (%0.2f, %0.2f) : front velo source term = %0.2e \n", n, xyz[0], xyz[1],source_term);
     }
 //    double xyz[P4EST_DIM];
