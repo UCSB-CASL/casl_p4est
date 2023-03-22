@@ -289,12 +289,14 @@ private:
   static double **v_c_p, **v_c0_d_p, **v_c0_dd_p, **v_normal_p;
   static double v_factor;
   static double (*v_part_coeff)(int, double *);
+
+  static double *convergence_source_term;
   static int v_num_comps;
   static bool is_there_convergence_v;
   static CF_DIM* external_conc0_robin_term;
 
   void set_velo_interpolation(my_p4est_node_neighbors_t *ngbd, double **c_p, double **c0_d_p, double **c0_dd_p,
-                              double **normal_p, double factor)
+                              double **normal_p, double factor, double *convergence_source_term_=NULL)
   {
     v_ngbd       = ngbd;
     v_c_p        = c_p;
@@ -306,9 +308,10 @@ private:
     v_num_comps  = num_comps_;
 
     is_there_convergence_v = there_is_convergence_test;
-    if(is_there_convergence_v){
-      external_conc0_robin_term = convergence_external_source_conc_robin[0];
-    }
+    convergence_source_term = convergence_source_term_;
+//    if(is_there_convergence_v){
+//      external_conc0_robin_term = convergence_external_source_conc_robin[0];
+//    }
   }
 
   static double velo(p4est_locidx_t n, int dir, double dist)
@@ -321,9 +324,14 @@ private:
 
     double source_term=0.;
     if(is_there_convergence_v){
-      double xyz[P4EST_DIM];
-      node_xyz_fr_n(n, v_ngbd->p4est, v_ngbd->nodes, xyz);
-      source_term += (*external_conc0_robin_term)(xyz[0], xyz[1]);
+//      double xyz[P4EST_DIM];
+//      node_xyz_fr_n(n, v_ngbd->p4est, v_ngbd->nodes, xyz);
+//      source_term = (*external_conc0_robin_term)(xyz[0], xyz[1]);
+        source_term = qnnn.interpolate_in_dir(dir,dist, convergence_source_term);
+
+
+
+
 //      printf("Node %d, (%0.2f, %0.2f) : front velo source term = %0.2e \n", n, xyz[0], xyz[1],source_term);
     }
 //    double xyz[P4EST_DIM];
