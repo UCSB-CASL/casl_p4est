@@ -34,8 +34,8 @@ VORO_LIBS_DEBUG       = -L$$VORO_DIR_DBG/lib -lvoro++
 # matlab (for computing condition numbers, it's ok not to provide)
 MATLAB_DIR = /home/elyce/workspace/libraries/MATLAB
 
-MATLAB_INCLUDES = $$MATLAB_DIR/extern/include/
-MATLAB_LIBS = -Wl,-rpath,$$MATLAB_DIR/bin/glnxa64/ -L$$MATLAB_DIR/bin/glnxa64/ -leng -lmx
+#MATLAB_INCLUDES = $$MATLAB_DIR/extern/include/
+#MATLAB_LIBS = -Wl,-rpath,$$MATLAB_DIR/bin/glnxa64/ -L$$MATLAB_DIR/bin/glnxa64/ -leng -lmx
 
 # mpi
 # use the mpich versions that were downloaded with petsc

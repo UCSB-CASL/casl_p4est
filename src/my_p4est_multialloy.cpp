@@ -50,6 +50,8 @@ double my_p4est_multialloy_t::v_factor;
 int my_p4est_multialloy_t::v_num_comps;
 double (*my_p4est_multialloy_t::v_part_coeff)(int, double *);
 bool my_p4est_multialloy_t::is_there_convergence_v;
+
+double *my_p4est_multialloy_t::convergence_source_term;
 CF_DIM* my_p4est_multialloy_t::external_conc0_robin_term;
 
 my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
@@ -761,8 +763,15 @@ void my_p4est_multialloy_t::compute_velocity()
   front_normal_.get_array();
   c0_dd        .get_array();
 
+  vec_and_ptr_t convergence_test_robin_source;
+  if(there_is_convergence_test){
+    convergence_test_robin_source.create(p4est_, nodes_);
+    sample_cf_on_nodes(p4est_, nodes_, *convergence_external_source_conc_robin[0], convergence_test_robin_source.vec);
+    convergence_test_robin_source.get_array();
+  }
 
-  set_velo_interpolation(ngbd_, cl_[0].ptr.data(), cl0_grad_.ptr, c0_dd.ptr, front_normal_.ptr, solute_diff_[0]);
+  set_velo_interpolation(ngbd_, cl_[0].ptr.data(), cl0_grad_.ptr, c0_dd.ptr, front_normal_.ptr, solute_diff_[0],
+                         there_is_convergence_test? convergence_test_robin_source.ptr : NULL);
   ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec, 50,
       NULL, 0, 0, &velo);
 
@@ -776,6 +785,10 @@ void my_p4est_multialloy_t::compute_velocity()
 
 
   c0_dd.destroy();
+  if(there_is_convergence_test){
+    convergence_test_robin_source.restore_array();
+    convergence_test_robin_source.destroy();
+  }
 
 
   //cl_[0]             .get_array();
