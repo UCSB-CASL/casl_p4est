@@ -1695,7 +1695,7 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   double xyz_min[P4EST_DIM];
   dxyz_min(p4est, xyz_min);
 
-  double dxyz_close_to_interface = 2.0 * MIN(xyz_min[0], xyz_min[1]);
+  double dxyz_close_to_interface = 1.0 * MIN(xyz_min[0], xyz_min[1]);
 
 
   double tl_Linf = 0., ts_Linf = 0., c0_Linf = 0., c1_Linf = 0., vgamma_Linf = 0., vx_Linf = 0., vy_Linf = 0.;
@@ -1722,8 +1722,7 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
     }
     if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
       vgamma_err.ptr[n] = fabs(vgamma.ptr[n] - vgamma_ana.ptr[n]);
-      vgamma_Linf = max(vgamma_Linf, vgamma_err.ptr[n]);
-
+      if(vgamma.ptr[n]!=0) vgamma_Linf = max(vgamma_Linf, vgamma_err.ptr[n]);
       vgamma_max = max(vgamma_max, vgamma.ptr[n]);
     }
   }
@@ -1801,7 +1800,7 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   ierr = PetscFPrintf(p4est->mpicomm, fich_errors, "%g %g %d "
                                                    "%g %g %g "
                                                    "%g %g %g "
-                                                   "%d %g \n",
+                                                   "%g %d %g \n",
                       tn, mas->get_dt(), iter,
                       global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],
                       global_Linf_errors[3],global_Linf_errors[4],global_Linf_errors[5],
