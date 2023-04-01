@@ -3499,6 +3499,7 @@ int main (int argc, char* argv[])
 //  mas.save_VTK(-1);
 
   PetscPrintf(mpi.comm(), "Entering time loop ! \n");
+  bool last_iter=false;
   while (1)
   {
 //    // CHeck to make sure the convergence fields are at least initialized correctly
@@ -3512,7 +3513,7 @@ int main (int argc, char* argv[])
         (save_type.val == 2 && tn           >= vtk_idx*save_every_dt.val);
 
     bool save_state_now = (save_vtk.val) && (iteration >= save_state_idx * save_state_every_dn.val);
-    if (!keep_going) break;
+    if(!last_iter){if (!keep_going) break;}
 
 //    // compute time step
 //    mas.compute_dt();
@@ -3521,6 +3522,7 @@ int main (int argc, char* argv[])
 //      mas.set_dt(time_limit.val-tn);
 //      keep_going = false;
 //    }
+
     // for convergence study, update the time variable for each of the fields, and the normals for fields that require it:
     vec_and_ptr_dim_t front_normals_;
     my_p4est_node_neighbors_t* ngbd_;
@@ -3555,6 +3557,8 @@ int main (int argc, char* argv[])
       // ANd update the temperature wall bc:
       phi_.vec = mas.get_front_phi();
       bc_value_temp.set_inputs(ngbd_, phi_.vec );
+
+      mas.set_c0_guess(&convergence_conc0);
     }
 
     // solve nonlinear system for temperature, concentration and velocity at t_n
@@ -3769,10 +3773,14 @@ int main (int argc, char* argv[])
     //std::cout << "Total growth :: "<< total_growth << " ; Growth Limit :: " << growth_limit.val << "\n";
     // Rochi :: moving compute_dt to a different location
     // compute time step
+    /*if(last_iter) {
+        keep_going=false;
+        last_iter=false;
+    }
     mas.compute_dt();
     if (tn + mas.get_dt() > time_limit.val) {
       mas.set_dt(time_limit.val-tn);
-      keep_going = false;
+      last_iter =true;
     }
     keep_going = keep_going && (iteration < step_limit.val) && (total_growth < growth_limit.val);
 
@@ -3785,7 +3793,7 @@ int main (int argc, char* argv[])
       }
 
       mas.update_grid_solid();
-    }
+    }*/
 
 
     if(save_state_now){
@@ -3812,7 +3820,29 @@ int main (int argc, char* argv[])
       external_source_temperature_flux_jump.clear_inputs();
       bc_value_temp.clear_inputs();
     }
+    if(last_iter) {
+        keep_going=false;
+        last_iter=false;
+        continue;
+    }
 
+    mas.compute_dt();
+    if (tn + mas.get_dt() > time_limit.val) {
+      mas.set_dt(time_limit.val-tn);
+      last_iter =true;
+    }
+    keep_going = keep_going && (iteration < step_limit.val) && (total_growth < growth_limit.val);
+
+    if(keep_going){
+      if(solve_w_fluids.val){
+        mas.update_grid_w_fluids();
+      }
+      else{
+        mas.update_grid();
+      }
+
+      mas.update_grid_solid();
+    }
 
     iteration++;
 
@@ -3825,7 +3855,7 @@ int main (int argc, char* argv[])
   eps_c_all.clear();
   eps_v_all.clear();
   w1.stop(); w1.read_duration();
-
+  PetscPrintf(mpi.comm(), ".................Reached here ...... \n");
   return 0;
 }
 

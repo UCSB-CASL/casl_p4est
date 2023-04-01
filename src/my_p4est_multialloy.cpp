@@ -186,8 +186,6 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   }
 
   cl0_grad_.destroy();
-
-  psi_tl_.destroy();
   psi_ts_.destroy();
   psi_cl_.destroy();
   //--------------------------------------------------
@@ -426,7 +424,6 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   }
 
   cl0_grad_.create(front_phi_dd_.vec);
-
   if(!loading_from_previous_state) seed_map_.create(front_phi_.vec);
 
   dendrite_number_.create(front_phi_.vec);
@@ -2218,10 +2215,11 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
   solver_all_in_one.set_use_points_on_interface(use_points_on_interface_);
   solver_all_in_one.set_update_c0_robin(update_c0_robin_);
   solver_all_in_one.set_use_superconvergent_robin(use_superconvergent_robin_);
+  solver_all_in_one.set_c0_guess(cl_[1].vec[0]);
 
 //  my_p4est_interpolation_nodes_t interp_c0_n(ngbd_);
 //  interp_c0_n.set_input(cl_[1].vec[0], linear);
-  solver_all_in_one.set_c0_guess(cl_[1].vec[0]);
+
 
 //  bc_error_.destroy();
 //  bc_error_.create(front_phi_.vec);
@@ -2591,7 +2589,15 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
 //  VecView(cl_[1].vec[0], PETSC_VIEWER_STDOUT_WORLD);
 
-  solver_all_in_one.set_c0_guess(cl_[1].vec[0]);
+  vec_and_ptr_t c0_guess_temp_;
+  if (there_is_convergence_test){
+    c0_guess_temp_.create(p4est_,nodes_);
+    sample_cf_on_nodes(p4est_,nodes_,*c0_guess_cf,c0_guess_temp_.vec);
+    solver_all_in_one.set_c0_guess(c0_guess_temp_.vec);
+  }else{
+    solver_all_in_one.set_c0_guess(cl_[1].vec[0]);
+  }
+
 
   int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, true,
       bc_error_.vec, bc_error_max, bc_error_avg,
@@ -2602,6 +2608,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   rhs_ts.destroy();
   rhs_cl.destroy();
 
+  if (there_is_convergence_test) c0_guess_temp_.destroy();
   // destroy backtrace vectors since they are no longer needed:
   tl_backtrace_n.destroy();
   tl_backtrace_nm1.destroy();

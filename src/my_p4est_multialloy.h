@@ -105,6 +105,8 @@ private:
   vector<vec_and_ptr_array_t> cl_;
   vec_and_ptr_dim_t           cl0_grad_;
   vec_and_ptr_dim_t cl0_dd;
+
+
   // backtraced concentrations:
   vec_and_ptr_array_t cl_backtrace_n;
   vec_and_ptr_array_t cl_backtrace_nm1;
@@ -224,6 +226,8 @@ private:
 
   CF_DIM* convergence_external_source_conc_robin[2]; // for conc0 and conc1
   CF_DIM* convergence_external_source_Gibbs_Thomson; // source term in the Gibbs Thomson relation
+
+  CF_DIM* c0_guess_cf;
 
   // -------------------------------------------------
   // Physical parameters and nondim groups for problem coupled with fluids
@@ -796,6 +800,10 @@ public:
     solid_part_coeff_.restore_array();
   }
 
+  inline void set_c0_concentration(CF_DIM *cl[]){
+
+  }
+
   //  inline void set_concentration_solve_w_fluids(CF_DIM *cl[], CF_DIM *cs[])
   //  {
   //    for (int j = 0; j < num_comps_; ++j)
@@ -986,6 +994,10 @@ public:
 
   void set_convergence_source_Gibbs_Thomson(CF_DIM* source_Gibbs){
     convergence_external_source_Gibbs_Thomson = source_Gibbs;
+  }
+
+  void set_c0_guess(CF_DIM* c0_guess){
+    c0_guess_cf=c0_guess;
   }
 
   // ---------------------------------------------
