@@ -1455,7 +1455,7 @@ class Convergence_soln{
         // actual normal direction jump minux the interface velocity --> to get our source term
 //        printf("latent heat * rho * vn = %0.2e \n", latent_heat.val * density_s.val * (*vgamma_)(DIM(x,y,z)));
 
-        double source_term = (source_x  * (*nx_interp)(DIM(x,y,z))) + (source_y * (*ny_interp)(DIM(x,y,z))) + latent_heat.val * density_s.val * (*vgamma_)(DIM(x,y,z));
+        double source_term = (source_x  * (*nx_interp)(DIM(x,y,z))) + (source_y * (*ny_interp)(DIM(x,y,z))) - latent_heat.val * density_s.val * (*vgamma_)(DIM(x,y,z));
 
 //        printf("jump in temp flux : (%0.2f, %0.2f) = %0.2e --> source_term = %0.2e \n", x, y, (source_x  * (*nx_interp)(DIM(x,y,z))) + (source_y * (*ny_interp)(DIM(x,y,z))), source_term);
 

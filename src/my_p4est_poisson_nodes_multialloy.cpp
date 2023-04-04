@@ -1343,7 +1343,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
 //      }
 //      // ---------------------
       pw_t_sol_jump_taylor_[idx] = front_temp_value_jump_->value(xyz_pr);
-      pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) - latent_heat_*density_s_*vn_pr;
+      pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) + latent_heat_*density_s_*vn_pr;
 //      printf("Tl jump = %0.2e, Tl_flux_jump = %0.2e, vn_pr = %0.2e \n", pw_t_sol_jump_taylor_[idx], pw_t_flx_jump_taylor_[idx], vn_pr);
 
       // TO FIX !! NEED TO MULTIPLY LATENT_HEAT_*VN*DENSITY_S --> NOTE : THIS CODE IS DUPLICATED IN ABOUT 100X PLACES SO MAKE SURE THEYRE ALL CHANGED
@@ -1397,7 +1397,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
 //      // ---------------------
 
 
-      pw_t_flx_jump_integr_[idx] = front_temp_flux_jump_->value(xyz_cd) - latent_heat_*density_s_*vn_cd;
+      pw_t_flx_jump_integr_[idx] = front_temp_flux_jump_->value(xyz_cd) + latent_heat_*density_s_*vn_cd;
       // Rochi:: updating this because the stefan condition for temp flux was modified to include density_s_ by Rochi and Elyce
       // ALERT: need to modify the above ^ in the same way I address the other one
       //PetscPrintf(p4est_->mpicomm, "ALERT: multialloy: temp jump is nontrivial to modify for nondimensionalization. Need to address this. \n");
@@ -1637,7 +1637,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values(int start, in
           del_vn = (vn*(1.0-part_coeff_(0, c_all.data()))*interp_local.value(xyz) - conc_diff_[0]*del_vn)
               /c_all[0]/(1.0-part_coeff_(0, c_all.data()));
 
-          pw_psi_t_flx_jump_integr_[idx] = del_vn*latent_heat_*density_s_;
+          pw_psi_t_flx_jump_integr_[idx] = - del_vn*latent_heat_*density_s_;
           // Rochi:: updating this because the stefan condition for temp flux was modified to include density_s_ by Rochi and Elyce
         }
 
