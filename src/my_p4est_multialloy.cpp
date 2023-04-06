@@ -2589,14 +2589,14 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
 //  VecView(cl_[1].vec[0], PETSC_VIEWER_STDOUT_WORLD);
 
-  vec_and_ptr_t c0_guess_temp_;
+  /*vec_and_ptr_t c0_guess_temp_;
   if (there_is_convergence_test){
     c0_guess_temp_.create(p4est_,nodes_);
     sample_cf_on_nodes(p4est_,nodes_,*c0_guess_cf,c0_guess_temp_.vec);
     solver_all_in_one.set_c0_guess(c0_guess_temp_.vec);
-  }else{
+  }else{*/
     solver_all_in_one.set_c0_guess(cl_[1].vec[0]);
-  }
+  //}
 
 
   int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, true,
@@ -2608,7 +2608,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   rhs_ts.destroy();
   rhs_cl.destroy();
 
-  if (there_is_convergence_test) c0_guess_temp_.destroy();
+  //if (there_is_convergence_test) c0_guess_temp_.destroy();
   // destroy backtrace vectors since they are no longer needed:
   tl_backtrace_n.destroy();
   tl_backtrace_nm1.destroy();

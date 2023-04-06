@@ -3558,7 +3558,7 @@ int main (int argc, char* argv[])
       phi_.vec = mas.get_front_phi();
       bc_value_temp.set_inputs(ngbd_, phi_.vec );
 
-      mas.set_c0_guess(&convergence_conc0);
+      //mas.set_c0_guess(&convergence_conc0);
     }
 
     // solve nonlinear system for temperature, concentration and velocity at t_n
