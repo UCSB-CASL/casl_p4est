@@ -262,7 +262,7 @@ param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
 //param_t<int>    step_limit           (pl, 200, "step_limit",   "");
 param_t<double> time_limit           (pl, DBL_MAX, "time_limit",   "");
 param_t<double> growth_limit         (pl, 15, "growth_limit", "");
-param_t<double> init_perturb         (pl, 1.e-10,  "init_perturb",         "");
+param_t<double> init_perturb         (pl, 0,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
 param_t<double> front_location         (pl, 0.500,     "front_location",         "");
@@ -3515,14 +3515,15 @@ int main (int argc, char* argv[])
     bool save_state_now = (save_vtk.val) && (iteration >= save_state_idx * save_state_every_dn.val);
     if(!last_iter){if (!keep_going) break;}
 
-//    // compute time step
-//    mas.compute_dt();
+    // compute time step
+    mas.compute_dt();
 
-//    if (tn + mas.get_dt() > time_limit.val) {
-//      mas.set_dt(time_limit.val-tn);
-//      keep_going = false;
-//    }
-
+    if (tn + mas.get_dt() > time_limit.val) {
+      mas.set_dt(time_limit.val-tn);
+      keep_going = false;
+    }
+    tn             += mas.get_dt();
+    PetscPrintf(mpi.comm(), "\n---------------------------\n Value of tn: %0.5f \n---------------------------\n", tn);
     // for convergence study, update the time variable for each of the fields, and the normals for fields that require it:
     vec_and_ptr_dim_t front_normals_;
     my_p4est_node_neighbors_t* ngbd_;
@@ -3569,7 +3570,7 @@ int main (int argc, char* argv[])
     }else{
     sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     }
-    tn             += mas.get_dt();
+    //tn             += mas.get_dt();
 
 
     if(geometry.val == 8){
@@ -3601,6 +3602,7 @@ int main (int argc, char* argv[])
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
       ierr = PetscPrintf(mpi.comm(), "Step convergence saved in %s and %s\n", filename_error_max, filename_error_avg); CHKERRXX(ierr);
     }
+
     /*
     // compute total growth
     total_growth = base;
@@ -3820,17 +3822,17 @@ int main (int argc, char* argv[])
       external_source_temperature_flux_jump.clear_inputs();
       bc_value_temp.clear_inputs();
     }
-    if(last_iter) {
-        keep_going=false;
-        last_iter=false;
-        continue;
-    }
+//    if(last_iter) {
+//        keep_going=false;
+//        last_iter=false;
+//        continue;
+//    }
 
-    mas.compute_dt();
-    if (tn + mas.get_dt() > time_limit.val) {
-      mas.set_dt(time_limit.val-tn);
-      last_iter =true;
-    }
+//    mas.compute_dt();
+//    if (tn + mas.get_dt() > time_limit.val) {
+//      mas.set_dt(time_limit.val-tn);
+//      last_iter =true;
+//    }
     keep_going = keep_going && (iteration < step_limit.val) && (total_growth < growth_limit.val);
 
     if(keep_going){
