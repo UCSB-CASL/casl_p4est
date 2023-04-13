@@ -1174,22 +1174,22 @@ class Convergence_soln{
             P4EST_ASSERT(comp == 0 || comp == 1);
         }
         double C1(DIM(double x, double y,double z))const{
-          return cos(y)*sin(x)*sin(t + PI/4) + 1;
+          return cos(y)*sin(x)*sin(t) + 1;
 
 //          return cos(y)*sin(x)*sin(t + PI/4.) + 1.;
         }
         double C2(DIM(double x, double y,double z))const{
-          return cos(x)*cos(t + PI/4)*sin(y) + 1;
+          return cos(x)*cos(t)*sin(y) + 1;
 //          return cos(y)*cos(x)*cos(t + PI/4.) + 1.;
         }
 
         double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
           switch(dir){
               case dir::x:
-                return cos(x)*cos(y)*sin(t + PI/4);
+                return cos(x)*cos(y)*sin(t);
 //                return cos(y)*cos(x)*sin(t + PI/4.);
               case dir::y:
-                return -sin(x)*sin(y)*sin(t + PI/4);
+                return -sin(x)*sin(y)*sin(t);
 //                return -sin(y)*sin(x)*sin(t + PI/4.);
               default:
                 throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian");
@@ -1198,10 +1198,10 @@ class Convergence_soln{
         double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
             switch(dir){
               case dir::x:
-                return -cos(t + PI/4)*sin(x)*sin(y);
+                return -cos(t)*sin(x)*sin(y);
 //                return cos(y)*sin(x)*cos(t + PI/4.);
               case dir::y:
-                return cos(x)*cos(y)*cos(t + PI/4);
+                return cos(x)*cos(y)*cos(t);
 //                return -sin(y)*cos(x)*cos(t + PI/4.);
               default:
                 throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");
@@ -1214,11 +1214,11 @@ class Convergence_soln{
 
         double dC1_dt(DIM(double x, double y, double z)) const{
 //               return cos(t + PI/4.)*cos(y)*sin(x);
-          return cos(y)*cos(t + PI/4)*sin(x);
+          return cos(y)*cos(t)*sin(x);
 
         }
         double dC2_dt(DIM(double x, double y, double z)) const{
-          return -cos(x)*sin(y)*sin(t + PI/4);
+          return -cos(x)*sin(y)*sin(t);
 //          return -sin(t + PI/4.)*cos(y)*sin(x);
         }
         double dC_dt(DIM(double x, double y, double z)) const{
@@ -1226,12 +1226,12 @@ class Convergence_soln{
         }
 
         double laplace_C1(DIM(double x, double y, double z))const{
-          return -2*cos(y)*sin(x)*sin(t + PI/4);
+          return -2*cos(y)*sin(x)*sin(t);
 
 //              return -2.*cos(y)*sin(t + PI/4.)*sin(x);
         }
         double laplace_C2(DIM(double x, double y, double z))const{
-          return -2*cos(x)*cos(t + PI/4)*sin(y);
+          return -2*cos(x)*cos(t)*sin(y);
 //          return -2.*cos(t+ PI/4.)*cos(x)*cos(y);
         }
         double laplace(DIM(double x, double y, double z))const{
@@ -1721,8 +1721,8 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
       ts_Linf = max(ts_Linf, ts_err.ptr[n]);
     }
     if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
-      vgamma_err.ptr[n] = fabs(vgamma.ptr[n] - vgamma_ana.ptr[n]);
-      if(vgamma.ptr[n]!=0) vgamma_Linf = max(vgamma_Linf, vgamma_err.ptr[n]);
+      //vgamma_err.ptr[n] = fabs(vgamma.ptr[n] - vgamma_ana.ptr[n]);
+      //if(vgamma.ptr[n]!=0) vgamma_Linf = max(vgamma_Linf, vgamma_err.ptr[n]);
       vgamma_max = max(vgamma_max, vgamma.ptr[n]);
     }
   }
@@ -1747,6 +1747,7 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   foreach_dimension(d){
     ierr = VecGhostUpdateEnd(u_err.vec[d], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
+  vgamma_Linf = fabs(fabs(vgamma_max)-1);
 
   phi.restore_array();
 
@@ -3516,7 +3517,7 @@ int main (int argc, char* argv[])
     if(!last_iter){if (!keep_going) break;}
 
     // compute time step
-    mas.compute_dt();
+    //mas.compute_dt();
 
     if (tn + mas.get_dt() > time_limit.val) {
       mas.set_dt(time_limit.val-tn);
@@ -3828,7 +3829,7 @@ int main (int argc, char* argv[])
 //        continue;
 //    }
 
-//    mas.compute_dt();
+    mas.compute_dt();
 //    if (tn + mas.get_dt() > time_limit.val) {
 //      mas.set_dt(time_limit.val-tn);
 //      last_iter =true;
