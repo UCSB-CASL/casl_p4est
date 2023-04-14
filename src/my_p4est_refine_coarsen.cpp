@@ -13,6 +13,7 @@
 #endif
 #include <sc_search.h>
 #include <iostream>
+#include <cmath>
 
 p4est_bool_t
 refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
@@ -1650,10 +1651,10 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 //		const double quad_denom = (( double ) P4EST_QUADRANT_LEN( quad->level )) / (( double ) P4EST_ROOT_LEN);
 //		const double quad_diag = sqrt(SUMD( SQR( tree_dimensions[0] ), SQR( tree_dimensions[1] ), SQR( tree_dimensions[2] ))) * quad_denom;
 		const double plastron_smallest_dy = tree_dimensions[1] * (((double) P4EST_QUADRANT_LEN((int8_t) PLASTRON_MAX_LVL))/((double) P4EST_ROOT_LEN));
-		const double h1 = uniform_band * plastron_smallest_dy;		// Height of max level wave in specially refined grid.  Note that comparison is made with respect to plastron's band.
+		const double h1 = 1/2 * uniform_band * plastron_smallest_dy;		// Height of max level wave in specially refined grid.  Note that comparison is made with respect to plastron's band.
 
 		auto wave1 = [&](const double& t) -> double {				// First wave for special refinement (closest to wall).
-			return h1 / 2 * (1. + cos( 2 * M_PI * (t + R/2) / P ));
+			return h1 * pow( cos( M_PI * (t + R/2) / P) , 6);
 		};
 
 		bool coarsen = false;
