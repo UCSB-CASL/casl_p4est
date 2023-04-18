@@ -680,9 +680,7 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // -------------
   // Initialize the ns solver:
   // -------------
-  PetscPrintf(mpi_->comm(), "Before initialize ns \n");
   stefan_w_fluids_solver->initialize_ns_solver(true);
-  PetscPrintf(mpi_->comm(), "After initialize ns \n");
 
   // -------------
   // Get back out the cell neigbors and faces:
@@ -2427,6 +2425,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   }
 
   // ----------------------
+  bool turn_off_fluid_coupling = false;
 
   // compute right-hand sides
   vec_and_ptr_t       rhs_tl(tl_[0].vec);
@@ -2439,9 +2438,12 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   for (int i = 0; i < num_time_layers_; ++i)
   {
-//    tl_[i].get_array();
     ts_[i].get_array();
-//    cl_[i].get_array();
+
+    if(turn_off_fluid_coupling){
+      tl_[i].get_array();
+      cl_[i].get_array();
+    }
   }
 
   // PASTE STARTING HERE 
@@ -2464,6 +2466,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   double SL_alpha = (2.*dt_[0] + dt_[1])/(dt_[0] + dt_[1]); // SL alpha coeff
   double SL_beta = (-1.*dt_[0])/(dt_[0] + dt_[1]); // SL beta coefff
 
+
   front_phi_.get_array();
   foreach_node(n, nodes_)
   {
@@ -2484,22 +2487,45 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     // Daniils usual treatment for the solid temp:
     for (int i = 1; i < num_time_layers_; ++i){
       rhs_ts.ptr[n] -= time_coeffs[i]*ts_[i].ptr[n];
+
+      if(turn_off_fluid_coupling) {
+        rhs_tl.ptr[n] -= time_coeffs[i]*tl_[i].ptr[n];
+
+        for (int j = 0; j < num_comps_; ++j)
+        {
+          rhs_cl.ptr[j][n] -= time_coeffs[i]*cl_[i].ptr[j][n];
+        }
+      }
     }
 
-    // Use SL disc for fluid temp:
-    rhs_tl.ptr[n] = tl_backtrace_n.ptr[n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1])) +
-                    tl_backtrace_nm1.ptr[n]*(SL_beta/dt_[1]);
+    if(!turn_off_fluid_coupling){
+      // Use SL disc for fluid temp:
+      rhs_tl.ptr[n] = tl_backtrace_n.ptr[n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1])) +
+                      tl_backtrace_nm1.ptr[n]*(SL_beta/dt_[1]);
 
-    // Use SL disc for fluid concentrations:
-    for(int j = 0; j<num_comps_; ++j){
-      rhs_cl.ptr[j][n] = cl_backtrace_n.ptr[j][n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1])) +
-                    cl_backtrace_nm1.ptr[j][n]*(SL_beta/dt_[1]);
+      // Use SL disc for fluid concentrations:
+      for(int j = 0; j<num_comps_; ++j){
+        rhs_cl.ptr[j][n] = cl_backtrace_n.ptr[j][n]*((SL_alpha/dt_[0]) - (SL_beta/dt_[1])) +
+                           cl_backtrace_nm1.ptr[j][n]*(SL_beta/dt_[1]);
+      }
+
+//      printf("j = %d, cl_backtrace_n = %0.2f, cl_backtrace_nm1 = %0.2f \n", j, cl_backtrace_n.ptr[j][n],
+//             cl_backtrace_nm1.ptr[j][n]);
     }
 
 
     // Multiply by relevant quantities:
     // Note: rhs_tl does not get multiplied by 1/dt because we've already effectively done that above using the SL backtrace discretization
-    rhs_tl.ptr[n] = rhs_tl.ptr[n]*density_l_*heat_capacity_l_ + heat_gen;
+    if(turn_off_fluid_coupling){
+      rhs_tl.ptr[n] = rhs_tl.ptr[n]*density_l_*heat_capacity_l_/dt_[0] + heat_gen;
+      for(int j=0; j< num_comps_; j++){
+        rhs_cl.ptr[j][n] = rhs_cl.ptr[j][n]/dt_[0];
+      }
+    }
+    else {
+      rhs_tl.ptr[n] = rhs_tl.ptr[n]*density_l_*heat_capacity_l_ + heat_gen;
+    }
+
     rhs_ts.ptr[n] = rhs_ts.ptr[n]*density_s_*heat_capacity_s_/dt_[0] + heat_gen;
 
     // Add the source terms to the RHS if we have a convergence test:
@@ -2512,6 +2538,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
       for (int j = 0; j < num_comps_; ++j)
       {
         rhs_cl.ptr[j][n] += (*convergence_external_source_conc[j])(xyz[0], xyz[1]);
+//        printf("Conc %d, rhs = %0.3e \n", j, rhs_cl.ptr[j][n]);
       }
     }
   }
@@ -2523,9 +2550,12 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   rhs_cl.restore_array();
   for (int i = 0; i < num_time_layers_; ++i)
   {
-//    tl_[i].restore_array();
     ts_[i].restore_array();
-//    cl_[i].restore_array();
+
+    if(turn_off_fluid_coupling){
+          tl_[i].restore_array();
+          cl_[i].restore_array();
+    }
   }
 
   vector<double> conc_diag(num_comps_, SL_alpha/dt_[0]);
@@ -2589,14 +2619,15 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
 //  VecView(cl_[1].vec[0], PETSC_VIEWER_STDOUT_WORLD);
 
-  /*vec_and_ptr_t c0_guess_temp_;
-  if (there_is_convergence_test){
+  vec_and_ptr_t c0_guess_temp_;
+  bool analytical_c0_guess = false;
+  if (analytical_c0_guess && there_is_convergence_test){
     c0_guess_temp_.create(p4est_,nodes_);
-    sample_cf_on_nodes(p4est_,nodes_,*c0_guess_cf,c0_guess_temp_.vec);
+    sample_cf_on_nodes(p4est_,nodes_, *c0_guess_cf, c0_guess_temp_.vec);
     solver_all_in_one.set_c0_guess(c0_guess_temp_.vec);
-  }else{*/
+  }else{
     solver_all_in_one.set_c0_guess(cl_[1].vec[0]);
-  //}
+  }
 
 
   int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, true,
@@ -2608,7 +2639,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   rhs_ts.destroy();
   rhs_cl.destroy();
 
-  //if (there_is_convergence_test) c0_guess_temp_.destroy();
+  if (analytical_c0_guess && there_is_convergence_test) c0_guess_temp_.destroy();
   // destroy backtrace vectors since they are no longer needed:
   tl_backtrace_n.destroy();
   tl_backtrace_nm1.destroy();

@@ -1294,6 +1294,8 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
   seed_map_       .get_array();
   c0d_            .get_array();
 
+//  front_phi_.get_array();
+
   for (int j = 0; j < num_comps_; ++j) {
     c_[j]           .get_array();
     c_dd_[j]        .get_array();
@@ -1344,6 +1346,9 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
 //      // ---------------------
       pw_t_sol_jump_taylor_[idx] = front_temp_value_jump_->value(xyz_pr);
       pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) + latent_heat_*density_s_*vn_pr;
+//      if(front_phi_.ptr[n] < 5.e-2){
+//        printf("(%0.4f, %0.4f) nx = %0.2f, ny = %0.2f , actual jump = %0.4e , extra stuff = %0.4e, vn_pr = %0.4e \n \n", xyz_pr[0], xyz_pr[1], normal[0], normal[1], pw_t_flx_jump_taylor_[idx], latent_heat_*density_s_*vn_pr, vn_pr);
+//      }
 //      printf("Tl jump = %0.2e, Tl_flux_jump = %0.2e, vn_pr = %0.2e \n", pw_t_sol_jump_taylor_[idx], pw_t_flx_jump_taylor_[idx], vn_pr);
 
       // TO FIX !! NEED TO MULTIPLY LATENT_HEAT_*VN*DENSITY_S --> NOTE : THIS CODE IS DUPLICATED IN ABOUT 100X PLACES SO MAKE SURE THEYRE ALL CHANGED
@@ -1471,10 +1476,14 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
   seed_map_       .restore_array();
   c0d_            .restore_array();
 
+//  front_phi_.restore_array();
+
   for (int j = 0; j < num_comps_; ++j) {
     c_[j]   .restore_array();
     c_dd_[j].restore_array();
   }
+
+
 
 //  MPI_Barrier(p4est_->mpicomm);
 //  ierr = PetscPrintf(p4est_->mpicomm, "Done.\n"); CHKERRXX(ierr);
