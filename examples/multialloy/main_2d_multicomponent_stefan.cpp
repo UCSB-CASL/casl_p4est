@@ -1178,27 +1178,23 @@ class Convergence_soln{
             P4EST_ASSERT(comp == 0 || comp == 1);
         }
         double C1(DIM(double x, double y,double z))const{
-          return cos(y)*sin(x)*cos(t) + 5;
-
-          //          return cos(y)*sin(x)*sin(t) + 5;
-
-//          return cos(y)*sin(x)*sin(t + PI/4.) + 1.;
+          //return cos(y)*sin(x)*cos(t) + 5; // works but not using this because this field is same as velocity
+          return cos(t)*( x*cos(y)*sin(x) + y*sin(y)*cos(x) )+ 5; // works
         }
         double C2(DIM(double x, double y,double z))const{
-          return cos(x)*cos(t)*sin(y) + 5;
-//          return cos(y)*cos(x)*cos(t + PI/4.) + 1.;
+          //return cos(x)*cos(t)*sin(y) + 5; // works but not using this because this field is same as velocity
+          //return cos(t)*( y*cos(y)*sin(x) + x*sin(y)*cos(x) ) + 5; // works
+          return cos(t)*(x*cos(y)*sin(x) - y*sin(y)*cos(x))+ 5; // works
         }
 
         double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
           switch(dir){
               case dir::x:
-                return cos(x)*cos(y)*cos(t);
-
-//                return cos(y)*cos(x)*sin(t + PI/4.);
+                //return cos(x)*cos(y)*cos(t); // works but not using this because this field is same as velocity
+                return cos(t)*(x*cos(x)*cos(y) + sin(x)*(cos(y)-y*sin(y))); // works
               case dir::y:
-                return -sin(x)*sin(y)*cos(t);
-
-//                return -sin(y)*sin(x)*sin(t + PI/4.);
+                //return -sin(x)*sin(y)*cos(t); // works but not using this because this field is same as velocity
+                return cos(t)*(cos(x)*(sin(y)+y*cos(y))- x*sin(x)*sin(y)); // works
               default:
                 throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian");
               }
@@ -1206,11 +1202,13 @@ class Convergence_soln{
         double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
             switch(dir){
               case dir::x:
-                return -cos(t)*sin(x)*sin(y);
-//                return cos(y)*sin(x)*cos(t + PI/4.);
+                //return -cos(t)*sin(x)*sin(y); // works but not using this because this field is same as velocity
+                //return cos(t)*(cos(x)*(sin(y)+y*cos(y))-x*sin(x)*sin(y)); // works
+                return cos(t)*(x*cos(x)*cos(y) + sin(x)*(y*sin(y)+cos(y)));// works
               case dir::y:
-                return cos(x)*cos(y)*cos(t);
-//                return -sin(y)*cos(x)*cos(t + PI/4.);
+                //return cos(x)*cos(y)*cos(t); // works but not using this because this field is same as velocity
+                //return cos(t) *(x*cos(x)*cos(y)+sin(x)*(cos(y)-y*sin(y))); // works
+                return -cos(t)*(x*sin(x)*sin(y) + cos(x)*(sin(y)+cos(y)*y));// works
               default:
                 throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");
               }
@@ -1221,26 +1219,26 @@ class Convergence_soln{
         }
 
         double dC1_dt(DIM(double x, double y, double z)) const{
-//               return cos(t + PI/4.)*cos(y)*sin(x);
-//          return cos(y)*cos(t)*sin(x);
-          return cos(y)*(-sin(t))*sin(x);
+          //return cos(y)*(-sin(t))*sin(x); // works but not using this because this field is same as velocity
+          return -sin(t)*( x*cos(y)*sin(x) + y*sin(y)*cos(x) ); // works
         }
         double dC2_dt(DIM(double x, double y, double z)) const{
-          return -cos(x)*sin(y)*sin(t);
-//          return -sin(t + PI/4.)*cos(y)*sin(x);
+          //return -cos(x)*sin(y)*sin(t); // works but not using this because this field is same as velocity
+          //return -sin(t)*( y*cos(y)*sin(x) + x*sin(y)*cos(x) ) ; // works
+          return sin(t)*(y*cos(x)*sin(y) - x*sin(x)*cos(y)); // works
         }
         double dC_dt(DIM(double x, double y, double z)) const{
           return (comp == 0? dC1_dt(DIM(x,y,z)) : dC2_dt(DIM(x,y,z)));
         }
 
         double laplace_C1(DIM(double x, double y, double z))const{
-          return -2*cos(y)*sin(x)*cos(t);
-
-//              return -2.*cos(y)*sin(t + PI/4.)*sin(x);
+          //return -2*cos(y)*sin(x)*cos(t); // works but not using this because this field is same as velocity
+          return -2* cos(t) *(x *cos(y)* sin(x) + cos(x)* (-2 *cos(y) + y *sin(y))); // works
         }
         double laplace_C2(DIM(double x, double y, double z))const{
-          return -2*cos(x)*cos(t)*sin(y);
-//          return -2.*cos(t+ PI/4.)*cos(x)*cos(y);
+          //return -2*cos(x)*cos(t)*sin(y); // works but not using this because this field is same as velocity
+          //return -2 *cos(t)*(y*sin(x)*cos(y)+sin(y)*(2*sin(x)+x*cos(x))); // works
+          return 2*cos(t)*(y*cos(x)*sin(y) - x*sin(x)*cos(y));// works
         }
         double laplace(DIM(double x, double y, double z))const{
           return (comp == 0? laplace_C1(DIM(x,y,z)) : laplace_C2(DIM(x,y,z)));
@@ -1267,11 +1265,8 @@ class Convergence_soln{
             switch(dir){
                 case dir::x:
                   return cos(t) * cos(y) * sin(x);
-//                    return sin(2*PI*(y-t))*(x/2)+pow(x,3)*(y-1)*(1/16.0);
                 case dir::y:
-                  return - cos(t) * cos(x) * sin(y);
-
-//                    return (1/(4.0*PI))*cos(2*PI*(y-t))-3*pow(x,2)*(0.5*pow(y,2)-y)/16.0;
+                  return - cos(t) * cos(x) * sin(y); // works
                 default:
                     throw std::runtime_error("analytical solution of velocity: unknown cartesian direction \n");
             }
@@ -1284,11 +1279,9 @@ class Convergence_soln{
                 case dir::x: {
                     switch(dirr){
                         case dir::x: // du_dx
-                          return cos(t) * cos(x) * cos(y);
-                          /*return 3*pow(x,2)*(y-1)/16 - sin(2*PI*(t-y))/2.0;*/
+                          return cos(t) * cos(x) * cos(y); // works
                         case dir::y: // du_dy
-                          return -cos(t)*sin(x)*sin(y);
-//                          return pow(x,3)/16 - cos(2*PI*(t-y))*PI*x;
+                          return -cos(t)*sin(x)*sin(y); // works
                         default:
                             throw std::runtime_error("dvx_d not defined in this direction \n)");
                     }
@@ -1296,11 +1289,9 @@ class Convergence_soln{
                 case dir::y: {
                     switch(dirr){
                         case dir::x: // dv_dx
-                          return cos(t)*sin(x)*sin(y);
-                          // return 3*x*(-pow(y,2)+y)/8;
+                          return cos(t)*sin(x)*sin(y); // works
                         case dir::y: // dv_dy
-                          return -cos(t)*cos(x)*cos(y);
-//                          return sin(2*PI*(t-y))/2 - (3*pow(x,2)*(y-1))/16;
+                          return -cos(t)*cos(x)*cos(y); // works
                         default:
                             throw std::runtime_error("dvx_d not defined in this direction \n)");
                     }
@@ -1312,11 +1303,9 @@ class Convergence_soln{
        double dv_dt(DIM(double x, double y, double z)){
            switch(dir){
                 case dir::x: // du_dt
-                  return -sin(t)*cos(y)*sin(x);
-//                    return -PI*x*cos(2*PI*(t-y));
+                  return -sin(t)*cos(y)*sin(x); // works
                 case dir::y:
-                  return sin(t)*cos(x)*sin(y);
-//                    return -sin(2*PI*(t-y))/2;
+                  return sin(t)*cos(x)*sin(y); // works
                 default:
                     throw std::runtime_error("analytical solution of velocity: unknown cartesian direction \n");
             }
@@ -1324,13 +1313,10 @@ class Convergence_soln{
        double laplace(DIM(double x, double y, double z)){
            switch(dir){
                case dir::x:{
-                 return -2.*cos(t)*cos(y)*sin(x);
-
-//                   return 3*x*(y-1)/8 +2*pow(PI,2)*x*sin(2*PI*(t-y));
+                 return -2.*cos(t)*cos(y)*sin(x); // works
                }
                case dir::y:{
-                 return 2*cos(t)*cos(x)*sin(y);
-//                   return 3*y/8-PI*cos(2*PI*(t-y))-(3*pow(x,2))/16.0-(3*pow(y,2))/16;
+                 return 2*cos(t)*cos(x)*sin(y); // works
                }
                default:{
                    throw std::runtime_error("laplace of velocity not defined in this direction \n");
