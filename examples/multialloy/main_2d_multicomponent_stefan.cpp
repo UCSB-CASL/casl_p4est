@@ -564,9 +564,13 @@ void set_alloy_parameters()
     num_comps.val = 2;
 
     solute_diff_0.val    = 0.5; // 0.1;  // cm2.s-1 - concentration diffusion coefficient
-    solute_diff_1.val    = 1.;
+    solute_diff_1.val    = 0.7;
+    solute_diff_2.val = 1.;
+
     initial_conc_0.val   = 1.;    // at frac.
     initial_conc_1.val = 1.;
+    initial_conc_2.val = 1.;
+    printf("\n Reminder!! probably not all the initial concs should be 1? \n");
 
     eps_c.val = 0.;
     eps_v.val = 0.;
@@ -577,10 +581,14 @@ void set_alloy_parameters()
     melting_temp.val     = 0;   // K
     linearized_liquidus.val  = 1;
     const_part_coeff.val = 1;
+
     liquidus_slope_0.val = 0.5;   // K / at frac. - liquidous slope
     liquidus_slope_1.val = 0.5;
+    liquidus_slope_2.val = 0.5;
+
     part_coeff_0.val     = 0.0;   // partition coefficient
-    part_coeff_1.val = 0.;
+    part_coeff_1.val     = 0.0;
+    part_coeff_2.val     = 0.;
 
     break;
     default:
@@ -1175,16 +1183,23 @@ class Convergence_soln{
         const double N=1.;
         const unsigned char comp;
         concentration(const unsigned char& comp_) : comp(comp_){
-            P4EST_ASSERT(comp == 0 || comp == 1);
+            P4EST_ASSERT(comp == 0 || comp == 1 || comp == 2);
         }
-        double C0(DIM(double x, double y,double z))const{
+
+        double C0(DIM(double x, double y, double z))const{
           //return cos(y)*sin(x)*cos(t) + 5; // works but not using this because this field is same as velocity
           return cos(t)*( x*cos(y)*sin(x) + y*sin(y)*cos(x) )+ 5; // works
         }
-        double C1(DIM(double x, double y,double z))const{
+
+        double C1(DIM(double x, double y, double z))const{
           //return cos(x)*cos(t)*sin(y) + 5; // works but not using this because this field is same as velocity
           //return cos(t)*( y*cos(y)*sin(x) + x*sin(y)*cos(x) ) + 5; // works
           return cos(t)*(x*cos(y)*sin(x) - y*sin(y)*cos(x))+ 5; // works
+        }
+
+        double C2(DIM(double x, double y, double z))const{
+          printf("C2: Insert code for c2 case! \n");
+          return 0. * x * y;
         }
 
         double dC0_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
@@ -1196,7 +1211,7 @@ class Convergence_soln{
                 //return -sin(x)*sin(y)*cos(t); // works but not using this because this field is same as velocity
                 return cos(t)*(cos(x)*(sin(y)+y*cos(y))- x*sin(x)*sin(y)); // works
               default:
-                throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian");
+                throw std::runtime_error("dC0_d of analytical concentration1 field: unrecognized Cartesian");
               }
         }
         double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
@@ -1210,12 +1225,37 @@ class Convergence_soln{
                 //return cos(t) *(x*cos(x)*cos(y)+sin(x)*(cos(y)-y*sin(y))); // works
                 return -cos(t)*(x*sin(x)*sin(y) + cos(x)*(sin(y)+cos(y)*y));// works
               default:
-                throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");
+                throw std::runtime_error("dC1_d of analytical concentration2 field: unrecognized Cartesian direction \n");
               }
+        }
+        double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
+          switch(dir){
+          case dir::x:
+            printf("dC2_dx: Insert code for c2 case! \n");
+            return 0. * x * y;
+
+          case dir::y:
+            printf("dC2_dy: Insert code for c2 case! \n");
+            return 0. * x * y;
+
+          default:
+            throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");
+          }
         }
 
         double dC_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
-          return (comp==0? dC0_d(dir, DIM(x,y,z)) : dC1_d(dir, DIM(x,y,z)) );
+          switch(comp){
+          case 0:
+            return dC0_d(dir, DIM(x,y,z));
+          case 1:
+            return dC1_d(dir, DIM(x,y,z));
+          case 2:
+            return dC2_d(dir, DIM(x,y,z));
+          default:
+            throw std::invalid_argument("Convergence_soln:concentration dC_d() -- unrecognized component number \n");
+
+          }
+//          return (comp==0? dC0_d(dir, DIM(x,y,z)) : dC1_d(dir, DIM(x,y,z)) );
         }
 
         double dC0_dt(DIM(double x, double y, double z)) const{
@@ -1227,8 +1267,23 @@ class Convergence_soln{
           //return -sin(t)*( y*cos(y)*sin(x) + x*sin(y)*cos(x) ) ; // works
           return sin(t)*(y*cos(x)*sin(y) - x*sin(x)*cos(y)); // works
         }
+        double dC2_dt(DIM(double x, double y, double z)) const{
+          printf("dC2_dt: Insert code for c2 case! \n");
+          return 0. * x * y;
+        }
         double dC_dt(DIM(double x, double y, double z)) const{
-          return (comp == 0? dC0_dt(DIM(x,y,z)) : dC1_dt(DIM(x,y,z)));
+          switch(comp){
+            case 0:
+              return dC0_dt(DIM(x,y,z));
+            case 1:
+              return dC1_dt(DIM(x,y,z));
+            case 2:
+              return dC2_dt(DIM(x,y,z));
+            default:
+              throw std::invalid_argument("Convergence_soln:concentration dC_d() -- unrecognized component number \n");
+
+          }
+//          return (comp == 0? dC0_dt(DIM(x,y,z)) : dC1_dt(DIM(x,y,z)));
         }
 
         double laplace_C0(DIM(double x, double y, double z))const{
@@ -1240,18 +1295,42 @@ class Convergence_soln{
           //return -2 *cos(t)*(y*sin(x)*cos(y)+sin(y)*(2*sin(x)+x*cos(x))); // works
           return 2*cos(t)*(y*cos(x)*sin(y) - x*sin(x)*cos(y));// works
         }
+        double laplace_C2(DIM(double x, double y, double z))const{
+          printf("laplace_C2: Insert code for c2 case! \n");
+          return 0. * x * y;
+        }
         double laplace(DIM(double x, double y, double z))const{
-          return (comp == 0? laplace_C0(DIM(x,y,z)) : laplace_C1(DIM(x,y,z)));
+          switch(comp){
+            case 0:
+              return laplace_C0(DIM(x,y,z));
+            case 1:
+              return laplace_C1(DIM(x,y,z));
+            case 2:
+              return laplace_C2(DIM(x,y,z));
+            default:
+              throw std::invalid_argument("Convergence_soln:concentration() -- unrecognized component number \n");
+          }
+//          return (comp == 0? laplace_C0(DIM(x,y,z)) : laplace_C1(DIM(x,y,z)));
         }
 
         double operator()(DIM(double x,double y, double z))const{
-          return (comp == 0? C0(DIM(x,y,z)) : C1(DIM(x,y,z)));
+          switch(comp){
+            case 0:
+              return C0(DIM(x,y,z));
+            case 1:
+              return C1(DIM(x,y,z));
+            case 2:
+              return C2(DIM(x,y,z));
+            default:
+              throw std::invalid_argument("Convergence_soln:concentration() -- unrecognized component number \n");
+          }
+//          return (comp == 0? C0(DIM(x,y,z)) : C1(DIM(x,y,z)));
         }
     };
     struct interface_velocity: CF_DIM{
 //      public:
           double operator()(DIM(double x,double y,double z)) const{
-            return 1./*0.1*/; //sin(t) * cos(t)/**/sin(t) * cos(t)*/;
+            return 1.;
           }
     } /*convergence_vgamma*/;
 
@@ -1362,7 +1441,17 @@ class Convergence_soln{
             double advective_term;
 
             int comp = concentration_.comp;
-            double D = (comp == 0? solute_diff_0.val : solute_diff_1.val);
+            double D = 0./*(comp == 0? solute_diff_0.val : solute_diff_1.val)*/;
+            switch(comp){
+              case 0:
+                D = solute_diff_0.val; break;
+              case 1:
+                D = solute_diff_0.val; break;
+              case 2:
+                D = solute_diff_2.val; break;
+              default:
+                throw std::invalid_argument("external_force_concentration: unrecognized component number for deterimining solute diffusivity \n");
+            }
 
             advective_term = (velocity_component_[dir::x])(DIM(x,y,z)) * concentration_.dC_d(dir::x, x, y) +
                              (velocity_component_[dir::y])(DIM(x,y,z)) * concentration_.dC_d(dir::y, x, y);
@@ -1501,9 +1590,27 @@ class Convergence_soln{
 //        printf("accesses conc robin source term \n");
 
         int comp = concentration_->comp;
-        double D = (comp == 0? solute_diff_0.val : solute_diff_1.val);
+//        double D = (comp == 0? solute_diff_0.val : solute_diff_1.val);
 //        printf("comp = %d, D = %0.2e \n", comp, D);
-        double part_coeff = (comp == 0? part_coeff_0.val : part_coeff_1.val);
+//        double part_coeff = (comp == 0? part_coeff_0.val : part_coeff_1.val);
+
+        double D = 0; double part_coeff = 0.;
+        switch(comp){
+          case 0:
+            D = solute_diff_0.val;
+            part_coeff = part_coeff_0.val;
+            break;
+          case 1:
+            D = solute_diff_1.val;
+            part_coeff = part_coeff_1.val;
+            break;
+          case 2:
+            D = solute_diff_1.val;
+            part_coeff = part_coeff_2.val;
+            break;
+          default:
+            throw std::invalid_argument("external_force_concentration: unrecognized component number for deterimining solute diffusivity and partition coefficient \n");
+        }
 
 //        printf("nx interp = %p \n", nx_interp);
 //        printf("ny interp = %p \n", ny_interp);
@@ -1532,22 +1639,32 @@ class Convergence_soln{
       temperature* temperature_l_;
       concentration* concentration_0_;
       concentration* concentration_1_;
+      concentration* concentration_2_;
 
       interface_velocity* vgamma_;
 
       external_source_Gibbs_Thomson(temperature* temperature_l = NULL,
+                                    interface_velocity* vgamma=NULL,
                                     concentration* concentration_0 = NULL,
                                     concentration* concentration_1 = NULL,
-                                    interface_velocity* vgamma=NULL):
-          temperature_l_(temperature_l), concentration_0_(concentration_0), concentration_1_(concentration_1), vgamma_(vgamma){}
+                                    concentration* concentration_2 = NULL):
+          temperature_l_(temperature_l),
+          concentration_0_(concentration_0),
+          concentration_1_(concentration_1),
+          concentration_2_(concentration_2),
+          vgamma_(vgamma){}
       // NOTE: this function assumes there is no curvature affect on the Gibbs
 
       double operator()(DIM(double x, double y, double z)) const {
         if(temperature_l_== NULL ||
             concentration_0_ == NULL ||
             concentration_1_ == NULL ||
-            vgamma_ ==NULL){
+            vgamma_ == NULL){
           throw std::invalid_argument("external source Gibbs Thomson : you cannot return the operator because some of the dependent fiels are null \n");
+        }
+        if(num_comps.val > 2 && concentration_2_== NULL){
+          throw std::invalid_argument("external source Gibbs Thomson : There is no field provided for concentration 2 but the number of components mismatches this \n");
+
         }
 
 
@@ -1558,10 +1675,12 @@ class Convergence_soln{
 //        printf("From BC:\n temperature = %0.2e \n", (*temperature_l_)(DIM(x,y,z)));
 //        printf("liquidus = %0.2e \n",(melting_temp.val +  liquidus_slope_0.val * (*concentration_0_)(DIM(x,y,z)) + liquidus_slope_1.val * (*concentration_1_)(DIM(x,y,z))));
 
-        double Gibbs = (*temperature_l_)(DIM(x,y,z)) -
-                       (melting_temp.val +  liquidus_slope_0.val * (*concentration_0_)(DIM(x,y,z)) + liquidus_slope_1.val * (*concentration_1_)(DIM(x,y,z))) -
-                       eps_v.val * (*vgamma_)(DIM(x,y,z));
-//        printf("Gibbs = %0.2e \n\n", Gibbs);
+        double Tm_expression = melting_temp.val;
+        if(num_comps.val>0){Tm_expression+= liquidus_slope_0.val * (*concentration_0_)(DIM(x,y,z));}
+        if(num_comps.val>1){Tm_expression+= liquidus_slope_1.val * (*concentration_1_)(DIM(x,y,z));}
+        if(num_comps.val>2){Tm_expression+= liquidus_slope_2.val * (*concentration_2_)(DIM(x,y,z));}
+
+        double Gibbs = (*temperature_l_)(DIM(x,y,z)) - Tm_expression - eps_v.val * (*vgamma_)(DIM(x,y,z));
         return Gibbs;
       }
 
@@ -1572,6 +1691,7 @@ class Convergence_soln{
 // Concentrations:
 Convergence_soln::concentration convergence_conc0(0);
 Convergence_soln::concentration convergence_conc1(1);
+Convergence_soln::concentration convergence_conc2(2);
 
 // Temperatures:
 Convergence_soln::temperature convergence_tl(LIQUID_DOMAIN);
@@ -1591,7 +1711,9 @@ Convergence_soln::velocity_component convergence_vel[2] = {convergence_vx, conve
 // External source terms:
 Convergence_soln::external_force_concentration convergence_force_c0(convergence_conc0, convergence_vel);
 Convergence_soln::external_force_concentration convergence_force_c1(convergence_conc1, convergence_vel);
-/*Convergence_soln::external_force_concentration*/CF_DIM* convergence_forces_conc[2] = {&convergence_force_c0, &convergence_force_c1};
+Convergence_soln::external_force_concentration convergence_force_c2(convergence_conc2, convergence_vel);
+
+CF_DIM* convergence_forces_conc[3] = {&convergence_force_c0, &convergence_force_c1, &convergence_force_c2};
 
 Convergence_soln::external_force_temperature convergence_force_tl(LIQUID_DOMAIN, convergence_temp, convergence_vel);
 Convergence_soln::external_force_temperature convergence_force_ts(SOLID_DOMAIN, convergence_temp, convergence_vel);
@@ -1609,9 +1731,11 @@ Convergence_soln::external_source_temperature_flux_jump external_source_temperat
 
 Convergence_soln::external_source_concentration_robin external_source_c0_robin(&convergence_conc0, &convergence_vgamma);
 Convergence_soln::external_source_concentration_robin external_source_c1_robin(&convergence_conc1, &convergence_vgamma);
-CF_DIM* external_source_conc_robin[2] = {&external_source_c0_robin, &external_source_c1_robin};
+Convergence_soln::external_source_concentration_robin external_source_c2_robin(&convergence_conc2, &convergence_vgamma);
 
-Convergence_soln::external_source_Gibbs_Thomson external_source_Gibbs_Thomson(&convergence_tl, &convergence_conc0, &convergence_conc1, &convergence_vgamma);
+CF_DIM* external_source_conc_robin[3] = {&external_source_c0_robin, &external_source_c1_robin, &external_source_c2_robin};
+
+Convergence_soln::external_source_Gibbs_Thomson external_source_Gibbs_Thomson(&convergence_tl,  &convergence_vgamma, &convergence_conc0, &convergence_conc1, &convergence_conc2);
 
 
 void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_environment_t& mpi, int iter,
@@ -1620,23 +1744,28 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   PetscPrintf(mpi.comm(), "Checking convergence fields errors ... \n");
   vec_and_ptr_t phi;
 
-  vec_and_ptr_t tl, ts, c0, c1, vgamma;
+  vec_and_ptr_t tl, ts, c0, c1, c2, vgamma;
   vec_and_ptr_dim_t u;
 
 
-  vec_and_ptr_t tl_ana, ts_ana, c0_ana, c1_ana, vgamma_ana;
+  vec_and_ptr_t tl_ana, ts_ana, c0_ana, c1_ana, c2_ana, vgamma_ana;
   vec_and_ptr_dim_t u_ana;
 
-  vec_and_ptr_t tl_err, ts_err, c0_err, c1_err, vgamma_err;
+  vec_and_ptr_t tl_err, ts_err, c0_err, c1_err, c2_err, vgamma_err;
   vec_and_ptr_dim_t u_err;
 
   p4est_t* p4est = mas->get_p4est();
   p4est_nodes_t* nodes = mas->get_nodes();
   my_p4est_node_neighbors_t* ngbd = mas->get_ngbd();
 
+  bool do_c1 = num_comps.val > 1;
+  bool do_c2 = num_comps.val > 2;
 
   tl_ana.create(p4est,nodes); ts_ana.create(p4est, nodes);
-  c0_ana.create(p4est, nodes); c1_ana.create(p4est, nodes);
+  c0_ana.create(p4est, nodes);
+  if(do_c1) c1_ana.create(p4est, nodes);
+  if(do_c2) c2_ana.create(p4est, nodes);
+
   vgamma_ana.create(p4est, nodes);
   u_ana.create(p4est, nodes);
 
@@ -1647,7 +1776,8 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   convergence_temp[SOLID_DOMAIN].t = tn + dt;
 
   convergence_conc0.t = tn + dt;
-  convergence_conc1.t = tn + dt;
+  if(do_c1) convergence_conc1.t = tn + dt;
+  if(do_c2) convergence_conc2.t = tn + dt;
 
   // interface vel
   convergence_vgamma.t = tn + dt;
@@ -1660,7 +1790,9 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   sample_cf_on_nodes(p4est, nodes, convergence_temp[LIQUID_DOMAIN], tl_ana.vec);
   sample_cf_on_nodes(p4est, nodes, convergence_temp[SOLID_DOMAIN], ts_ana.vec);
   sample_cf_on_nodes(p4est, nodes, convergence_conc0, c0_ana.vec);
-  sample_cf_on_nodes(p4est, nodes, convergence_conc1, c1_ana.vec);
+  if(do_c1) sample_cf_on_nodes(p4est, nodes, convergence_conc1, c1_ana.vec);
+  if(do_c2) sample_cf_on_nodes(p4est, nodes, convergence_conc2, c2_ana.vec);
+
   sample_cf_on_nodes(p4est, nodes, convergence_vgamma, vgamma_ana.vec);
 
   foreach_dimension(d){
@@ -1668,7 +1800,10 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   }
 
   tl_err.create(p4est, nodes); ts_err.create(p4est, nodes);
-  c0_err.create(p4est, nodes); c1_err.create(p4est, nodes);
+  c0_err.create(p4est, nodes);
+  if(do_c1) c1_err.create(p4est, nodes);
+  if(do_c2) c2_err.create(p4est, nodes);
+
   vgamma_err.create(p4est, nodes);
   u_err.create(p4est, nodes);
 
@@ -1676,8 +1811,10 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   phi.vec = mas->get_front_phi();
   tl.vec = mas->get_tl();
   ts.vec = mas->get_ts();
+
   c0.vec = mas->get_cl(0);
-  c1.vec = mas->get_cl(1);
+  if(do_c1) c1.vec = mas->get_cl(1);
+  if(do_c2) c2.vec = mas->get_cl(2);
 
   vgamma.vec = mas->get_normal_velocity();
 
@@ -1687,12 +1824,14 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
 
   u = mas->get_v_n_NS();
 
-
   // Initialize the error values to zero:
   VecSet(tl_err.vec, 0.);
   VecSet(ts_err.vec, 0.);
+
   VecSet(c0_err.vec, 0.);
-  VecSet(c1_err.vec, 0.);
+  if(do_c1) VecSet(c1_err.vec, 0.);
+  if(do_c2) VecSet(c2_err.vec, 0.);
+
   VecSet(vgamma_err.vec, 0.);
   foreach_dimension(d){
     VecSet(u_err.vec[d], 0.);
@@ -1700,13 +1839,24 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
 
   phi.get_array();
 
-  tl.get_array(); ts.get_array(); c0.get_array(); c1.get_array();
+  tl.get_array(); ts.get_array();
+  c0.get_array();
+  if(do_c1) c1.get_array();
+  if(do_c2) c2.get_array();
+
   vgamma.get_array(); u.get_array();
 
-  tl_ana.get_array(); ts_ana.get_array(); c0_ana.get_array(); c1_ana.get_array();
+  tl_ana.get_array(); ts_ana.get_array();
+  c0_ana.get_array();
+  if(do_c1) c1_ana.get_array();
+  if(do_c2) c2_ana.get_array();
+
   vgamma_ana.get_array(); u_ana.get_array();
 
-  tl_err.get_array(); ts_err.get_array(); c0_err.get_array(); c1_err.get_array();
+  tl_err.get_array(); ts_err.get_array();
+  c0_err.get_array();
+  if(do_c1) c1_err.get_array();
+  if(do_c2) c2_err.get_array();
   vgamma_err.get_array(); u_err.get_array();
 
   double xyz_min[P4EST_DIM];
@@ -1716,14 +1866,18 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
 
 
   double tl_Linf = 0.; double ts_Linf = 0.;
-  double c0_Linf = 0.;  double c1_Linf = 0.; double vgamma_Linf = 0.;
+  double c0_Linf = 0.;
+  double c1_Linf = 0.;
+  double c2_Linf = 0.;
+  double vgamma_Linf = 0.;
   double vx_Linf = 0.;  double vy_Linf = 0.;
   double vgamma_max = 0.;
   foreach_node(n, nodes){
     if(phi.ptr[n] < 0.){
       tl_err.ptr[n] = fabs(tl.ptr[n] - tl_ana.ptr[n]);
       c0_err.ptr[n] = fabs(c0.ptr[n] - c0_ana.ptr[n]);
-      c1_err.ptr[n] = fabs(c1.ptr[n] - c1_ana.ptr[n]);
+      if(do_c1) c1_err.ptr[n] = fabs(c1.ptr[n] - c1_ana.ptr[n]);
+      if(do_c2) c2_err.ptr[n] = fabs(c2.ptr[n] - c2_ana.ptr[n]);
 
       foreach_dimension(d){
         u_err.ptr[d][n] = fabs(u.ptr[d][n] - u_ana.ptr[d][n]);
@@ -1731,7 +1885,9 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
 
       tl_Linf = max(tl_Linf, tl_err.ptr[n]);
       c0_Linf = max(c0_Linf, c0_err.ptr[n]);
-      c1_Linf = max(c1_Linf, c1_err.ptr[n]);
+      if(do_c1) c1_Linf = max(c1_Linf, c1_err.ptr[n]);
+      if(do_c2) c2_Linf = max(c2_Linf, c2_err.ptr[n]);
+
       vx_Linf = max(vx_Linf, u_err.ptr[0][n]);
       vy_Linf = max(vy_Linf, u_err.ptr[1][n]);
     }
@@ -1755,8 +1911,11 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   int ierr;
   ierr = VecGhostUpdateBegin(tl_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateBegin(ts_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   ierr = VecGhostUpdateBegin(c0_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateBegin(c1_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  if(do_c1) ierr = VecGhostUpdateBegin(c1_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  if(do_c2) ierr = VecGhostUpdateBegin(c2_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   ierr = VecGhostUpdateBegin(vgamma_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   foreach_dimension(d){
     ierr = VecGhostUpdateBegin(u_err.vec[d], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1764,37 +1923,41 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
 
   ierr = VecGhostUpdateEnd(tl_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(ts_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   ierr = VecGhostUpdateEnd(c0_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(c1_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  if(do_c1) ierr = VecGhostUpdateEnd(c1_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  if(do_c2) ierr = VecGhostUpdateEnd(c2_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   ierr = VecGhostUpdateEnd(vgamma_err.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   foreach_dimension(d){
     ierr = VecGhostUpdateEnd(u_err.vec[d], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
   // Calculate vgamma error once all the ghost values have been updated:
-  MPI_Barrier(mpi.comm());
   foreach_local_node(n, nodes){
     if(fabs(phi.ptr[n]) < dxyz_close_to_interface ){
-      double xyz_n[P4EST_DIM];
-//      if(fabs(vgamma_err.ptr[n] - 1.) < EPS){
-//        node_xyz_fr_n(n, p4est, nodes, xyz_n);
-//        printf("Node %d at (%0.3f, %0.3f) w phi = %0.2f has vgamma err = %0.3f, vgamma = %0.3f, vgamma_ana = %0.3f \n", n, xyz_n[0], xyz_n[1], phi.ptr[n], vgamma_err.ptr[n], vgamma.ptr[n], vgamma_ana.ptr[n]);
-//      }
       vgamma_Linf = max(vgamma_Linf, vgamma_err.ptr[n]);
     }
   }
-//  printf("Rank %d has vgamma_Linf = %0.3e \n", p4est->mpirank, vgamma_Linf);
-
 
   phi.restore_array();
 
-  tl.restore_array(); ts.restore_array(); c0.restore_array(); c1.restore_array();
+  tl.restore_array(); ts.restore_array();
+  c0.restore_array();
+  if(do_c1) c1.restore_array();
+  if(do_c2) c2.restore_array();
   vgamma.restore_array(); u.restore_array();
 
-  tl_ana.restore_array(); ts_ana.restore_array(); c0_ana.restore_array(); c1_ana.restore_array();
+  tl_ana.restore_array(); ts_ana.restore_array();
+  c0_ana.restore_array();
+  if(do_c1) c1_ana.restore_array();
+  if(do_c2) c2_ana.restore_array();
   vgamma_ana.restore_array(); u_ana.restore_array();
 
-  tl_err.restore_array(); ts_err.restore_array(); c0_err.restore_array(); c1_err.restore_array();
+  tl_err.restore_array(); ts_err.restore_array();
+  c0_err.restore_array();
+  if(do_c1) c1_err.restore_array();
+  if(do_c2) c2_err.restore_array();
   vgamma_err.restore_array(); u_err.restore_array();
 
   // Scale back vgamma now that we are done with it
@@ -1806,12 +1969,12 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
 
 
   // Get the global Linf errors:
-  double local_Linf_errors[7] = {tl_Linf, ts_Linf, c0_Linf, c1_Linf, vgamma_Linf, vx_Linf, vy_Linf};
-  double global_Linf_errors[7] = {0., 0., 0., 0., 0., 0., 0.};
+  double local_Linf_errors[8] = {tl_Linf, ts_Linf, c0_Linf, c1_Linf, c2_Linf, vgamma_Linf, vx_Linf, vy_Linf};
+  double global_Linf_errors[8] = {0., 0., 0., 0., 0., 0., 0., 0.};
 
   int mpi_err;
 
-  mpi_err = MPI_Allreduce(local_Linf_errors, global_Linf_errors, 7, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpi_err);
+  mpi_err = MPI_Allreduce(local_Linf_errors, global_Linf_errors, 8, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpi_err);
 
   // Print errors to application output:
   int num_nodes = nodes->num_owned_indeps;
@@ -1827,6 +1990,7 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
                               "Linf on Ts: %0.3e \n"
                               "Linf on C0: %0.3e \n"
                               "Linf on C1: %0.3e \n"
+                              "Linf on C2: %0.3e \n"
                               "Linf on vgamma: %0.3e \n"
                               "Linf on vx: %0.3e \n"
                               "Linf on vy: %0.3e \n \n"
@@ -1834,7 +1998,7 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
                               "dxyz_min : %0.3e \n",
               global_Linf_errors[0], global_Linf_errors[1], global_Linf_errors[2],
               global_Linf_errors[3], global_Linf_errors[4], global_Linf_errors[5],
-              global_Linf_errors[6],
+              global_Linf_errors[6], global_Linf_errors[7],
               num_nodes, min(xyz_min[0], xyz_min[1]));
 
   // Print errors to file:
@@ -1843,11 +2007,11 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
     ierr = PetscFPrintf(p4est->mpicomm, fich_errors, "%g %g %d "
                                                      "%g %g %g "
                                                      "%g %g %g "
-                                                     "%g %d %g \n",
+                                                     "%g %g %d %g \n",
                         tn, mas->get_dt(), iter,
                         global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],
                         global_Linf_errors[3],global_Linf_errors[4],global_Linf_errors[5],
-                        global_Linf_errors[6],
+                        global_Linf_errors[6], global_Linf_errors[7],
                         num_nodes, min(xyz_min[0], xyz_min[1]));CHKERRXX(ierr);
     ierr = PetscFClose(p4est->mpicomm,fich_errors); CHKERRXX(ierr);
   }
@@ -1882,9 +2046,17 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
     point_fields.push_back(Vec_for_vtk_export_t(c0.vec, "c0"));
     point_fields.push_back(Vec_for_vtk_export_t(c0_err.vec, "c0_err"));
 
-    point_fields.push_back(Vec_for_vtk_export_t(c1_ana.vec, "c1_ana"));
-    point_fields.push_back(Vec_for_vtk_export_t(c1.vec, "c1"));
-    point_fields.push_back(Vec_for_vtk_export_t(c1_err.vec, "c1_err"));
+    if(do_c1){
+      point_fields.push_back(Vec_for_vtk_export_t(c1_ana.vec, "c1_ana"));
+      point_fields.push_back(Vec_for_vtk_export_t(c1.vec, "c1"));
+      point_fields.push_back(Vec_for_vtk_export_t(c1_err.vec, "c1_err"));
+    }
+
+    if(do_c2){
+      point_fields.push_back(Vec_for_vtk_export_t(c2_ana.vec, "c2_ana"));
+      point_fields.push_back(Vec_for_vtk_export_t(c2.vec, "c2"));
+      point_fields.push_back(Vec_for_vtk_export_t(c2_err.vec, "c2_err"));
+    }
 
     point_fields.push_back(Vec_for_vtk_export_t(vgamma_ana.vec, "vgamma_ana"));
     point_fields.push_back(Vec_for_vtk_export_t(vgamma.vec, "vgamma"));
@@ -1906,12 +2078,17 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
 
 
   // Destroy the vectors that we created to evaluate the convergence errors:
-  tl_ana.destroy(); ts_ana.destroy(); c0_ana.destroy(); c1_ana.destroy();
+  tl_ana.destroy(); ts_ana.destroy();
+  c0_ana.destroy();
+  if(do_c1) c1_ana.destroy();
+  if(do_c2) c2_ana.destroy();
   vgamma_ana.destroy(); u_ana.destroy();
 
-  tl_err.destroy(); ts_err.destroy(); c0_err.destroy(); c1_err.destroy();
+  tl_err.destroy(); ts_err.destroy();
+  c0_err.destroy();
+  if(do_c1) c1_err.destroy();
+  if(do_c2) c2_err.destroy();
   vgamma_err.destroy(); u_err.destroy();
-
 
 }
 
