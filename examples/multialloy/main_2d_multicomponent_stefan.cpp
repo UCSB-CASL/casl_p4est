@@ -563,7 +563,7 @@ void set_alloy_parameters()
 
     num_comps.val = 2;
 
-    solute_diff_0.val    = 1.; // 0.1;  // cm2.s-1 - concentration diffusion coefficient
+    solute_diff_0.val    = 0.5; // 0.1;  // cm2.s-1 - concentration diffusion coefficient
     solute_diff_1.val    = 1.;
     initial_conc_0.val   = 1.;    // at frac.
     initial_conc_1.val = 1.;
@@ -1177,17 +1177,17 @@ class Convergence_soln{
         concentration(const unsigned char& comp_) : comp(comp_){
             P4EST_ASSERT(comp == 0 || comp == 1);
         }
-        double C1(DIM(double x, double y,double z))const{
+        double C0(DIM(double x, double y,double z))const{
           //return cos(y)*sin(x)*cos(t) + 5; // works but not using this because this field is same as velocity
           return cos(t)*( x*cos(y)*sin(x) + y*sin(y)*cos(x) )+ 5; // works
         }
-        double C2(DIM(double x, double y,double z))const{
+        double C1(DIM(double x, double y,double z))const{
           //return cos(x)*cos(t)*sin(y) + 5; // works but not using this because this field is same as velocity
           //return cos(t)*( y*cos(y)*sin(x) + x*sin(y)*cos(x) ) + 5; // works
           return cos(t)*(x*cos(y)*sin(x) - y*sin(y)*cos(x))+ 5; // works
         }
 
-        double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
+        double dC0_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
           switch(dir){
               case dir::x:
                 //return cos(x)*cos(y)*cos(t); // works but not using this because this field is same as velocity
@@ -1199,7 +1199,7 @@ class Convergence_soln{
                 throw std::runtime_error("dC1_d of analytical concentration1 field: unrecognized Cartesian");
               }
         }
-        double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
+        double dC1_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
             switch(dir){
               case dir::x:
                 //return -cos(t)*sin(x)*sin(y); // works but not using this because this field is same as velocity
@@ -1215,37 +1215,37 @@ class Convergence_soln{
         }
 
         double dC_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
-          return (comp==0? dC1_d(dir, DIM(x,y,z)) : dC2_d(dir, DIM(x,y,z)) );
+          return (comp==0? dC0_d(dir, DIM(x,y,z)) : dC1_d(dir, DIM(x,y,z)) );
         }
 
-        double dC1_dt(DIM(double x, double y, double z)) const{
+        double dC0_dt(DIM(double x, double y, double z)) const{
           //return cos(y)*(-sin(t))*sin(x); // works but not using this because this field is same as velocity
           return -sin(t)*( x*cos(y)*sin(x) + y*sin(y)*cos(x) ); // works
         }
-        double dC2_dt(DIM(double x, double y, double z)) const{
+        double dC1_dt(DIM(double x, double y, double z)) const{
           //return -cos(x)*sin(y)*sin(t); // works but not using this because this field is same as velocity
           //return -sin(t)*( y*cos(y)*sin(x) + x*sin(y)*cos(x) ) ; // works
           return sin(t)*(y*cos(x)*sin(y) - x*sin(x)*cos(y)); // works
         }
         double dC_dt(DIM(double x, double y, double z)) const{
-          return (comp == 0? dC1_dt(DIM(x,y,z)) : dC2_dt(DIM(x,y,z)));
+          return (comp == 0? dC0_dt(DIM(x,y,z)) : dC1_dt(DIM(x,y,z)));
         }
 
-        double laplace_C1(DIM(double x, double y, double z))const{
+        double laplace_C0(DIM(double x, double y, double z))const{
           //return -2*cos(y)*sin(x)*cos(t); // works but not using this because this field is same as velocity
           return -2* cos(t) *(x *cos(y)* sin(x) + cos(x)* (-2 *cos(y) + y *sin(y))); // works
         }
-        double laplace_C2(DIM(double x, double y, double z))const{
+        double laplace_C1(DIM(double x, double y, double z))const{
           //return -2*cos(x)*cos(t)*sin(y); // works but not using this because this field is same as velocity
           //return -2 *cos(t)*(y*sin(x)*cos(y)+sin(y)*(2*sin(x)+x*cos(x))); // works
           return 2*cos(t)*(y*cos(x)*sin(y) - x*sin(x)*cos(y));// works
         }
         double laplace(DIM(double x, double y, double z))const{
-          return (comp == 0? laplace_C1(DIM(x,y,z)) : laplace_C2(DIM(x,y,z)));
+          return (comp == 0? laplace_C0(DIM(x,y,z)) : laplace_C1(DIM(x,y,z)));
         }
 
         double operator()(DIM(double x,double y, double z))const{
-          return (comp == 0? C1(DIM(x,y,z)) : C2(DIM(x,y,z)));
+          return (comp == 0? C0(DIM(x,y,z)) : C1(DIM(x,y,z)));
         }
     };
     struct interface_velocity: CF_DIM{
