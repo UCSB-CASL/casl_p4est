@@ -954,8 +954,8 @@ public:
   void set_there_is_convergence_test(bool is_conv_test){
     there_is_convergence_test = is_conv_test;
     if(there_is_convergence_test){
-      if(num_comps_ != 2){
-        throw std::runtime_error("my_p4est_multialloy: you have attempted to run a convergence test with an invalid number of components. Currently, only one convergence test with 2 components has been implemented. \n");
+      if(num_comps_ > 3){
+        throw std::runtime_error("my_p4est_multialloy: you have attempted to run a convergence test with an invalid number of components. Currently, only one convergence test with up to 3 components has been implemented. \n");
       }
     }
   }

@@ -2084,7 +2084,7 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
   MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM, p4est_->mpicomm);
 
   PetscPrintf(p4est_->mpicomm, "\n Iter = %d, Time = %3e, Number of Nodes = %d "
-                               "\n -------------------------- \n",   iteration_one_step, time_,num_nodes);
+                               "\n -------------------------- \n",   iteration_one_step, time_, num_nodes);
 
   PetscPrintf(p4est_->mpicomm, "dxyz_close_to_interface %3e \n \n", dxyz_close_interface_);
   // update time in interface and boundary conditions
@@ -2273,6 +2273,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     wall_bc_value_conc_ [i]->t = time_;
   }
 
+
   // Get the backtraced values for conc components and temperature from 
   // stefan with fluids solver
   
@@ -2285,7 +2286,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   tl_backtrace_n.create(p4est_, nodes_);
   tl_backtrace_nm1.create(p4est_, nodes_);
-  
   // Pass all relevant vectors/grid objects to stefan_w_fluids solver:
   // ---------------------------------
   // Concentrations:
@@ -2435,7 +2435,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   rhs_tl.get_array();
   rhs_ts.get_array();
   rhs_cl.get_array();
-
   for (int i = 0; i < num_time_layers_; ++i)
   {
     ts_[i].get_array();
@@ -2446,7 +2445,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     }
   }
 
-  // PASTE STARTING HERE 
   // Get the backtrace arrays:
   tl_backtrace_n.get_array();
   tl_backtrace_nm1.get_array();
@@ -2465,7 +2463,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // Compute the time coefficients associated with the Semi-Lagragian advective disc
   double SL_alpha = (2.*dt_[0] + dt_[1])/(dt_[0] + dt_[1]); // SL alpha coeff
   double SL_beta = (-1.*dt_[0])/(dt_[0] + dt_[1]); // SL beta coefff
-
 
   front_phi_.get_array();
   foreach_node(n, nodes_)
@@ -2628,7 +2625,6 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   }else{
     solver_all_in_one.set_c0_guess(cl_[1].vec[0]);
   }
-
 
   int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, true,
       bc_error_.vec, bc_error_max, bc_error_avg,

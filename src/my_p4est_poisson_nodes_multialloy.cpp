@@ -383,7 +383,6 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
     // solve for physical quantities
 //    PetscPrintf(p4est_->mpicomm, "Solving c0 ... \n");
     solve_c0(); ++num_pdes_solved;
-
 //    PetscPrintf(p4est_->mpicomm, "Computing c0n ... \n");
     compute_c0n();
 
@@ -1169,7 +1168,6 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c(int start, int num)
   {
 //    solver_conc_[i]->set_wc(wall_bc_type_conc_, *wall_bc_value_conc_[i], false);
     solver_conc_[i]->set_wc(*wall_bc_type_conc_, *wall_bc_value_conc_[i], false);
-
     solver_conc_[i]->set_bc(0, ROBIN, pw_c_values_[i], pw_c_values_robin_[i], pw_c_coeffs_robin_[i]);
     solver_conc_[i]->set_rhs(rhs_c_[i].vec);
 

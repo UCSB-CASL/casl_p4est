@@ -561,11 +561,11 @@ void set_alloy_parameters()
     thermal_cond_s.val  = 1.; // W.cm-1.K-1
     latent_heat.val     = 1.;    // J.cm-3
 
-    num_comps.val = 2;
+    num_comps.val = 3;
 
     solute_diff_0.val    = 0.5; // 0.1;  // cm2.s-1 - concentration diffusion coefficient
     solute_diff_1.val    = 0.7;
-    solute_diff_2.val = 1.;
+    solute_diff_2.val    = 1.;
 
     initial_conc_0.val   = 1.;    // at frac.
     initial_conc_1.val = 1.;
@@ -1198,8 +1198,9 @@ class Convergence_soln{
         }
 
         double C2(DIM(double x, double y, double z))const{
-          printf("C2: Insert code for c2 case! \n");
-          return 0. * x * y;
+          return cos(y)*sin(x)*cos(t) + 5; // works but not using this because this field is same as velocity
+//          printf("C2: Insert code for c2 case! \n");
+//          return 0. * x * y;
         }
 
         double dC0_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
@@ -1231,12 +1232,14 @@ class Convergence_soln{
         double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
           switch(dir){
           case dir::x:
-            printf("dC2_dx: Insert code for c2 case! \n");
-            return 0. * x * y;
+            return cos(x)*cos(y)*cos(t); // works but not using this because this field is same as velocity
+//            printf("dC2_dx: Insert code for c2 case! \n");
+//            return 0. * x * y;
 
           case dir::y:
-            printf("dC2_dy: Insert code for c2 case! \n");
-            return 0. * x * y;
+            return -sin(x)*sin(y)*cos(t); // works but not using this because this field is same as velocity
+//            printf("dC2_dy: Insert code for c2 case! \n");
+//            return 0. * x * y;
 
           default:
             throw std::runtime_error("dC2_d of analytical concentration2 field: unrecognized Cartesian direction \n");
@@ -1268,8 +1271,9 @@ class Convergence_soln{
           return sin(t)*(y*cos(x)*sin(y) - x*sin(x)*cos(y)); // works
         }
         double dC2_dt(DIM(double x, double y, double z)) const{
-          printf("dC2_dt: Insert code for c2 case! \n");
-          return 0. * x * y;
+          return cos(y)*(-sin(t))*sin(x); // works but not using this because this field is same as velocity
+//          printf("dC2_dt: Insert code for c2 case! \n");
+//          return 0. * x * y;
         }
         double dC_dt(DIM(double x, double y, double z)) const{
           switch(comp){
@@ -1296,8 +1300,9 @@ class Convergence_soln{
           return 2*cos(t)*(y*cos(x)*sin(y) - x*sin(x)*cos(y));// works
         }
         double laplace_C2(DIM(double x, double y, double z))const{
-          printf("laplace_C2: Insert code for c2 case! \n");
-          return 0. * x * y;
+          return -2*cos(y)*sin(x)*cos(t); // works but not using this because this field is same as velocity
+//          printf("laplace_C2: Insert code for c2 case! \n");
+//          return 0. * x * y;
         }
         double laplace(DIM(double x, double y, double z))const{
           switch(comp){
@@ -2440,7 +2445,7 @@ public:
 //Convergence_soln::concentration convergence_conc0(0);
 cl_cf_t cl_cf_0(0, &convergence_conc0);
 cl_cf_t cl_cf_1(1, &convergence_conc1);
-cl_cf_t cl_cf_2(2);
+cl_cf_t cl_cf_2(2, &convergence_conc2);
 cl_cf_t cl_cf_3(3);
 
 CF_DIM* cl_cf_all[] = { &cl_cf_0,
@@ -2919,7 +2924,7 @@ public:
 
 bc_value_conc_t bc_value_conc_0(0, &convergence_conc0);
 bc_value_conc_t bc_value_conc_1(1, &convergence_conc1);
-bc_value_conc_t bc_value_conc_2(2);
+bc_value_conc_t bc_value_conc_2(2, &convergence_conc2);
 bc_value_conc_t bc_value_conc_3(3);
 
 CF_DIM* bc_value_conc_all[] = { &bc_value_conc_0,
@@ -3768,7 +3773,8 @@ int main (int argc, char* argv[])
 
       // concs:
       convergence_conc0.t = tn + dt;
-      convergence_conc1.t = tn + dt;
+      if(num_comps.val>1) convergence_conc1.t = tn + dt;
+      if(num_comps.val>2) convergence_conc2.t = tn + dt;
 
       // interface vel
       convergence_vgamma.t = tn + dt;
@@ -3783,7 +3789,8 @@ int main (int argc, char* argv[])
       ngbd_ = mas.get_ngbd();
 
       external_source_c0_robin.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
-      external_source_c1_robin.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
+      if(num_comps.val>1) external_source_c1_robin.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
+      if(num_comps.val>2) external_source_c2_robin.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
       external_source_temperature_flux_jump.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
 
       // ANd update the temperature wall bc:
@@ -4051,7 +4058,9 @@ int main (int argc, char* argv[])
     // Clear out the boundary condition info now that we are done w this timestep
     if(geometry.val == 8){
       external_source_c0_robin.clear_inputs();
-      external_source_c1_robin.clear_inputs();
+      if(num_comps.val>1) external_source_c1_robin.clear_inputs();
+      if(num_comps.val>2) external_source_c2_robin.clear_inputs();
+
       external_source_temperature_flux_jump.clear_inputs();
       bc_value_temp.clear_inputs();
     }
