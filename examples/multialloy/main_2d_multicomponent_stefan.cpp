@@ -1958,9 +1958,15 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   // Calculate vgamma error once all the ghost values have been updated:
   foreach_local_node(n, nodes){
     if(fabs(phi.ptr[n]) < dxyz_close_to_interface ){
+//      double xyz_n[P4EST_DIM];
+//      node_xyz_fr_n(n, p4est, nodes, xyz_n);
+//      bool print_stuff = fabs(vgamma_err.ptr[n]) > 0.1;
+//      if(print_stuff) printf("node %d (%0.3f, %0.3f) rank %d : vgamma error = %0.3e \n",
+//             n, xyz_n[0], xyz_n[1], mpi.rank(),  vgamma_err.ptr[n]);
       vgamma_Linf = max(vgamma_Linf, vgamma_err.ptr[n]);
     }
   }
+//  printf("rank %d, Linf_vgamma = %0.3e \n", mpi.rank(), vgamma_Linf);
 
   phi.restore_array();
 
@@ -1986,7 +1992,7 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   // (Not sure this is entirely necessary, i think we might just have a copy of it and not the actual vec, I need to double check)
   VecScaleGhost(vgamma.vec, -1.);
 
-  vgamma_Linf = fabs(fabs(vgamma_max)-1);
+//  vgamma_Linf = fabs(fabs(vgamma_max)-1);
 //  printf("Now rank %d has vgamma_Linf = %0.3e \n", p4est->mpirank, vgamma_Linf);
 
 

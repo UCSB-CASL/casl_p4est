@@ -28,6 +28,22 @@ VORO_INCLUDES_DEBUG     = $$VORO_DIR/include/voro++
 VORO_LIBS_RELEASE       = -Wl,-rpath,$$VORO_DIR/lib -L$$VORO_DIR/lib -lvoro++
 VORO_LIBS_DEBUG         = -Wl,-rpath,$$VORO_DIR/lib -L$$VORO_DIR/lib -lvoro++
 
+# boost
+BOOST_INCLUDES = /home/ebayat/workspace/libraries/boost_1_66_0
+
+CONFIG(debug, debug|release):{
+  MPI_DIR = $$PETSC_DIR_DBG
+}
+CONFIG(release, debug|release):{
+  MPI_DIR = $$PETSC_DIR_RLS
+}
+MPI_INCLUDES = $$MPI_DIR/include
+MPI_LIBS = -Wl,-rpath,$$MPI_DIR/lib -L$$MPI_DIR/lib -lmpi -lmpicxx
+
+#QMAKE_CC=$$MPI_DIR/bin/mpicc #mpicc.mpich
+#QMAKE_CXX=$$MPI_DIR/bin/mpicxx #mpicxx.mpich
+#QMAKE_LINK=$$MPI_DIR/bin/mpicxx mpicxx.mpich
+
 QMAKE_CC                = /usr/local/bin/mpicc
 QMAKE_CXX               = /usr/local/bin/mpicxx
 QMAKE_LINK              = /usr/local/bin/mpicxx
