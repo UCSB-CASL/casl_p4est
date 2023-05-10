@@ -216,7 +216,8 @@ private:
   // -------------------------------------------------
   bool there_is_convergence_test;
   // Source terms for the RHS of the PDE's:
-  CF_DIM* convergence_external_source_conc[2]; // for conc0 and conc1
+  CF_DIM* convergence_external_source_conc[3]; // for conc0 and conc1
+//  std::vector<CF_DIM*> convergence_external_source_conc;
   CF_DIM* convergence_external_source_temp[2]; // for liquid domain and solid domain
   CF_DIM* convergence_external_forces_NS[2]; // one per cartesian direction
 
@@ -224,7 +225,9 @@ private:
   CF_DIM* convergence_external_source_temperature_jump;
   CF_DIM* convergence_external_source_temperature_flux_jump;
 
-  CF_DIM* convergence_external_source_conc_robin[2]; // for conc0 and conc1
+  CF_DIM* convergence_external_source_conc_robin[3]; // for conc0 and conc1
+//  std::vector<CF_DIM*> convergence_external_source_conc_robin;
+
   CF_DIM* convergence_external_source_Gibbs_Thomson; // source term in the Gibbs Thomson relation
 
   CF_DIM* c0_guess_cf;
@@ -966,14 +969,20 @@ public:
     }
   }
 
-  void set_convergence_source_conc(CF_DIM* source_conc[2]){
-    for(unsigned int i = 0; i<2; i++){
+  void set_convergence_source_conc(CF_DIM* source_conc[]){
+    for(unsigned int i = 0; i < num_comps_; i++){
       convergence_external_source_conc[i] = source_conc[i];
     }
   }
 
-  void set_convergence_source_temp(CF_DIM* source_temp[2]){
-    for(unsigned int i = 0; i<2; i++){
+//  void set_convergence_source_conc(std::vector<CF_DIM*> source_conc){
+//      for(unsigned int i = 0; i < num_comps_; i++){
+//        convergence_external_source_conc[i] = source_conc[i];
+//      }
+//  }
+
+  void set_convergence_source_temp(CF_DIM* source_temp[]){
+    for(unsigned int i = 0; i<3; i++){
       convergence_external_source_temp[i] = source_temp[i];
     }
   }
@@ -986,11 +995,17 @@ public:
     convergence_external_source_temperature_flux_jump = temp_flux_jump;
   }
 
-  void set_convergence_source_conc_robin(CF_DIM* source_conc_robin[2]){
-    for(unsigned int i=0; i<2; i++){
+  void set_convergence_source_conc_robin(CF_DIM* source_conc_robin[]){
+    for(unsigned int i=0; i < num_comps_; i++){
       convergence_external_source_conc_robin[i] = source_conc_robin[i];
     }
   }
+
+//  void set_convergence_source_conc_robin(std::vector<CF_DIM*> source_conc_robin){
+//    for(unsigned int i=0; i < num_comps_; i++){
+//      convergence_external_source_conc_robin[i] = source_conc_robin[i];
+//    }
+//  }
 
   void set_convergence_source_Gibbs_Thomson(CF_DIM* source_Gibbs){
     convergence_external_source_Gibbs_Thomson = source_Gibbs;

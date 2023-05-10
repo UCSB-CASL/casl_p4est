@@ -2601,6 +2601,10 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     solver_all_in_one.set_front_conditions(*convergence_external_source_temperature_jump,
                                            *convergence_external_source_temperature_flux_jump,
                                            convergence_external_source_conc_robin);
+
+//      solver_all_in_one.set_front_conditions(*convergence_external_source_temperature_jump,
+//                                             *convergence_external_source_temperature_flux_jump,
+//                                       convergence_external_source_conc_robin.data());
   }
   else{
     solver_all_in_one.set_front_conditions(zero_cf, zero_cf, zeros_cf.data());

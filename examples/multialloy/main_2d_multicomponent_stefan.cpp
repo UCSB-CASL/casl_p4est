@@ -582,9 +582,9 @@ void set_alloy_parameters()
     linearized_liquidus.val  = 1;
     const_part_coeff.val = 1;
 
-    liquidus_slope_0.val = 0.5;   // K / at frac. - liquidous slope
-    liquidus_slope_1.val = 0.5;
-    liquidus_slope_2.val = 0.5;
+    liquidus_slope_0.val = 0.33;   // K / at frac. - liquidous slope
+    liquidus_slope_1.val = 0.33;
+    liquidus_slope_2.val = 0.33;
 
     part_coeff_0.val     = 0.0;   // partition coefficient
     part_coeff_1.val     = 0.0;
@@ -1184,6 +1184,10 @@ class Convergence_soln{
         const unsigned char comp;
         concentration(const unsigned char& comp_) : comp(comp_){
             P4EST_ASSERT(comp == 0 || comp == 1 || comp == 2);
+            // A WARNING TO NEW IMPLEMENTERS!!! If you want to add a convergence study for more than 3 concentration fields, you will need to update the CF_DIM* array sizes in multialloy corresponding to the convergence_external_source_conc_robin and convergence_external_source_conc
+            // As of now, those arrays are hard coded to be size 3 (sorry about that), and the functions in multialloy
+            // for setting those fields also may assume only a certain size.
+            // so make sure to change that before proceeding!! -- Elyce
         }
 
         double C0(DIM(double x, double y, double z))const{
@@ -1198,9 +1202,9 @@ class Convergence_soln{
         }
 
         double C2(DIM(double x, double y, double z))const{
-          return cos(y)*sin(x)*cos(t) + 5; // works but not using this because this field is same as velocity
-//          printf("C2: Insert code for c2 case! \n");
-//          return 0. * x * y;
+//          return cos(y)*sin(x)*cos(t) + 5; // works but not using this because this field is same as velocity
+          return cos(t) * (y + cos(5*x)) + 5;
+
         }
 
         double dC0_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
@@ -1232,12 +1236,11 @@ class Convergence_soln{
         double dC2_d(const unsigned char& dir, DIM(double x,double y,double z)) const{
           switch(dir){
           case dir::x:
-            return cos(x)*cos(y)*cos(t); // works but not using this because this field is same as velocity
-//            printf("dC2_dx: Insert code for c2 case! \n");
-//            return 0. * x * y;
-
+            return -5 * sin(5*x) * cos(t);
+//            return cos(x)*cos(y)*cos(t); // works but not using this because this field is same as velocity
           case dir::y:
-            return -sin(x)*sin(y)*cos(t); // works but not using this because this field is same as velocity
+            return cos(t);
+            //return -sin(x)*sin(y)*cos(t); // works but not using this because this field is same as velocity
 //            printf("dC2_dy: Insert code for c2 case! \n");
 //            return 0. * x * y;
 
@@ -1271,7 +1274,8 @@ class Convergence_soln{
           return sin(t)*(y*cos(x)*sin(y) - x*sin(x)*cos(y)); // works
         }
         double dC2_dt(DIM(double x, double y, double z)) const{
-          return cos(y)*(-sin(t))*sin(x); // works but not using this because this field is same as velocity
+          return -sin(t)*(y + cos(5*x));
+          //return cos(y)*(-sin(t))*sin(x); // works but not using this because this field is same as velocity
 //          printf("dC2_dt: Insert code for c2 case! \n");
 //          return 0. * x * y;
         }
@@ -1300,7 +1304,8 @@ class Convergence_soln{
           return 2*cos(t)*(y*cos(x)*sin(y) - x*sin(x)*cos(y));// works
         }
         double laplace_C2(DIM(double x, double y, double z))const{
-          return -2*cos(y)*sin(x)*cos(t); // works but not using this because this field is same as velocity
+          return -25*cos(5*x)*cos(t);
+          //return -2*cos(y)*sin(x)*cos(t); // works but not using this because this field is same as velocity
 //          printf("laplace_C2: Insert code for c2 case! \n");
 //          return 0. * x * y;
         }
@@ -1438,20 +1443,22 @@ class Convergence_soln{
     struct external_force_concentration: CF_DIM{
         concentration concentration_;
         velocity_component* velocity_component_;
-        external_force_concentration(concentration concentration=NULL, velocity_component* velocity_component=NULL ):
+        external_force_concentration(concentration concentration=NULL,
+                                     velocity_component* velocity_component=NULL ):
             concentration_(concentration), velocity_component_(velocity_component){
-            P4EST_ASSERT(concentration_.comp == 0 || concentration_.comp == 1);
+          P4EST_ASSERT(concentration_.comp <3);
         }
         double operator()(DIM(double x, double y, double z)) const {
             double advective_term;
 
             int comp = concentration_.comp;
             double D = 0./*(comp == 0? solute_diff_0.val : solute_diff_1.val)*/;
+//            printf("external source comp = %d \n", comp);
             switch(comp){
               case 0:
                 D = solute_diff_0.val; break;
               case 1:
-                D = solute_diff_0.val; break;
+                D = solute_diff_1.val; break;
               case 2:
                 D = solute_diff_2.val; break;
               default:
@@ -1590,16 +1597,20 @@ class Convergence_soln{
 
       double operator()(DIM(double x, double y, double z)) const {
         if(nx_interp==NULL || ny_interp==NULL){
+//          printf("operator -- comp = %d \n", concentration_->comp);
           throw std::runtime_error("external source concentration robin: you cannot call this operator because the normal interpolators have not been set \n");
         }
 //        printf("accesses conc robin source term \n");
 
         int comp = concentration_->comp;
 //        double D = (comp == 0? solute_diff_0.val : solute_diff_1.val);
-//        printf("comp = %d, D = %0.2e \n", comp, D);
 //        double part_coeff = (comp == 0? part_coeff_0.val : part_coeff_1.val);
 
         double D = 0; double part_coeff = 0.;
+//        printf("hello hello comp = %d \n", comp);
+//        if(comp == 2){
+//          printf("\n \n HERE HERE COMP = 2 \n \n");
+//        }
         switch(comp){
           case 0:
             D = solute_diff_0.val;
@@ -1610,12 +1621,15 @@ class Convergence_soln{
             part_coeff = part_coeff_1.val;
             break;
           case 2:
-            D = solute_diff_1.val;
+//            printf("gets into case 2! \n");
+            D = solute_diff_2.val;
             part_coeff = part_coeff_2.val;
             break;
           default:
             throw std::invalid_argument("external_force_concentration: unrecognized component number for deterimining solute diffusivity and partition coefficient \n");
         }
+//          printf("comp = %d, D = %0.2e \n", comp, D);
+
 
 //        printf("nx interp = %p \n", nx_interp);
 //        printf("ny interp = %p \n", ny_interp);
@@ -1669,16 +1683,11 @@ class Convergence_soln{
         }
         if(num_comps.val > 2 && concentration_2_== NULL){
           throw std::invalid_argument("external source Gibbs Thomson : There is no field provided for concentration 2 but the number of components mismatches this \n");
-
         }
-
 
         if(eps_c.val>0){
           throw std::invalid_argument("external source gibbs thomson: you are trying to run with an eps_c value greater than 0, but the curvature affect is not implemented in this convergence test");
         }
-
-//        printf("From BC:\n temperature = %0.2e \n", (*temperature_l_)(DIM(x,y,z)));
-//        printf("liquidus = %0.2e \n",(melting_temp.val +  liquidus_slope_0.val * (*concentration_0_)(DIM(x,y,z)) + liquidus_slope_1.val * (*concentration_1_)(DIM(x,y,z))));
 
         double Tm_expression = melting_temp.val;
         if(num_comps.val>0){Tm_expression+= liquidus_slope_0.val * (*concentration_0_)(DIM(x,y,z));}
@@ -1686,6 +1695,12 @@ class Convergence_soln{
         if(num_comps.val>2){Tm_expression+= liquidus_slope_2.val * (*concentration_2_)(DIM(x,y,z));}
 
         double Gibbs = (*temperature_l_)(DIM(x,y,z)) - Tm_expression - eps_v.val * (*vgamma_)(DIM(x,y,z));
+
+//        printf("From BC:\n temperature = %0.4e \n", (*temperature_l_)(DIM(x,y,z)));
+//        printf("liquidus = %0.4e \n", Tm_expression);
+//        printf("vgamma = %0.4e \n", (*vgamma_)(DIM(x,y,z)));
+//        printf("Gibbs = %0.4e \n", Gibbs);
+
         return Gibbs;
       }
 
@@ -1719,6 +1734,7 @@ Convergence_soln::external_force_concentration convergence_force_c1(convergence_
 Convergence_soln::external_force_concentration convergence_force_c2(convergence_conc2, convergence_vel);
 
 CF_DIM* convergence_forces_conc[3] = {&convergence_force_c0, &convergence_force_c1, &convergence_force_c2};
+//std::vector<CF_DIM*> convergence_forces_conc = {&convergence_force_c0, &convergence_force_c1, &convergence_force_c2};
 
 Convergence_soln::external_force_temperature convergence_force_tl(LIQUID_DOMAIN, convergence_temp, convergence_vel);
 Convergence_soln::external_force_temperature convergence_force_ts(SOLID_DOMAIN, convergence_temp, convergence_vel);
@@ -1739,6 +1755,7 @@ Convergence_soln::external_source_concentration_robin external_source_c1_robin(&
 Convergence_soln::external_source_concentration_robin external_source_c2_robin(&convergence_conc2, &convergence_vgamma);
 
 CF_DIM* external_source_conc_robin[3] = {&external_source_c0_robin, &external_source_c1_robin, &external_source_c2_robin};
+//std::vector<CF_DIM*> external_source_conc_robin = {&external_source_c0_robin, &external_source_c1_robin, &external_source_c2_robin};
 
 Convergence_soln::external_source_Gibbs_Thomson external_source_Gibbs_Thomson(&convergence_tl,  &convergence_vgamma, &convergence_conc0, &convergence_conc1, &convergence_conc2);
 
@@ -1970,7 +1987,7 @@ void check_convergence_errors_and_save_to_vtk(my_p4est_multialloy_t* mas, mpi_en
   VecScaleGhost(vgamma.vec, -1.);
 
   vgamma_Linf = fabs(fabs(vgamma_max)-1);
-  printf("Now rank %d has vgamma_Linf = %0.3e \n", p4est->mpirank, vgamma_Linf);
+//  printf("Now rank %d has vgamma_Linf = %0.3e \n", p4est->mpirank, vgamma_Linf);
 
 
   // Get the global Linf errors:
@@ -3227,6 +3244,9 @@ int main (int argc, char* argv[])
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
+//  printf("convergence conc 2 --> comp = %d \n", convergence_conc2.comp);
+//  printf("ext source c2 conc comp = %d \n", external_source_c2_robin.concentration_->comp);
+//  external_source_c2_robin(5, 5);
 //  // checking whether mpi version causes random memory leaks
 //  int nnn = 0;
 //  PetscLogDouble mem_petsc_old = 0;
@@ -3339,7 +3359,7 @@ int main (int argc, char* argv[])
     sprintf(name_errors, "%s/coupled_convergence_test_lmin%d_lmax%d.dat", out_dir, lmin.val, lmax.val);
     ierr = PetscFOpen(mpi.comm(), name_errors, "w", &fich_errors); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(),fich_errors,"tn " "dt " "iteration "
-                                                 "Tl_err " "Ts_err " "C0_err " "C1_err "
+                                                 "Tl_err " "Ts_err " "C0_err " "C1_err " " C2_err "
                                                  "vgamma_err " "vx_err " "vy_err " "num_nodes " "dxyz_min \n");CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(),fich_errors); CHKERRXX(ierr);
 
@@ -3495,6 +3515,16 @@ int main (int argc, char* argv[])
 //  double dx_eff = (xmax.val-xmin.val)/double(n_xyz[0])/pow(2., lmax_new);
 //  double lmax_eff = lmax_new + log(initial_division)/log(2.);
 //  double lmin_eff = lmin_new + log(initial_division)/log(2.);FF
+
+
+//  std::vector<CF_DIM*> convergence_forces_conc;
+//  std::vector<CF_DIM*> external_source_conc_robin;
+
+//  for (int i=0; i< num_comps.val; i++){
+//    convergence_forces_conc[i] = convergence_forces_conc_[i];
+//    external_source_conc_robin[i] = external_source_conc_robin_[i];
+
+//  }
 
   /* initialize the solver */
   my_p4est_multialloy_t mas(num_comps.val, order_in_time.val);
@@ -3792,6 +3822,9 @@ int main (int argc, char* argv[])
       if(num_comps.val>1) external_source_c1_robin.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
       if(num_comps.val>2) external_source_c2_robin.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
       external_source_temperature_flux_jump.set_inputs(ngbd_, front_normals_.vec[0], front_normals_.vec[1]);
+
+//      PetscPrintf(mpi.comm(), "CALLING EXT SOURCE C2 ROBIN \n");
+//      external_source_c2_robin(5,5);
 
       // ANd update the temperature wall bc:
       phi_.vec = mas.get_front_phi();
@@ -4115,7 +4148,6 @@ int main (int argc, char* argv[])
   eps_c_all.clear();
   eps_v_all.clear();
   w1.stop(); w1.read_duration();
-  PetscPrintf(mpi.comm(), ".................Reached here ...... \n");
   return 0;
 }
 

@@ -1857,13 +1857,13 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
         printf("\n--------------------------------------------------------\n");
         printf("Node %d, (%0.2f, %0.2f) -- error = %0.2e \n", n, xyz[0], xyz[1], error);
 
-        printf("tl_val = %0.2e \n", tl_val);
-        printf("liquidus = %0.2e \n", liquidus_value_(c_all.data()));
+        printf("tl_val = %0.4e \n", tl_val);
+        printf("liquidus = %0.4e \n", liquidus_value_(c_all.data()));
         printf("eps_v = %0.2e \n", eps_v);
-        printf("vn = %0.2e \n", vn);
+        printf("vn = %0.4e \n", vn);
         printf("eps_c = %0.2e \n", eps_c);
         printf("kappa = %0.2e \n", kappa);
-        printf("gibbs_thomson_ = %0.2e \n", gibbs_thomson_->value(xyz));
+        printf("gibbs_thomson_ = %0.4e \n", gibbs_thomson_->value(xyz));
         printf("\n--------------------------------------------------------\n");
       }
 
