@@ -8,20 +8,18 @@
 
 # Checking mode: Created by visiting CLion | Preferences | Build, Execution, Deployment | CMake
 # Based on https://intellij-support.jetbrains.com/hc/en-us/community/posts/360000919039-Clion-how-to-build-cmake-to-support-debug-release
-message( "" )
+message( "This is cmake-casl_laptop24.cmake" )
 if( CMAKE_BUILD_TYPE MATCHES Debug )
 	message( "******* CASL CMAKE IN DEBUG MODE *******" )
-	message(" Reminder -- you need to reinstall petsc properly with both debug and release -- right now they are both release ")
-	set( PETSC_DIR /home/casl_laptop24/workspace/software/petsc-debug )	# PETSc.
+	set( PETSC_DIR /home/casl_laptop24/workspace/software/petsc-debug )		# PETSc.
 	set( P4EST_DIR /home/casl_laptop24/workspace/software/p4est-debug )		# p4est.
-	set( VORO_DIR  /home/casl_laptop24/workspace/software/voro-build )						# Voro++.
+	set( VORO_DIR  /home/casl_laptop24/workspace/software/voro-build )		# Voro++.
 
 elseif( CMAKE_BUILD_TYPE MATCHES Release )
 	message( "******* CASL CMAKE IN RELEASE MODE *******" )
-
 	set( PETSC_DIR /home/casl_laptop24/workspace/software/petsc-release )	# PETSc.
-	set( P4EST_DIR /home/casl_laptop24/workspace/software/p4est-release )			# p4est.
-	set( VORO_DIR  /home/casl_laptop24/workspace/software/voro-build )						# Voro++
+	set( P4EST_DIR /home/casl_laptop24/workspace/software/p4est-release )	# p4est.
+	set( VORO_DIR  /home/casl_laptop24/workspace/software/voro-build )		# Voro++
 
 else()
 	message( FATAL_ERROR "Invalid or missing CMAKE_BUILD_TYPE macro --it should be 'Debug' or 'Release'." )
@@ -69,7 +67,7 @@ message( "** Boost   : " ${BOOST_DIR} )
 
 
 ######################################### Optional machine-learning libraries ##########################################
-# ELYCE -- LEFT THESE UNSET FOR NOW
+# LEFT THESE UNSET FOR NOW
 if( ENABLE_ML MATCHES 1 )		# Set this CMake variable as -DENABLE_ML=1.
 
 	set( OpenBLAS_DIR /usr/local/OpenBlas/ ) 	# OpenBLAS.
