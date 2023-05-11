@@ -3599,9 +3599,16 @@ int main (int argc, char* argv[])
     mas.set_mu_l(mu_l.val);
     mas.set_Pr(Pr.val);
     mas.set_RaT(Ra_T.val);
-    mas.set_RaC0(Ra_C_0.val);
-    mas.set_RaC0(Ra_C_1.val);
-    mas.set_RaC0(Ra_C_2.val);
+
+    vector<double> RaC_vals(num_comps.val, 0);
+    RaC_vals[0] = Ra_C_0.val;
+    RaC_vals[1] = Ra_C_1.val;
+    RaC_vals[2] = Ra_C_2.val;
+    RaC_vals[3] = Ra_C_3.val;
+    mas.set_RaC(RaC_vals);
+//    mas.set_RaC0(Ra_C_0.val);
+//    mas.set_RaC0(Ra_C_1.val);
+//    mas.set_RaC0(Ra_C_2.val);
     mas.set_do_boussinesq(do_boussinesq.val);
 
     // Calculate nondimensional groups:

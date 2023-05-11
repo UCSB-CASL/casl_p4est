@@ -156,10 +156,12 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
   mu_l_  = -1.;
   Pr_    = -1.;
   RaT_   = -1.;
-  RaC_0_ = -1.;
-  RaC_1_ = -1.;
-  RaC_2_ = -1.;
-  RaC_3_ = -1.;
+  RaC_.assign(num_comps_, -1.);
+
+//  RaC_0_ = -1.;
+//  RaC_1_ = -1.;
+//  RaC_2_ = -1.;
+//  RaC_3_ = -1.;
 }
 // end of constructor
 
@@ -669,16 +671,11 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
     if(RaT_ < 0.){
       throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the thermal Rayleigh number has not been set \n");
     }
-    if(RaC_0_ < 0.){
-      throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the species Rayleigh number for comp0 has not been set \n");
+    for(int j=0; j<num_comps_; j++){
+      if(RaC_[j] < 0.){
+        throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the species Rayleigh number for one or more of the components has not been set \n");
+      }
     }
-    if(RaC_1_ < 0. && num_comps_>1){
-      throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the species Rayleigh number for comp1 has not been set \n");
-    }
-    if(RaC_2_ < 0. && num_comps_>2){
-      throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the species Rayleigh number for comp2 has not been set \n");
-    }
-
   }
   PetscPrintf(p4est_->mpicomm, "ALERT ALERT: PRANDTL NUMBER IS HARD CODED AND SET TO 1. THIS IS A SHORT TERM FIX AND MUST BE UPDATED \n");
   stefan_w_fluids_solver->set_Pr(Pr_);
@@ -2732,28 +2729,33 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   
   // (3) solve the NS 
   vec_and_ptr_t boussinesq_terms_rhs_for_ns;
-  /*
-  boussinesq_terms_rhs_for_ns.create(p4est_, nodes_);
-  boussinesq_terms_rhs_for_ns.get_array();
-  tl_[0].get_array();
-  cl_[0].get_array();
+  if(do_boussinesq){
+    boussinesq_terms_rhs_for_ns.create(p4est_, nodes_);
+    boussinesq_terms_rhs_for_ns.get_array();
+    tl_[0].get_array();
+    cl_[0].get_array();
 
-  foreach_node(n, nodes_){
+    foreach_node(n, nodes_){
+      boussinesq_terms_rhs_for_ns.ptr[n] = -(RaT_ * Pr_) * tl_[0].ptr[n];
 
+      for (int j = 0; j < num_comps_; j++){
+        boussinesq_terms_rhs_for_ns.ptr[n] -= (RaC_[j] * Pr_) * cl_[0].ptr[j][n];
+      }
+
+    }
+    boussinesq_terms_rhs_for_ns.restore_array();
+    tl_[0].restore_array();
+    cl_[0].restore_array();
   }
-  boussinesq_terms_rhs_for_ns.restore_array();
-  tl_[0].restore_array();
-  cl_[0].get_array();
-
 
   stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(true, boussinesq_terms_rhs_for_ns.vec);
 
-  boussinesq_terms_rhs_for_ns.destroy(); // move this somewhere more appropriate later
+  if(do_boussinesq) boussinesq_terms_rhs_for_ns.destroy(); // move this somewhere more appropriate later
 
-*/
+
   PetscPrintf(p4est_->mpicomm, "\nRED ALERT: Boussinesq is currently non-operational. We will want to fix this later \n");
 
-  stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(false, nullptr, true);
+  stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(do_boussinesq, boussinesq_terms_rhs_for_ns.vec, true);
 
 
   // Now, get the velocity results back out of SWF (or do we need to? ) :

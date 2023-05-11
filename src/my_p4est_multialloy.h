@@ -242,7 +242,8 @@ private:
 //  double deltaC_0, deltaC_1, deltaC_2, deltaC_3;
 //  double deltaT;
 
-  double RaT_, RaC_0_, RaC_1_, RaC_2_, RaC_3_;
+  double RaT_; /* RaC_0_, RaC_1_, RaC_2_, RaC_3_;*/
+  vector <double> RaC_;
   double l_char; // characteristic length scale
 
   bool do_boussinesq;
@@ -524,10 +525,15 @@ public:
 //  }
   void set_Pr(double Pr){Pr_ = Pr;}
   void set_RaT(double RaT){RaT_ = RaT;}
-  void set_RaC0(double RaC0){RaC_0_ = RaC0;}
-  void set_RaC1(double RaC1){RaC_1_ = RaC1;}
-  void set_RaC2(double RaC2){RaC_2_ = RaC2;}
-  void set_RaC3(double RaC3){RaC_3_ = RaC3;}
+  void set_RaC(vector<double> RaC){
+    for (int j=0; j<num_comps_; j++){
+      RaC_[j] = RaC[j];
+    }
+  }
+//  void set_RaC0(double RaC0){RaC_0_ = RaC0;}
+//  void set_RaC1(double RaC1){RaC_1_ = RaC1;}
+//  void set_RaC2(double RaC2){RaC_2_ = RaC2;}
+//  void set_RaC3(double RaC3){RaC_3_ = RaC3;}
   void set_do_boussinesq(bool do_bouss){do_boussinesq = do_bouss;}
 
 
