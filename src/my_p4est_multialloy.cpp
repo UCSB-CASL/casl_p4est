@@ -1417,19 +1417,19 @@ void my_p4est_multialloy_t::update_grid_w_fluids(){
     double refine_criteria_d2C = d2C_refine_threshold*dxyz_smallest[0];
     double coarsen_criteria_d2C = d2C_coarsen_threshold*dxyz_smallest[0];
 
-    PetscPrintf(p4est_->mpicomm,"\nRefine/coarsen settings: \n"
-                                 "- Refine by vort = %d \n"
-                                 "    - refine_threshold = %0.2e \n"
-                                 "    - coarsen_threshold = %0.2e\n "
-                                 "- Refine by d2T = %d \n"
-                                 "    - refine_multiplier = %0.1f, refine_thresh = %0.2e\n"
-                                 "    - coarsen_multiplier = %0.1f, coarsen_thresh = %0.2e \n"
-                                 "- Refine by d2C(comp 0) = %d \n"
-                                 "    - refine_multiplier = %0.1f, refine_thresh = %0.2e \n"
-                                 "    - coarsen_multiplier = %0.1f, coarsen_thresh = %0.2e \n\n",
-                                refine_by_vorticity, vort_thresh_refine, vort_thresh_coarsen,
-                                refine_by_d2T, d2T_refine_threshold, refine_criteria_d2C, d2T_coarsen_threshold, coarsen_criteria_d2T,
-                                refine_by_d2C, d2C_refine_threshold, refine_criteria_d2C, d2C_coarsen_threshold, coarsen_criteria_d2C);
+//    PetscPrintf(p4est_->mpicomm,"\nRefine/coarsen settings: \n"
+//                                 "- Refine by vort = %d \n"
+//                                 "    - refine_threshold = %0.2e \n"
+//                                 "    - coarsen_threshold = %0.2e\n "
+//                                 "- Refine by d2T = %d \n"
+//                                 "    - refine_multiplier = %0.1f, refine_thresh = %0.2e\n"
+//                                 "    - coarsen_multiplier = %0.1f, coarsen_thresh = %0.2e \n"
+//                                 "- Refine by d2C(comp 0) = %d \n"
+//                                 "    - refine_multiplier = %0.1f, refine_thresh = %0.2e \n"
+//                                 "    - coarsen_multiplier = %0.1f, coarsen_thresh = %0.2e \n\n",
+//                                refine_by_vorticity, vort_thresh_refine, vort_thresh_coarsen,
+//                                refine_by_d2T, d2T_refine_threshold, refine_criteria_d2C, d2T_coarsen_threshold, coarsen_criteria_d2T,
+//                                refine_by_d2C, d2C_refine_threshold, refine_criteria_d2C, d2C_coarsen_threshold, coarsen_criteria_d2C);
 
     // Coarsening instructions: (for vorticity)
     if(refine_by_vorticity){

@@ -561,7 +561,7 @@ void set_alloy_parameters()
     thermal_cond_s.val  = 1.; // W.cm-1.K-1
     latent_heat.val     = 1.;    // J.cm-3
 
-    num_comps.val = 3;
+//    num_comps.val = 3;
 
     solute_diff_0.val    = 0.5; // 0.1;  // cm2.s-1 - concentration diffusion coefficient
     solute_diff_1.val    = 0.7;
@@ -3787,7 +3787,7 @@ int main (int argc, char* argv[])
         (save_type.val == 1 && total_growth >= vtk_idx*save_every_dl.val) ||
         (save_type.val == 2 && tn           >= vtk_idx*save_every_dt.val);
 
-    bool save_state_now = (save_vtk.val) && (iteration >= save_state_idx * save_state_every_dn.val);
+    bool save_state_now = (save_state.val) && (iteration >= save_state_idx * save_state_every_dn.val);
     if(!last_iter){if (!keep_going) break;}
 
     // compute time step
