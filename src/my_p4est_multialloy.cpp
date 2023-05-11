@@ -654,7 +654,7 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // ALERT :: Pr hard coded and set here
   Pr=1.0;
   RaT=1.0;
-  PetscPrintf(p4est_->mpicomm, "ALERT ALERT: PRANDTL NUMBER IS HARD CODED AND SET TO 23.1. THIS IS A SHORT TERM FIX AND MUST BE UPDATED \n");
+  PetscPrintf(p4est_->mpicomm, "ALERT ALERT: PRANDTL NUMBER IS HARD CODED AND SET TO 1. THIS IS A SHORT TERM FIX AND MUST BE UPDATED \n");
   stefan_w_fluids_solver->set_Pr(Pr);
 
   stefan_w_fluids_solver->set_RaT(RaT);

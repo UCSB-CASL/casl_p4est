@@ -555,12 +555,16 @@ void set_alloy_parameters()
   case 8: // made up alloy -- by Elyce and Rochi for convergence test with fluids
     density_l.val       = 1.; // kg.cm-3
     density_s.val       = 1.; // kg.cm-3
+
     heat_capacity_l.val = 1.;  // J.kg-1.K-1
     heat_capacity_s.val = 1.;  // J.kg-1.K-1
+
     thermal_cond_l.val  = 1.; // W.cm-1.K-1
     thermal_cond_s.val  = 1.; // W.cm-1.K-1
+
     latent_heat.val     = 1.;    // J.cm-3
 
+    mu_l.val            = 1.;
 //    num_comps.val = 3;
 
     solute_diff_0.val    = 0.5; // 0.1;  // cm2.s-1 - concentration diffusion coefficient
@@ -570,7 +574,6 @@ void set_alloy_parameters()
     initial_conc_0.val   = 1.;    // at frac.
     initial_conc_1.val = 1.;
     initial_conc_2.val = 1.;
-    printf("\n Reminder!! probably not all the initial concs should be 1? \n");
 
     eps_c.val = 0.;
     eps_v.val = 0.;
@@ -911,7 +914,7 @@ double part_coeff(int which_comp, double *c)
   }
 }
 
-
+/*
 void compute_nondimensional_groups(int mpicomm, my_p4est_multialloy_t* multialloy_solver){
 // Pr, Le, St, RaT, RaC0, RaC1, RaC2, RaC3
   double thermal_diff_l = thermal_cond_l.val/density_l.val/heat_capacity_l.val;
@@ -964,7 +967,7 @@ void compute_nondimensional_groups(int mpicomm, my_p4est_multialloy_t* multiallo
                                                RaT, RaC_0, RaC_1, RaC_2, RaC_3,
                                                deltaT, deltaC_0, deltaC_1, deltaC_2, deltaC_3);
 }
-
+*/
 // ----------------------------------------
 // analytical solution
 // ----------------------------------------
@@ -3567,8 +3570,10 @@ int main (int argc, char* argv[])
 //    mas.set_mpi_env(&mpi);
     mas.set_solve_with_fluids();
 
+    mas.set_mu_l(mu_l.val);
+
     // Calculate nondimensional groups:
-    compute_nondimensional_groups(mpi.comm(), &mas);
+//    compute_nondimensional_groups(mpi.comm(), &mas);
   }
 
   p4est_t                   *p4est = mas.get_p4est();
