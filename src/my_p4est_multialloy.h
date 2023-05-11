@@ -982,7 +982,7 @@ public:
 //  }
 
   void set_convergence_source_temp(CF_DIM* source_temp[]){
-    for(unsigned int i = 0; i<3; i++){
+    for(unsigned int i = 0; i<2; i++){
       convergence_external_source_temp[i] = source_temp[i];
     }
   }
