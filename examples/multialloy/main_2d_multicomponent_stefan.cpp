@@ -197,6 +197,7 @@ param_t<double> symmetry (pl, 4, "symmetry", "Symmetric of crystals");
 // parameters for the fluid flow problem:
 // Note: these are better specified in the example defn, and the rayleigh numbers need to be calculated from other parameters
 param_t<double> mu_l (pl, 1.0e-3, "mu_l", "viscosity of the fluid ");
+param_t<double> Pr (pl, -1., "Pr", "Prandtl number for the problem (with fluids) ");
 param_t<double> beta_T(pl, 1.0, "beta_T", "coefficient of thermal expansion - boussinesq");
 param_t<double> beta_C_0(pl, 1.0, "beta_C_0", "coefficient of concentration expansion for comp 0 -- boussinesq");
 param_t<double> beta_C_1(pl, 1.0, "beta_C_1", "coefficient of concentration expansion for comp 1 -- boussinesq");
@@ -211,12 +212,12 @@ param_t<double> beta_C_3(pl, 1.0, "beta_C_3", "coefficient of concentration expa
 // RaCj = (rho_l Beta_Cj |gravity_vec| DeltaCj l_char^3)/(mu_l * D_l,j)
 //    where Delta Cj is the characteristic concentration difference of the problem for component j
 
-param_t<double> Ra_T(pl, 1.0, "Ra_T", "thermal Rayleigh number - boussinesq");
-param_t<double> Ra_C_0(pl, 1.0, "Ra_C_0", "species Rayleigh number for comp 0 -- boussinesq");
-param_t<double> Ra_C_1(pl, 1.0, "Ra_C_1", "species Rayleigh number for comp 1 -- boussinesq");
-param_t<double> Ra_C_2(pl, 1.0, "Ra_C_2", "species Rayleigh number for comp 2 -- boussinesq");
-param_t<double> Ra_C_3(pl, 1.0, "Ra_C_3", "species Rayleigh number for comp 3 -- boussinesq");
-
+param_t<double> Ra_T(pl, -1.0, "Ra_T", "thermal Rayleigh number - boussinesq");
+param_t<double> Ra_C_0(pl, -1.0, "Ra_C_0", "species Rayleigh number for comp 0 -- boussinesq");
+param_t<double> Ra_C_1(pl, -1.0, "Ra_C_1", "species Rayleigh number for comp 1 -- boussinesq");
+param_t<double> Ra_C_2(pl, -1.0, "Ra_C_2", "species Rayleigh number for comp 2 -- boussinesq");
+param_t<double> Ra_C_3(pl, -1.0, "Ra_C_3", "species Rayleigh number for comp 3 -- boussinesq");
+param_t<bool> do_boussinesq(pl, false, "do_boussinesq", "whether or not to use the boussinesq approx when solving the problem with fluid flow ");
 
 param_t<double> l_char(pl, 1.0, "l_char", "characteristic length scale of the problem - used to set nondimensional groups");
 
@@ -609,6 +610,14 @@ void set_alloy_parameters()
     part_coeff_0.val     = 0.0;   // partition coefficient
     part_coeff_1.val     = 0.0;
     part_coeff_2.val     = 0.;
+
+    // Other parameters needed for the fluids problem:
+    Pr.val = 1.0;
+    Ra_T.val = 0.1;
+    Ra_C_0.val = 0.1;
+    Ra_C_1.val = 0.1;
+    Ra_C_2.val = 0.1;
+    // will allow the user to decide from the terminal whether to use boussinesq or not
 
     break;
     default:
@@ -3588,6 +3597,12 @@ int main (int argc, char* argv[])
     mas.set_solve_with_fluids();
 
     mas.set_mu_l(mu_l.val);
+    mas.set_Pr(Pr.val);
+    mas.set_RaT(Ra_T.val);
+    mas.set_RaC0(Ra_C_0.val);
+    mas.set_RaC0(Ra_C_1.val);
+    mas.set_RaC0(Ra_C_2.val);
+    mas.set_do_boussinesq(do_boussinesq.val);
 
     // Calculate nondimensional groups:
 //    compute_nondimensional_groups(mpi.comm(), &mas);

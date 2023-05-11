@@ -660,14 +660,32 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
 
   // irrelevant since we don't know Re, we nondim by diffusivity stefan_w_fluids_solver->set_Re(1.);
   // ALERT :: Pr hard coded and set here
-  Pr=1.0;
-  RaT=1.0;
+//  Pr=1.0;
+//  RaT=1.0;
+  if(Pr_<0.){
+    throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids, but the Prandtl number has not been set \n");
+  }
+  if(do_boussinesq){
+    if(RaT_ < 0.){
+      throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the thermal Rayleigh number has not been set \n");
+    }
+    if(RaC_0_ < 0.){
+      throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the species Rayleigh number for comp0 has not been set \n");
+    }
+    if(RaC_1_ < 0. && num_comps_>1){
+      throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the species Rayleigh number for comp1 has not been set \n");
+    }
+    if(RaC_2_ < 0. && num_comps_>2){
+      throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the species Rayleigh number for comp2 has not been set \n");
+    }
+
+  }
   PetscPrintf(p4est_->mpicomm, "ALERT ALERT: PRANDTL NUMBER IS HARD CODED AND SET TO 1. THIS IS A SHORT TERM FIX AND MUST BE UPDATED \n");
-  stefan_w_fluids_solver->set_Pr(Pr);
+  stefan_w_fluids_solver->set_Pr(Pr_);
 
-  stefan_w_fluids_solver->set_RaT(RaT);
+//  stefan_w_fluids_solver->set_RaT(RaT_);
 
-  stefan_w_fluids_solver->set_use_boussinesq(true);
+  stefan_w_fluids_solver->set_use_boussinesq(do_boussinesq);
 
   stefan_w_fluids_solver->set_NS_advection_order(2);
 

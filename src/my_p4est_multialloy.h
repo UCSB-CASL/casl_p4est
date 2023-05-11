@@ -528,6 +528,7 @@ public:
   void set_RaC1(double RaC1){RaC_1_ = RaC1;}
   void set_RaC2(double RaC2){RaC_2_ = RaC2;}
   void set_RaC3(double RaC3){RaC_3_ = RaC3;}
+  void set_do_boussinesq(bool do_bouss){do_boussinesq = do_bouss;}
 
 
   // ---------------------------------------------------
