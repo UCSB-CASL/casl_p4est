@@ -151,7 +151,15 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
   convergence_external_source_conc_robin[0] = &zero_cf;
   convergence_external_source_conc_robin[1] = &zero_cf;
 
-
+  // Default values for the problem with fluids:
+  do_boussinesq=false;
+  mu_l_  = -1.;
+  Pr_    = -1.;
+  RaT_   = -1.;
+  RaC_0_ = -1.;
+  RaC_1_ = -1.;
+  RaC_2_ = -1.;
+  RaC_3_ = -1.;
 }
 // end of constructor
 

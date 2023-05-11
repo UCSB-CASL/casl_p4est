@@ -195,12 +195,28 @@ param_t<double> eps_a    (pl, 0, "eps_a",    "Anisotropy coefficient");
 param_t<double> symmetry (pl, 4, "symmetry", "Symmetric of crystals");
 
 // parameters for the fluid flow problem:
+// Note: these are better specified in the example defn, and the rayleigh numbers need to be calculated from other parameters
 param_t<double> mu_l (pl, 1.0e-3, "mu_l", "viscosity of the fluid ");
 param_t<double> beta_T(pl, 1.0, "beta_T", "coefficient of thermal expansion - boussinesq");
 param_t<double> beta_C_0(pl, 1.0, "beta_C_0", "coefficient of concentration expansion for comp 0 -- boussinesq");
 param_t<double> beta_C_1(pl, 1.0, "beta_C_1", "coefficient of concentration expansion for comp 1 -- boussinesq");
 param_t<double> beta_C_2(pl, 1.0, "beta_C_2", "coefficient of concentration expansion for comp 2 -- boussinesq");
 param_t<double> beta_C_3(pl, 1.0, "beta_C_3", "coefficient of concentration expansion for comp 3 -- boussinesq");
+
+// Formulae for Rayleigh numbers:
+// RaT = (rho_l Beta_T |gravity_vec| DeltaT l_char^3)/(mu_l * alpha_l)
+//    where Delta T is the characteristic temperature difference of the problem
+
+
+// RaCj = (rho_l Beta_Cj |gravity_vec| DeltaCj l_char^3)/(mu_l * D_l,j)
+//    where Delta Cj is the characteristic concentration difference of the problem for component j
+
+param_t<double> Ra_T(pl, 1.0, "Ra_T", "thermal Rayleigh number - boussinesq");
+param_t<double> Ra_C_0(pl, 1.0, "Ra_C_0", "species Rayleigh number for comp 0 -- boussinesq");
+param_t<double> Ra_C_1(pl, 1.0, "Ra_C_1", "species Rayleigh number for comp 1 -- boussinesq");
+param_t<double> Ra_C_2(pl, 1.0, "Ra_C_2", "species Rayleigh number for comp 2 -- boussinesq");
+param_t<double> Ra_C_3(pl, 1.0, "Ra_C_3", "species Rayleigh number for comp 3 -- boussinesq");
+
 
 param_t<double> l_char(pl, 1.0, "l_char", "characteristic length scale of the problem - used to set nondimensional groups");
 
@@ -553,6 +569,7 @@ void set_alloy_parameters()
 
       break;
   case 8: // made up alloy -- by Elyce and Rochi for convergence test with fluids
+    // Convergence test alloy
     density_l.val       = 1.; // kg.cm-3
     density_s.val       = 1.; // kg.cm-3
 
