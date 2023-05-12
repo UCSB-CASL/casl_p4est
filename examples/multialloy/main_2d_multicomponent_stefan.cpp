@@ -3619,6 +3619,8 @@ int main (int argc, char* argv[])
   ierr = PetscPrintf(mpi.comm(), "initialize complete \n"); CHKERRXX(ierr);
 
   my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver;
+  vector<double> RaC_vals(num_comps.val, 0);
+
   if(solve_w_fluids.val){
     stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(&mpi);
 //    mas.set_mpi_env(&mpi);
@@ -3628,7 +3630,6 @@ int main (int argc, char* argv[])
     mas.set_Pr(Pr.val);
     mas.set_RaT(Ra_T.val);
 
-    vector<double> RaC_vals(num_comps.val, 0);
     RaC_vals[0] = Ra_C_0.val;
     RaC_vals[1] = Ra_C_1.val;
     RaC_vals[2] = Ra_C_2.val;
