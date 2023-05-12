@@ -2730,6 +2730,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   // (3) solve the NS 
   vec_and_ptr_t boussinesq_terms_rhs_for_ns;
   if(do_boussinesq){
+    PetscPrintf(mpi_->comm(), "\n(!!!) Warning !!!: You need to scale the Tl and Cl values to make them nondimensional when computing the boussinesq added term. This is not currently done.  \n");
     boussinesq_terms_rhs_for_ns.create(p4est_, nodes_);
     boussinesq_terms_rhs_for_ns.get_array();
     tl_[0].get_array();
@@ -2748,15 +2749,13 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     cl_[0].restore_array();
   }
 
-  stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(true, boussinesq_terms_rhs_for_ns.vec);
-
-  if(do_boussinesq) boussinesq_terms_rhs_for_ns.destroy(); // move this somewhere more appropriate later
-
+//  stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(true, boussinesq_terms_rhs_for_ns.vec);
 
   PetscPrintf(p4est_->mpicomm, "\nRED ALERT: Boussinesq is currently non-operational. We will want to fix this later \n");
 
   stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(do_boussinesq, boussinesq_terms_rhs_for_ns.vec, true);
 
+  if(do_boussinesq) boussinesq_terms_rhs_for_ns.destroy(); // move this somewhere more appropriate later
 
   // Now, get the velocity results back out of SWF (or do we need to? ) :
 

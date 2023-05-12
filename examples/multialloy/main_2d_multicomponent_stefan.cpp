@@ -1517,6 +1517,8 @@ class Convergence_soln{
         velocity_component* velocity_field;
         temperature temperature_;
         concentration* concentrations_;
+        const double RaC_vals[4] = {Ra_C_0.val, Ra_C_1.val, Ra_C_2.val, Ra_C_3.val};
+
         external_force_NS(const unsigned char& dir_,
                           velocity_component* analytical_v,
                           temperature temperature = NULL,
@@ -1526,6 +1528,7 @@ class Convergence_soln{
                                                          concentrations_(concentrations)
         {
             P4EST_ASSERT(dir<P4EST_DIM);
+
         }
         double operator()(DIM(double x, double y, double z)) const{
           double main_term = velocity_field[dir].dv_dt(DIM(x,y,z)) +
@@ -1538,19 +1541,10 @@ class Convergence_soln{
           if(do_boussinesq.val){
             boussinesq_term+= (temperature_)(DIM(x,y,z)) * Ra_T.val * Pr.val;
 
-            vector <double> RaC_vals(num_comps.val, -1.);
-            RaC_vals[0] = Ra_C_0.val;
-            RaC_vals[1] = Ra_C_1.val;
-            RaC_vals[2] = Ra_C_2.val;
-            RaC_vals[3] = Ra_C_3.val;
-            // Note -- this is probably really sloppy and we should do it in a cleaner way, but I'm leaving it for right now
-            // ELYCE TO-DO: PLEASE FIX THIS AND DON'T LEAVE IT LIKE THIS
-
             for (int j = 0; j<num_comps.val; j++){
               boussinesq_term+= (concentrations_[j])(DIM(x,y,z)) * RaC_vals[j] * Pr.val;
             }
           }
-
           return main_term + boussinesq_term;
         }
     };
@@ -1769,6 +1763,9 @@ class Convergence_soln{
 Convergence_soln::concentration convergence_conc0(0);
 Convergence_soln::concentration convergence_conc1(1);
 Convergence_soln::concentration convergence_conc2(2);
+Convergence_soln::concentration convergence_concentrations[3] = {convergence_conc0,
+                                                                 convergence_conc1,
+                                                                 convergence_conc2};
 
 // Temperatures:
 Convergence_soln::temperature convergence_tl(LIQUID_DOMAIN);
@@ -1797,8 +1794,8 @@ Convergence_soln::external_force_temperature convergence_force_tl(LIQUID_DOMAIN,
 Convergence_soln::external_force_temperature convergence_force_ts(SOLID_DOMAIN, convergence_temp, convergence_vel);
 CF_DIM* convergence_forces_temp[2] = {&convergence_force_tl, &convergence_force_ts};
 
-Convergence_soln::external_force_NS external_force_NS_x(dir::x, convergence_vel);
-Convergence_soln::external_force_NS external_force_NS_y(dir::y, convergence_vel);
+Convergence_soln::external_force_NS external_force_NS_x(dir::x, convergence_vel, convergence_tl, convergence_concentrations);
+Convergence_soln::external_force_NS external_force_NS_y(dir::y, convergence_vel, convergence_tl, convergence_concentrations);
 CF_DIM* convergence_force_NS[2]= {&external_force_NS_x, &external_force_NS_y};
 
 //Convergence_soln::external_force_NS* convergence_force_NS[2];
