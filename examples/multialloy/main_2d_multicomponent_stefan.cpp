@@ -1515,15 +1515,43 @@ class Convergence_soln{
     struct external_force_NS: CF_DIM{
         const unsigned dir;
         velocity_component* velocity_field;
-        external_force_NS(const unsigned char& dir_,velocity_component* analytical_v):dir(dir_),velocity_field(analytical_v){
+        temperature temperature_;
+        concentration* concentrations_;
+        external_force_NS(const unsigned char& dir_,
+                          velocity_component* analytical_v,
+                          temperature temperature = NULL,
+                          concentration* concentrations = NULL ):dir(dir_),
+                                                         velocity_field(analytical_v),
+                                                         temperature_(temperature),
+                                                         concentrations_(concentrations)
+        {
             P4EST_ASSERT(dir<P4EST_DIM);
         }
         double operator()(DIM(double x, double y, double z)) const{
-            return velocity_field[dir].dv_dt(DIM(x,y,z)) +
-            SUMD((velocity_field[0])(DIM(x,y,z))*velocity_field[dir].dv_d(dir::x,DIM(x,y,z)),
-            (velocity_field[1])(DIM(x,y,z))*velocity_field[dir].dv_d(dir::y,DIM(x,y,z)),
-            (velocity_field[2])(DIM(x,y,z))*velocity_field[dir].dv_d(dir::z,DIM(x,y,z))) -
-            velocity_field[dir].laplace(DIM(x,y,z));
+          double main_term = velocity_field[dir].dv_dt(DIM(x,y,z)) +
+                             SUMD((velocity_field[0])(DIM(x,y,z))*velocity_field[dir].dv_d(dir::x,DIM(x,y,z)),
+                                  (velocity_field[1])(DIM(x,y,z))*velocity_field[dir].dv_d(dir::y,DIM(x,y,z)),
+                                  (velocity_field[2])(DIM(x,y,z))*velocity_field[dir].dv_d(dir::z,DIM(x,y,z))) -
+                             velocity_field[dir].laplace(DIM(x,y,z));
+          double boussinesq_term = 0.;
+
+          if(do_boussinesq.val){
+            boussinesq_term+= (temperature_)(DIM(x,y,z)) * Ra_T.val * Pr.val;
+
+            vector <double> RaC_vals(num_comps.val, -1.);
+            RaC_vals[0] = Ra_C_0.val;
+            RaC_vals[1] = Ra_C_1.val;
+            RaC_vals[2] = Ra_C_2.val;
+            RaC_vals[3] = Ra_C_3.val;
+            // Note -- this is probably really sloppy and we should do it in a cleaner way, but I'm leaving it for right now
+            // ELYCE TO-DO: PLEASE FIX THIS AND DON'T LEAVE IT LIKE THIS
+
+            for (int j = 0; j<num_comps.val; j++){
+              boussinesq_term+= (concentrations_[j])(DIM(x,y,z)) * RaC_vals[j] * Pr.val;
+            }
+          }
+
+          return main_term + boussinesq_term;
         }
     };
 
