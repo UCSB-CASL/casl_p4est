@@ -2284,7 +2284,7 @@ void my_p4est_stefan_with_fluids_t::setup_and_solve_navier_stokes_problem(bool u
   // ---------------------------
   // ALERT: at this time, we assume that if the boussinesq approx is activated, there cannot also be user defined external forces provided by a CF.
   // To-do: fix this at some point
-  if(use_boussinesq && (!there_is_user_provided_external_force_NS)){
+  if(use_boussinesq && (!there_is_user_provided_external_force_NS) && (!use_external_boussinesq_vec)){
     switch(problem_dimensionalization_type){
     case NONDIM_BY_FLUID_VELOCITY:{
       ns->boussinesq_approx=true;
