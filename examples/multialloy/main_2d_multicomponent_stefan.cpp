@@ -3628,9 +3628,9 @@ int main (int argc, char* argv[])
     mas.set_RaT(Ra_T.val);
 
     RaC_vals[0] = Ra_C_0.val;
-    RaC_vals[1] = Ra_C_1.val;
-    RaC_vals[2] = Ra_C_2.val;
-    RaC_vals[3] = Ra_C_3.val;
+    if(num_comps.val>1) RaC_vals[1] = Ra_C_1.val;
+    if(num_comps.val>2) RaC_vals[2] = Ra_C_2.val;
+    if(num_comps.val>3) RaC_vals[3] = Ra_C_3.val;
     mas.set_RaC(RaC_vals);
 //    mas.set_RaC0(Ra_C_0.val);
 //    mas.set_RaC0(Ra_C_1.val);
