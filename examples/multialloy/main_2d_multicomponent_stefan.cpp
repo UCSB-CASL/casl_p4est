@@ -1538,8 +1538,8 @@ class Convergence_soln{
                              velocity_field[dir].laplace(DIM(x,y,z));
           double boussinesq_term = 0.;
 
-          if(do_boussinesq.val){
-            boussinesq_term+= (temperature_)(DIM(x,y,z)) * Ra_T.val * Pr.val;
+          if(do_boussinesq.val && (dir == dir::y)){
+            boussinesq_term += (temperature_)(DIM(x,y,z)) * Ra_T.val * Pr.val;
 
             for (int j = 0; j<num_comps.val; j++){
               boussinesq_term+= (concentrations_[j])(DIM(x,y,z)) * RaC_vals[j] * Pr.val;
