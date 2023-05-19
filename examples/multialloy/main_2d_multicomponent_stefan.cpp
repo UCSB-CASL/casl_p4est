@@ -613,10 +613,10 @@ void set_alloy_parameters()
 
     // Other parameters needed for the fluids problem:
     Pr.val = 1.0;
-    Ra_T.val = 0.1;
-    Ra_C_0.val = 0.1;
-    Ra_C_1.val = 0.1;
-    Ra_C_2.val = 0.1;
+    Ra_T.val = 0.; // 0.1;
+    Ra_C_0.val = 0.; //  0.1;
+    Ra_C_1.val = 0.; // 0.1;
+    Ra_C_2.val = 0.; // 0.1;
     // will allow the user to decide from the terminal whether to use boussinesq or not
 
     break;
@@ -1517,7 +1517,6 @@ class Convergence_soln{
         velocity_component* velocity_field;
         temperature temperature_;
         concentration* concentrations_;
-        const double RaC_vals[4] = {Ra_C_0.val, Ra_C_1.val, Ra_C_2.val, Ra_C_3.val};
 
         external_force_NS(const unsigned char& dir_,
                           velocity_component* analytical_v,
@@ -1538,13 +1537,19 @@ class Convergence_soln{
                              velocity_field[dir].laplace(DIM(x,y,z));
           double boussinesq_term = 0.;
 
+          const double RaC_vals[4] = {Ra_C_0.val, Ra_C_1.val, Ra_C_2.val, Ra_C_3.val};
           if(do_boussinesq.val && (dir == dir::y)){
+
+//            printf("Inside source: Ra_T = %0.2e \n ", Ra_T.val);
+
             boussinesq_term += (temperature_)(DIM(x,y,z)) * Ra_T.val * Pr.val;
 
             for (int j = 0; j<num_comps.val; j++){
+//              printf("RaC %d = %0.2e \n", j, RaC_vals[j]);
               boussinesq_term+= (concentrations_[j])(DIM(x,y,z)) * RaC_vals[j] * Pr.val;
             }
           }
+//          printf("Inside source: main term = %0.2e, bouss term = %0.2e \n", main_term, boussinesq_term);
           return main_term + boussinesq_term;
         }
     };

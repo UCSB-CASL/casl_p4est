@@ -2736,12 +2736,18 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
     tl_[0].get_array();
     cl_[0].get_array();
 
+//    PetscPrintf(mpi_->comm(), "Setting up boussinesq: "
+//                              "Pr_ = %0.2e, RaT = %0.2e \n ", Pr_, RaT_);
+//    for(int j=0; j<num_comps_; j++){
+//      PetscPrintf(mpi_->comm(), "RaC comp %d = %0.2e \n", j, RaC_[j]);
+//    }
     foreach_node(n, nodes_){
       boussinesq_terms_rhs_for_ns.ptr[n] = -(RaT_ * Pr_) * tl_[0].ptr[n];
 
       for (int j = 0; j < num_comps_; j++){
         boussinesq_terms_rhs_for_ns.ptr[n] -= (RaC_[j] * Pr_) * cl_[0].ptr[j][n];
       }
+//      printf(" bouss term = %0.2e \n", boussinesq_terms_rhs_for_ns.ptr[n]);
 
     }
     boussinesq_terms_rhs_for_ns.restore_array();
