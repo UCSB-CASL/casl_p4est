@@ -383,7 +383,7 @@ void set_alloy_parameters()
       heat_capacity_s.val = 356;       // J.kg-1.K-1
       thermal_cond_l.val  = 1.3;       // W.cm-1.K-1
       thermal_cond_s.val  = 1.3;       // W.cm-1.K-1
-      latent_heat.val     = 2600;    // J.cm-3
+      latent_heat.val     = 2590;    // J.cm-3
 
       num_comps.val = 2;
 
@@ -409,6 +409,8 @@ void set_alloy_parameters()
       liquidus_slope_1.val =-1036;     // K / at frac. - liquidous slope
       part_coeff_0.val     = 0.94;    // partition coefficient
       part_coeff_1.val     = 0.83;    // partition coefficient
+
+      Pr.val = 23.1;
 
       break;
 
@@ -1614,7 +1616,7 @@ class Convergence_soln{
 
         double dT_dn_jump = (source_x  * (*nx_interp)(DIM(x,y,z))) + (source_y * (*ny_interp)(DIM(x,y,z)));
 
-        double source_term = dT_dn_jump - latent_heat.val * density_s.val * (*vgamma_)(DIM(x,y,z));
+        double source_term = dT_dn_jump - latent_heat.val * (*vgamma_)(DIM(x,y,z)); // density_s.val * (*vgamma_)(DIM(x,y,z));
 
 //        printf("(%0.4f, %0.4f) nx = %0.2f, ny = %0.2f, dT_dn_jump = %0.4e, extra stuff = %0.4e , vn = %0.4e \n", x, y, (*nx_interp)(DIM(x,y,z)), (*ny_interp)(DIM(x,y,z)), dT_dn_jump,- latent_heat.val * density_s.val * (*vgamma_)(DIM(x,y,z)),(*vgamma_)(DIM(x,y,z))  );
 
@@ -3087,7 +3089,7 @@ bool is_y_wall(DIM(double x, double y, double z)){
 };
 // For velocity BCs/ICs
 double u0=0.;
-double v0=10; // cm/s // -1.0e-4;
+double v0=1; // cm/s // -1.0e-4;
 
 double outflow_u=0.;
 double outflow_v=0.;
