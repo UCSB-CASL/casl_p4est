@@ -254,7 +254,7 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
                                     "7: a made-up penta-alloy"
                                    "8: an alloy with values all = 1 for convergence test with fluids");
 
-double scale = 1./*30*/; // [Elyce  2/16/23] changing this to 1 bc it seems dangerous lol
+double scale = 30.0;//1./*30*/; // [Elyce  2/16/23] changing this to 1 bc it seems dangerous lol
 
 //-------------------------------------
 // problem parameters
@@ -279,10 +279,10 @@ param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
 //param_t<int>    step_limit           (pl, 200, "step_limit",   "");
 param_t<double> time_limit           (pl, DBL_MAX, "time_limit",   "");
 param_t<double> growth_limit         (pl, 15, "growth_limit", "");
-param_t<double> init_perturb         (pl, 0,  "init_perturb",         "");
+param_t<double> init_perturb         (pl, 1.0e-10,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
-param_t<double> front_location         (pl, 0.500,     "front_location",         "");
+param_t<double> front_location         (pl, 0.100,     "front_location",         "");
 param_t<double> front_location_final   (pl, 0.25,     "front_location_final",   "");
 param_t<double> container_radius_inner (pl, 0.1,     "container_radius_inner", "");
 param_t<double> container_radius_outer (pl, 0.45,     "container_radius_outer", "");
@@ -397,14 +397,14 @@ void set_alloy_parameters()
       eps_a.val = 0.05*1.;
       symmetry.val = 4;
 
-      // linearized phase diagram
+      /*  // linearized phase diagram
       melting_temp.val     = 1910;      // K
       liquidus_slope_0.val =-543;      // K / at frac. - liquidous slope
       liquidus_slope_1.val =-1036;     // K / at frac. - liquidous slope
       part_coeff_0.val     = 0.83;    // partition coefficient
-      part_coeff_1.val     = 0.83;    // partition coefficient
+      part_coeff_1.val     = 0.83;    // partition coefficient */
 
-      melting_temp.val    = 1910;      // K
+      melting_temp.val    =  1910;      // K
       liquidus_slope_0.val =-543;      // K / at frac. - liquidous slope
       liquidus_slope_1.val =-1036;     // K / at frac. - liquidous slope
       part_coeff_0.val     = 0.94;    // partition coefficient
@@ -2224,7 +2224,7 @@ public:
       case -2: return analytic::rf_exact(t) - ABS2(x-xc(),
                                                    y-yc());
       case -1: return analytic::rf_exact(t) - ABS1(y-ymin());
-      case 0: return (y - front_location()) + 0.000/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.000/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
+      case 0: return (y - front_location()) + 0.001/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.001/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
       case 1: return -(ABS2(x-xc(), y-yc())-seed_radius());
       case 2: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
       case 3: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
@@ -2458,8 +2458,8 @@ public:
     return eps_c.val*(1.0-4.0*eps_a.val*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
 #else
     double theta = atan2(ny, nx);
-//    return eps_c.val*(1.-15.*eps_a.val*cos(symmetry.val*(theta-theta0)))/(1.+15.*eps_a.val);
-    return eps_c.val;
+    return eps_c.val*(1.-15.*eps_a.val*cos(symmetry.val*(theta-theta0)))/(1.+15.*eps_a.val);
+    //return eps_c.val;
 #endif
   }
 };
@@ -2502,11 +2502,11 @@ public:
 #endif
       case -2: return analytic::cl_exact(idx, t, ABS2(x-xc(), y-yc()));
       case -1: return analytic::cl_exact(idx, t, ABS1(y-ymin()));
-      case  0: return 0.05 + (1 - 0.05)*0.5 * (1 - tanh(10.*(y - 0.5*front_location.val)));
-//        if (start_from_moving_front.val) {
-//          return (*initial_conc_all[idx])*(1. + (1.-analytic::kp[idx])/analytic::kp[idx]*
-//                                           exp(-cooling_velocity.val/(*solute_diff_all[idx])*(-front_phi_cf(DIM(x,y,z)-0*cooling_velocity.val*t))));
-//        }
+      case  0: //return 0.05 + (1 - 0.05)*0.5 * (1 - tanh(10.*(y - 0.5*front_location.val)));
+        if (start_from_moving_front.val) {
+          return (*initial_conc_all[idx])*(1. + (1.-analytic::kp[idx])/analytic::kp[idx]*
+                                           exp(-cooling_velocity.val/(*solute_diff_all[idx])*(-front_phi_cf(DIM(x,y,z)-0*cooling_velocity.val*t))));
+        }
       case  1:
       case  2:
       case  3:
@@ -2587,7 +2587,7 @@ public:
 #endif
       case -2: return analytic::tl_exact(t, ABS2(x-xc.val, y-yc.val));
       case -1: return analytic::tl_exact(t, ABS1(y-ymin.val));
-      case  0: return /*analytic::Tstar+*/ front_location.val - y +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//front_location.val - y; +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
+      case  0: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();//*analytic::Tstar+*/ front_location.val - y +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//front_location.val - y; +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
       case  1: return analytic::Tstar;
       case  2: return analytic::Tstar;
       case  3: return analytic::Tstar - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())));
@@ -2617,7 +2617,7 @@ public:
 #endif
       case -2: return analytic::ts_exact(t, ABS2(x-xc(), y-yc()));
       case -1: return analytic::ts_exact(t, ABS1(y-ymin()));
-      case  0: return /*analytic::Tstar+*/ front_location.val - y +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
+      case  0: return analytic::Tstar+ front_location.val - y +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
       case  1: return analytic::Tstar;
       case  2: return analytic::Tstar;
       case  3: return analytic::Tstar - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())))*thermal_cond_l()/thermal_cond_s();
@@ -2645,7 +2645,7 @@ public:
 #endif
       case -2:
       case -1: return analytic::Tstar;
-      case  0: return 0.;
+      case  0: return analytic::Tstar;//return 0.;
       case  1:
       case  2:
       case  3:
@@ -3850,9 +3850,9 @@ int main (int argc, char* argv[])
   }
 
   bool last_iter=false;
-
-  check_convergence_errors_and_save_to_vtk(&mas, mpi, 10000);
-
+  if (geometry.val==8){
+    check_convergence_errors_and_save_to_vtk(&mas, mpi, 10000);
+  }
   while (1)
   {
 //    // CHeck to make sure the convergence fields are at least initialized correctly

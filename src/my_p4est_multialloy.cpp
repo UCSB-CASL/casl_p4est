@@ -2231,7 +2231,7 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
 
   solver_all_in_one.set_wall_conditions_thermal(wall_bc_type_temp_, *wall_bc_value_temp_);
   solver_all_in_one.set_wall_conditions_composition(wall_bc_type_conc_, wall_bc_value_conc_.data());
-  printf("MULTI: wall_bc_value_conc_ = %p \n", wall_bc_type_conc_);
+  //printf("MULTI: wall_bc_value_conc_ = %p \n", wall_bc_type_conc_);
   solver_all_in_one.set_tolerance(bc_tolerance_, max_iterations_);
   solver_all_in_one.set_use_points_on_interface(use_points_on_interface_);
   solver_all_in_one.set_update_c0_robin(update_c0_robin_);
