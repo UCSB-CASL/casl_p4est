@@ -4076,10 +4076,18 @@ double my_p4est_stefan_with_fluids_t::interfacial_bc_temp_t::Gibbs_Thomson(DIM(d
 // Interfacial boundary condition(s) for fluid velocity:
 // -------------------------------------------------------
 double my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t::Conservation_of_Mass(DIM(double x, double y, double z)) const{
+  if(!do_we_use_v_interface){
+    throw std::invalid_argument("my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t : "
+                                "You are trying to call the Conservation_of_Mass interface bc without setting the vinterface boolean correctly. Please reconsider \n ");
+  }
   return (*v_interface_interp)(x,y)*(1. - (owner->rho_s/owner->rho_l));
 }
 
 double my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t::Strict_No_Slip(DIM(double x, double y, double z)) const{
+  if(!do_we_use_v_interface){
+    throw std::invalid_argument("my_p4est_stefan_with_fluids_t::interfacial_bc_fluid_velocity_t : "
+                                "You are trying to call the Strict_No_Slip interface bc without setting the vinterface boolean correctly. Please reconsider \n ");
+  }
   return (*v_interface_interp)(x,y);
 }
 

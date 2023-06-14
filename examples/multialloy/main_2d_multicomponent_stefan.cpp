@@ -303,7 +303,7 @@ param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidifi
                                               " 2 - growth of a spherical film in a spherical container,"
                                               " 3 - radial directional solidification in,"
                                               " 4 - radial directional solidification out,"
-                                              " 5 - three spherical seeds,"
+                                              " 5 - three spherical seeds -- Elyce and Rochi changed this to be one seed in the center of the domain -- (WIP),"
                                               " 6 - planar front and three spherical seeds,"
                                               " 7 - daniil has not defined this case - no comments - need to see what it is,"
                                               " 8 - convergence test for multicomp solidification with fluids ");
@@ -383,7 +383,7 @@ void set_alloy_parameters()
       heat_capacity_s.val = 356;       // J.kg-1.K-1
       thermal_cond_l.val  = 1.3;       // W.cm-1.K-1
       thermal_cond_s.val  = 1.3;       // W.cm-1.K-1
-      latent_heat.val     = 2590;    // J.cm-3
+      latent_heat.val     = 2590;    // J.cm-3 (this is latent heat multiplied by density! )
 
       num_comps.val = 2;
 
@@ -411,6 +411,10 @@ void set_alloy_parameters()
       part_coeff_1.val     = 0.83;    // partition coefficient
 
       Pr.val = 23.1;
+      printf("Warning! this example has a hard-coded PRandtl number. We will want to revisit this \n");
+
+      // Calculate Rayleigh number
+
 
       break;
 
@@ -2224,7 +2228,7 @@ public:
       case -2: return analytic::rf_exact(t) - ABS2(x-xc(),
                                                    y-yc());
       case -1: return analytic::rf_exact(t) - ABS1(y-ymin());
-      case 0: return (y - front_location()) + 0.001/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.001/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
+      case 0: return -(y - front_location()) + 0.001/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.001/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
       case 1: return -(ABS2(x-xc(), y-yc())-seed_radius());
       case 2: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
       case 3: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
@@ -3038,8 +3042,11 @@ class BC_INTERFACE_VALUE_VELOCITY: public my_p4est_stefan_with_fluids_t::interfa
   Convergence_soln::velocity_component* velocity_field_;
   public:
     unsigned char dir;
-    BC_INTERFACE_VALUE_VELOCITY(my_p4est_stefan_with_fluids_t* parent_solver, bool do_we_use_vgamma_for_bc, Convergence_soln::velocity_component* velocity_field=NULL) :
-        interfacial_bc_fluid_velocity_t(parent_solver, do_we_use_vgamma_for_bc=false), velocity_field_(velocity_field){}
+    BC_INTERFACE_VALUE_VELOCITY(my_p4est_stefan_with_fluids_t* parent_solver,
+                                bool do_we_use_vgamma_for_bc=false,
+                                Convergence_soln::velocity_component* velocity_field=NULL) :
+        interfacial_bc_fluid_velocity_t(parent_solver, do_we_use_vgamma_for_bc), velocity_field_(velocity_field){}
+
     double operator()(double x, double y) const
     {
       if(geometry.val == 8){
@@ -3047,7 +3054,9 @@ class BC_INTERFACE_VALUE_VELOCITY: public my_p4est_stefan_with_fluids_t::interfa
 
       }
       else{
-        return 0.0;
+          return Conservation_of_Mass(x, y);
+
+//        return 0.0;
       }
 
     }
@@ -3088,8 +3097,13 @@ bool is_y_wall(DIM(double x, double y, double z)){
   return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
 };
 // For velocity BCs/ICs
-double u0=0.;
-double v0=1; // cm/s // -1.0e-4;
+//double u0=0.;
+
+//double v0=1; // cm/s // -1.0e-4;
+
+param_t<double> u0   (pl, 0., "u0", "Fluid velocity value in x direction for dirichlet boundary conditions (and initial conditions) TO-DO: ADD UNITS");
+param_t<double> v0   (pl, 0., "v0", "Fluid velocity value in y direction for dirichlet boundary conditions (and initial conditions) TO-DO: ADD UNITS" );
+
 
 double outflow_u=0.;
 double outflow_v=0.;
@@ -3112,9 +3126,9 @@ struct INITIAL_VELOCITY : CF_DIM
     else{
       switch(dir){
       case dir::x:
-        return u0;
+        return u0.val;
       case dir::y:
-        return v0;
+        return v0.val;
       default:
         throw std::runtime_error("initial velocity direction unrecognized \n");
       }
@@ -3131,8 +3145,12 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
     if(geometry.val == 8){
       return true;
     }
+    else if (geometry.val == 0){
+      // Directional solidification
+      return yupper_wall(DIM(x,y,z));
+    }
     else{
-      return ( ylower_wall(DIM(x,y,z)) /*|| xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z))*/);
+      return yupper_wall(DIM(x,y,z));//( ylower_wall(DIM(x,y,z)) /*|| xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z))*/);
     }
 };
 
@@ -3154,10 +3172,10 @@ class BC_WALL_VALUE_VELOCITY: public CF_DIM
       if(dirichlet_velocity_walls(DIM(x,y,z))){
         switch(dir){
         case dir::x:{
-          return u0;
+          return u0.val;
         }
         case dir::y:{
-          return v0;
+          return v0.val;
         }
         default:
           throw std::runtime_error("unrecognized cartesian direction for bc wall value velocity \n");
@@ -3249,7 +3267,8 @@ void initialize_all_relevant_ics_and_bcs_for_fluids(my_p4est_stefan_with_fluids_
 
   for(unsigned char d=0;d<P4EST_DIM;d++){
         // Set the BC types:
-        bc_interface_value_velocity[d] = new BC_INTERFACE_VALUE_VELOCITY(stefan_w_fluids_solver,true, &convergence_vel[d]);
+        bool use_vgamma_for_vns_interface_bc = (geometry.val != 8); // Only geometry 8 doesn't use this, bc it's the convergence test
+        bc_interface_value_velocity[d] = new BC_INTERFACE_VALUE_VELOCITY(stefan_w_fluids_solver, use_vgamma_for_vns_interface_bc, &convergence_vel[d]);
         BC_INTERFACE_TYPE_VELOCITY(d);
 
         bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
