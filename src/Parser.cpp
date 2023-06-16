@@ -59,11 +59,11 @@ bool cmdParser::parse(int argc, char* argv[], const std::string &extra_info)
 }
 
 void cmdParser::print(FILE *f){
-  PetscFPrintf(MPI_COMM_WORLD, f, " -------------------== CASL Options Database ==------------------- \n");
-  PetscFPrintf(MPI_COMM_WORLD, f, " List of entered options:\n\n");
+  PetscFPrintf(MPI_COMM_WORLD, f, "\n -------------------== CASL Command Line Options ==------------------- \n");
   for (std::map<std::string, std::string>::const_iterator it = buffer.begin(); it != buffer.end(); ++it)
     PetscFPrintf(MPI_COMM_WORLD, f, "  -%s %s\n", it->first.c_str(), it->second.c_str());
-  PetscPrintf(MPI_COMM_WORLD, " ----------------------------------------------------------------- \n");    
+  if (buffer.empty()) PetscFPrintf(MPI_COMM_WORLD, f, "  NONE \n");
+  PetscPrintf(MPI_COMM_WORLD, " --------------------------------------------------------------------- \n");
 }
 
 
