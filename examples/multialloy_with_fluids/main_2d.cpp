@@ -92,7 +92,7 @@ enum:int {
 // ---------------------------------------
 // Example/application options:
 // ---------------------------------------
-DEFINE_PARAMETER(pl, int, example_, 4,"example number: \n"
+DEFINE_PARAMETER(pl, int, example_, 0,"example number: \n"
                                    "0 - Frank Sphere (Stefan only) \n"
                                    "1 - NS Gibou example (Navier Stokes only) \n"
                                    "2 - Additional coupled verification test (not fully verified) \n"
@@ -102,11 +102,11 @@ DEFINE_PARAMETER(pl, int, example_, 4,"example number: \n"
                                    "6 - dendrite solidification test (WIP) \n"
                                    "7 - melting of an ice sphere \n"
                                    "8 - melting of a porous media (with fluid flow) \n"
-                                   "9 - plane poiseuille flow \n "
+                                   "9 - plane Poiseuille flow \n "
                                    "10 - dissolving disk benchmark for dissolution problem \n"
                                    "11 - Melting of an ice sphere in natural convection \n"
                                    "12 - Coupled problem example for verification with boussinesq approximation"
-                                   "default: 4");
+                                   "default: 4 \n");
 
 // ---------------------------------------
 // Save options:
@@ -118,19 +118,19 @@ DEFINE_PARAMETER(pl, bool, save_to_vtk, true, "We save vtk files using a "
 DEFINE_PARAMETER(pl, bool, save_using_dt, false, "We save vtk files using a "
                                                  "given dt increment if this is set to true \n");
 
-DEFINE_PARAMETER(pl, bool, save_using_iter, false, "We save every prescribed number "
+DEFINE_PARAMETER(pl, bool, save_using_iter, true, "We save every prescribed number "
                                                    "of iterations if this is set to true \n");
 
 DEFINE_PARAMETER(pl, int, save_every_iter, 1, "Saves vtk every n number "
-                                              "of iterations (default is 1)");
+                                              "of iterations (default is 1) \n");
 
 DEFINE_PARAMETER(pl, double, save_every_dt, 1, "Saves vtk every dt amount of "
-                                               "time in seconds of dimensional time (default is 1)");
+                                               "time in seconds of dimensional time (default is 1) \n");
 
 // Options to compute and save fluid forces to a file:
 DEFINE_PARAMETER(pl, bool, save_fluid_forces, false, "Saves fluid forces if true (default: false) \n");
 
-DEFINE_PARAMETER(pl, bool, save_area_data, false, "Save area data if true (default: false, but some examples will set this to true automatically)");
+DEFINE_PARAMETER(pl, bool, save_area_data, false, "Save area data if true (default: false, but some examples will set this to true automatically)\n");
 
 DEFINE_PARAMETER(pl, double, save_data_every_dt, 0.01, "Saves fluid forces and/or area data every dt amount of time in seconds of dimensional time (default is 1.0) \n");
 
@@ -140,38 +140,38 @@ DEFINE_PARAMETER(pl, bool, track_evolving_geometries, false, "Flag to track isla
 DEFINE_PARAMETER(pl, bool, wrap_up_simulation_if_solid_has_vanished, false, "If set to true, the simulation will check if the solid region has vanished and pause the simulation at that point \n");
 
 // Save state options
-DEFINE_PARAMETER(pl, bool, save_state, false, "Saves the simulation state (as per other specified options). Default: false");
+DEFINE_PARAMETER(pl, bool, save_state, false, "Saves the simulation state (as per other specified options). Default: false \n");
 DEFINE_PARAMETER(pl, bool, save_state_using_iter, false, "Saves the simulation state every specified number of iterations \n");
 DEFINE_PARAMETER(pl, bool, save_state_using_dt, false, "Saves the simulation state using every specified dt \n");
 
-DEFINE_PARAMETER(pl, int, save_state_every_iter, -1., "Saves simulation state every n number of iterations (default is -1)");
-DEFINE_PARAMETER(pl, double, save_state_every_dt, -1., "Save state every dt -- tells us how often (in seconds) to save the simulation state. Default is -1. ");
-DEFINE_PARAMETER(pl, int, num_save_states, 20, "Number of save states we keep on file (default is 20)");
+DEFINE_PARAMETER(pl, int, save_state_every_iter, -1., "Saves simulation state every n number of iterations (default is -1) \n");
+DEFINE_PARAMETER(pl, double, save_state_every_dt, -1., "Save state every dt -- tells us how often (in seconds) to save the simulation state. Default is -1. \n");
+DEFINE_PARAMETER(pl, int, num_save_states, 20, "Number of save states we keep on file (default is 20) \n");
 
 // Load state options
-DEFINE_PARAMETER(pl ,bool, loading_from_previous_state, false,"Loads simulation from previous state if marked true");
+DEFINE_PARAMETER(pl ,bool, loading_from_previous_state, false,"Loads simulation from previous state if marked true \n");
 
 
 // ---------------------------------------
 // Debugging options:
 // ---------------------------------------
 // Options for checking memory usage: -- this was more heavily used when I was investigating a memory leak . TO-DO: clean this stuff up ?
-DEFINE_PARAMETER(pl, int, check_mem_every_iter, -1, "Checks memory usage every n number of iterations (default is -1 aka, don't check. To check, set to a positive integer value)");
-DEFINE_PARAMETER(pl, double, mem_safety_limit, 60.e9, "Memory upper limit before closing the program -- in bytes");
+DEFINE_PARAMETER(pl, int, check_mem_every_iter, -1, "Checks memory usage every n number of iterations (default is -1 aka, don't check. To check, set to a positive integer value) \n");
+DEFINE_PARAMETER(pl, double, mem_safety_limit, 60.e9, "Memory upper limit before closing the program -- in bytes \n");
 
 // Options for checking timing:
-DEFINE_PARAMETER(pl, int, timing_every_n, -1, "Print timing info every n iterations (default -1 aka no use, to use this feature, set to a positive integer value)");
+DEFINE_PARAMETER(pl, int, timing_every_n, -1, "Print timing info every n iterations (default -1 aka no use, to use this feature, set to a positive integer value) \n");
 
 
-DEFINE_PARAMETER(pl, bool, print_checkpoints, false, "Print checkpoints throughout script for debugging? ");
+DEFINE_PARAMETER(pl, bool, print_checkpoints, false, "Print checkpoints throughout script for debugging? \n");
 
 // ---------------------------------------
 // Solution options:
 // ---------------------------------------
 // Related to which physics we solve:
-DEFINE_PARAMETER(pl, bool, solve_stefan, false, "Solve stefan ?");
-DEFINE_PARAMETER(pl, bool, solve_navier_stokes, false, "Solve navier stokes?");
-DEFINE_PARAMETER(pl, bool, solve_coupled, true, "Solve the coupled problem?"); // <-- get rid of
+DEFINE_PARAMETER(pl, bool, solve_stefan, false, "Solve stefan ? \n");
+DEFINE_PARAMETER(pl, bool, solve_navier_stokes, false, "Solve navier stokes? \n");
+DEFINE_PARAMETER(pl, bool, solve_coupled, true, "Solve the coupled problem? \n"); // <-- get rid of
 
 DEFINE_PARAMETER(pl, bool, do_we_solve_for_Ts, false, "True/false to describe whether or not we solve for the solid temperature (or concentration). Default: false. This is set to true for select examples in select_solvers()\n");
 DEFINE_PARAMETER(pl, bool, use_boussinesq, false, "True/false to describe whether or not we are solving the problem considering natural convection effects using the boussinesq approx. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
@@ -189,14 +189,14 @@ DEFINE_PARAMETER(pl, int, nondim_type_used, -1., "Integer value to overwrite the
 
 
 // Set the method for calculationg the dissolution/precipitation interfacial velocity:
-DEFINE_PARAMETER(pl, int, precip_disso_vgamma_calc, 1, "The type of calculation used for the interface velocity in precipitation/dissolution problems. 0 - compute by concentration value. 1- compute by concentration flux.");
+DEFINE_PARAMETER(pl, int, precip_disso_vgamma_calc, 1, "The type of calculation used for the interface velocity in precipitation/dissolution problems. 0 - compute by concentration value. 1- compute by concentration flux. \n");
 //precipitation_dissolution_interface_velocity_calc_type_t precip_disso_vgamma_calc_type = (precipitation_dissolution_interface_velocity_calc_type_t) precip_disso_vgamma_calc;
 
 // Related to LSF reinitialization:
 DEFINE_PARAMETER(pl, int, reinit_every_iter, 1, "An integer option for how many iterations we wait "
                                                 "before reinitializing the LSF in the case of a coupled problem"
                                                 " (only implemented for coupled problem!). "
-                                                "Default : 1. This can be helpful when the "
+                                                "Default : 1. \n This can be helpful when the "
                                                 "timescales governing interface evolution are much "
                                                 "larger than those governing the flow. "
                                                 "For example, if vint is 1000x smaller than vNS, "
@@ -205,39 +205,39 @@ DEFINE_PARAMETER(pl, int, reinit_every_iter, 1, "An integer option for how many 
                                                 "reinitializations relative to the amount of movement it experiences. ");
 
 // Related to the Stefan and temperature/concentration problem:
-DEFINE_PARAMETER(pl, double, cfl, 0.5, "CFL number for Stefan problem (default:0.5)");
-DEFINE_PARAMETER(pl, int, advection_sl_order, 2, "Integer for advection solution order (can choose 1 or 2) for the fluid temperature field(default:2)");
-DEFINE_PARAMETER(pl, bool, force_interfacial_velocity_to_zero, false, "Force the interfacial velocity to zero? ");
+DEFINE_PARAMETER(pl, double, cfl, 0.25, "CFL number for Stefan problem (default:0.5) \n");
+DEFINE_PARAMETER(pl, int, advection_sl_order, 2, "Integer for advection solution order (can choose 1 or 2) for the fluid temperature field(default:2) \n");
+DEFINE_PARAMETER(pl, bool, force_interfacial_velocity_to_zero, false, "Force the interfacial velocity to zero? \n");
 
 // Related to the Navier-Stokes problem:
 //DEFINE_PARAMETER(pl, double, Re_overwrite, -100.0, "Overwrite the examples set Reynolds number (works if set to a positive number, default:-100.00");
-DEFINE_PARAMETER(pl, int, NS_advection_sl_order, 2, "Integer for advection solution order (can choose 1 or 2) for the fluid velocity fields (default:2)");
-DEFINE_PARAMETER(pl, double, cfl_NS, 1.0, "CFL number for Navier-Stokes problem (default:1.0)");
-DEFINE_PARAMETER(pl, double, hodge_tolerance, 1.e-3, "Tolerance on hodge for error convergence (default:1.e-3)");
+DEFINE_PARAMETER(pl, int, NS_advection_sl_order, 2, "Integer for advection solution order (can choose 1 or 2) for the fluid velocity fields (default:2) \n");
+DEFINE_PARAMETER(pl, double, cfl_NS, 1.0, "CFL number for Navier-Stokes problem (default:1.0) \n");
+DEFINE_PARAMETER(pl, double, hodge_tolerance, 1.e-3, "Tolerance on hodge for error convergence (default:1.e-3) \n");
 
 // Specifying flow or no flow: Elyce to-do 12/14/21: remove this no_flow option, we should be able to just turn on and off the solve_navier_stokes and have the same effect!
-DEFINE_PARAMETER(pl, bool, no_flow, false, "An override switch for the ice cylinder example to run a case with no flow (default: false)");
+DEFINE_PARAMETER(pl, bool, no_flow, false, "An override switch for the ice cylinder example to run a case with no flow (default: false) \n");
 
 // Related to simulation duration settings:
-DEFINE_PARAMETER(pl, double, duration_overwrite, -100.0, "Overwrite the duration in minutes (works if set to a positive number, default:-100.0");
-DEFINE_PARAMETER(pl, double, duration_overwrite_nondim, -10.,"Overwrite the duration in nondimensional time (in nondimensional time) -- not fully implemented");
+DEFINE_PARAMETER(pl, double, duration_overwrite, -100.0, "Overwrite the duration in minutes (works if set to a positive number, default:-100.0 \n");
+DEFINE_PARAMETER(pl, double, duration_overwrite_nondim, -10.,"Overwrite the duration in nondimensional time (in nondimensional time) -- not fully implemented \n");
 
 
 
 // whether or not to use inner cylinders for the porous media example:
-DEFINE_PARAMETER(pl, bool, use_inner_surface_porous_media, false, "If true, will use inner cylinders in the porous media problem with an initial solid layer on top. This might represent a media with some solidified material or deposit already present on a fixed structure. a.k.a. Okada style (ice on cooled cyl) Default: false. ");
+DEFINE_PARAMETER(pl, bool, use_inner_surface_porous_media, false, "If true, will use inner cylinders in the porous media problem with an initial solid layer on top. This might represent a media with some solidified material or deposit already present on a fixed structure. a.k.a. Okada style (ice on cooled cyl) Default: false. \n");
 
 DEFINE_PARAMETER(pl, bool, start_w_merged_grains, false, "If true, we assume the LSF provided contains geometry for grains that are already merged, and the regularize front procedure will be called after initializing the level set to remove problem geometry. Default: false. For use in porous media project. \n");
 
-DEFINE_PARAMETER(pl, double, porous_media_initial_thickness, 4.0 , "The initial thickness outer interface in relation to the inner interface, in number of smallest grid cells. Default value: 4.0 ");
+DEFINE_PARAMETER(pl, double, porous_media_initial_thickness, 4.0 , "The initial thickness outer interface in relation to the inner interface, in number of smallest grid cells. Default value: 4.0 \n");
 
 
 // Potential for phi advection subiterations (for slow evolving interfaces and quasi-steady approach)
-DEFINE_PARAMETER(pl, bool, do_phi_advection_substeps, false, "do phi advection substeps? ");
+DEFINE_PARAMETER(pl, bool, do_phi_advection_substeps, false, "do phi advection substeps? \n");
 //DEFINE_PARAMETER(pl, int, num_phi_advection_substeps, 0, "Number of phi advection substeps per timestep \n");
 DEFINE_PARAMETER(pl, double, phi_advection_substeps_coeff, 0., "Number of phi advection substeps per timestep \n");
-DEFINE_PARAMETER(pl, double, phi_advection_substep_startup_time, 0., "dimensional startup time in seconds before activating LSF substeps");
-DEFINE_PARAMETER(pl, double, cfl_phi_advection_substep, 0.8, "CFL for choosing the timestep of the phi advection substep ");
+DEFINE_PARAMETER(pl, double, phi_advection_substep_startup_time, 0., "dimensional startup time in seconds before activating LSF substeps \n");
+DEFINE_PARAMETER(pl, double, cfl_phi_advection_substep, 0.8, "CFL for choosing the timestep of the phi advection substep \n");
 
 
 // ---------------------------------------
@@ -400,33 +400,33 @@ DEFINE_PARAMETER(pl, double, d2T_refine_threshold, 10.0, "Threshold by which to 
 
 DEFINE_PARAMETER(pl, double, d2T_coarsen_threshold, 0.5, "Threshold by which to multiply the owning quadrant's diagonal when considering whether to allow coarsening around a sign change. Default: 0.5, i.e. we allow coarsening if a sign change is present AND the magnitude of the field value is below 0.5*quad_diag \n");
 
-DEFINE_PARAMETER(pl, bool, use_uniform_band, true, "Boolean whether or not to refine using a uniform band");
-DEFINE_PARAMETER(pl, double, uniform_band, 8., "Uniform band (default:8.)");
-DEFINE_PARAMETER(pl, double, dxyz_close_to_interface_mult, 1.2, "Multiplier that defines dxyz_close_to_interface = mult* max(dxyz_smallest)");
+DEFINE_PARAMETER(pl, bool, use_uniform_band, true, "Boolean whether or not to refine using a uniform band \n");
+DEFINE_PARAMETER(pl, double, uniform_band, 8., "Uniform band (default:8.) \n");
+DEFINE_PARAMETER(pl, double, dxyz_close_to_interface_mult, 1.2, "Multiplier that defines dxyz_close_to_interface = mult* max(dxyz_smallest) \n");
 // ---------------------------------------
 // Geometry and grid refinement options:
 // ---------------------------------------
 // General options: // TO-DO: maybe all these geometry options should be OVERWRITE options --aka, defaults are specified per example unless user states otherwise
-DEFINE_PARAMETER(pl, double, xmin, 0., "Minimum dimension in x (default: 0)");
-DEFINE_PARAMETER(pl, double, xmax, 1., "Maximum dimension in x (default: 0)");
+DEFINE_PARAMETER(pl, double, xmin, 0., "Minimum dimension in x (default: 0) \n");
+DEFINE_PARAMETER(pl, double, xmax, 1., "Maximum dimension in x (default: 0) \n");
 
-DEFINE_PARAMETER(pl, double, ymin, 0., "Minimum dimension in y (default: 0)");
-DEFINE_PARAMETER(pl, double, ymax, 1., "Maximum dimension in y (default: 1)");
+DEFINE_PARAMETER(pl, double, ymin, 0., "Minimum dimension in y (default: 0) \n");
+DEFINE_PARAMETER(pl, double, ymax, 1., "Maximum dimension in y (default: 1) \n");
 
-DEFINE_PARAMETER(pl, int, nx, 1, "Number of trees in x (default:1)");
-DEFINE_PARAMETER(pl, int, ny, 1, "Number of trees in y (default:1)");
+DEFINE_PARAMETER(pl, int, nx, 1, "Number of trees in x (default:1) \n");
+DEFINE_PARAMETER(pl, int, ny, 1, "Number of trees in y (default:1) \n");
 
-DEFINE_PARAMETER(pl, int, px, 0, "Periodicity in x (default false)");
-DEFINE_PARAMETER(pl, int, py, 0, "Periodicity in y (default false)");
+DEFINE_PARAMETER(pl, int, px, 0, "Periodicity in x (default false) \n");
+DEFINE_PARAMETER(pl, int, py, 0, "Periodicity in y (default false) \n");
 
-DEFINE_PARAMETER(pl, int, lmin, 3, "Minimum level of refinement");
-DEFINE_PARAMETER(pl, int, lint, 0, "Intermediate level of refinement (default: 0, won't be used unless set)");
-DEFINE_PARAMETER(pl, int, lmax, 8, "Maximum level of refinement");
-DEFINE_PARAMETER(pl, double, lip, 1.75, "Lipschitz coefficient");
+DEFINE_PARAMETER(pl, int, lmin, 3, "Minimum level of refinement \n");
+DEFINE_PARAMETER(pl, int, lint, 0, "Intermediate level of refinement (default: 0, won't be used unless set) \n");
+DEFINE_PARAMETER(pl, int, lmax, 5, "Maximum level of refinement \n");
+DEFINE_PARAMETER(pl, double, lip, 1.75, "Lipschitz coefficient \n");
 
-DEFINE_PARAMETER(pl, int, num_splits, 0, "Number of splits -- used for convergence tests");
-DEFINE_PARAMETER(pl, bool, refine_by_ucomponent, false, "Flag for whether or not to refine by a backflow condition for the fluid velocity");
-DEFINE_PARAMETER(pl, bool, refine_by_d2T, true, "Flag for whether or not to refine by the nondimensionalized temperature gradient");
+DEFINE_PARAMETER(pl, int, num_splits, 0, "Number of splits -- used for convergence tests \n");
+DEFINE_PARAMETER(pl, bool, refine_by_ucomponent, false, "Flag for whether or not to refine by a backflow condition for the fluid velocity \n");
+DEFINE_PARAMETER(pl, bool, refine_by_d2T, false, "Flag for whether or not to refine by the nondimensionalized temperature gradient \n");
 
 
 // For level set:
@@ -657,7 +657,7 @@ void set_geometry(){
 }
 
 // Define a few parameters for the porous media case to create random grains:
-DEFINE_PARAMETER(pl, int, num_grains, 10., "Number of grains in porous media (default: 10)");
+DEFINE_PARAMETER(pl, int, num_grains, 10., "Number of grains in porous media (default: 10) \n");
 void make_LSF_for_porous_media(mpi_environment_t &mpi){
     // initialize random number generator:
     srand(1);
@@ -791,55 +791,55 @@ double v_interface_max_norm=0.; // For keeping track of the interfacial velocity
 
 DEFINE_PARAMETER(pl, double, l_char, 0., "Characteristic length scale for the problem (in meters). i.e. For okada flow past cylinder, this should be set to the cylinder diameter \n. ");
 
-DEFINE_PARAMETER(pl, double, alpha_l, 1.0, "Thermal diffusivity of liquid [m^2/s]. Default: 1."
-                                           "This property is set inside specific examples.");
-DEFINE_PARAMETER(pl, double, alpha_s, 1.0, "Thermal diffusivity of solid [m^2/s]. Default: 1. "
-                                           "This property is set inside specific examples. ");
-DEFINE_PARAMETER(pl, double, k_l, 1.0, "Thermal conductivity of liquid [W/(mK)]. Default: 1."
-                                           "This property is set inside specific examples.");
-DEFINE_PARAMETER(pl, double, k_s, 1.0, "Thermal conductivity of solid [W/(mK)]. Default: 1. "
-                                           "This property is set inside specific examples. ");
-DEFINE_PARAMETER(pl, double, rho_l, 1.0, "Density of fluid [kg/m^3]. Default: 1."
-                                       "This property is set inside specific examples.");
-DEFINE_PARAMETER(pl, double, rho_s, 1.0, "Density of solid [kg/m^3]. Default: 1. "
-                                       "This property is set inside specific examples. ");
+DEFINE_PARAMETER(pl, double, alpha_l, 1.0, "Thermal diffusivity of liquid [m^2/s]. Default: 1. \n"
+                                           "This property is set inside specific examples. \n");
+DEFINE_PARAMETER(pl, double, alpha_s, 1.0, "Thermal diffusivity of solid [m^2/s]. Default: 1. \n"
+                                           "This property is set inside specific examples. \n");
+DEFINE_PARAMETER(pl, double, k_l, 1.0, "Thermal conductivity of liquid [W/(mK)]. Default: 1. \n"
+                                           "This property is set inside specific examples. \n");
+DEFINE_PARAMETER(pl, double, k_s, 1.0, "Thermal conductivity of solid [W/(mK)]. Default: 1. \n"
+                                           "This property is set inside specific examples. \n");
+DEFINE_PARAMETER(pl, double, rho_l, 1.0, "Density of fluid [kg/m^3]. Default: 1. \n"
+                                       "This property is set inside specific examples. \n");
+DEFINE_PARAMETER(pl, double, rho_s, 1.0, "Density of solid [kg/m^3]. Default: 1. \n"
+                                       "This property is set inside specific examples. \n");
 
-DEFINE_PARAMETER(pl, double, cp_s, 1.0, "Specific heat of solid [J/(kg K)]. Default: 1."
-                                       "This property is set inside specific examples.");
-DEFINE_PARAMETER(pl, double, L, 1.0, "Latent heat of fusion [J/kg]. Default: 1. "
-                                       "This property is set inside specific examples. ");
-DEFINE_PARAMETER(pl, double, mu_l, 1.0, "Dynamic viscosity of fluid [Pa s]. Default: 1."
-                                       "This property is set inside specific examples.");
+DEFINE_PARAMETER(pl, double, cp_s, 1.0, "Specific heat of solid [J/(kg K)]. Default: 1. \n"
+                                       "This property is set inside specific examples. \n");
+DEFINE_PARAMETER(pl, double, L, 1.0, "Latent heat of fusion [J/kg]. Default: 1. \n"
+                                       "This property is set inside specific examples. \n");
+DEFINE_PARAMETER(pl, double, mu_l, 1.0, "Dynamic viscosity of fluid [Pa s]. Default: 1. \n"
+                                       "This property is set inside specific examples. \n");
 
-DEFINE_PARAMETER(pl,double,sigma,4.20e-10,"Interfacial tension [m] between ice and water, default: 2*2.10e-10");
+DEFINE_PARAMETER(pl,double,sigma,4.20e-10,"Interfacial tension [m] between ice and water, default: 2*2.10e-10 \n");
 
 
-DEFINE_PARAMETER(pl, double, grav, 9.81, "Gravity (m/s^2). Default: 9.81.");
+DEFINE_PARAMETER(pl, double, grav, 9.81, "Gravity (m/s^2). Default: 9.81. \n");
 DEFINE_PARAMETER(pl, double, beta_T, 1.0, "Thermal expansion coefficient for the boussinesq approx. default: 1 . This gets set inside specific examples. \n ");
 DEFINE_PARAMETER(pl, double, beta_C, 1.0, "Concentration expansion coefficient for the boussinesq approx. default: 1 . This gets set inside specific examples. \n ");
 
 // For dissolution problem:
-DEFINE_PARAMETER(pl, double, gamma_diss, 1.0, "The parameter dictates some dissolution behavior, default value is 1. This gets calculated internally for the dissolution benchmark problem, otherwise it's up to the user to set. ");
+DEFINE_PARAMETER(pl, double, gamma_diss, 1.0, "The parameter dictates some dissolution behavior, default value is 1. This gets calculated internally for the dissolution benchmark problem, otherwise it's up to the user to set. \n");
 
-DEFINE_PARAMETER(pl, double, stoich_coeff_diss, 1.0, "The stoichiometric coefficient of the dissolution reaction. Default is 1. Used to compute gamma_diss for dissolution benchmark problem. ");
+DEFINE_PARAMETER(pl, double, stoich_coeff_diss, 1.0, "The stoichiometric coefficient of the dissolution reaction. Default is 1. Used to compute gamma_diss for dissolution benchmark problem. \n");
 
-DEFINE_PARAMETER(pl, double, molar_volume_diss, 1.0, "The molar volume of the dissolving solid. Default is 1. Used to compute gamma_diss for dissolution benchmark problem. ");
+DEFINE_PARAMETER(pl, double, molar_volume_diss, 1.0, "The molar volume of the dissolving solid. Default is 1. Used to compute gamma_diss for dissolution benchmark problem. \n");
 
-DEFINE_PARAMETER(pl, double , Dl, -1., "Liquid phase diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s ");
-DEFINE_PARAMETER(pl, double , Ds, 0., "Solid phase diffusion coefficient m^2/s, default is : 0");
+DEFINE_PARAMETER(pl, double , Dl, -1., "Liquid phase diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s \n");
+DEFINE_PARAMETER(pl, double , Ds, 0., "Solid phase diffusion coefficient m^2/s, default is : 0 \n");
 // Elyce commented out 12/14/21: the below parameter is now obselete
 //DEFINE_PARAMETER(pl, double, l_diss, 2.0e-4, "Dissolution length scale. The physical length (in m) that corresponds to a length of 1 in the computational domain. Default: 20e-3 m (20 mm), since the initial diameter of the disk is 20 mm \n");
 
 DEFINE_PARAMETER(pl, double, k_diss, 1.0, "Dissolution rate constant per unit area of reactive surface (m/s). Default 4.5e-3 mm/s aka 4.5e-6 m/s \n");
 
 // Scalar temp/conc problem parameters:
-DEFINE_PARAMETER(pl, double, T0, 0., "Characteristic solid temperature of the problem. Usually corresponds to the solid phase. i.e.) For ice growth over cooled cylinder example, this refers to temperature of cooled cylinder in K. For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 0). This must be specified by the user. ");
+DEFINE_PARAMETER(pl, double, T0, 0., "Characteristic solid temperature of the problem. Usually corresponds to the solid phase. i.e.) For ice growth over cooled cylinder example, this refers to temperature of cooled cylinder in K. For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 0). This must be specified by the user. \n");
 
-DEFINE_PARAMETER(pl, double, Tinterface, 0.5, "The interface temperature (or concentration) in K (or INSERT HERE), i.e. the melt temperature. (default: 0.5 This needs to be set by the user to run a meaningful example).");
+DEFINE_PARAMETER(pl, double, Tinterface, 0.5, "The interface temperature (or concentration) in K (or INSERT HERE), i.e. the melt temperature. (default: 0.5 This needs to be set by the user to run a meaningful example). \n");
 
-DEFINE_PARAMETER(pl, double, Tinfty, 1., "The freestream fluid temperature T_infty in K. (default: 1. This needs to be set by the user to run a meaningful example).");
+DEFINE_PARAMETER(pl, double, Tinfty, 1., "The freestream fluid temperature T_infty in K. (default: 1. This needs to be set by the user to run a meaningful example). \n");
 
-DEFINE_PARAMETER(pl, double, theta_infty, 1., "The freestream temp or concentration, nondimensional. Default:1 . This may not be used, but in the dissolution porous media case allows the user to control this as an input variable. ");
+DEFINE_PARAMETER(pl, double, theta_infty, 1., "The freestream temp or concentration, nondimensional. Default:1 . This may not be used, but in the dissolution porous media case allows the user to control this as an input variable. \n");
 
 DEFINE_PARAMETER(pl, double, theta_initial, 0., "This allows you to set the initial nondim C value for the evolving porous media disso/precip problem in the fluid. Default: 0. \n ");
 
@@ -5097,6 +5097,8 @@ int main(int argc, char** argv) {
   pl.initialize_parser(cmd);
   cmd.parse(argc,argv);
   pl.get_all(cmd);
+  pl.print_all();
+
 
   // -----------------------------------------------
   // Declare all needed variables:
@@ -5241,6 +5243,7 @@ int main(int argc, char** argv) {
     // Set all the things needed:
     setup_initial_parameters_and_report(mpi, stefan_w_fluids_solver, grid_res_iter);
 
+    pl.generate_bash_file("/home/casl_laptop24/workspace/CASL/", "multialloy_with_fluids", "generic_bash_file.sh");
     // ------------------------------------------------------------
     // Initialize relevant boundary condition objects:
     // ------------------------------------------------------------
