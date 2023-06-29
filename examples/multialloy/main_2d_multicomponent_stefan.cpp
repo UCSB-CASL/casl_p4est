@@ -260,7 +260,7 @@ double scale = 30.0;//1./*30*/; // [Elyce  2/16/23] changing this to 1 bc it see
 // problem parameters
 //-------------------------------------
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
-param_t<double> cooling_velocity        (pl, 0.001*scale,  "cooling_velocity", "Cooling velocity (pl, cm/s");
+param_t<double> cooling_velocity        (pl, 0.001*scale,  ",.", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio          (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
 param_t<double> temp_gradient           (pl, 500, "temp_gradient",    "Temperature gradient (pl, K/cm");
 param_t<bool>   start_from_moving_front (pl, 0, "start_from_moving_front", "Relevant only for geometry==0");
@@ -476,14 +476,14 @@ void set_alloy_parameters()
       part_coeff_1.val     = 0.54;    // partition coefficient
       break;
 
-    case 5: // Ni - 5.8wt%Ta - 15.2wt%Al
+    case 5: // Ni - 5.8wt%Ta - 15.2wt%Al : Rochi- I think there is a typo here alloy is Ni - 5.8 wt% Al - 15.2% wt Ta alloy ref paper: Numerical Investigation of Segregation Evolution during the Vacuum Arc Remelting Process of Ni-Based Superalloy Ingots - Jiang Cui, Baokuan Li, Zhongqiu Liu, Fengsheng Qi, Beijiang Zhang, and Ji Zhang Metals, 2021, 11, 2046
       density_l.val       = 7.365e-3; // kg.cm-3
       density_s.val       = 7.365e-3; // kg.cm-3
       heat_capacity_l.val = 660;      // J.kg-1.K-1
       heat_capacity_s.val = 660;      // J.kg-1.K-1
-      thermal_cond_l.val  = 0.8;      // W.cm-1.K-1
-      thermal_cond_s.val  = 0.8;      // W.cm-1.K-1
-      latent_heat.val     = 2136;     // J.cm-3
+      thermal_cond_l.val  = 0.45;     //0.8;      // W.cm-1.K-1
+      thermal_cond_s.val  = 0.45;     //0.8;      // W.cm-1.K-1
+      latent_heat.val     = 2135.8;     // J.cm-3
 
       num_comps.val = 2;
 
@@ -492,15 +492,17 @@ void set_alloy_parameters()
       initial_conc_0.val   = 0.058;   // wt frac.
       initial_conc_1.val   = 0.152;   // wt frac.
 
-      eps_c.val = 0*2.7207e-5;
-      eps_v.val = 0*2.27e-2;
+      eps_c.val = 2.7207e-5;
+      eps_v.val = 2.27e-2;
       eps_a.val = 0.05;
       symmetry.val = 4;
 
       // linearized phase diagram
       melting_temp.val     = 1754;     // K
+      linearized_liquidus.val  = 1;
       liquidus_slope_0.val =-517;     // K / wt frac. - liquidous slope
       liquidus_slope_1.val =-255;     // K / wt frac. - liquidous slope
+      const_part_coeff.val = 1;
       part_coeff_0.val     = 0.54;    // partition coefficient
       part_coeff_1.val     = 0.48;    // partition coefficient
       break;
@@ -634,6 +636,7 @@ void set_alloy_parameters()
 double liquidus_value(double *c)
 {
   static double conc_term;
+
   if (linearized_liquidus.val)
   {
     conc_term = melting_temp.val;
@@ -711,6 +714,7 @@ double liquidus_value(double *c)
 
 double liquidus_slope(int which_comp, double *c)
 {
+
   if (linearized_liquidus.val)
   {
     switch (which_comp)
@@ -798,11 +802,17 @@ double liquidus_slope(int which_comp, double *c)
         }
       }
       case 4: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
-      case 5: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
+      case 5: {
+
+        throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
+      }
       case 6: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
       case 7: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
       case 8: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
-      default: throw std::invalid_argument("Invalid liquidus surface\n");
+      default:{
+
+        throw std::invalid_argument("Invalid liquidus surface\n");
+      }
     }
   }
 }
@@ -2383,7 +2393,7 @@ int num_seeds()
 #endif
     case -2: return 1;
     case -1: return 1;
-    case 0: return 2;
+    case 0: return 3;
     case 1: return 1;
     case 2: return 1;
     case 3: return 1;
@@ -3416,6 +3426,7 @@ int main (int argc, char* argv[])
                                           "memory_usage\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
   }
+
 
   if (save_accuracy.val) {
     ierr = PetscFOpen(mpi.comm(), filename_analytic, "w", &fich); CHKERRXX(ierr);

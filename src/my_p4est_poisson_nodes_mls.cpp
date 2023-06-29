@@ -1990,6 +1990,7 @@ void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_
       }
 
       ierr = MatSetValues(*matrix, 1, &n_gl, row->size(), columns.data(), values.data(), ADD_VALUES); CHKERRXX(ierr);
+      //ierr = MatSetOption(*matrix,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);CHKERRXX(ierr);
     }
   }
 
