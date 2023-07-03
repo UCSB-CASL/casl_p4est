@@ -377,25 +377,22 @@ void set_alloy_parameters()
       break;
 
     case 2: // Co - 10.7at%W - 9.4at%Al (more realistic since D_W < D_Al)
-      density_l.val       = 9.24e-3; // kg.cm-3
-      density_s.val       = 9.24e-3; // kg.cm-3
+      density_l.val       = 9.2392e-3; // kg.cm-3
+      density_s.val       = 9.2392e-3; // kg.cm-3
       heat_capacity_l.val = 356;       // J.kg-1.K-1
       heat_capacity_s.val = 356;       // J.kg-1.K-1
       thermal_cond_l.val  = 1.3;       // W.cm-1.K-1
       thermal_cond_s.val  = 1.3;       // W.cm-1.K-1
-      latent_heat.val     = 2590;    // J.cm-3 (this is latent heat multiplied by density! )
+      latent_heat.val     = 2588.7;    // J.cm-3 (this is latent heat multiplied by density! )
 
       num_comps.val = 2;
 
       solute_diff_0.val    = 1e-5;     // cm2.s-1 - concentration diffusion coefficient
-      solute_diff_1.val    = 2e-5;     // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_1.val    = 5e-5;     // cm2.s-1 - concentration diffusion coefficient
       initial_conc_0.val   = 0.107;    // at frac.
       initial_conc_1.val   = 0.094;    // at frac.
 
-      eps_c.val = 1.0e-5/1.;
-      eps_v.val = 0.0e-2;
-      eps_a.val = 0.05*1.;
-      symmetry.val = 4;
+
 
       /*  // linearized phase diagram
       melting_temp.val     = 1910;      // K
@@ -405,10 +402,15 @@ void set_alloy_parameters()
       part_coeff_1.val     = 0.83;    // partition coefficient */
 
       melting_temp.val    =  1910;      // K
-      liquidus_slope_0.val =-543;      // K / at frac. - liquidous slope
-      liquidus_slope_1.val =-1036;     // K / at frac. - liquidous slope
-      part_coeff_0.val     = 0.94;    // partition coefficient
-      part_coeff_1.val     = 0.83;    // partition coefficient
+      liquidus_slope_0.val =-874;      // K / at frac. - liquidous slope
+      liquidus_slope_1.val =-1378;     // K / at frac. - liquidous slope
+      part_coeff_0.val     = 0.848;    // partition coefficient
+      part_coeff_1.val     = 0.848;    // partition coefficient
+
+      eps_c.val = 3.0e-5/melting_temp.val;
+      eps_v.val = 0.0e-2;
+      eps_a.val = 0.05*1.;
+      symmetry.val = 4;
 
       Pr.val = 23.1;
       printf("Warning! this example has a hard-coded PRandtl number. We will want to revisit this \n");
@@ -2238,7 +2240,7 @@ public:
       case -2: return analytic::rf_exact(t) - ABS2(x-xc(),
                                                    y-yc());
       case -1: return analytic::rf_exact(t) - ABS1(y-ymin());
-      case 0: return -(y - front_location()) + 0.001/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.001/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
+      case 0: return -(y - front_location());//-(y - front_location()) + 0.001/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.001/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
       case 1: return -(ABS2(x-xc(), y-yc())-seed_radius());
       case 2: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
       case 3: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
@@ -2393,7 +2395,7 @@ int num_seeds()
 #endif
     case -2: return 1;
     case -1: return 1;
-    case 0: return 3;
+    case 0: return 2;
     case 1: return 1;
     case 2: return 1;
     case 3: return 1;
