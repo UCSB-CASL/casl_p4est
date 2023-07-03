@@ -1982,6 +1982,7 @@ int main (int argc, char* argv[])
         (save_type.val == 0 && iteration    >= vtk_idx*save_every_dn.val) ||
         (save_type.val == 1 && total_growth >= vtk_idx*save_every_dl.val) ||
         (save_type.val == 2 && tn           >= vtk_idx*save_every_dt.val);
+    save_now = false;
 
     // save velocity, area of interface, volume of solid phase, etc
     if (save_characteristics.val)
@@ -2413,9 +2414,11 @@ int main (int argc, char* argv[])
     }
 
     // advance front to t_{n+1}
+    printf("blah \n");
     mas.update_grid();
+    printf("hello \n");
     mas.update_grid_solid();
-
+    printf("its me \n");
     // solve nonlinear system for temperature, concentration and velocity at t_n
     bc_error_max = 0;
     bc_error_avg = 0;
