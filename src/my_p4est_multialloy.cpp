@@ -751,27 +751,42 @@ void my_p4est_multialloy_t::update_grid()
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
 
   regularize_front(front_phi_old.vec);
+  printf("aaa \n");
   front_phi_old.destroy();
-
+  printf("bbb\n");
   /* reinitialize phi */
   my_p4est_level_set_t ls_new(ngbd_);
 //  ls_new.reinitialize_1st_order_time_2nd_order_space(front_phi_.vec, 20);
 //  ls_new.reinitialize_1st_order_time_2nd_order_space(front_phi_.vec, 100);
   ls_new.reinitialize_2nd_order(front_phi_.vec, 50);
-
+  printf("ccc\n");
   if (num_seeds_ > 1)
   {
     VecScaleGhost(front_phi_.vec, -1.);
-    ls_new.extend_Over_Interface_TVD_Full(front_phi_.vec, seed_map_.vec, 20, 0);
-    seed_map_.get_array();
-    foreach_node(n, nodes_) seed_map_.ptr[n] = round(seed_map_.ptr[n]);
-    seed_map_.restore_array();
-    VecScaleGhost(front_phi_.vec, -1.);
-  }
+    printf("ccc1\n");
 
+    ls_new.extend_Over_Interface_TVD_Full(front_phi_.vec, seed_map_.vec, 20, 0);
+    printf("ccc2\n");
+
+    seed_map_.get_array();
+    printf("ccc3\n");
+
+    foreach_node(n, nodes_) seed_map_.ptr[n] = round(seed_map_.ptr[n]);
+    printf("ccc4\n");
+
+    seed_map_.restore_array();
+    printf("ccc5\n");
+
+    VecScaleGhost(front_phi_.vec, -1.);
+    printf("ccc6\n");
+
+  }
+  printf("ddd\n");
   /* second derivatives, normals, curvature, angles */
   compute_geometric_properties_front();
+  printf("eee\n");
   compute_geometric_properties_contr();
+  printf("fff\n");
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
 }
