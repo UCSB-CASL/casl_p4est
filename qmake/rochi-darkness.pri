@@ -31,3 +31,6 @@ VORO_LIBS_DEBUG         = -Wl,-rpath,$$VORO_DIR/lib -L$$VORO_DIR/lib -lvoro++
 QMAKE_CC                = /usr/local/bin/mpicc
 QMAKE_CXX               = /usr/local/bin/mpicxx
 QMAKE_LINK              = /usr/local/bin/mpicxx
+
+# BOOST
+BOOST_INCLUDES          = /home/ebayat/workspace/libraries/boost_1_66_0
