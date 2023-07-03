@@ -260,7 +260,7 @@ double scale = 30.0;//1./*30*/; // [Elyce  2/16/23] changing this to 1 bc it see
 // problem parameters
 //-------------------------------------
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
-param_t<double> cooling_velocity        (pl, 0.001*scale,  ",.", "Cooling velocity (pl, cm/s");
+param_t<double> cooling_velocity        (pl, 0.001,  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio          (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
 param_t<double> temp_gradient           (pl, 500, "temp_gradient",    "Temperature gradient (pl, K/cm");
 param_t<bool>   start_from_moving_front (pl, 0, "start_from_moving_front", "Relevant only for geometry==0");
@@ -401,7 +401,7 @@ void set_alloy_parameters()
       part_coeff_0.val     = 0.83;    // partition coefficient
       part_coeff_1.val     = 0.83;    // partition coefficient */
 
-      melting_temp.val    =  1910;      // K
+      melting_temp.val    =  1996;      // K
       liquidus_slope_0.val =-874;      // K / at frac. - liquidous slope
       liquidus_slope_1.val =-1378;     // K / at frac. - liquidous slope
       part_coeff_0.val     = 0.848;    // partition coefficient
@@ -413,7 +413,7 @@ void set_alloy_parameters()
       symmetry.val = 4;
 
       Pr.val = 23.1;
-      printf("Warning! this example has a hard-coded PRandtl number. We will want to revisit this \n");
+      //("Warning! this example has a hard-coded PRandtl number. We will want to revisit this \n");
 
       // Calculate Rayleigh number
 
@@ -983,12 +983,12 @@ void compute_nondimensional_groups(int mpicomm, my_p4est_multialloy_t* multiallo
   double St = heat_capacity_l.val * (deltaT)/latent_heat.val;
 
   // Rayleigh numbers
-  double RaT = density_l.val * beta_T.val * gravity * deltaT * pow(l_char.val, 3.0) / (mu_l.val * thermal_diff_l);
-  PetscPrintf(mpicomm, "RED ALERT: delta T definition of Rayleigh number has same assumption as Stefan number \n");
-
+  double RaT = density_l.val * beta_T.val * gravity * deltaT * pow(l_cha
   double deltaC_0 = initial_conc_0.val - eutectic_conc_0.val;
   double deltaC_1 = initial_conc_1.val - eutectic_conc_1.val;
-  double deltaC_2 = initial_conc_2.val - eutectic_conc_2.val;
+  double deltaC_2 = initial_conc_2.val - eutectic_conc_2.val;r.val, 3.0) / (mu_l.val * thermal_diff_l);
+  PetscPrintf(mpicomm, "RED ALERT: delta T definition of Rayleigh number has same assumption as Stefan number \n");
+
   double deltaC_3 = initial_conc_3.val - eutectic_conc_3.val;
 
 
@@ -3544,7 +3544,7 @@ int main (int argc, char* argv[])
     default: break;
   }
 
-  if (mpi.rank() == 0)
+  if (mpi.rank() == 0 && 0)
   {
     ierr = PetscPrintf(mpi.comm(), "density_l: %g\n", density_l.val); CHKERRXX(ierr);
     ierr = PetscPrintf(mpi.comm(), "density_s: %g\n", density_s.val); CHKERRXX(ierr);
@@ -3794,8 +3794,16 @@ int main (int argc, char* argv[])
 
 
   // set time steps
-  double dt_max = base_cfl.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
-  mas.set_dt_limits(0, dt_max);
+  double dt = cfl_number.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
+
+
+//  dt = 1.0e-3;
+
+  double dt_curv = 0.000005*sqrt(dx*dx*dx)/MAX(eps_c.val, 1.e-20);
+
+  mas.set_dt(MIN(dt, dt_curv));
+  mas.set_dt_limits(0, MIN(dt_curv, 100.*dt));
+
   // TO-DO: revisit if we really want these dt limits or not
 
   // set initial conditions

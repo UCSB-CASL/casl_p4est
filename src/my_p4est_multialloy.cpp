@@ -911,7 +911,7 @@ void my_p4est_multialloy_t::compute_dt()
   // TO-DO MULTICOMP: add consideration of the Navier stokes timestep
 
 
-  PetscPrintf(p4est_->mpicomm, "Computing time step: ");
+  PetscPrintf(p4est_->mpicomm, "Computing time step: inside compute dt ");
   double velo_norm_max = 0;
   double curvature_max = 0;
 
