@@ -2166,6 +2166,17 @@ int main (int argc, char* argv[])
             }
           }
         }
+        contr.restore_array();
+        front.restore_array(); front_exact.restore_array(); front_error.restore_array();
+        ts.restore_array(); ts_exact.restore_array(); ts_error.restore_array();
+        tl.restore_array(); tl_exact.restore_array(); tl_error.restore_array();
+        vn.restore_array(); vn_exact.restore_array(); vn_error.restore_array();
+        ft.restore_array(); ft_exact.restore_array(); ft_error.restore_array();
+        tf.restore_array(); tf_exact.restore_array(); tf_error.restore_array();
+        vf.restore_array(); vf_exact.restore_array(); vf_error.restore_array();
+        cl.restore_array(); cl_exact.restore_array(); cl_error.restore_array();
+        cs.restore_array(); cs_exact.restore_array(); cs_error.restore_array();
+        kps.restore_array();
 
         if (save_vtk_analytical.val) {
           char name[1024];
@@ -2288,17 +2299,7 @@ int main (int argc, char* argv[])
           PetscPrintf(p4est->mpicomm, "VTK with analytic saved in %s\n", name);
         }
 
-        contr.restore_array();
-        front.restore_array(); front_exact.restore_array(); front_error.restore_array();
-        ts.restore_array(); ts_exact.restore_array(); ts_error.restore_array();
-        tl.restore_array(); tl_exact.restore_array(); tl_error.restore_array();
-        vn.restore_array(); vn_exact.restore_array(); vn_error.restore_array();
-        ft.restore_array(); ft_exact.restore_array(); ft_error.restore_array();
-        tf.restore_array(); tf_exact.restore_array(); tf_error.restore_array();
-        vf.restore_array(); vf_exact.restore_array(); vf_error.restore_array();
-        cl.restore_array(); cl_exact.restore_array(); cl_error.restore_array();
-        cs.restore_array(); cs_exact.restore_array(); cs_error.restore_array();
-        kps.restore_array();
+
 
         // write into file
         if (save_accuracy.val) {

@@ -1098,8 +1098,10 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   sprintf(name, "%s/vtu/multialloy_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
 
   // cell data
-  std::vector<const double *>    cell_data;
-  std::vector<std::string> cell_data_names;
+//  std::vector<const double *>    cell_data;
+//  std::vector<std::string> cell_data_names;
+  std::vector<Vec_for_vtk_export_t> cell_fields;
+
 
   /* save the size of the leaves */
   Vec leaf_level;
@@ -1122,72 +1124,105 @@ void my_p4est_multialloy_t::save_VTK(int iter)
     const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost_->ghosts, q);
     l_p[p4est_->local_num_quadrants+q] = quad->level;
   }
+  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
 
-  cell_data.push_back(l_p); cell_data_names.push_back("leaf_level");
+//  cell_data.push_back(l_p); cell_data_names.push_back("leaf_level");
+  cell_fields.push_back(Vec_for_vtk_export_t(leaf_level, "leaf_level"));
 
+//  cell_fields.push_back(l_p, )
   // point data
-  std::vector<const double *>    point_data;
-  std::vector<std::string> point_data_names;
+//  std::vector<const double *>    point_data;
+//  std::vector<std::string> point_data_names;
+  std::vector<Vec_for_vtk_export_t> point_fields;
 
-  front_phi_.get_array(); point_data.push_back(front_phi_.ptr); point_data_names.push_back("phi");
+  // front_phi_.get_array(); point_data.push_back(front_phi_.ptr); point_data_names.push_back("phi");
+  point_fields.push_back(Vec_for_vtk_export_t(front_phi_.vec, "phi"));
 
   if (contr_phi_.vec != NULL)
   {
-    contr_phi_.get_array(); point_data.push_back(contr_phi_.ptr); point_data_names.push_back("contr");
+//    contr_phi_.get_array(); point_data.push_back(contr_phi_.ptr); point_data_names.push_back("contr");
+    point_fields.push_back(Vec_for_vtk_export_t(contr_phi_.vec, "contr"));
   }
 
-  tl_[0].get_array(); point_data.push_back(tl_[0].ptr); point_data_names.push_back("tl");
-  ts_[0].get_array(); point_data.push_back(ts_[0].ptr); point_data_names.push_back("ts");
-  cl_[0].get_array();
+  // tl_[0].get_array(); point_data.push_back(tl_[0].ptr); point_data_names.push_back("tl");
+  point_fields.push_back(Vec_for_vtk_export_t(tl_[0].vec, "phi"));
+
+
+//  ts_[0].get_array(); point_data.push_back(ts_[0].ptr); point_data_names.push_back("ts");
+  point_fields.push_back(Vec_for_vtk_export_t(ts_[0].vec, "ts"));
+
+
+  // cl_[0].get_array();
+  // point_fields.push_back(Vec_for_vtk_export_t(front_phi_.vec, "phi"));
+  point_fields.push_back(Vec_for_vtk_export_t(front_phi_.vec, "phi"));
+
   for (int i = 0; i < num_comps_; ++i)
   {
     char numstr[21];
     sprintf(numstr, "%d", i);
     std::string name("cl");
-    point_data.push_back(cl_[0].ptr[i]); point_data_names.push_back(name + numstr);
+//    point_data.push_back(cl_[0].ptr[i]); point_data_names.push_back(name + numstr);
+    point_fields.push_back(Vec_for_vtk_export_t(cl_[0].vec[i], name + numstr));
+
+
   }
 
-  front_velo_norm_[0]      .get_array(); point_data.push_back(front_velo_norm_[0].ptr);       point_data_names.push_back("vn");
-  front_curvature_         .get_array(); point_data.push_back(front_curvature_.ptr);          point_data_names.push_back("kappa");
-  bc_error_                .get_array(); point_data.push_back(bc_error_.ptr);                 point_data_names.push_back("bc_error");
-  dendrite_number_         .get_array(); point_data.push_back(dendrite_number_.ptr);          point_data_names.push_back("dendrite_number");
-  dendrite_tip_            .get_array(); point_data.push_back(dendrite_tip_.ptr);             point_data_names.push_back("dendrite_tip");
-  seed_map_                .get_array(); point_data.push_back(seed_map_.ptr);                 point_data_names.push_back("seed_num");
-  smoothed_nodes_          .get_array(); point_data.push_back(smoothed_nodes_.ptr);           point_data_names.push_back("smoothed_nodes");
-  front_phi_unsmooth_      .get_array(); point_data.push_back(front_phi_unsmooth_.ptr);       point_data_names.push_back("phi_unsmooth");
+  // front_velo_norm_[0]      .get_array(); point_data.push_back(front_velo_norm_[0].ptr);       point_data_names.push_back("vn");
+  point_fields.push_back(Vec_for_vtk_export_t(front_velo_norm_[0].vec, "vn"));
+
+  // front_curvature_         .get_array(); point_data.push_back(front_curvature_.ptr);          point_data_names.push_back("kappa");
+  point_fields.push_back(Vec_for_vtk_export_t(front_curvature_.vec, "kappa"));
+
+  // bc_error_                .get_array(); point_data.push_back(bc_error_.ptr);                 point_data_names.push_back("bc_error");
+  point_fields.push_back(Vec_for_vtk_export_t(bc_error_.vec, "bc_error"));
+
+  // dendrite_number_         .get_array(); point_data.push_back(dendrite_number_.ptr);          point_data_names.push_back("dendrite_number");
+  point_fields.push_back(Vec_for_vtk_export_t(dendrite_number_.vec, "dendrite_number"));
+
+  // dendrite_tip_            .get_array(); point_data.push_back(dendrite_tip_.ptr);             point_data_names.push_back("dendrite_tip");
+  point_fields.push_back(Vec_for_vtk_export_t(dendrite_tip_.vec, "dendrite_tip"));
+
+  //seed_map_                .get_array(); point_data.push_back(seed_map_.ptr);                 point_data_names.push_back("seed_num");
+  point_fields.push_back(Vec_for_vtk_export_t(seed_map_.vec, "seed_num"));
+
+  //smoothed_nodes_          .get_array(); point_data.push_back(smoothed_nodes_.ptr);           point_data_names.push_back("smoothed_nodes");
+  point_fields.push_back(Vec_for_vtk_export_t(smoothed_nodes_.vec, "smoothed_nodes"));
+
+  //front_phi_unsmooth_      .get_array(); point_data.push_back(front_phi_unsmooth_.ptr);       point_data_names.push_back("phi_unsmooth");
+  point_fields.push_back(Vec_for_vtk_export_t(front_phi_unsmooth_.vec, "phi_unsmooth"));
 
   VecScaleGhost(front_velo_norm_[0].vec, 1./scaling_);
 
   my_p4est_vtk_write_all_lists(p4est_, nodes_, ghost_,
                                P4EST_TRUE, P4EST_TRUE,
-                               name,
-                               point_data, point_data_names,
-                               cell_data, cell_data_names);
+                               name, point_fields, cell_fields
+                               /*point_data, point_data_names,
+                               cell_data, cell_data_names*/);
 
   VecScaleGhost(front_velo_norm_[0].vec, scaling_);
 
-  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
   ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
-  front_phi_.restore_array();
+//  front_phi_.restore_array();
 
-  if (contr_phi_.vec != NULL)
-  {
-    contr_phi_.restore_array();
-  }
+//  if (contr_phi_.vec != NULL)
+//  {
+//    contr_phi_.restore_array();
+//  }
 
-  tl_[0].restore_array();
-  ts_[0].restore_array();
-  cl_[0].restore_array();
+//  tl_[0].restore_array();
+//  ts_[0].restore_array();
+//  cl_[0].restore_array();
 
-  front_velo_norm_[0]      .restore_array();
-  front_curvature_         .restore_array();
-  bc_error_                .restore_array();
-  dendrite_number_         .restore_array();
-  dendrite_tip_            .restore_array();
-  seed_map_                .restore_array();
-  smoothed_nodes_          .restore_array();
-  front_phi_unsmooth_      .restore_array();
+//  front_velo_norm_[0]      .restore_array();
+//  front_curvature_         .restore_array();
+//  bc_error_                .restore_array();
+//  dendrite_number_         .restore_array();
+//  dendrite_tip_            .restore_array();
+//  seed_map_                .restore_array();
+//  smoothed_nodes_          .restore_array();
+//  front_phi_unsmooth_      .restore_array();
 
   PetscPrintf(p4est_->mpicomm, "VTK saved in %s\n", name);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
