@@ -1143,7 +1143,7 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   ns->set_bc(channel.get_bc_on_velocity(), channel.get_bc_on_pressure());
   CF_DIM* tmp[P4EST_DIM] = {DIM(external_acceleration[0], external_acceleration[1], external_acceleration[2])};
   ns->set_external_forces_per_unit_mass(tmp);
-  if( fix_restarted_grid )
+  if( fix_restarted_grid || cmd.contains("recalculate_grid") )
   {
 	ns->refine_coarsen_grid_after_restart( &channel, false, true );
 	CHKERRXX( PetscPrintf( ns->get_mpicomm(), "Applied refinement/coarsening to adapt to new grid configuration.\n" ) );
@@ -1643,6 +1643,7 @@ int main (int argc, char* argv[])
   cmd.add_option("nexport_avg",         "number of iterations between two exportation of averaged velocity profiles, default is " + std::to_string(default_nexport_avg));
   cmd.add_option("timing",              "if defined, saves timing information (info for every major N-S task) in a file on disk.");
   cmd.add_option("accuracy_check",      "if present, prints information about accuracy with comparison to analytical solution \n\t(ONLY activated if restarted, supposedly after steady-state reached). \n\tIf save_vtk is activated as well, the errors are exported to the vtk path for visualization in space.");
+  cmd.add_option("recalculate_grid",    "if present, recalculates the grid before restarting the simulation");
 
   if (cmd.parse(argc, argv, extra_info))
     return 0;
