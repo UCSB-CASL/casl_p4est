@@ -383,12 +383,12 @@ void set_alloy_parameters()
       heat_capacity_s.val = 356;       // J.kg-1.K-1
       thermal_cond_l.val  = 1.3;       // W.cm-1.K-1
       thermal_cond_s.val  = 1.3;       // W.cm-1.K-1
-      latent_heat.val     = 2588.7;    // J.cm-3 (this is latent heat multiplied by density! )
+      latent_heat.val     = 2600;    // J.cm-3 (this is latent heat multiplied by density! )
 
       num_comps.val = 2;
 
       solute_diff_0.val    = 1e-5;     // cm2.s-1 - concentration diffusion coefficient
-      solute_diff_1.val    = 5e-5;     // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_1.val    = 2e-5;     // cm2.s-1 - concentration diffusion coefficient
       initial_conc_0.val   = 0.107;    // at frac.
       initial_conc_1.val   = 0.094;    // at frac.
 
@@ -401,15 +401,15 @@ void set_alloy_parameters()
       part_coeff_0.val     = 0.83;    // partition coefficient
       part_coeff_1.val     = 0.83;    // partition coefficient */
 
-      melting_temp.val    =  1996;      // K
-      liquidus_slope_0.val =-874;      // K / at frac. - liquidous slope
-      liquidus_slope_1.val =-1378;     // K / at frac. - liquidous slope
-      part_coeff_0.val     = 0.848;    // partition coefficient
-      part_coeff_1.val     = 0.848;    // partition coefficient
+      melting_temp.val    =  1910;      // K
+      liquidus_slope_0.val =-543;      // K / at frac. - liquidous slope
+      liquidus_slope_1.val =-1036;     // K / at frac. - liquidous slope
+      part_coeff_0.val     = 0.94;    // partition coefficient
+      part_coeff_1.val     = 0.83;    // partition coefficient
 
-      eps_c.val = 3.0e-5/melting_temp.val;
+      eps_c.val = 1.0e-5;
       eps_v.val = 0.0e-2;
-      eps_a.val = 0.05*1.;
+      eps_a.val = 0.05;
       symmetry.val = 4;
 
       Pr.val = 23.1;
@@ -2717,6 +2717,11 @@ public:
             default:  return 0;
           }
         }
+        else{
+          return 0.;
+        }
+
+      break;
       case 8:{
         switch(what){
         case VAL: return (*vgamma_)(DIM(x,y,z));
@@ -3796,13 +3801,16 @@ int main (int argc, char* argv[])
   // set time steps
   double dt = cfl_number.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
 
+  double dt_max = base_cfl.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
 
 //  dt = 1.0e-3;
 
   double dt_curv = 0.000005*sqrt(dx*dx*dx)/MAX(eps_c.val, 1.e-20);
 
-  mas.set_dt(MIN(dt, dt_curv));
-  mas.set_dt_limits(0, MIN(dt_curv, 100.*dt));
+  //mas.set_dt(MIN(dt, dt_curv));
+  //mas.set_dt_limits(0, MIN(dt_curv, 100.*dt));
+  mas.set_dt_limits(0,dt_max);
+
 
   // TO-DO: revisit if we really want these dt limits or not
 
