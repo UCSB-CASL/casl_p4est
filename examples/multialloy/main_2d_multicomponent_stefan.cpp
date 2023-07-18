@@ -377,8 +377,8 @@ void set_alloy_parameters()
       break;
 
     case 2: // Co - 10.7at%W - 9.4at%Al (more realistic since D_W < D_Al)
-      density_l.val       = 9.2392e-3; // kg.cm-3
-      density_s.val       = 9.2392e-3; // kg.cm-3
+      density_l.val       = 9.24e-3; // kg.cm-3
+      density_s.val       = 9.24e-3; // kg.cm-3
       heat_capacity_l.val = 356;       // J.kg-1.K-1
       heat_capacity_s.val = 356;       // J.kg-1.K-1
       thermal_cond_l.val  = 1.3;       // W.cm-1.K-1
@@ -407,7 +407,7 @@ void set_alloy_parameters()
       part_coeff_0.val     = 0.94;    // partition coefficient
       part_coeff_1.val     = 0.83;    // partition coefficient
 
-      eps_c.val = 1.0e-5;
+      eps_c.val = 0.*1.0e-5;
       eps_v.val = 0.0e-2;
       eps_a.val = 0.05;
       symmetry.val = 4;
@@ -2522,6 +2522,8 @@ public:
         if (start_from_moving_front.val) {
           return (*initial_conc_all[idx])*(1. + (1.-analytic::kp[idx])/analytic::kp[idx]*
                                            exp(-cooling_velocity.val/(*solute_diff_all[idx])*(-front_phi_cf(DIM(x,y,z)-0*cooling_velocity.val*t))));
+        }else{
+          return *initial_conc_all[idx];
         }
       case  1:
       case  2:
@@ -2633,7 +2635,7 @@ public:
 #endif
       case -2: return analytic::ts_exact(t, ABS2(x-xc(), y-yc()));
       case -1: return analytic::ts_exact(t, ABS1(y-ymin()));
-      case  0: return analytic::Tstar+ front_location.val - y +exp(-25*(pow(x-2,2)+pow(y-0.5*front_location.val,2)));//analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
+      case  0: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
       case  1: return analytic::Tstar;
       case  2: return analytic::Tstar;
       case  3: return analytic::Tstar - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())))*thermal_cond_l()/thermal_cond_s();
@@ -2757,7 +2759,7 @@ public:
       case  0:
         if (start_from_moving_front.val) {
           return -cooling_velocity.val;
-        }
+        } else {return 0;}
       default: return 0;
     }
   }
@@ -2778,7 +2780,7 @@ public:
       case  0:
         if (start_from_moving_front.val) {
           return (y-front_location.val) / cooling_velocity.val;
-        }
+        }else {return 0;}
       default: return 0;
     }
   }
@@ -3549,7 +3551,7 @@ int main (int argc, char* argv[])
     default: break;
   }
 
-  if (mpi.rank() == 0 && 0)
+  if (mpi.rank() == 0 && 1)
   {
     ierr = PetscPrintf(mpi.comm(), "density_l: %g\n", density_l.val); CHKERRXX(ierr);
     ierr = PetscPrintf(mpi.comm(), "density_s: %g\n", density_s.val); CHKERRXX(ierr);
@@ -3967,6 +3969,7 @@ int main (int argc, char* argv[])
     // solve nonlinear system for temperature, concentration and velocity at t_n
     bc_error_max = 0;
     bc_error_avg = 0;
+
     if (!solve_w_fluids.val){
     sub_iterations += mas.one_step(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     }else{
@@ -3974,13 +3977,10 @@ int main (int argc, char* argv[])
     }
     //tn             += mas.get_dt();
 
-
-    MPI_Barrier(mpi.comm());
     if(geometry.val == 8 && keep_going){
       check_convergence_errors_and_save_to_vtk(&mas, mpi, iteration,
                                                fich_errors, name_errors);
     }
-    MPI_Barrier(mpi.comm());
 
     if (save_step_convergence() && keep_going) {
       // max bc error

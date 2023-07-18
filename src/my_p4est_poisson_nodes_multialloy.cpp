@@ -1347,7 +1347,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
 //      }
 //      // ---------------------
       pw_t_sol_jump_taylor_[idx] = front_temp_value_jump_->value(xyz_pr);
-      pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) + latent_heat_*vn_pr; //latent_heat_*density_s_*vn_pr;
+      pw_t_flx_jump_taylor_[idx] = front_temp_flux_jump_->value(xyz_pr) - latent_heat_*vn_pr; //latent_heat_*density_s_*vn_pr;
 //      if(front_phi_.ptr[n] < 5.e-2){
 //        printf("(%0.4f, %0.4f) nx = %0.2f, ny = %0.2f , actual jump = %0.4e , extra stuff = %0.4e, vn_pr = %0.4e \n \n", xyz_pr[0], xyz_pr[1], normal[0], normal[1], pw_t_flx_jump_taylor_[idx], latent_heat_*density_s_*vn_pr, vn_pr);
 //      }
