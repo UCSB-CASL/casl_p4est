@@ -460,6 +460,7 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
       }
     }
 
+//    VecView(psi_tl, PETSC_VIEWER_STDOUT_WORLD);
 //    MPI_Barrier(p4est_->mpicomm);
 //    PetscPrintf(p4est_->mpicomm, "Adjusting c0 boundary conditions ... \n");
 
@@ -482,7 +483,7 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
     if (bc_error_max_all != NULL) { bc_error_max_all->push_back(bc_error_max_); }
     if (bc_error_avg_all != NULL) { bc_error_avg_all->push_back(bc_error_avg_); }
 
-    ierr = PetscPrintf(p4est_->mpicomm, "Iteration %d: max bc error = %2.3e, avg bc error = %2.3e, max velo = %2.5e\n", iteration, bc_error_max_, bc_error_avg_, velo_max_); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_->mpicomm, "Iteration %d: max bc error = %2.7e, avg bc error = %2.7e, max velo = %2.7e\n", iteration, bc_error_max_, bc_error_avg_, velo_max_); CHKERRXX(ierr);
   }
 
   if (update_c0_robin_ == 1)
@@ -1404,7 +1405,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
 //      // ---------------------
 
 
-      pw_t_flx_jump_integr_[idx] = front_temp_flux_jump_->value(xyz_cd) + latent_heat_*vn_cd;// latent_heat_*density_s_*vn_cd;
+      pw_t_flx_jump_integr_[idx] = front_temp_flux_jump_->value(xyz_cd) - latent_heat_*vn_cd;// latent_heat_*density_s_*vn_cd;
       // Rochi:: updating this because the stefan condition for temp flux was modified to include density_s_ by Rochi and Elyce
       // ALERT: need to modify the above ^ in the same way I address the other one
       //PetscPrintf(p4est_->mpicomm, "ALERT: multialloy: temp jump is nontrivial to modify for nondimensionalization. Need to address this. \n");
@@ -1621,7 +1622,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values(int start, in
               /c_all[0]/(1.0-part_coeff_(0, c_all.data()));
 
           pw_psi_t_sol_jump_taylor_[idx] = 0;
-          pw_psi_t_flx_jump_taylor_[idx] = -del_vn*latent_heat_ ;// *density_s_;
+          pw_psi_t_flx_jump_taylor_[idx] = del_vn*latent_heat_ ;// *density_s_;
           // Rochi:: updating this because the stefan condition for temp flux was modified to include density_s_ by Rochi and Elyce
 
           // centroid
@@ -1648,7 +1649,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values(int start, in
           del_vn = (vn*(1.0-part_coeff_(0, c_all.data()))*interp_local.value(xyz) - conc_diff_[0]*del_vn)
               /c_all[0]/(1.0-part_coeff_(0, c_all.data()));
 
-          pw_psi_t_flx_jump_integr_[idx] = - del_vn*latent_heat_;//*density_s_;
+          pw_psi_t_flx_jump_integr_[idx] = del_vn*latent_heat_;//*density_s_;
           // Rochi:: updating this because the stefan condition for temp flux was modified to include density_s_ by Rochi and Elyce
         }
 
@@ -1857,16 +1858,18 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
                      - eps_v*vn
                      - eps_c*kappa
                      - gibbs_thomson_->value(xyz);
-      if(0){
+      if(0 && n == 443){
         printf("\n--------------------------------------------------------\n");
-        printf("Node %d, (%0.2f, %0.2f) -- error = %0.2e \n", n, xyz[0], xyz[1], error);
+        printf("Node %d, (%0.6f, %0.6f) -- error = %2.6e \n", n, xyz[0], xyz[1], error);
 
-        printf("tl_val = %0.4e \n", tl_val);
-        printf("liquidus = %0.4e \n", liquidus_value_(c_all.data()));
-        printf("eps_v = %0.2e \n", eps_v);
-        printf("vn = %0.4e \n", vn);
-        printf("eps_c = %0.2e \n", eps_c);
-        printf("kappa = %0.2e \n", kappa);
+        printf("tl_val = %0.8f \n", tl_val);
+        printf("cl[0] = %0.8f \n", c_all[0]);
+        printf("cl[1] = %0.8f \n", c_all[1]);
+        printf("liquidus = %0.8e \n", liquidus_value_(c_all.data()));
+        printf("eps_v = %0.6e \n", eps_v);
+        printf("vn = %0.8e \n", vn);
+        printf("eps_c = %0.6e \n", eps_c);
+        printf("kappa = %0.8e \n", kappa);
         printf("gibbs_thomson_ = %0.4e \n", gibbs_thomson_->value(xyz));
         printf("\n--------------------------------------------------------\n");
       }
@@ -1886,6 +1889,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
       }
 
 //      printf("C0 CHANGE UPDATE SCHEME : %d \n", scheme);
+      // elyce note to self: we are in scheme 2
       switch (scheme)
       {
         case 0:
@@ -1944,9 +1948,14 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
           psi_vn = (vn*(1.-part_coeff_all[0])*psi_c_all[0] - conc_diff_[0]*psi_vn)/c_all[0]/(1.-part_coeff_all[0]);
 
           pw_c0_change_[idx] /= psi_tl_val - psi_conc_term - eps_v*psi_vn;
-//          printf("Node %d, (%0.2f, %0.2f) : c_all = %0.2e, psi_vn = %0.2e, pw_c0_change = %0.2e \n", n, xyz[0], xyz[1], c_all[0], psi_vn, pw_c0_change_[idx]);
 
           pw_inverse_gradient_[idx] = 1./(psi_tl_val - psi_conc_term - eps_v*psi_vn);
+
+//          if(n==443)printf("Node %d, (%0.6f, %0.6f) : "
+//                           "c_all = %0.6e, psi_vn = %0.6e, \n pw_c0_change = %0.6e, pw inverse gradient = %0.6e \n"
+//                           "psi_tl = %0.6e, psi_conc_term = %6e, eps_v = %0.6e \n",
+//                           n, xyz[0], xyz[1], c_all[0], psi_vn, pw_c0_change_[idx], pw_inverse_gradient_[idx],
+//                           psi_tl_val, psi_conc_term, eps_v);
         }
         break;
         case 3:

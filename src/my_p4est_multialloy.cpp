@@ -992,11 +992,11 @@ void my_p4est_multialloy_t::update_grid()
   // (gonna use front_curvature_ as tmp, it will be destroyed later anyway)
   ierr = VecCopyGhost(front_phi_.vec, front_curvature_.vec); CHKERRXX(ierr);
 
-  front_phi_.get_array();
-  double xyz_temp[P4EST_DIM];
-  node_xyz_fr_n(443,p4est_,nodes_,xyz_temp);
-  PetscPrintf(p4est_->mpicomm, "\nphi at node 443 at (x,y)->(%.6f,%.6f) :: %.6f\n", xyz_temp[0], xyz_temp[1], front_phi_.ptr[443]);
-  front_phi_.restore_array();
+//  front_phi_.get_array();
+//  double xyz_temp[P4EST_DIM];
+//  node_xyz_fr_n(443,p4est_,nodes_,xyz_temp);
+//  PetscPrintf(p4est_->mpicomm, "\nphi at node 443 at (x,y)->(%.6f,%.6f) :: %.6f\n", xyz_temp[0], xyz_temp[1], front_phi_.ptr[443]);
+//  front_phi_.restore_array();
 
   if (num_time_layers_ == 2) {
     sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec, NULL, contr_phi_.vec);

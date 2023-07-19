@@ -3903,6 +3903,14 @@ int main (int argc, char* argv[])
   if (geometry.val==8){
     check_convergence_errors_and_save_to_vtk(&mas, mpi, 10000);
   }
+
+  // Do an initial update grid to kick things off in a nice direction:
+  mas.compute_dt();
+  mas.save_VTK(-2);
+  mas.update_grid();
+  mas.update_grid_solid();
+  mas.save_VTK(-1);
+
   while (1)
   {
 //    // CHeck to make sure the convergence fields are at least initialized correctly
@@ -3976,7 +3984,7 @@ int main (int argc, char* argv[])
     sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     }
     //tn             += mas.get_dt();
-
+    exit(0);
     if(geometry.val == 8 && keep_going){
       check_convergence_errors_and_save_to_vtk(&mas, mpi, iteration,
                                                fich_errors, name_errors);
