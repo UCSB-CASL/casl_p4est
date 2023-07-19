@@ -203,7 +203,7 @@ protected:
   bool refine_only_inside;
 public:
   splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2, double uniform_band_ = -1.0)
-    : splitting_criteria_t(min_lvl, max_lvl, lip), uniform_band(uniform_band_), refine_only_inside(false)
+    : splitting_criteria_t(min_lvl, max_lvl, lip, uniform_band_), uniform_band(uniform_band_), refine_only_inside(false)
   {
   }
   splitting_criteria_tag_t(const splitting_criteria_t* splitting_criteria_, double uniform_band_ = -1.0)

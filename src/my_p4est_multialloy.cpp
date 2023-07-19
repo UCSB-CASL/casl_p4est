@@ -196,6 +196,7 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   }
 
   cl0_grad_.destroy();
+  psi_tl_.destroy();
   psi_ts_.destroy();
   psi_cl_.destroy();
   //--------------------------------------------------
@@ -991,11 +992,24 @@ void my_p4est_multialloy_t::update_grid()
   // (gonna use front_curvature_ as tmp, it will be destroyed later anyway)
   ierr = VecCopyGhost(front_phi_.vec, front_curvature_.vec); CHKERRXX(ierr);
 
+//  front_phi_.get_array();
+//  double xyz_temp[P4EST_DIM];
+//  node_xyz_fr_n(443,p4est_,nodes_,xyz_temp);
+//  PetscPrintf(p4est_->mpicomm, "\nphi at node 443 at (x,y)->(%.6f,%.6f) :: %.6f\n", xyz_temp[0], xyz_temp[1], front_phi_.ptr[443]);
+//  front_phi_.restore_array();
+
   if (num_time_layers_ == 2) {
     sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
   } else {
     sl.update_p4est(front_velo_[1].vec, front_velo_[0].vec, dt_[1], dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
   }
+
+//  if (num_time_layers_ == 2) {
+//    sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
+//  } else {
+//    sl.update_p4est(front_velo_[1].vec, front_velo_[0].vec, dt_[1], dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
+//      sl.update_p4est();
+//  }
 
   /* interpolate the quantities onto the new grid */
   // also shifts n+1 -> n
@@ -1154,7 +1168,7 @@ void my_p4est_multialloy_t::update_grid()
   {
     VecScaleGhost(front_phi_.vec, -1.);
 
-    ls_new.extend_Over_Interface_TVD_Full(front_phi_.vec, seed_map_.vec, 20, 1); // Rochi changing 0 to 1
+    ls_new.extend_Over_Interface_TVD_Full(front_phi_.vec, seed_map_.vec, 20, 0); // Rochi changing 0 to 1
 
     seed_map_.get_array();
     foreach_node(n, nodes_) seed_map_.ptr[n] = round(seed_map_.ptr[n]);
@@ -2148,7 +2162,6 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
 
   variable_step_BDF_implicit(num_time_layers_-1, dt_, time_coeffs);
 
-
   foreach_node(n, nodes_)
   {
     if (vol_heat_gen_ != NULL)
@@ -2205,9 +2218,6 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
 
   solver_all_in_one.set_composition_parameters(conc_diag.data(), solute_diff_.data());
 
-
-  //std::cout<< "Diagonal data :: " << density_l_*heat_capacity_l_*time_coeffs[0]/dt_[0] <<"\n";
-  //std::exit(EXIT_FAILURE);
   solver_all_in_one.set_thermal_parameters(latent_heat_,
                                            density_l_*heat_capacity_l_*time_coeffs[0]/dt_[0], thermal_cond_l_,
                                            density_s_*heat_capacity_s_*time_coeffs[0]/dt_[0], thermal_cond_s_);
@@ -2254,6 +2264,8 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
       bc_error_.vec, bc_error_max, bc_error_avg,
       num_pdes, bc_error_max_all, bc_error_avg_all,
       psi_tl_.vec, psi_ts_.vec, psi_cl_.vec.data());
+
+
   rhs_tl.destroy();
   rhs_ts.destroy();
   rhs_cl.destroy();
