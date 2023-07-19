@@ -3984,7 +3984,7 @@ int main (int argc, char* argv[])
     sub_iterations += mas.one_step_w_fluids(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     }
     //tn             += mas.get_dt();
-    exit(0);
+//    exit(0);
     if(geometry.val == 8 && keep_going){
       check_convergence_errors_and_save_to_vtk(&mas, mpi, iteration,
                                                fich_errors, name_errors);
