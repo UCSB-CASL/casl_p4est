@@ -5243,7 +5243,6 @@ int main(int argc, char** argv) {
     // Set all the things needed:
     setup_initial_parameters_and_report(mpi, stefan_w_fluids_solver, grid_res_iter);
 
-    pl.generate_bash_file("/home/casl_laptop24/workspace/CASL/", "multialloy_with_fluids", "generic_bash_file.sh");
     // ------------------------------------------------------------
     // Initialize relevant boundary condition objects:
     // ------------------------------------------------------------
@@ -5335,6 +5334,9 @@ int main(int argc, char** argv) {
                                           fich_errors, name_errors,
                                           fich_data, name_data,
                                           fich_mem, name_mem);
+
+    // to-do later: fix this if I want it
+//    pl.generate_bash_file("$PWD", "multialloy_with_fluids", "generic_bash_file.sh");
 
     // ------------------------------------------------------------
 
