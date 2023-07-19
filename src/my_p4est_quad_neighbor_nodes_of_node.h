@@ -42,6 +42,17 @@ extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_gradient;
 #define PetscLogFlops(n) 0
 #endif
 
+// Define a compile-time constant size for simultaneous calculations on vectors (e.g. derivatives for several field).
+#ifndef CASL_NUM_SIMULTANEOUS_FIELD_COMPUT
+#define CASL_NUM_SIMULTANEOUS_FIELD_COMPUT 20
+#endif
+
+#ifndef CASL_NUM_SIMULTANEOUS_BLOCK_COMPUT
+#define CASL_NUM_SIMULTANEOUS_BLOCK_COMPUT 4
+#endif
+
+#define CASL_NUM_SIMULTANEOUS_FxB_COMPUT CASL_NUM_SIMULTANEOUS_BLOCK_COMPUT * CASL_NUM_SIMULTANEOUS_FIELD_COMPUT
+
 typedef struct node_interpolation_weight{
   node_interpolation_weight(const p4est_locidx_t & idx, const double& ww_): weight(ww_), node_idx(idx) {}
   double weight;
@@ -160,6 +171,18 @@ const double zero_threshold_qnnn = EPS;
 
 class quad_neighbor_nodes_of_node_t {
   friend class my_p4est_level_set_t;
+public:
+  static void assert_fields_and_blocks( const unsigned int& n_fields, const unsigned int& n_blocks=1 )
+  {
+
+    if( n_fields > CASL_NUM_SIMULTANEOUS_FIELD_COMPUT ){
+      std::cout << "We are about to have a problem ... the number of fields to do derivatives requested was " << n_fields << ", but the current max number allowed is " << CASL_NUM_SIMULTANEOUS_FIELD_COMPUT<< std::endl;
+      throw std::runtime_error( "[CASL_ERROR] You're requesting more simultaneous arrays than specified in macro CASL_NUM_SIMULTANEOUS_FIELD_COMPUT" );
+    }
+	if( n_blocks > CASL_NUM_SIMULTANEOUS_BLOCK_COMPUT )
+	  throw std::runtime_error( "[CASL_ERROR] You're requesting more simultaneous blocks than specified in macro CASL_NUM_SIMULTANEOUS_BLOCK_COMPUT" );
+  }
+
 private:
   static inline bool check_if_zero(const double& value) { return (fabs(value) < zero_threshold_qnnn); } // needs a nondimensional argument, otherwise it's meaningless
   // very elementary operations in the most synthetic forms
@@ -617,73 +640,34 @@ private:
   inline void laplace_all_components(const double *f[], DIM(double *fxx, double *fyy, double *fzz), const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[0].calculate_all_components(f, fxx, n_arrays, bs);
-      second_derivative_operator[1].calculate_all_components(f, fyy, n_arrays, bs);
-#ifdef P4_TO_P8
-      second_derivative_operator[2].calculate_all_components(f, fzz, n_arrays, bs);
-#endif
-      return;
-    }
-    */
-    std::vector<double> tmp_000(n_arrays*bs);
-    std::vector<double> tmp_m00(n_arrays*bs); std::vector<double> tmp_p00(n_arrays*bs);
-    std::vector<double> tmp_0m0(n_arrays*bs); std::vector<double> tmp_0p0(n_arrays*bs);
-#ifdef P4_TO_P8
-    std::vector<double> tmp_00m(n_arrays*bs); std::vector<double> tmp_00p(n_arrays*bs);
-#endif
-    laplace_all_components(f, tmp_000.data(), tmp_m00.data(), tmp_p00.data(), tmp_0m0.data(), tmp_0p0.data() ONLY3D(COMMA tmp_00m.data() COMMA tmp_00p.data()), DIM(fxx, fyy, fzz), n_arrays, bs);
-    return;
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double tmp_000[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], tmp_m00[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], tmp_p00[CASL_NUM_SIMULTANEOUS_FxB_COMPUT],
+		   tmp_0m0[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], tmp_0p0[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]
+		   ONLY3D(COMMA tmp_00m[CASL_NUM_SIMULTANEOUS_FxB_COMPUT] COMMA tmp_00p[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
+    laplace_all_components(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0 ONLY3D(COMMA tmp_00m COMMA tmp_00p), DIM(fxx, fyy, fzz), n_arrays, bs);
   }
 
   inline void laplace_component(const double *f[], DIM(double *fxx, double *fyy, double *fzz),  const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
     P4EST_ASSERT(bs > 1);
     P4EST_ASSERT(comp < bs);
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[0].calculate_component(f, fxx, n_arrays, bs, comp);
-      second_derivative_operator[1].calculate_component(f, fyy, n_arrays, bs, comp);
-#ifdef P4_TO_P8
-      second_derivative_operator[2].calculate_component(f, fzz, n_arrays, bs, comp);
-#endif
-      return;
-    }
-    */
-    std::vector<double> tmp_000(n_arrays);
-    std::vector<double> tmp_m00(n_arrays); std::vector<double> tmp_p00(n_arrays);
-    std::vector<double> tmp_0m0(n_arrays); std::vector<double> tmp_0p0(n_arrays);
-#ifdef P4_TO_P8
-    std::vector<double> tmp_00m(n_arrays); std::vector<double> tmp_00p(n_arrays);
-#endif
-    laplace_component(f, tmp_000.data(), tmp_m00.data(), tmp_p00.data(), tmp_0m0.data(), tmp_0p0.data() ONLY3D(COMMA tmp_00m.data() COMMA tmp_00p.data()), DIM(fxx, fyy, fzz), n_arrays, bs, comp);
-    return;
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double tmp_000[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], tmp_m00[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], tmp_p00[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT],
+		   tmp_0m0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], tmp_0p0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]
+		   ONLY3D(COMMA tmp_00m[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT] COMMA tmp_00p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    laplace_component(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0 ONLY3D(COMMA tmp_00m COMMA tmp_00p), DIM(fxx, fyy, fzz), n_arrays, bs, comp);
   }
 
   inline void laplace(const double *f[], DIM(double *fxx, double *fyy, double *fzz),  const unsigned int &n_arrays) const
   {
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[0].calculate(f, fxx, n_arrays);
-      second_derivative_operator[1].calculate(f, fyy, n_arrays);
-#ifdef P4_TO_P8
-      second_derivative_operator[2].calculate(f, fzz, n_arrays);
-#endif
-      return;
-    }
-    */
-    std::vector<double> tmp_000(n_arrays);
-    std::vector<double> tmp_m00(n_arrays); std::vector<double> tmp_p00(n_arrays);
-    std::vector<double> tmp_0m0(n_arrays); std::vector<double> tmp_0p0(n_arrays);
-#ifdef P4_TO_P8
-    std::vector<double> tmp_00m(n_arrays); std::vector<double> tmp_00p(n_arrays);
-#endif
-    laplace(f, tmp_000.data(), tmp_m00.data(), tmp_p00.data(), tmp_0m0.data(), tmp_0p0.data() ONLY3D(COMMA tmp_00m.data() COMMA tmp_00p.data()), DIM(fxx, fyy, fzz), n_arrays);
-    return;
+	assert_fields_and_blocks( n_arrays );
+
+	double tmp_000[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], tmp_m00[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], tmp_p00[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT],
+		   tmp_0m0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], tmp_0p0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]
+		   ONLY3D(COMMA tmp_00m[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT] COMMA tmp_00p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    laplace(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0 ONLY3D(COMMA tmp_00m COMMA tmp_00p), DIM(fxx, fyy, fzz), n_arrays);
   }
 
 
@@ -694,29 +678,10 @@ private:
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-    /*
-    if(quadratic_interpolators_are_set)
-    {
-      const unsigned int bs_node_000 = bs*node_000;
-      for (unsigned int k = 0; k < n_arrays; ++k){
-        const unsigned int kbs = k*bs;
-        for (unsigned int comp = 0; comp < bs; ++comp)
-          f_000[kbs + comp] = f[k][bs_node_000 + comp];
-      }
-      quadratic_interpolator[dir::f_m00].calculate_all_components(f, f_m00, n_arrays, bs);
-      quadratic_interpolator[dir::f_p00].calculate_all_components(f, f_p00, n_arrays, bs);
-      quadratic_interpolator[dir::f_0m0].calculate_all_components(f, f_0m0, n_arrays, bs);
-      quadratic_interpolator[dir::f_0p0].calculate_all_components(f, f_0p0, n_arrays, bs);
-#ifdef P4_TO_P8
-      quadratic_interpolator[dir::f_00m].calculate_all_components(f, f_00m, n_arrays, bs);
-      quadratic_interpolator[dir::f_00p].calculate_all_components(f, f_00p, n_arrays, bs);
-#endif
-      return;
-    }
-    */
+	assert_fields_and_blocks( n_arrays, bs );
 
-    std::vector<double> DIM(fxx(n_arrays*bs), fyy(n_arrays*bs), fzz(n_arrays*bs));
-    laplace_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx.data(), fyy.data(), fzz.data()),  n_arrays, bs);
+    double DIM(fxx[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fyy[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fzz[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
+    laplace_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz), n_arrays, bs);
     // third order interpolation
     for (unsigned int k = 0; k < n_arrays*bs; ++k) {
       f_m00[k] -= (0.5*d_m00_m0*d_m00_p0*fyy[k] ONLY3D( + 0.5*d_m00_0m*d_m00_0p*fzz[k]));
@@ -739,7 +704,6 @@ private:
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-    return;
   }
 
   inline void ngbd_with_quadratic_interpolation_component(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p), const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
@@ -749,26 +713,10 @@ private:
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-    /*
-    if(quadratic_interpolators_are_set)
-    {
-      const unsigned int bs_node_000 = bs*node_000;
-      for (unsigned int k = 0; k < n_arrays; ++k)
-        f_000[k] = f[k][bs_node_000 + comp];
-      quadratic_interpolator[dir::f_m00].calculate_all_components(f, f_m00, n_arrays, bs);
-      quadratic_interpolator[dir::f_p00].calculate_all_components(f, f_p00, n_arrays, bs);
-      quadratic_interpolator[dir::f_0m0].calculate_all_components(f, f_0m0, n_arrays, bs);
-      quadratic_interpolator[dir::f_0p0].calculate_all_components(f, f_0p0, n_arrays, bs);
-#ifdef P4_TO_P8
-      quadratic_interpolator[dir::f_00m].calculate_all_components(f, f_00m, n_arrays, bs);
-      quadratic_interpolator[dir::f_00p].calculate_all_components(f, f_00p, n_arrays, bs);
-#endif
-      return;
-    }
-    */
+	assert_fields_and_blocks( n_arrays );
 
-    std::vector<double> DIM(fxx(n_arrays), fyy(n_arrays), fzz(n_arrays));
-    laplace_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx.data(), fyy.data(), fzz.data()),  n_arrays, bs, comp);
+    double DIM(fxx[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fyy[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fzz[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    laplace_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays, bs, comp);
     // third order interpolation
     for (unsigned int k = 0; k < n_arrays; ++k) {
       f_m00[k] -= (0.5*d_m00_m0*d_m00_p0*fyy[k] ONLY3D( + 0.5*d_m00_0m*d_m00_0p*fzz[k]));
@@ -791,7 +739,6 @@ private:
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-    return;
   }
 
   void x_ngbd_with_quadratic_interpolation_all_components(const double *f[], double *f_m00, double *f_000, double *f_p00, const unsigned int &n_arrays, const unsigned int &bs) const;
@@ -808,158 +755,108 @@ private:
   inline void dxx_central_all_components(const double *f[], double *fxx, const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[0].calculate_all_components(f, fxx, n_arrays, bs);
-      return;
-    }
-    */
-    std::vector<double> f_m00(n_arrays*bs), f_000(n_arrays*bs), f_p00(n_arrays*bs);
-    x_ngbd_with_quadratic_interpolation_all_components(f, f_m00.data(), f_000.data(), f_p00.data(), n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double f_m00[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_000[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_p00[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
+    x_ngbd_with_quadratic_interpolation_all_components(f, f_m00, f_000, f_p00, n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays*bs; ++k)
       fxx[k] = central_second_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
-    return;
   }
+
   inline void dxx_central_component(const double *f[], double *fxx, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
     P4EST_ASSERT(bs > 1);
     P4EST_ASSERT(comp < bs);
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[0].calculate_component(f, fxx, n_arrays, bs, comp);
-      return;
-    }
-    */
-    std::vector<double> f_m00(n_arrays), f_000(n_arrays), f_p00(n_arrays);
-    x_ngbd_with_quadratic_interpolation_component(f, f_m00.data(), f_000.data(), f_p00.data(), n_arrays, bs, comp);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double f_m00[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_000[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_p00[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    x_ngbd_with_quadratic_interpolation_component(f, f_m00, f_000, f_p00, n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fxx[k] = central_second_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
-    return;
+
   }
+
   inline void dxx_central(const double *f[], double *fxx, const unsigned int &n_arrays) const
   {
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[0].calculate(f, fxx, n_arrays);
-      return;
-    }
-    */
-    std::vector<double> f_m00(n_arrays), f_000(n_arrays), f_p00(n_arrays);
-    x_ngbd_with_quadratic_interpolation(f, f_m00.data(), f_000.data(), f_p00.data(), n_arrays);
+	assert_fields_and_blocks( n_arrays );
+
+    double f_m00[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_000[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_p00[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fxx[k] = central_second_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
-    return;
   }
+
   inline void dyy_central_all_components(const double *f[], double *fyy, const unsigned int &n_arrays, const unsigned int &bs) const
   {
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[1].calculate_all_components(f, fyy, n_arrays, bs);
-      return;
-    }
-    */
     P4EST_ASSERT(bs > 1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
-    std::vector<double> f_0m0(n_arrays*bs), f_000(n_arrays*bs), f_0p0(n_arrays*bs);
-    y_ngbd_with_quadratic_interpolation_all_components(f, f_0m0.data(), f_000.data(), f_0p0.data(), n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double f_0m0[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_000[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_0p0[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
+    y_ngbd_with_quadratic_interpolation_all_components(f, f_0m0, f_000, f_0p0, n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays*bs; ++k)
       fyy[k] = central_second_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
-    return;
   }
+
   inline void dyy_central_component(const double *f[], double *fyy, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[1].calculate_component(f, fyy, n_arrays, bs, comp);
-      return;
-    }
-    */
     P4EST_ASSERT(bs > 1);
     P4EST_ASSERT(comp < bs);
-    std::vector<double> f_0m0(n_arrays), f_000(n_arrays), f_0p0(n_arrays);
-    y_ngbd_with_quadratic_interpolation_component(f, f_0m0.data(), f_000.data(), f_0p0.data(), n_arrays, bs, comp);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double f_0m0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_000[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_0p0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    y_ngbd_with_quadratic_interpolation_component(f, f_0m0, f_000, f_0p0, n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fyy[k] = central_second_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
-    return;
   }
+
   inline void dyy_central(const double *f[], double *fyy, const unsigned int &n_arrays) const
   {
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[1].calculate(f, fyy, n_arrays);
-      return;
-    }
-    */
-    std::vector<double> f_0m0(n_arrays), f_000(n_arrays), f_0p0(n_arrays);
-    y_ngbd_with_quadratic_interpolation(f, f_0m0.data(), f_000.data(), f_0p0.data(), n_arrays);
+	assert_fields_and_blocks( n_arrays );
+
+    double f_0m0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_000[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_0p0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fyy[k] = central_second_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
-    return;
   }
+
 #ifdef P4_TO_P8
   inline void dzz_central_all_components(const double *f[], double *fzz, const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[2].calculate_all_components(f, fzz, n_arrays, bs);
-      return;
-    }
-    */
-    std::vector<double> f_00m(n_arrays*bs), f_000(n_arrays*bs), f_00p(n_arrays*bs);
-    z_ngbd_with_quadratic_interpolation_all_components(f, f_00m.data(), f_000.data(), f_00p.data(), n_arrays, bs);
+    assert_fields_and_blocks( n_arrays, bs );
+
+    double f_00m[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_000[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_00p[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
+    z_ngbd_with_quadratic_interpolation_all_components(f, f_00m, f_000, f_00p, n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays*bs; ++k)
       fzz[k] = central_second_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
-    return;
   }
+
   inline void dzz_central_component(const double *f[], double *fzz, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
     P4EST_ASSERT(bs > 1);
     P4EST_ASSERT(comp < bs);
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[2].calculate_component(f, fzz, n_arrays, bs, comp);
-      return;
-    }
-    */
-    std::vector<double> f_00m(n_arrays), f_000(n_arrays), f_00p(n_arrays);
-    z_ngbd_with_quadratic_interpolation_component(f, f_00m.data(), f_000.data(), f_00p.data(), n_arrays, bs, comp);
+    assert_fields_and_blocks( n_arrays, bs );
+
+    double f_00m[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_000[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_00p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    z_ngbd_with_quadratic_interpolation_component(f, f_00m, f_000, f_00p, n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fzz[k] = central_second_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
     return;
   }
+
   inline void dzz_central(const double *f[], double *fzz, const unsigned int &n_arrays) const
   {
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[2].calculate(f, fzz, n_arrays);
-      return;
-    }
-    */
-    std::vector<double> f_00m(n_arrays), f_000(n_arrays), f_00p(n_arrays);
-    z_ngbd_with_quadratic_interpolation(f, f_00m.data(), f_000.data(), f_00p.data(), n_arrays);
+    assert_fields_and_blocks( n_arrays );
+
+    double f_00m[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_000[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_00p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    z_ngbd_with_quadratic_interpolation(f, f_00m, f_000, f_00p, n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fzz[k] = central_second_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
-    return;
   }
 #endif
+
   inline void dd_central_all_components(const unsigned short &der, const double *f[], double *fdd, const unsigned int &n_arrays, const unsigned int &bs) const
   {
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[der].calculate_all_components(f, fdd, n_arrays, bs);
-      return;
-    }
-    */
     switch (der) {
     case dir::x:
       dxx_central_all_components(f, fdd, n_arrays, bs);
@@ -978,17 +875,10 @@ private:
 #endif
       break;
     }
-    return;
   }
+
   inline void dd_central_component(const unsigned short &der, const double *f[], double *fdd, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[der].calculate_component(f, fdd, n_arrays, bs, comp);
-      return;
-    }
-    */
     switch (der) {
     case dir::x:
       dxx_central_component(f, fdd, n_arrays, bs, comp);
@@ -1007,17 +897,10 @@ private:
 #endif
       break;
     }
-    return;
   }
+
   inline void dd_central(const unsigned short &der, const double *f[], double *fdd, const unsigned int &n_arrays) const
   {
-    /*
-    if(second_derivative_operators_are_set)
-    {
-      second_derivative_operator[der].calculate(f, fdd, n_arrays);
-      return;
-    }
-    */
     switch (der) {
     case dir::x:
       dxx_central(f, fdd, n_arrays);
@@ -1036,7 +919,6 @@ private:
 #endif
       break;
     }
-    return;
   }
 
   // first-derivatives-related procedures
@@ -1046,21 +928,14 @@ private:
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-    /*
-    if(gradient_operator_is_set)
-    {
-      gradient_operator[0].calculate_all_components(f, fx, n_arrays, bs);
-      gradient_operator[1].calculate_all_components(f, fy, n_arrays, bs);
-#ifdef P4_TO_P8
-      gradient_operator[2].calculate_all_components(f, fz, n_arrays, bs);
-#endif
-      return;
-    }
-    */
-    std::vector<double> f_000(n_arrays*bs), f_m00(n_arrays*bs), f_p00(n_arrays*bs), f_0m0(n_arrays*bs), f_0p0(n_arrays*bs) ONLY3D(COMMA f_00m(n_arrays*bs) COMMA f_00p(n_arrays*bs));
-    linearly_interpolated_neighbors_all_components(f, f_000.data(), f_m00.data(), f_p00.data(), f_0m0.data(), f_0p0.data() ONLY3D(COMMA f_00m.data() COMMA f_00p.data()), n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
 
-    std::vector<double> DIM(naive_Dx(n_arrays*bs), naive_Dy(n_arrays*bs), naive_Dz(n_arrays*bs));
+    double f_000[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_m00[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_p00[CASL_NUM_SIMULTANEOUS_FxB_COMPUT],
+		   f_0m0[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], f_0p0[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]
+		   ONLY3D(COMMA f_00m[CASL_NUM_SIMULTANEOUS_FxB_COMPUT] COMMA f_00p[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
+    linearly_interpolated_neighbors_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays, bs);
+
+    double DIM(naive_Dx[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], naive_Dy[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], naive_Dz[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
     for (unsigned int k = 0; k < n_arrays*bs; ++k) {
       naive_Dx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
       naive_Dy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
@@ -1068,11 +943,10 @@ private:
       naive_Dz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-    correct_naive_first_derivatives(f, DIM(naive_Dx.data(), naive_Dy.data(), naive_Dz.data()), DIM(fx, fy, fz), n_arrays, bs, bs);
+    correct_naive_first_derivatives(f, DIM(naive_Dx, naive_Dy, naive_Dz), DIM(fx, fy, fz), n_arrays, bs, bs);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-    return;
   }
 
   inline void gradient_component(const double *f[], DIM(double *fx, double *fy, double *fz), const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
@@ -1082,21 +956,14 @@ private:
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-    /*
-    if(gradient_operator_is_set)
-    {
-      gradient_operator[0].calculate_component(f, fx, n_arrays, bs, comp);
-      gradient_operator[1].calculate_component(f, fy, n_arrays, bs, comp);
-#ifdef P4_TO_P8
-      gradient_operator[2].calculate_component(f, fz, n_arrays, bs, comp);
-#endif
-      return;
-    }
-    */
-    std::vector<double> f_000(n_arrays), f_m00(n_arrays), f_p00(n_arrays), f_0m0(n_arrays), f_0p0(n_arrays) ONLY3D(COMMA f_00m(n_arrays) COMMA f_00p(n_arrays));
-    linearly_interpolated_neighbors_component(f, f_000.data(), f_m00.data(), f_p00.data(), f_0m0.data(), f_0p0.data() ONLY3D(COMMA f_00m.data() COMMA f_00p.data()), n_arrays, bs, comp);
+	assert_fields_and_blocks( n_arrays, bs );
 
-    std::vector<double> DIM(naive_Dx(n_arrays), naive_Dy(n_arrays), naive_Dz(n_arrays));
+    double f_000[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_m00[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_p00[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT],
+		   f_0m0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_0p0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]
+		   ONLY3D(COMMA f_00m[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT] COMMA f_00p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    linearly_interpolated_neighbors_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays, bs, comp);
+
+    double DIM(naive_Dx[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], naive_Dy[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], naive_Dz[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       naive_Dx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
       naive_Dy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
@@ -1104,32 +971,25 @@ private:
       naive_Dz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-    correct_naive_first_derivatives(f, DIM(naive_Dx.data(), naive_Dy.data(), naive_Dz.data()), DIM(fx, fy, fz), n_arrays, bs, comp);
+    correct_naive_first_derivatives(f, DIM(naive_Dx, naive_Dy, naive_Dz), DIM(fx, fy, fz), n_arrays, bs, comp);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-    return;
   }
+
   inline void gradient(const double *f[], DIM(double *fx, double *fy, double *fz), const unsigned int &n_arrays) const
   {
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-    /*
-    if(gradient_operator_is_set)
-    {
-      gradient_operator[0].calculate(f, fx, n_arrays);
-      gradient_operator[1].calculate(f, fy, n_arrays);
-#ifdef P4_TO_P8
-      gradient_operator[2].calculate(f, fz, n_arrays);
-#endif
-      return;
-    }
-    */
-    std::vector<double> f_000(n_arrays), f_m00(n_arrays), f_p00(n_arrays), f_0m0(n_arrays), f_0p0(n_arrays) ONLY3D(COMMA f_00m(n_arrays) COMMA f_00p(n_arrays));
-    linearly_interpolated_neighbors(f, f_000.data(), f_m00.data(), f_p00.data(), f_0m0.data(), f_0p0.data() ONLY3D(COMMA f_00m.data() COMMA f_00p.data()), n_arrays);
+	assert_fields_and_blocks( n_arrays );
 
-    std::vector<double> DIM(naive_Dx(n_arrays), naive_Dy(n_arrays), naive_Dz(n_arrays));
+    double f_000[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_m00[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_p00[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT],
+		   f_0m0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], f_0p0[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]
+		   ONLY3D(COMMA f_00m[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT] COMMA f_00p[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    linearly_interpolated_neighbors(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays);
+
+    double DIM(naive_Dx[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], naive_Dy[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], naive_Dz[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       naive_Dx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
       naive_Dy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
@@ -1137,11 +997,10 @@ private:
       naive_Dz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-    correct_naive_first_derivatives(f, DIM(naive_Dx.data(), naive_Dy.data(), naive_Dz.data()), DIM(fx, fy, fz), n_arrays, 1, 1);
+    correct_naive_first_derivatives(f, DIM(naive_Dx, naive_Dy, naive_Dz), DIM(fx, fy, fz), n_arrays, 1, 1);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-    return;
   }
 
   /**
@@ -1520,19 +1379,19 @@ public:
   inline void laplace(const double *f, double fxxyyzz[P4EST_DIM]) const
   {
     laplace(&f, DIM(&fxxyyzz[0], &fxxyyzz[1], &fxxyyzz[2]), 1);
-    return;
   }
 
   inline void laplace(const double *f, DIM(double &fxx, double &fyy, double &fzz)) const
   {
     laplace(&f, DIM(&fxx, &fyy, &fzz), 1);
-    return;
   }
 
   inline void laplace(const double *f[], double *serialized_fxxyyzz, const unsigned int &n_arrays) const
   {
-    std::vector<double> DIM(fxx(n_arrays), fyy(n_arrays), fzz(n_arrays));
-    laplace(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays);
+	assert_fields_and_blocks( n_arrays );
+
+	double DIM(fxx[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fyy[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fzz[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    laplace(f, DIM(fxx, fyy, fzz), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*k;
       serialized_fxxyyzz[l_offset + 0] = fxx[k];
@@ -1541,13 +1400,14 @@ public:
       serialized_fxxyyzz[l_offset + 2] = fzz[k];
 #endif
     }
-    return;
   }
 
   inline void laplace_insert_in_vectors(const double *f[], DIM(double *fxx[], double *fyy[], double *fzz[]), const unsigned int &n_arrays) const
   {
-    std::vector<double> DIM(fxx_serial(n_arrays), fyy_serial(n_arrays), fzz_serial(n_arrays));
-    laplace(f, DIM(fxx_serial.data(), fyy_serial.data(), fzz_serial.data()),  n_arrays);
+	assert_fields_and_blocks( n_arrays );
+
+    double DIM(fxx_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fyy_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fzz_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    laplace(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       fxx[k][node_000] = fxx_serial[k];
       fyy[k][node_000] = fyy_serial[k];
@@ -1555,13 +1415,14 @@ public:
       fzz[k][node_000] = fzz_serial[k];
 #endif
     }
-    return;
   }
 
   inline void laplace_insert_in_block_vectors(const double *f[], double *fxxyyzz[], const unsigned int &n_arrays) const
   {
-    std::vector<double> DIM(fxx_serial(n_arrays), fyy_serial(n_arrays), fzz_serial(n_arrays));
-    laplace(f, DIM(fxx_serial.data(), fyy_serial.data(), fzz_serial.data()),  n_arrays);
+	assert_fields_and_blocks( n_arrays );
+
+    double DIM(fxx_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fyy_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fzz_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    laplace(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*node_000;
       fxxyyzz[k][l_offset]      = fxx_serial[k];
@@ -1570,15 +1431,15 @@ public:
       fxxyyzz[k][l_offset + 2]  = fzz_serial[k];
 #endif
     }
-    return;
   }
 
   inline void laplace_all_components(const double *f[], double *serialized_fxxyyzz, const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
-    const unsigned int n_arrays_bs = n_arrays*bs;
-    std::vector<double> DIM(fxx(n_arrays_bs), fyy(n_arrays_bs), fzz(n_arrays_bs));
-    laplace_all_components(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double DIM(fxx[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fyy[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fzz[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
+    laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
       for (unsigned int comp = 0; comp < bs; ++comp) {
@@ -1591,15 +1452,15 @@ public:
 #endif
       }
     }
-    return;
   }
 
   inline void laplace_all_components_insert_in_vectors(const double *f[], DIM(double *fxx[], double *fyy[], double *fzz[]), const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    const unsigned int n_arrays_bs =n_arrays*bs;
-    std::vector<double> DIM(fxx_serial(n_arrays_bs), fyy_serial(n_arrays_bs), fzz_serial(n_arrays_bs));
-    laplace_all_components(f, DIM(fxx_serial.data(), fyy_serial.data(), fzz_serial.data()),  n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double DIM(fxx_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fyy_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fzz_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
+    laplace_all_components(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
@@ -1613,15 +1474,15 @@ public:
 #endif
       }
     }
-    return;
   }
 
   inline void laplace_all_components_insert_in_block_vectors(const double *f[], double *fxxyyzz[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    const unsigned int n_arrays_bs =n_arrays*bs;
-    std::vector<double> DIM(fxx_serial(n_arrays_bs), fyy_serial(n_arrays_bs), fzz_serial(n_arrays_bs));
-    laplace_all_components(f, DIM(fxx_serial.data(), fyy_serial.data(), fzz_serial.data()),  n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double DIM(fxx_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fyy_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fzz_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
+    laplace_all_components(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays, bs);
     const unsigned int bs_node_000 = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
@@ -1635,13 +1496,14 @@ public:
 #endif
       }
     }
-    return;
   }
 
   inline void laplace_component(const double *f[], double *serialized_fxxyyzz, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
-    std::vector<double> DIM(fxx(n_arrays), fyy(n_arrays), fzz(n_arrays));
-    laplace_component(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs, comp);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double DIM(fxx[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fyy[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fzz[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*k;
       serialized_fxxyyzz[l_offset + 0] = fxx[k];
@@ -1650,7 +1512,6 @@ public:
       serialized_fxxyyzz[l_offset + 2] = fzz[k];
 #endif
     }
-    return;
   }
 
   inline void ngbd_with_quadratic_interpolation(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p), const unsigned int &n_arrays) const
@@ -1658,25 +1519,10 @@ public:
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-    /*
-    if(quadratic_interpolators_are_set)
-    {
-      for (unsigned int k = 0; k < n_arrays; ++k)
-        f_000[k] = f[k][node_000];
-      quadratic_interpolator[dir::f_m00].calculate(f, f_m00, n_arrays);
-      quadratic_interpolator[dir::f_p00].calculate(f, f_p00, n_arrays);
-      quadratic_interpolator[dir::f_0m0].calculate(f, f_0m0, n_arrays);
-      quadratic_interpolator[dir::f_0p0].calculate(f, f_0p0, n_arrays);
-#ifdef P4_TO_P8
-      quadratic_interpolator[dir::f_00m].calculate(f, f_00m, n_arrays);
-      quadratic_interpolator[dir::f_00p].calculate(f, f_00p, n_arrays);
-#endif
-      return;
-    }
-    */
+	assert_fields_and_blocks( n_arrays );
 
-    std::vector<double> DIM(fxx(n_arrays), fyy(n_arrays), fzz(n_arrays));
-    laplace(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx.data(), fyy.data(), fzz.data()),  n_arrays);
+    double DIM(fxx[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fyy[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fzz[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    laplace(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays);
     // third order interpolation
     for (unsigned int k = 0; k < n_arrays; ++k) {
       f_m00[k] -= (0.5*d_m00_m0*d_m00_p0*fyy[k] ONLY3D( + 0.5*d_m00_0m*d_m00_0p*fzz[k]));
@@ -1699,36 +1545,30 @@ public:
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-    return;
   }
 
   inline void ngbd_with_quadratic_interpolation(const double *f, double &f_000, double &f_m00, double &f_p00, double &f_0m0, double &f_0p0 ONLY3D(COMMA double &f_00m COMMA double &f_00p)) const
   {
     ngbd_with_quadratic_interpolation(&f, &f_000, &f_m00, &f_p00, &f_0m0, &f_0p0 ONLY3D(COMMA &f_00m COMMA &f_00p), 1);
-    return;
   }
 
   inline void ngbd_with_quadratic_interpolation(const double *f, double &f_000, double f_nei[]) const
   {
     ngbd_with_quadratic_interpolation(&f, &f_000, DIMPM(&f_nei[dir::f_m00], &f_nei[dir::f_p00], &f_nei[dir::f_0m0], &f_nei[dir::f_0p0], &f_nei[dir::f_00m], &f_nei[dir::f_00p]), 1);
-    return;
   }
 
   inline void x_ngbd_with_quadratic_interpolation(const double *f, double &f_m00, double &f_000, double &f_p00) const
   {
     x_ngbd_with_quadratic_interpolation(&f, &f_m00, &f_000, &f_p00, 1);
-    return;
   }
   inline void y_ngbd_with_quadratic_interpolation(const double *f, double &f_0m0, double &f_000, double &f_0p0) const
   {
     y_ngbd_with_quadratic_interpolation(&f, &f_0m0, &f_000, &f_0p0, 1);
-    return;
   }
 #ifdef P4_TO_P8
   inline void z_ngbd_with_quadratic_interpolation(const double *f, double &f_00m, double &f_000, double &f_00p) const
   {
     z_ngbd_with_quadratic_interpolation(&f, &f_00m, &f_000, &f_00p, 1);
-    return;
   }
 #endif
 
@@ -1739,19 +1579,24 @@ public:
     dxx_central(&f, &fxx, 1);
     return fxx;
   }
+
   inline void dxx_central_insert_in_vectors(const double *f[], double *fxx[], const unsigned int &n_arrays) const
   {
-    std::vector<double> fxx_serial(n_arrays);
-    dxx_central(f, fxx_serial.data(), n_arrays);
+	assert_fields_and_blocks( n_arrays );
+
+    double fxx_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    dxx_central(f, fxx_serial, n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fxx[k][node_000] = fxx_serial[k];
-    return;
   }
+
   inline void dxx_central_all_components_insert_in_vectors(const double *f[], double *fxx[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    std::vector<double> fxx_serial(n_arrays*bs);
-    dxx_central_all_components(f, fxx_serial.data(), n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double fxx_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
+    dxx_central_all_components(f, fxx_serial, n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1759,27 +1604,32 @@ public:
       for (unsigned int comp = 0; comp < bs; ++comp)
         fxx[k][l_offset + comp] = fxx_serial[kbs + comp];
     }
-    return;
   }
+
   double dyy_central(const double *f) const
   {
     double fyy;
     dyy_central(&f, &fyy, 1);
     return fyy;
   }
+
   inline void dyy_central_insert_in_vectors(const double *f[], double *fyy[], const unsigned int &n_arrays) const
   {
-    std::vector<double> fyy_serial(n_arrays);
-    dyy_central(f, fyy_serial.data(), n_arrays);
+	assert_fields_and_blocks( n_arrays );
+
+	double fyy_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    dyy_central(f, fyy_serial, n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fyy[k][node_000] = fyy_serial[k];
-    return;
   }
+
   inline void dyy_central_all_components_insert_in_vectors(const double *f[], double *fyy[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    std::vector<double>  fyy_serial(n_arrays*bs);
-    dyy_central_all_components(f, fyy_serial.data(), n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double fyy_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
+    dyy_central_all_components(f, fyy_serial, n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1787,8 +1637,8 @@ public:
       for (unsigned int comp = 0; comp < bs; ++comp)
         fyy[k][l_offset + comp] = fyy_serial[kbs + comp];
     }
-    return;
   }
+
 #ifdef P4_TO_P8
   double dzz_central(const double *f) const
   {
@@ -1796,19 +1646,23 @@ public:
     dzz_central(&f, &fzz, 1);
     return fzz;
   }
+
   inline void dzz_central_insert_in_vectors(const double *f[], double *fzz[], const unsigned int &n_arrays) const
   {
-    std::vector<double> fzz_serial(n_arrays);
-    dzz_central(f, fzz_serial.data(), n_arrays);
+	assert_fields_and_blocks( n_arrays );
+    double fzz_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    dzz_central(f, fzz_serial, n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fzz[k][node_000] = fzz_serial[k];
-    return;
   }
+
   inline void dzz_central_all_components_insert_in_vectors(const double *f[], double *fzz[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    std::vector<double>  fzz_serial(n_arrays*bs);
-    dzz_central_all_components(f, fzz_serial.data(), n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double fzz_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
+    dzz_central_all_components(f, fzz_serial, n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1816,9 +1670,9 @@ public:
       for (unsigned int comp = 0; comp < bs; ++comp)
         fzz[k][l_offset + comp] = fzz_serial[kbs + comp];
     }
-    return;
   }
 #endif
+
   inline double dd_central(const unsigned short &der, const double *f) const
   {
     double fdd;
@@ -1830,7 +1684,6 @@ public:
   inline void gradient(const double *f, double fxyx[P4EST_DIM]) const
   {
     gradient(&f, DIM(&fxyx[0], &fxyx[1], &fxyx[2]),  1);
-    return;
   }
 
   /**
@@ -1847,8 +1700,10 @@ public:
 
   inline void gradient(const double **f, double **fxyz, const unsigned int &n_vecs) const
   {
-    std::vector<double> DIM(fx_serial(n_vecs), fy_serial(n_vecs), fz_serial(n_vecs));
-    gradient(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()), n_vecs);
+	assert_fields_and_blocks( n_vecs );
+
+    double DIM(fx_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fy_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fz_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    gradient(f, DIM(fx_serial, fy_serial, fz_serial), n_vecs);
     for (unsigned int k = 0; k < n_vecs; ++k) {
       fxyz[k][0] = fx_serial[k];
       fxyz[k][1] = fy_serial[k];
@@ -1856,19 +1711,20 @@ public:
       fxyz[k][2] = fz_serial[k];
 #endif
     }
-    return;
   }
+
   inline void gradient(const double *f, DIM(double &fx, double &fy, double &fz)) const
   {
     gradient(&f, DIM(&fx, &fy, &fz), 1);
-    return;
   }
+
   inline void gradient_all_components(const double *f[], double *fxyz[], const unsigned int &n_vecs, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    const unsigned bsnvecs = bs*n_vecs;
-    std::vector<double>  DIM(fx_serial(bsnvecs), fy_serial(bsnvecs), fz_serial(bsnvecs));
-    gradient_all_components(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  n_vecs, bs);
+	assert_fields_and_blocks( n_vecs, bs );
+
+    double DIM(fx_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fy_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fz_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
+    gradient_all_components(f, DIM(fx_serial, fy_serial, fz_serial),  n_vecs, bs);
     for (unsigned int k = 0; k < n_vecs; ++k) {
       const unsigned int bsk = bs*k;
       for (unsigned int comp = 0; comp < bs; ++comp) {
@@ -1880,13 +1736,15 @@ public:
 #endif
       }
     }
-    return;
   }
+
   inline void gradient_all_components(const double *f, double *fxyz, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    std::vector<double> DIM(fx_serial(bs), fy_serial(bs), fz_serial(bs));
-    gradient_all_components(&f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  1, bs);
+	assert_fields_and_blocks( 1, bs );
+
+    double DIM(fx_serial[CASL_NUM_SIMULTANEOUS_BLOCK_COMPUT], fy_serial[CASL_NUM_SIMULTANEOUS_BLOCK_COMPUT], fz_serial[CASL_NUM_SIMULTANEOUS_BLOCK_COMPUT]);
+    gradient_all_components(&f, DIM(fx_serial, fy_serial, fz_serial), 1, bs);
     for (unsigned int comp = 0; comp < bs; ++comp) {
       const unsigned int comp_dim = comp*P4EST_DIM;
       fxyz[comp_dim + 0] = fx_serial[comp];
@@ -1895,12 +1753,14 @@ public:
       fxyz[comp_dim + 2] = fz_serial[comp];
 #endif
     }
-    return;
   }
+
   inline void gradient_insert_in_vectors(const double *f[], DIM(double *fx[], double *fy[], double *fz[]), const unsigned int &n_arrays) const
   {
-    std::vector<double> DIM(fx_serial(n_arrays), fy_serial(n_arrays), fz_serial(n_arrays));
-    gradient(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  n_arrays);
+	assert_fields_and_blocks( n_arrays );
+
+    double DIM(fx_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fy_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fz_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    gradient(f, DIM(fx_serial, fy_serial, fz_serial),  n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       fx[k][node_000] = fx_serial[k];
       fy[k][node_000] = fy_serial[k];
@@ -1908,12 +1768,14 @@ public:
       fz[k][node_000] = fz_serial[k];
 #endif
     }
-    return;
   }
+
   inline void gradient_insert_in_block_vectors(const double *f[], double *fxyz[], const unsigned int &n_arrays) const
   {
-    std::vector<double> DIM(fx_serial(n_arrays), fy_serial(n_arrays), fz_serial(n_arrays));
-    gradient(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()), n_arrays);
+	assert_fields_and_blocks( n_arrays );
+
+    double DIM(fx_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fy_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT], fz_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT]);
+    gradient(f, DIM(fx_serial, fy_serial, fz_serial), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*node_000;
       fxyz[k][l_offset]     = fx_serial[k];
@@ -1922,15 +1784,15 @@ public:
       fxyz[k][l_offset + 2] = fz_serial[k];
 #endif
     }
-    return;
   }
 
   inline void gradient_all_components_insert_in_vectors(const double *f[], DIM(double *fx[], double *fy[], double *fz[]), const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    const unsigned int n_arrays_bs = n_arrays*bs;
-    std::vector<double> DIM(fx_serial(n_arrays_bs), fy_serial(n_arrays_bs), fz_serial(n_arrays_bs));
-    gradient_all_components(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double DIM(fx_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fy_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fz_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
+    gradient_all_components(f, DIM(fx_serial, fy_serial, fz_serial), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
@@ -1944,14 +1806,15 @@ public:
 #endif
       }
     }
-    return;
   }
+
   inline void gradient_all_components_insert_in_block_vectors(const double *f[], double *fxyz[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    const unsigned int n_arrays_bs = n_arrays*bs;
-    std::vector<double> DIM(fx_serial(n_arrays_bs), fy_serial(n_arrays_bs), fz_serial(n_arrays_bs));
-    gradient_all_components(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double DIM(fx_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fy_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT], fz_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT]);
+    gradient_all_components(f, DIM(fx_serial, fy_serial, fz_serial),  n_arrays, bs);
     const unsigned int bs_node_000 = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       unsigned int kbs = k*bs;
@@ -1965,7 +1828,6 @@ public:
 #endif
       }
     }
-    return;
   }
 
   /* first derivatives */
@@ -1975,25 +1837,31 @@ public:
     dx_central(&f, &fx, 1);
     return fx;
   }
+
   inline void dx_central_insert_in_vectors(const double *f[], double *fx[], const unsigned int &n_arrays) const
   {
-    std::vector<double> fx_serial(n_arrays);
-    dx_central(f, fx_serial.data(), n_arrays);
+	assert_fields_and_blocks( n_arrays );
+
+    double fx_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    dx_central(f, fx_serial, n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fx[k][node_000] = fx_serial[k];
-    return;
   }
+
   inline double dx_central_component(const double *f, const unsigned int &bs, const unsigned int &comp) const
   {
     double fx;
     dx_central_component(&f, &fx, 1, bs, comp);
     return fx;
   }
+
   inline void dx_central_all_components_insert_in_vectors(const double *f[], double *fx[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    std::vector<double> fx_serial(n_arrays*bs);
-    dx_central_all_components(f, fx_serial.data(), n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+	double fx_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
+    dx_central_all_components(f, fx_serial, n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -2001,33 +1869,39 @@ public:
       for (unsigned int comp = 0; comp < bs; ++comp)
         fx[k][l_offset + comp] = fx_serial[kbs + comp];
     }
-    return;
   }
+
   inline double dy_central(const double *f) const
   {
     double fy;
     dy_central(&f, &fy, 1);
     return fy;
   }
+
   inline void dy_central_insert_in_vectors(const double *f[], double *fy[], const unsigned int &n_arrays) const
   {
-    std::vector<double> fy_serial(n_arrays);
-    dy_central(f, fy_serial.data(), n_arrays);
+	assert_fields_and_blocks( n_arrays );
+
+	double fy_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    dy_central(f, fy_serial, n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fy[k][node_000] = fy_serial[k];
-    return;
   }
+
   inline double dy_central_component(const double *f, const unsigned int &bs, const unsigned int &comp) const
   {
     double fy;
     dy_central_component(&f, &fy, 1, bs, comp);
     return fy;
   }
+
   inline void dy_central_all_components_insert_in_vectors(const double *f[], double *fy[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    std::vector<double> fy_serial(n_arrays*bs);
-    dy_central_all_components(f, fy_serial.data(), n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double fy_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
+    dy_central_all_components(f, fy_serial, n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -2035,8 +1909,8 @@ public:
       for (unsigned int comp = 0; comp < bs; ++comp)
         fy[k][l_offset + comp] = fy_serial[kbs + comp];
     }
-    return;
   }
+
 #ifdef P4_TO_P8
   inline double dz_central(const double *f) const
   {
@@ -2044,25 +1918,31 @@ public:
     dz_central(&f, &fz, 1);
     return fz;
   }
+
   inline void dz_central_insert_in_vectors(const double *f[], double *fz[], const unsigned int &n_arrays) const
   {
-    std::vector<double> fz_serial(n_arrays);
-    dz_central(f, fz_serial.data(), n_arrays);
+	assert_fields_and_blocks( n_arrays );
+
+    double fz_serial[CASL_NUM_SIMULTANEOUS_FIELD_COMPUT];
+    dz_central(f, fz_serial, n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fz[k][node_000] = fz_serial[k];
-    return;
   }
+
   inline double dz_central_component(const double *f, const unsigned int &bs, const unsigned int &comp) const
   {
     double fz;
     dz_central_component(&f, &fz, 1, bs, comp);
     return fz;
   }
+
   inline void dz_central_all_components_insert_in_vectors(const double *f[], double *fz[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    std::vector<double> fz_serial(n_arrays*bs);
-    dz_central_all_components(f, fz_serial.data(), n_arrays, bs);
+	assert_fields_and_blocks( n_arrays, bs );
+
+    double fz_serial[CASL_NUM_SIMULTANEOUS_FxB_COMPUT];
+    dz_central_all_components(f, fz_serial, n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -2070,9 +1950,9 @@ public:
       for (unsigned int comp = 0; comp < bs; ++comp)
         fz[k][l_offset + comp] = fz_serial[kbs + comp];
     }
-    return;
   }
 #endif
+
   inline double d_central (const unsigned short &der, const double *f) const
   {
     return (der == dir::x ? dx_central(f) : ONLY3D(OPEN_PARENTHESIS der == dir::y ?) dy_central(f) ONLY3D(: dz_central(f)CLOSE_PARENTHESIS));
@@ -2153,7 +2033,6 @@ public:
     else
       for (u_char k = 0; k < SQR_P4EST_DIM; ++k)
         grad_normal_p[SQR_P4EST_DIM*node_000 + k] = 0.0; // nothing better to suggest for now, sorry
-    return;
   }
 
   /*!
@@ -2212,13 +2091,74 @@ public:
 
   inline double get_curvature(const double *grad_phi_p, const double *phi_p, const double *phi_xxyyzz_p = NULL) const
   {
-    return get_curvature(phi_p, grad_phi_p, NULL, phi_xxyyzz_p, NULL);
+    return get_curvature(phi_p, grad_phi_p, nullptr, phi_xxyyzz_p, nullptr);
   }
 
   inline double get_curvature(const double *grad_phi_p[P4EST_DIM], const double *phi_p, const double *phi_xxyyzz_p[P4EST_DIM] = NULL) const
   {
-    return get_curvature(phi_p, NULL, grad_phi_p, NULL, phi_xxyyzz_p);
+    return get_curvature(phi_p, nullptr, grad_phi_p, nullptr, phi_xxyyzz_p);
   }
+
+
+#ifdef P4_TO_P8
+	/**
+	 * Compute Gaussian curvature.  The user MUST provide nabla of phi to enable local calculation.
+	 * @note If the second derivatives are supplied, these will be used and phi will be disregarded.
+	 * @note If the norm of the gradient falls below EPS, the function returns 0.
+	 * @note This functionality is only available in three dimensions.
+	 * @param [in] phiReadPtr Pointer to the data of a node-sampled vector storing the values of phi.
+	 * @param [in] gradReadPtr Pointer to a 3-array for the components of the gradient of phi.
+	 * @param [in] phi_xxyyzzReadPtr Pointer to a 3-array for the second derivatives of phi: phi_xx, phi_yy, and phi_zz.
+	 * @return The local Gaussian curvature.
+	 * @throws invalid_argument if the gradient pointers are null, or if both phi and its second derivative vectors are null.
+	 */
+	double get_gaussian_curvature( const double *phiReadPtr, const double *gradReadPtr[P4EST_DIM],
+								   const double *phi_xxyyzzReadPtr[P4EST_DIM] ) const
+	{
+	  	std::string errorPrefix = "[CASL_ERROR] quad_neighbor_nodes_of_node_t::get_gaussian_curvature: ";
+		if( !gradReadPtr || ORD( !gradReadPtr[0], !gradReadPtr[1], !gradReadPtr[2] ) )
+			throw std::invalid_argument( errorPrefix + "The gradient or any of its components can't be null!" );
+
+		bool allSecondDerivativesGiven = phi_xxyyzzReadPtr && ANDD( phi_xxyyzzReadPtr[0], phi_xxyyzzReadPtr[1], phi_xxyyzzReadPtr[2] );
+		if( !phiReadPtr && !allSecondDerivativesGiven )
+			throw std::invalid_argument( errorPrefix + "You must provide either phi or all its second derivatives!" );
+
+		// Fetch first derivatives.
+		double gradNorm2 = 0.0;
+		const double dx = gradReadPtr[0][node_000]; gradNorm2 += SQR(dx);
+		const double dy = gradReadPtr[1][node_000]; gradNorm2 += SQR(dy);
+		const double dz = gradReadPtr[2][node_000]; gradNorm2 += SQR(dz);
+
+		if( sqrt( gradNorm2 ) > EPS )	// Perform computations only if gradient is nonzero.
+		{
+			// Compute second derivatives.
+			double dxxyyzz[P4EST_DIM];
+			if( allSecondDerivativesGiven )
+			{
+				for( u_char der = 0; der < P4EST_DIM; der++ )
+					dxxyyzz[der] = phi_xxyyzzReadPtr[der][node_000];
+			}
+			else
+				laplace( phiReadPtr, dxxyyzz );
+
+			const double dxx = dxxyyzz[0];					// d/dx{d/dx}
+			const double dyy = dxxyyzz[1];					// d/dy{d/dy}
+			const double dzz = dxxyyzz[2];					// d/dz{d/dz}
+
+			const double dxy = dy_central(gradReadPtr[0]);	// d/dy{d/dx}
+			const double dxz = dz_central(gradReadPtr[0]);	// d/dz{d/dx}
+			const double dyz = dz_central(gradReadPtr[1]);	// d/dz{d/dy}
+
+			const double num = SQR(dx) * (dyy*dzz - SQR(dyz)) + SQR(dy) * (dxx*dzz - SQR(dxz)) + SQR(dz) * (dxx*dyy - SQR(dxy))
+				+ 2 * (dx * dy * (dxz*dyz - dxy*dzz) + dy * dz * (dxy*dxz - dyz*dxx) + dx * dz * (dxy*dyz - dxz*dyy));
+
+			return num / gradNorm2;
+		}
+		else
+			return 0.0; 	// Nothing better to suggest for now, sorry.
+	}
+#endif
+
 
   /*!
    * \brief get_curvature evaluates the local mean curvature as divergence of (normals). It is the user's responsibility
@@ -2349,32 +2289,32 @@ public:
 
   void print_debug(FILE* pFile) const
   {
-    p4est_indep_t *n_m00_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_m00_mm);
-    p4est_indep_t *n_m00_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_m00_pm);
-    p4est_indep_t *n_p00_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_p00_mm);
-    p4est_indep_t *n_p00_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_p00_pm);
-    p4est_indep_t *n_0m0_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0m0_mm);
-    p4est_indep_t *n_0m0_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0m0_pm);
-    p4est_indep_t *n_0p0_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0p0_mm);
-    p4est_indep_t *n_0p0_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0p0_pm);
+    auto *n_m00_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_m00_mm);
+    auto *n_m00_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_m00_pm);
+    auto *n_p00_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_p00_mm);
+    auto *n_p00_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_p00_pm);
+    auto *n_0m0_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0m0_mm);
+    auto *n_0m0_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0m0_pm);
+    auto *n_0p0_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0p0_mm);
+    auto *n_0p0_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0p0_pm);
 #ifdef P4_TO_P8
-    p4est_indep_t *n_m00_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_m00_mp);
-    p4est_indep_t *n_m00_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_m00_pp);
-    p4est_indep_t *n_p00_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_p00_mp);
-    p4est_indep_t *n_p00_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_p00_pp);
-    p4est_indep_t *n_0m0_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0m0_mp);
-    p4est_indep_t *n_0m0_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0m0_pp);
-    p4est_indep_t *n_0p0_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0p0_mp);
-    p4est_indep_t *n_0p0_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0p0_pp);
+    auto *n_m00_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_m00_mp);
+    auto *n_m00_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_m00_pp);
+    auto *n_p00_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_p00_mp);
+    auto *n_p00_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_p00_pp);
+    auto *n_0m0_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0m0_mp);
+    auto *n_0m0_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0m0_pp);
+    auto *n_0p0_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0p0_mp);
+    auto *n_0p0_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_0p0_pp);
 
-    p4est_indep_t *n_00m_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00m_mp);
-    p4est_indep_t *n_00m_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00m_pp);
-    p4est_indep_t *n_00p_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_mp);
-    p4est_indep_t *n_00p_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_pp);
-    p4est_indep_t *n_00m_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00m_mp);
-    p4est_indep_t *n_00m_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00m_pp);
-    p4est_indep_t *n_00p_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_mp);
-    p4est_indep_t *n_00p_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_pp);
+    auto *n_00m_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00m_mp);
+    auto *n_00m_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00m_pp);
+    auto *n_00p_mm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_mp);
+    auto *n_00p_pm = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_pp);
+    auto *n_00m_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00m_mp);
+    auto *n_00m_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00m_pp);
+    auto *n_00p_mp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_mp);
+    auto *n_00p_pp = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,node_00p_pp);
 #endif
     fprintf(pFile,"------------- Printing QNNN for node %d ------------\n",node_000);
     fprintf(pFile,"node_m00_mm : %d - ( %f , %f )  -  %f\n",node_m00_mm, n_m00_mm->x / (double) P4EST_ROOT_LEN,n_m00_mm->y / (double) P4EST_ROOT_LEN,d_m00_m0);
