@@ -1632,7 +1632,7 @@ class Convergence_soln{
 
         double dT_dn_jump = (source_x  * (*nx_interp)(DIM(x,y,z))) + (source_y * (*ny_interp)(DIM(x,y,z)));
 
-        double source_term = dT_dn_jump - latent_heat.val * (*vgamma_)(DIM(x,y,z)); // density_s.val * (*vgamma_)(DIM(x,y,z));
+        double source_term = dT_dn_jump + latent_heat.val * (*vgamma_)(DIM(x,y,z)); // density_s.val * (*vgamma_)(DIM(x,y,z));
 
 //        printf("(%0.4f, %0.4f) nx = %0.2f, ny = %0.2f, dT_dn_jump = %0.4e, extra stuff = %0.4e , vn = %0.4e \n", x, y, (*nx_interp)(DIM(x,y,z)), (*ny_interp)(DIM(x,y,z)), dT_dn_jump,- latent_heat.val * density_s.val * (*vgamma_)(DIM(x,y,z)),(*vgamma_)(DIM(x,y,z))  );
 
@@ -3905,11 +3905,11 @@ int main (int argc, char* argv[])
   }
 
   // Do an initial update grid to kick things off in a nice direction:
-  mas.compute_dt();
-  mas.save_VTK(-2);
-  mas.update_grid();
-  mas.update_grid_solid();
-  mas.save_VTK(-1);
+//  mas.compute_dt();
+//  mas.save_VTK(-2);
+//  mas.update_grid();
+//  mas.update_grid_solid();
+//  mas.save_VTK(-1);
 
   while (1)
   {
