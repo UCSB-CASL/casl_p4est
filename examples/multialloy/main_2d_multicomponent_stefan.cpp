@@ -172,7 +172,6 @@ double* initial_conc_all[] = { &initial_conc_0.val,
                                &initial_conc_1.val,
                                &initial_conc_2.val,
                                &initial_conc_3.val };
-
 param_t<double> eutectic_conc_0 (pl, 0.4, "eutectic_conc_0", "Initial concentration of component no. 0");
 param_t<double> eutectic_conc_1 (pl, 0.4, "eutectic_conc_1", "Initial concentration of component no. 1");
 param_t<double> eutectic_conc_2 (pl, 0.4, "eutectic_conc_2", "Initial concentration of component no. 2");
@@ -197,12 +196,25 @@ param_t<double> symmetry (pl, 4, "symmetry", "Symmetric of crystals");
 // parameters for the fluid flow problem:
 // Note: these are better specified in the example defn, and the rayleigh numbers need to be calculated from other parameters
 param_t<double> mu_l (pl, 1.0e-3, "mu_l", "viscosity of the fluid ");
+
+param_t<double> Tinf (pl, -1., "Tinf", "Free-stream temperature for the problem (used for nondim w fluids) ");
+param_t<double> Cinf0 (pl, -1., "Cinf0", "Free-stream conc 0 for the problem (used for nondim w fluids) ");
+param_t<double> Cinf1 (pl, -1., "Cinf1", "Free-stream conc 1 for the problem (used for nondim w fluids)");
+param_t<double> Cinf2 (pl, -1., "Cinf2", "Free-stream conc 2 for the problem (used for nondim w fluids)");
+param_t<double> Cinf3 (pl, -1., "Cinf3", "Free-stream conc 3 for the problem (used for nondim w fluids)");
+
 param_t<double> Pr (pl, -1., "Pr", "Prandtl number for the problem (with fluids) ");
-param_t<double> beta_T(pl, 1.0, "beta_T", "coefficient of thermal expansion - boussinesq");
-param_t<double> beta_C_0(pl, 1.0, "beta_C_0", "coefficient of concentration expansion for comp 0 -- boussinesq");
-param_t<double> beta_C_1(pl, 1.0, "beta_C_1", "coefficient of concentration expansion for comp 1 -- boussinesq");
-param_t<double> beta_C_2(pl, 1.0, "beta_C_2", "coefficient of concentration expansion for comp 2 -- boussinesq");
-param_t<double> beta_C_3(pl, 1.0, "beta_C_3", "coefficient of concentration expansion for comp 3 -- boussinesq");
+param_t<double> Sc0 (pl, -1., "Sc0", "Schmidt number (comp 0) for the problem (with fluids) ");
+param_t<double> Sc1 (pl, -1., "Sc1", "Schmidt number (comp 1) for the problem (with fluids) ");
+param_t<double> Sc2 (pl, -1., "Sc2", "Schmidt number (comp 2) for the problem (with fluids) ");
+param_t<double> Sc3 (pl, -1., "Sc3", "Schmidt number (comp 3) for the problem (with fluids) ");
+
+
+param_t<double> beta_T(pl, 1.e8, "beta_T", "coefficient of thermal expansion - boussinesq");
+param_t<double> beta_C_0(pl, 1.e8, "beta_C_0", "coefficient of concentration expansion for comp 0 -- boussinesq");
+param_t<double> beta_C_1(pl, 1.e8, "beta_C_1", "coefficient of concentration expansion for comp 1 -- boussinesq");
+param_t<double> beta_C_2(pl, 1.e8, "beta_C_2", "coefficient of concentration expansion for comp 2 -- boussinesq");
+param_t<double> beta_C_3(pl, 1.e8, "beta_C_3", "coefficient of concentration expansion for comp 3 -- boussinesq");
 
 // Formulae for Rayleigh numbers:
 // RaT = (rho_l Beta_T |gravity_vec| DeltaT l_char^3)/(mu_l * alpha_l)
@@ -217,7 +229,12 @@ param_t<double> Ra_C_0(pl, -1.0, "Ra_C_0", "species Rayleigh number for comp 0 -
 param_t<double> Ra_C_1(pl, -1.0, "Ra_C_1", "species Rayleigh number for comp 1 -- boussinesq");
 param_t<double> Ra_C_2(pl, -1.0, "Ra_C_2", "species Rayleigh number for comp 2 -- boussinesq");
 param_t<double> Ra_C_3(pl, -1.0, "Ra_C_3", "species Rayleigh number for comp 3 -- boussinesq");
+
+param_t<double> gravity_(pl, 9.81, "gravity_", "gravity value used for boussinesq");
+
+
 param_t<bool> do_boussinesq(pl, false, "do_boussinesq", "whether or not to use the boussinesq approx when solving the problem with fluid flow ");
+param_t<bool> convert_dim_to_nondim_for_fluids(pl, false, "convert_dim_to_nondim_for_fluids", "whether or not to solve the fluid flow part nondimensionally \n ");
 
 param_t<double> l_char(pl, 1.0, "l_char", "characteristic length scale of the problem - used to set nondimensional groups");
 
@@ -317,6 +334,7 @@ param_t<bool> use_convergence_dt (pl, 0, "use_convergence_dt", "do we use a set 
 // ----------------------------------------
 // alloy parameters
 // ----------------------------------------
+
 void set_alloy_parameters()
 {
   switch (alloy())
@@ -407,12 +425,11 @@ void set_alloy_parameters()
       part_coeff_0.val     = 0.94;    // partition coefficient
       part_coeff_1.val     = 0.83;    // partition coefficient
 
-      eps_c.val = 0.*1.0e-5;
+      eps_c.val = 1.0e-5;
       eps_v.val = 0.0e-2;
       eps_a.val = 0.05;
       symmetry.val = 4;
 
-      Pr.val = 23.1;
       //("Warning! this example has a hard-coded PRandtl number. We will want to revisit this \n");
 
       // Calculate Rayleigh number
@@ -483,8 +500,8 @@ void set_alloy_parameters()
       density_s.val       = 7.365e-3; // kg.cm-3
       heat_capacity_l.val = 660;      // J.kg-1.K-1
       heat_capacity_s.val = 660;      // J.kg-1.K-1
-      thermal_cond_l.val  = 0.45;     //0.8;      // W.cm-1.K-1
-      thermal_cond_s.val  = 0.45;     //0.8;      // W.cm-1.K-1
+      thermal_cond_l.val  = 0.40;     //0.8;      // W.cm-1.K-1
+      thermal_cond_s.val  = 0.40;     //0.8;      // W.cm-1.K-1
       latent_heat.val     = 2135.8;     // J.cm-3
 
       num_comps.val = 2;
@@ -507,6 +524,13 @@ void set_alloy_parameters()
       const_part_coeff.val = 1;
       part_coeff_0.val     = 0.54;    // partition coefficient
       part_coeff_1.val     = 0.48;    // partition coefficient
+
+      mu_l.val             = 4.9e-5;  // kg cm-1 s-1
+      beta_C_0.val         = 2.26;
+      beta_C_1.val         = -0.382;
+      beta_T.val           = 1.2e-4;
+
+
       break;
 
     case 6: // A made-up tetra-alloy based on Ni - 0.4at%Cu
@@ -623,16 +647,39 @@ void set_alloy_parameters()
 
     // Other parameters needed for the fluids problem:
     Pr.val = 1.0;
-    Ra_T.val = 0.; // 0.1;
-    Ra_C_0.val = 0.; //  0.1;
-    Ra_C_1.val = 0.; // 0.1;
-    Ra_C_2.val = 0.; // 0.1;
+    Sc0.val = 1.0;
+    Sc1.val = 1.0;
+    Sc2.val = 1.0;
+    Sc3.val = 1.0;
+
+    Ra_T.val = 100.; // 0.1;
+    Ra_C_0.val = 100.; //  0.1;
+    Ra_C_1.val = 100.; // 0.1;
+    Ra_C_2.val = 100.; // 0.1;
+
+    beta_T.val=1.0;
+    beta_C_0.val=1.0;
+    beta_C_1.val=1.0;
+    beta_C_2.val=1.0;
+    beta_C_3.val=1.0;
+
     // will allow the user to decide from the terminal whether to use boussinesq or not
 
     break;
     default:
       throw std::invalid_argument("Undefined alloy\n");
   }
+
+
+  double thermal_diff_l = (thermal_cond_l.val)/(density_l.val * heat_capacity_l.val);
+
+  Pr.val = 1.0;//(mu_l.val)/(density_l.val * thermal_diff_l);
+
+  Sc0.val = (mu_l.val)/(density_l.val * solute_diff_0.val);
+  Sc1.val = (mu_l.val)/(density_l.val * solute_diff_1.val);
+  Sc2.val = (mu_l.val)/(density_l.val * solute_diff_2.val);
+  Sc3.val = (mu_l.val)/(density_l.val * solute_diff_3.val);
+
 }
 
 double liquidus_value(double *c)
@@ -1122,6 +1169,57 @@ inline double dcl_exact(int i, double t, double r) { return Bi[i] * Fp(nu(*solut
 
 }
 
+// ----------------------------------------
+// auxiliary fxn for calculating the Rayleigh numbers
+// ----------------------------------------
+void calculate_Ra_numbers(){
+
+  // Set the Cinf and Tinf values (in case of doing boussinesq)
+  if(geometry.val == 8){
+    Tinf.val = 1;
+    Cinf0.val = 1;
+    Cinf1.val = 1;
+    Cinf3.val = 1;
+  }
+  else{
+    Tinf.val = analytic::Tstar;
+    Cinf0.val = initial_conc_0.val;
+    Cinf1.val = initial_conc_1.val;
+    Cinf2.val = initial_conc_2.val;
+    Cinf3.val = initial_conc_3.val;
+  }
+
+
+
+  if(geometry.val!=8){
+    // We don't do this for the convergence test
+    if(l_char.val<0) throw std::invalid_argument("you need to set l_char to run this case \n");
+    if(beta_T.val<0) throw std::invalid_argument("you need to set betaT to run this case \n");
+    if(beta_C_0.val>9.e7) throw std::invalid_argument("you need to set beta_C_0 to run this case \n");
+    if(num_comps.val>1 && beta_C_1.val>9.e7) throw std::invalid_argument("you need to set beta_C_1 to run this case \n");
+    if(num_comps.val>2 && beta_C_2.val>9.e7) throw std::invalid_argument("you need to set beta_C_2 to run this case \n");
+    if(num_comps.val>3 && beta_C_3.val>9.e7) throw std::invalid_argument("you need to set beta_C_3 to run this case \n");
+
+    if(Tinf.val<0) throw std::invalid_argument("you need to set Tinf to run this case \n");
+    if(Cinf0.val<0) throw std::invalid_argument("you need to set Cinf0 to run this case \n");
+    if(num_comps.val>1 && Cinf1.val<0) throw std::invalid_argument("you need to set Cinf1 to run this case \n");
+    if(num_comps.val>2 && Cinf2.val<0) throw std::invalid_argument("you need to set Cinf2 to run this case \n");
+    if(num_comps.val>3 && Cinf3.val<0) throw std::invalid_argument("you need to set Cinf3 to run this case \n");
+
+    double thermal_diff_l = thermal_cond_l.val / (density_l.val * heat_capacity_l.val);
+    Ra_T.val = (density_l.val * beta_T.val * gravity_.val * Tinf.val * pow(l_char.val, 3.))/(mu_l.val * thermal_diff_l);
+
+    Ra_C_0.val = (density_l.val * beta_C_0.val * gravity_.val * Cinf0.val * pow(l_char.val, 3.))/(mu_l.val * solute_diff_0.val);
+    Ra_C_1.val = (density_l.val * beta_C_1.val * gravity_.val * Cinf1.val * pow(l_char.val, 3.))/(mu_l.val * solute_diff_1.val);
+    Ra_C_2.val = (density_l.val * beta_C_2.val * gravity_.val * Cinf2.val * pow(l_char.val, 3.))/(mu_l.val * solute_diff_2.val);
+    Ra_C_3.val = (density_l.val * beta_C_3.val * gravity_.val * Cinf3.val * pow(l_char.val, 3.))/(mu_l.val * solute_diff_3.val);
+  }
+
+}
+
+// ----------------------------------------
+// convergence test class
+// ----------------------------------------
 class Convergence_soln{
   public:
     struct temperature: CF_DIM{
@@ -1556,15 +1654,20 @@ class Convergence_soln{
           double boussinesq_term = 0.;
 
           const double RaC_vals[4] = {Ra_C_0.val, Ra_C_1.val, Ra_C_2.val, Ra_C_3.val};
+          const double Cinf_vals[4] = {Cinf0.val, Cinf1.val, Cinf2.val, Cinf3.val};
+          const double Sc_vals[4] = {Sc0.val, Sc1.val, Sc2.val, Sc3.val};
+          double thermal_diff_l = thermal_cond_l.val / (density_l.val * heat_capacity_l.val);
+//          const double solute_diff_vals[4] = {solute_diff_0.val, solute_diff_0.val, Cinf2.val, Cinf3.val};
+
           if(do_boussinesq.val && (dir == dir::y)){
 
 //            printf("Inside source: Ra_T = %0.2e \n ", Ra_T.val);
 
-            boussinesq_term += (temperature_)(DIM(x,y,z)) * Ra_T.val * Pr.val;
+            boussinesq_term += (((temperature_)(DIM(x,y,z)))/Tinf.val - 1.) * Ra_T.val * Pr.val;
 
             for (int j = 0; j<num_comps.val; j++){
 //              printf("RaC %d = %0.2e \n", j, RaC_vals[j]);
-              boussinesq_term+= (concentrations_[j])(DIM(x,y,z)) * RaC_vals[j] * Pr.val;
+              boussinesq_term+= (((concentrations_[j])(DIM(x,y,z)))/Cinf_vals[j] - 1.) * RaC_vals[j] * Sc_vals[j] * pow((thermal_diff_l/ *solute_diff_all[j]), 2.);
             }
           }
 //          printf("Inside source: main term = %0.2e, bouss term = %0.2e \n", main_term, boussinesq_term);
@@ -3073,8 +3176,8 @@ class BC_INTERFACE_VALUE_VELOCITY: public my_p4est_stefan_with_fluids_t::interfa
 
       }
       else{
-          return Conservation_of_Mass(x, y);
-
+         return Conservation_of_Mass(x, y);
+//          return 0.0;
 //        return 0.0;
       }
 
@@ -3663,25 +3766,71 @@ int main (int argc, char* argv[])
 
   my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver;
   vector<double> RaC_vals(num_comps.val, 0);
-
+  vector<double> Sc_vals(num_comps.val, 0);
+  vector<double> Cinf_vals(num_comps.val, 0);
+  vector<double> betaC_vals(num_comps.val, 0);
   if(solve_w_fluids.val){
+    // Calculate/set the Rayleigh numbers and relevant related groups
+    calculate_Ra_numbers();
+
     stefan_w_fluids_solver = new my_p4est_stefan_with_fluids_t(&mpi);
 //    mas.set_mpi_env(&mpi);
     mas.set_solve_with_fluids();
 
+    // box size is the physical length scale that corresponds to a size of 1 in the computational domain,
+    // so we choose it for l_characteristic for the dimensionless fluid problem
+
+    if(convert_dim_to_nondim_for_fluids.val){
+      mas.set_lchar(box_size.val);
+    }
+    else{
+      mas.set_lchar(1.);
+    }
+
+    mas.set_gravity(gravity_.val);
     mas.set_mu_l(mu_l.val);
     mas.set_Pr(Pr.val);
     mas.set_RaT(Ra_T.val);
+    mas.set_Tinf(Tinf.val);
+    mas.set_betaT(beta_T.val);
 
     RaC_vals[0] = Ra_C_0.val;
-    if(num_comps.val>1) RaC_vals[1] = Ra_C_1.val;
-    if(num_comps.val>2) RaC_vals[2] = Ra_C_2.val;
-    if(num_comps.val>3) RaC_vals[3] = Ra_C_3.val;
+    Sc_vals[0] = Sc0.val;
+    Cinf_vals[0] = Cinf0.val;
+    betaC_vals[0] = beta_C_0.val;
+
+
+    if(num_comps.val>1) {
+      RaC_vals[1] = Ra_C_1.val;
+      Sc_vals[1] = Sc1.val;
+      Cinf_vals[1] = Cinf1.val;
+      betaC_vals[1] = beta_C_1.val;
+    }
+
+    if(num_comps.val>2) {
+      RaC_vals[2] = Ra_C_2.val;
+      Sc_vals[2] = Sc2.val;
+      Cinf_vals[2] = Cinf2.val;
+      betaC_vals[2] = beta_C_2.val;
+
+    }
+    if(num_comps.val>3) {
+      RaC_vals[3] = Ra_C_3.val;
+      Sc_vals[3] = Sc3.val;
+      Cinf_vals[3] = Cinf3.val;
+      betaC_vals[3] = beta_C_3.val;
+    }
+
     mas.set_RaC(RaC_vals);
+    mas.set_Sc(Sc_vals);
+    mas.set_Cinf(Cinf_vals);
+    mas.set_betaC(betaC_vals);
+
 //    mas.set_RaC0(Ra_C_0.val);
 //    mas.set_RaC0(Ra_C_1.val);
 //    mas.set_RaC0(Ra_C_2.val);
     mas.set_do_boussinesq(do_boussinesq.val);
+    mas.set_convert_dim_to_nondim_for_fluids_step(convert_dim_to_nondim_for_fluids.val);
 
     // Calculate nondimensional groups:
 //    compute_nondimensional_groups(mpi.comm(), &mas);
@@ -3905,11 +4054,17 @@ int main (int argc, char* argv[])
   }
 
   // Do an initial update grid to kick things off in a nice direction:
-  mas.compute_dt();
-  mas.save_VTK(-2);
-  mas.update_grid();
-  mas.update_grid_solid();
-  mas.save_VTK(-1);
+  // Basically, we do a one step of update grid first in the no flow case to be compatible with
+  // how Daniil originally organized the solver to work.
+  // In the flow case, we handle things a little bit differently to be compatible
+  // with all the flow stuff and how the time disc. is handled differently.
+  if(!solve_w_fluids.val){
+    mas.compute_dt();
+    mas.save_VTK(-2);
+    mas.update_grid();
+    mas.update_grid_solid();
+    mas.save_VTK(-1);
+  }
 
   while (1)
   {
@@ -4209,24 +4364,6 @@ int main (int argc, char* argv[])
       mas.update_grid_solid();
     }*/
 
-
-    if(save_state_now){
-      PetscPrintf(mpi.comm(), "Beginning save state process ... \n");
-      char output[1000];
-      const char* out_dir_save_state = getenv("OUT_DIR_SAVE_STATE");
-      if(!out_dir_save_state){
-        throw std::invalid_argument("You need to set the output directory for save states: OUT_DIR_SAVE_STATE");
-      }
-      sprintf(output,
-              "%s/save_states_multialloy_lmin_%d_lmax_%d_geom_%d",
-              out_dir_save_state,
-              lmin.val, lmax.val, geometry.val);
-
-      mas.save_state(output, num_state_backups.val);
-
-      save_state_idx++;
-    }
-
     // Clear out the boundary condition info now that we are done w this timestep
     if(geometry.val == 8){
       external_source_c0_robin.clear_inputs();
@@ -4275,6 +4412,28 @@ int main (int argc, char* argv[])
 
       mas.update_grid_solid();
     }
+
+
+
+    if(save_state_now){
+      PetscPrintf(mpi.comm(), "Beginning save state process ... \n");
+      char output[1000];
+      const char* out_dir_save_state = getenv("OUT_DIR_SAVE_STATE");
+      if(!out_dir_save_state){
+        throw std::invalid_argument("You need to set the output directory for save states: OUT_DIR_SAVE_STATE");
+      }
+      sprintf(output,
+              "%s/save_states_multialloy_lmin_%d_lmax_%d_geom_%d",
+              out_dir_save_state,
+              lmin.val, lmax.val, geometry.val);
+
+      mas.save_state(output, num_state_backups.val);
+
+      save_state_idx++;
+    }
+
+
+
 
     iteration++;
 

@@ -153,11 +153,19 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
 
   // Default values for the problem with fluids:
   do_boussinesq=false;
+  convert_dim_to_nondim_for_fluids_step = false;
   mu_l_  = -1.;
   Pr_    = -1.;
   RaT_   = -1.;
-  RaC_.assign(num_comps_, -1.);
+  betaT_= 1.e8;
+  RaC_.assign(num_comps_, 1.e8);
+  betaC_.assign(num_comps_, 1.e8);
 
+  Sc_.assign(num_comps_, -1.);
+  Cinf_.assign(num_comps_, -1.);
+  Tinf_ = -1.;
+
+  gravity_ = 9.81;
 //  RaC_0_ = -1.;
 //  RaC_1_ = -1.;
 //  RaC_2_ = -1.;
@@ -531,11 +539,11 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   }
   stefan_w_fluids_solver->set_v_n(v_n);
   stefan_w_fluids_solver->set_v_nm1(v_nm1);
+  stefan_w_fluids_solver->set_rho_l(density_l_);
+  stefan_w_fluids_solver->set_rho_s(density_s_);
+
   stefan_w_fluids_solver->set_phi(front_phi_);
 
-
-  PetscPrintf(mpi_->comm(), "TO-DO: boussinesq flag for SWF is currently being hard-coded set to false \n");
-  stefan_w_fluids_solver->set_use_boussinesq(false);
   stefan_w_fluids_solver->set_print_checkpoints(false);
   // ----------------------------------------------
   // Next will need to initialize the NS solver:
@@ -626,18 +634,18 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   stefan_w_fluids_solver->set_ngbd_n(ngbd_nm1);
 
 
-  l_char=1.0;
-  PetscPrintf(p4est_->mpicomm, "\nWARNING: RED ALERT: LCHAR MANUALLY SET INSIDE INITIALIZE_FOR_FLUIDS \n");
+//  l_char=1.0;
+//  PetscPrintf(p4est_->mpicomm, "\nWARNING: RED ALERT: LCHAR MANUALLY SET INSIDE INITIALIZE_FOR_FLUIDS \n");
   double thermal_diff_l = thermal_cond_l_/(density_l_*heat_capacity_l_);
 
   //printf("thermal cond l = %0.2e, density_l = %0.2e, "
     //     "heat_capacity_l = %0.2e, thermal diff = %0.2e, l_char = %0.2e \n",
       //   thermal_cond_l_, density_l_, heat_capacity_l_, thermal_diff_l, l_char);
-  PetscPrintf(p4est_->mpicomm, "\nWarning: SWF vel nondim to dim is currently hardcoded as 1.0. This should not be used. \n");
-  stefan_w_fluids_solver->set_vel_nondim_to_dim(1.0/*thermal_diff_l/SQR(l_char)*/);
+//  PetscPrintf(p4est_->mpicomm, "\nWarning: SWF vel nondim to dim is currently hardcoded as 1.0. This should not be used. \n");
+  stefan_w_fluids_solver->set_vel_nondim_to_dim( convert_dim_to_nondim_for_fluids_step? thermal_diff_l/(l_char) : 1.);
 
   PetscPrintf(p4est_->mpicomm, "\nWarning: ns max allowed is manually hard coded for now \n");
-  stefan_w_fluids_solver->set_NS_max_allowed(1000.0);
+  stefan_w_fluids_solver->set_NS_max_allowed(1.e7);
 
   // NOTE -- If you want to visualize dimensional velocities, pressure, and vorticity, you will need to do the appropriate
   // scaling by hand before outputting to vtk
@@ -659,7 +667,11 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // (5) pass along nondim type and relevant nondim parameters:
   // -------------
   // TO-DO MULTICOMP: will make this more user friendly later, but this serves as a first pass
-  stefan_w_fluids_solver->set_problem_dimensionalization_type(NONDIM_BY_SCALAR_DIFFUSIVITY);
+//  stefan_w_fluids_solver->set_problem_dimensionalization_type(NONDIM_BY_SCALAR_DIFFUSIVITY);
+
+    stefan_w_fluids_solver_->set_rho_l(density_l_);
+    stefan_w_fluids_solver_->set_mu_l(mu_l_);
+    stefan_w_fluids_solver->set_problem_dimensionalization_type(convert_dim_to_nondim_for_fluids_step? NONDIM_BY_SCALAR_DIFFUSIVITY:DIMENSIONAL);
 
   // irrelevant since we don't know Re, we nondim by diffusivity stefan_w_fluids_solver->set_Re(1.);
   // ALERT :: Pr hard coded and set here
@@ -669,12 +681,24 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
     throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids, but the Prandtl number has not been set \n");
   }
   if(do_boussinesq){
-    if(RaT_ < 0.){
-      throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the thermal Rayleigh number has not been set \n");
+    if(convert_dim_to_nondim_for_fluids_step){
+      if(RaT_ < 0.){
+        throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the thermal Rayleigh number has not been set \n");
+      }
+      for(int j=0; j<num_comps_; j++){
+        if(RaC_[j] >9.e7){
+          throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the species Rayleigh number for one or more of the components has not been set \n");
+        }
+      }
     }
-    for(int j=0; j<num_comps_; j++){
-      if(RaC_[j] < 0.){
-        throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the species Rayleigh number for one or more of the components has not been set \n");
+    else{
+      if(betaT_ >9.e7){
+        throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the betaT has not been set \n");
+      }
+      for(int j=0; j<num_comps_; j++){
+        if(betaC_[j] >9.e7){
+          throw std::invalid_argument("my_p4est_multialloy::initialize_for_fluids: you are trying to solve with fluids using boussinesq, but the betaC for one or more of the components has not been set \n");
+        }
       }
     }
   }
@@ -704,7 +728,7 @@ void my_p4est_multialloy_t::initialize_for_fluids(my_p4est_stefan_with_fluids_t*
   // -------------
   // Initialize the ns solver:
   // -------------
-  stefan_w_fluids_solver->initialize_ns_solver(true);
+  stefan_w_fluids_solver->initialize_ns_solver(convert_dim_to_nondim_for_fluids_step);
 
   // -------------
   // Get back out the cell neigbors and faces:
@@ -2713,11 +2737,18 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   front_velo_norm_[0].get_array();
   vgamma_n_vec.get_array();
 
+  double vel_nondim2dim = stefan_w_fluids_solver->get_vel_nondim_to_dim();
+
   foreach_dimension(dim){
     VecCopyGhost(front_normal_.vec[dim], vgamma_n_vec.vec[dim]);
     // VecScaleGhost(vgamma_n_vec.vec[dim], front_velo_norm_[0]);
     foreach_node(n, nodes_){
       vgamma_n_vec.ptr[dim][n]*=front_velo_norm_[0].ptr[n];
+
+      // scale it to nondim for the SWF to set the boundary condition properly
+      if(convert_dim_to_nondim_for_fluids_step){
+        vgamma_n_vec.ptr[dim][n]/=vel_nondim2dim;
+      }
     }
   }
 
@@ -2741,39 +2772,112 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   
   // (3) solve the NS 
   vec_and_ptr_t boussinesq_terms_rhs_for_ns;
+
+  vec_and_ptr_t tl_nondim;
+  vec_and_ptr_array_t cl_nondim(num_comps_);
   if(do_boussinesq){
-    PetscPrintf(mpi_->comm(), "\n(!!!) Warning !!!: You need to scale the Tl and Cl values to make them nondimensional when computing the boussinesq added term. This is not currently done.  \n");
+
+    PetscPrintf(p4est_->mpicomm, "To-do: Question? Shall we just scale the arrays to get the nondim arrays instead of creating new vectors and copying?"
+                                 " memory-wise it's better but we are superstitious of scaling by decimal values repeatedly for many time iterations \n");
+    if(convert_dim_to_nondim_for_fluids_step){
+      tl_nondim.create(p4est_, nodes_);
+      cl_nondim.create(p4est_, nodes_);
+
+      //    PetscPrintf(p4est_->mpicomm, "Tinf_ = %f, and %0.2e\n", Tinf_, 1./Tinf_);
+
+
+      VecCopyGhost(tl_[0].vec, tl_nondim.vec);
+      VecScaleGhost(tl_nondim.vec, 1./Tinf_);
+
+      for(int j=0; j<num_comps_; j++){
+        //      PetscPrintf(p4est_->mpicomm, "Cinf_[%d] = %f, and %0.2e \n", j, Cinf_[j], 1./Cinf_[j]);
+        VecCopyGhost(cl_[0].vec[j], cl_nondim.vec[j]);
+        VecScaleGhost(cl_nondim.vec[j], 1./Cinf_[j]);
+      }
+    }
+
+//    PetscPrintf(mpi_->comm(), "\n(!!!) Warning !!!: You need to scale the Tl and Cl values to make them nondimensional when computing the boussinesq added term. This is not currently done.  \n");
     boussinesq_terms_rhs_for_ns.create(p4est_, nodes_);
     boussinesq_terms_rhs_for_ns.get_array();
-    tl_[0].get_array();
-    cl_[0].get_array();
+//    tl_[0].get_array();
+//    cl_[0].get_array();
+
+    if(convert_dim_to_nondim_for_fluids_step) {
+      tl_nondim.get_array();
+      cl_nondim.get_array();
+    }
+    else{
+      tl_[0].get_array();
+      cl_[0].get_array();
+    }
 
 //    PetscPrintf(mpi_->comm(), "Setting up boussinesq: "
 //                              "Pr_ = %0.2e, RaT = %0.2e \n ", Pr_, RaT_);
 //    for(int j=0; j<num_comps_; j++){
 //      PetscPrintf(mpi_->comm(), "RaC comp %d = %0.2e \n", j, RaC_[j]);
 //    }
+
+    double thermal_diff_l = thermal_cond_l_/(density_l_ * heat_capacity_l_);
+//    for(int j=0; j<num_comps_; j++){
+//      printf("DIFF RATIO %0.2e, SQUARED %0.2e \n \n", thermal_diff_l / solute_diff_[j], pow(thermal_diff_l / solute_diff_[j], 2.));
+//    }
+
     foreach_node(n, nodes_){
-      boussinesq_terms_rhs_for_ns.ptr[n] = -(RaT_ * Pr_) * tl_[0].ptr[n];
+
+      if(convert_dim_to_nondim_for_fluids_step){
+        boussinesq_terms_rhs_for_ns.ptr[n] = -(RaT_ * Pr_) * (tl_nondim.ptr[n] - 1.);
+      }
+      else{
+        boussinesq_terms_rhs_for_ns.ptr[n] = 1 - betaT_*(tl_[0].ptr[n] - Tinf_);
+      }
 
       for (int j = 0; j < num_comps_; j++){
-        boussinesq_terms_rhs_for_ns.ptr[n] -= (RaC_[j] * Pr_) * cl_[0].ptr[j][n];
+
+        if(convert_dim_to_nondim_for_fluids_step){
+          boussinesq_terms_rhs_for_ns.ptr[n] -= (RaC_[j] * Sc_[j]) * pow((thermal_diff_l/solute_diff_[j]), 2.) * (cl_nondim.ptr[j][n] -1.);
+        }
+        else{
+          boussinesq_terms_rhs_for_ns.ptr[n]-= betaC_[j]*(cl_[0].ptr[j][n] - Cinf_[j]);
+        }
       }
+      if(!convert_dim_to_nondim_for_fluids_step){
+        boussinesq_terms_rhs_for_ns.ptr[n]*=density_l_ * gravity_;
+      }
+
+//      boussinesq_terms_rhs_for_ns.ptr[n] = 0.;
+
 //      printf(" bouss term = %0.2e \n", boussinesq_terms_rhs_for_ns.ptr[n]);
+////      printf("bouss vec node %d : %0.2e \n", n, boussinesq_terms_rhs_for_ns.ptr[n]);
+//      printf("tl nondim %d : %0.2e \n", n, tl_nondim.ptr[n]);
+//      for(int j=0; j<num_comps_; j++){
+//        printf("cl %d nondim %d : %0.2e \n", j, n, cl_nondim.ptr[j][n]);
+//      }
 
     }
     boussinesq_terms_rhs_for_ns.restore_array();
-    tl_[0].restore_array();
-    cl_[0].restore_array();
+
+
+    if(convert_dim_to_nondim_for_fluids_step){
+      tl_nondim.restore_array();
+      cl_nondim.restore_array();
+    }
+    else{
+      tl_[0].restore_array();
+      cl_[0].restore_array();
+    }
   }
 
 //  stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(true, boussinesq_terms_rhs_for_ns.vec);
 
   PetscPrintf(p4est_->mpicomm, "\nRED ALERT: Boussinesq is currently non-operational. We will want to fix this later \n");
 
-  stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(do_boussinesq, boussinesq_terms_rhs_for_ns.vec, true);
+  stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(do_boussinesq, boussinesq_terms_rhs_for_ns.vec, convert_dim_to_nondim_for_fluids_step);
 
-  if(do_boussinesq) boussinesq_terms_rhs_for_ns.destroy(); // move this somewhere more appropriate later
+  if(do_boussinesq) {
+    tl_nondim.destroy();
+    cl_nondim.destroy();
+    boussinesq_terms_rhs_for_ns.destroy(); // move this somewhere more appropriate later
+  }
 
   // Now, get the velocity results back out of SWF (or do we need to? ) :
 
@@ -4332,11 +4436,9 @@ void my_p4est_multialloy_t::save_state(const char* path_to_directory, unsigned i
   }
 
   ierr = PetscPrintf(mpi_->comm(),"Saved solver state in ... %s \n",path_to_folder);CHKERRXX(ierr);
-
   // Save the solid fields and grids
   my_p4est_save_forest_and_data(path_to_folder, solid_p4est_, solid_nodes_, NULL,
                                 "solid_p4est_n", fields_to_save_solid);
-
 
   // --------------------------------------
   // Now we need to save the NS solver state, and to do so in a way that
@@ -4357,8 +4459,8 @@ void my_p4est_multialloy_t::save_state(const char* path_to_directory, unsigned i
         throw std::invalid_argument(error_msg);
       }
     }
+
     ns = stefan_w_fluids_solver->get_ns_solver();
     ns->save_state(path_to_directory_NS, time_, n_saved);
   }
-
 } // end of "save_state()"

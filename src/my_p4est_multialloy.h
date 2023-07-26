@@ -75,6 +75,7 @@ private:
   // Stefan with fluids solver (used when we are solving coupled case)
   //--------------------------------------------------
   my_p4est_stefan_with_fluids_t* stefan_w_fluids_solver;
+  bool convert_dim_to_nondim_for_fluids_step;
 
   //--------------------------------------------------
   // Geometry
@@ -236,7 +237,9 @@ private:
   // Physical parameters and nondim groups for problem coupled with fluids
   // -------------------------------------------------
   double mu_l_; // fluid viscosity
-  double Pr_;
+  double Pr_; // Prandtl number
+  //double Sc_; // Schmidt number
+  vector <double> Sc_;
 //  double Le_0, Le_1, Le_2, Le_3;
 //  double St;
 //  double deltaC_0, deltaC_1, deltaC_2, deltaC_3;
@@ -244,7 +247,16 @@ private:
 
   double RaT_; /* RaC_0_, RaC_1_, RaC_2_, RaC_3_;*/
   vector <double> RaC_;
+
+  double betaT_;
+  vector <double> betaC_;
+
+  double gravity_;
+
   double l_char; // characteristic length scale
+
+  double Tinf_; // Free-stream temp values (for nondimensionalization)
+  vector <double> Cinf_; // Free-stream conc values (for nondimensionalization)
 
   bool do_boussinesq;
   //--------------------------------------------------
@@ -523,17 +535,53 @@ public:
 
 //    deltaC_0 = deltaC_0_; deltaC_1 = deltaC_1_; deltaC_2 = deltaC_2_; deltaC_3 = deltaC_3_;
 //  }
-  void set_Pr(double Pr){Pr_ = Pr;}
-  void set_RaT(double RaT){RaT_ = RaT;}
+  void set_lchar(double lchar){
+    l_char = lchar;
+  }
+  void set_Pr(double Pr){
+    Pr_ = Pr;
+  }
+  void set_RaT(double RaT){
+    RaT_ = RaT;
+  }
   void set_RaC(vector<double> RaC){
     for (int j=0; j<num_comps_; j++){
       RaC_[j] = RaC[j];
     }
   }
-//  void set_RaC0(double RaC0){RaC_0_ = RaC0;}
-//  void set_RaC1(double RaC1){RaC_1_ = RaC1;}
-//  void set_RaC2(double RaC2){RaC_2_ = RaC2;}
-//  void set_RaC3(double RaC3){RaC_3_ = RaC3;}
+
+  void set_betaT(double betaT){
+    betaT_ = betaT;
+  }
+  void set_betaC(vector<double> betaC){
+    for (int j=0; j<num_comps_; j++){
+      betaC_[j] = betaC[j];
+    }
+  }
+
+  void set_gravity(double grav){
+    gravity_ = grav;
+  }
+
+  void set_Sc(vector<double> Sc){
+    for (int j=0; j<num_comps_; j++){
+      Sc_[j] = Sc[j];
+    }
+  }
+
+  void set_Tinf(double Tinf){
+    Tinf_ = Tinf;
+  }
+
+  void set_Cinf(vector<double> Cinf){
+    for(int j=0; j<num_comps_; j++){
+      Cinf_[j] = Cinf[j];
+    }
+  }
+
+  void set_convert_dim_to_nondim_for_fluids_step(bool convert_){
+    convert_dim_to_nondim_for_fluids_step = convert_;
+  }
   void set_do_boussinesq(bool do_bouss){do_boussinesq = do_bouss;}
 
 
