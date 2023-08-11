@@ -2874,8 +2874,12 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
   stefan_w_fluids_solver->setup_and_solve_navier_stokes_problem(do_boussinesq, boussinesq_terms_rhs_for_ns.vec, convert_dim_to_nondim_for_fluids_step);
 
   if(do_boussinesq) {
-    tl_nondim.destroy();
-    cl_nondim.destroy();
+    if(convert_dim_to_nondim_for_fluids_step){
+
+      tl_nondim.destroy();
+      cl_nondim.destroy();
+    }
+
     boussinesq_terms_rhs_for_ns.destroy(); // move this somewhere more appropriate later
   }
 

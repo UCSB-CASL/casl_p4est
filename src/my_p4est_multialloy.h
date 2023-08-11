@@ -437,6 +437,9 @@ public:
   int get_vtk_idx(){
     return vtk_idx;
   }
+  double get_tn(){
+    return time_;
+  }
 
   vec_and_ptr_dim_t get_front_normals(){return front_normal_;}
 //  my_p4est_node_neighbors_t* get_ngbd(){return ngbd_;}

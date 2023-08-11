@@ -507,6 +507,8 @@ void my_p4est_navier_stokes_t::set_phi(Vec phi)
 
 void my_p4est_navier_stokes_t::set_external_forces_using_vector(Vec f)
 {
+  external_force_per_unit_volume=f;
+  /*
   PetscErrorCode ierr;
   ierr = VecCreateGhostNodes(p4est_n,nodes_n,&external_force_per_unit_volume); CHKERRXX(ierr);
   ierr = VecDuplicate(f,&external_force_per_unit_volume);
@@ -519,6 +521,7 @@ void my_p4est_navier_stokes_t::set_external_forces_using_vector(Vec f)
   }
   ierr= VecRestoreArray(external_force_per_unit_volume,&external_force_per_unit_volume_p); CHKERRXX(ierr);
   ierr= VecRestoreArray(f,&f_p); CHKERRXX(ierr);
+  */
 }
 
 void my_p4est_navier_stokes_t::set_external_forces_per_unit_volume(CF_DIM **external_forces_per_unit_volume_)
@@ -1107,7 +1110,7 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
                   ierr= VecDestroy(second_derivatives_external_force_per_unit_volume[direction]); CHKERRXX(ierr);
               }
 
-              ierr= VecDestroy(external_force_per_unit_volume); CHKERRXX(ierr);
+              //ierr= VecDestroy(external_force_per_unit_volume); CHKERRXX(ierr);
             }
         }
 

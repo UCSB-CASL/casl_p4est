@@ -673,12 +673,14 @@ void set_alloy_parameters()
 
   double thermal_diff_l = (thermal_cond_l.val)/(density_l.val * heat_capacity_l.val);
 
-  Pr.val = 1.0;//(mu_l.val)/(density_l.val * thermal_diff_l);
+  if(geometry.val!=8){
+    Pr.val = (mu_l.val)/(density_l.val * thermal_diff_l);
 
-  Sc0.val = (mu_l.val)/(density_l.val * solute_diff_0.val);
-  Sc1.val = (mu_l.val)/(density_l.val * solute_diff_1.val);
-  Sc2.val = (mu_l.val)/(density_l.val * solute_diff_2.val);
-  Sc3.val = (mu_l.val)/(density_l.val * solute_diff_3.val);
+    Sc0.val = (mu_l.val)/(density_l.val * solute_diff_0.val);
+    Sc1.val = (mu_l.val)/(density_l.val * solute_diff_1.val);
+    Sc2.val = (mu_l.val)/(density_l.val * solute_diff_2.val);
+    Sc3.val = (mu_l.val)/(density_l.val * solute_diff_3.val);
+  }
 
 }
 
@@ -4016,7 +4018,7 @@ int main (int argc, char* argv[])
 
   // loop over time
   bool   keep_going     = true;
-  /*double */tn             = 0;
+  /*double */tn             = (loading_from_previous_state.val ? mas.get_tn() : 0.);
   double total_growth   = 0;
   double base           = front_location.val;
   double bc_error_max   = 0;
@@ -4024,7 +4026,8 @@ int main (int argc, char* argv[])
   int    iteration      = (loading_from_previous_state.val? mas.get_iteration_one_step(): 0);
   int    sub_iterations = 0;
   int    vtk_idx        = (loading_from_previous_state.val? mas.get_vtk_idx(): 0);
-  int    save_state_idx = 1; // start at 1 so we don't save the state of the initial condition
+  PetscPrintf(mpi.comm(), "Starting: vtk_idx = %d \n", vtk_idx);
+  int    save_state_idx = (loading_from_previous_state.val? floor(mas.get_iteration_one_step()/save_state_every_dn.val): 1); // start at 1 so we don't save the state of the initial condition
   int    mpiret;
 
   vector<double> bc_error_max_all;
@@ -4077,6 +4080,7 @@ int main (int argc, char* argv[])
         (save_type.val == 1 && total_growth >= vtk_idx*save_every_dl.val) ||
         (save_type.val == 2 && tn           >= vtk_idx*save_every_dt.val);
 
+    PetscPrintf(mpi.comm(), "save_now ? %d , vtk_idx = %d, tn = %0.2f, vtk_idx * save_every_dt = %0.2f \n", save_now, vtk_idx, tn, save_every_dt.val * vtk_idx);
     bool save_state_now = (save_state.val) && (iteration >= save_state_idx * save_state_every_dn.val);
     if(!last_iter){if (!keep_going) break;}
 
