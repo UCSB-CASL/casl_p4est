@@ -1685,10 +1685,13 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 			}
 		}
 
-		const double h2 = SPECIAL_REFINEMENT? uniform_band * plastron_smallest_dy / 2 : 0;	// Height of second wave (at max lvl of refinement on plastron).
-		double Bounds = NUM_MID_LEVELS > 0 ? midBounds[0] : DELTA * 0.325;
-        auto wave2 = [&](const double& t) -> double {										// Second wave for special refinement lies above wave1.
-			return h1 + (Bounds - uniform_band * plastron_smallest_dy) / 2 + h2; //+ h2 / 2 * cos( 2 * M_PI * (t + R/2) / P);
+		const double h2 = SPECIAL_REFINEMENT ? uniform_band * plastron_smallest_dy / 2 : 0;	// Height of second wave (at max lvl of refinement on plastron).
+		//double Bounds = NUM_MID_LEVELS > 0 ? midBounds[0] : DELTA * 0.325;
+		auto wave2 = [&](const double& t) -> double {										// Second wave for special refinement lies above wave1.
+			if (NUM_MID_LEVELS > 0)
+				return h1 + (midBounds[0] - uniform_band * plastron_smallest_dy) / 2 + h2 / 2 * cos( 2 * M_PI * (t + R/2) / P);
+			else
+				return DELTA * 0.3; //return h1 + (DELTA * 0.325 - uniform_band * plastron_smallest_dy) / 2 + h2;
 		};
 
 		bool refine = quad->level < max_lvl - (state > 0? int( SPECIAL_REFINEMENT ) : 0);
