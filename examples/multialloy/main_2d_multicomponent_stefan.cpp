@@ -286,7 +286,7 @@ param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of 
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
 
 param_t<BoundaryConditionType> bc_type_conc (pl, NEUMANN, "bc_type_conc", "DIRICHLET/NEUMANN");
-param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRICHLET/NEUMANN");
+param_t<BoundaryConditionType> bc_type_temp (pl, DIRICHLET, "bc_type_temp", "DIRICHLET/NEUMANN");
 //param_t<BoundaryConditionType> bc_wall_type_vel  (pl, NEUMANN, "bc_wall_type_vel", "DIRICHLET/NEUMANN");
 // all the above are usually neumann
 
@@ -2329,8 +2329,8 @@ bool periodicity(int dir)
 }
 
 double phi_directional_seeds(double x, double y){
-  double yshift_val = 1.*front_location(); //front_location.val;
-  double xshifts[5] = {0.1, 0.3, 0.5, 0.7, 0.9};
+  double yshift_val = 0.*front_location(); //front_location.val;
+  double xshifts[5] = {0.1*xmax.val, 0.3*xmax.val, 0.5*xmax.val, 0.7*xmax.val, 0.9*xmax.val};
   double yshifts[5] = {yshift_val, yshift_val, yshift_val, yshift_val, yshift_val};
 
 
@@ -2340,6 +2340,10 @@ double phi_directional_seeds(double x, double y){
   for(int n=0; n < 5; n++){
     double r = sqrt(SQR(x - xshifts[n]) + SQR(y - yshifts[n]));
     LSF_vals[n] = seed_radius.val - r;
+
+//    if((r > seed_radius.val) && (y < front_location())){
+//      LSF_vals[n] = -(y - front_location());
+//    }
 
     if(fabs(LSF_vals[n]) < fabs(current_min)){
       current_min = LSF_vals[n];
