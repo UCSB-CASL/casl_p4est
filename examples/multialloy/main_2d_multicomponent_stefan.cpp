@@ -286,7 +286,7 @@ param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of 
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
 
 param_t<BoundaryConditionType> bc_type_conc (pl, NEUMANN, "bc_type_conc", "DIRICHLET/NEUMANN");
-param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRICHLET/NEUMANN");
+param_t<BoundaryConditionType> bc_type_temp (pl, DIRICHLET, "bc_type_temp", "DIRICHLET/NEUMANN");
 //param_t<BoundaryConditionType> bc_wall_type_vel  (pl, NEUMANN, "bc_wall_type_vel", "DIRICHLET/NEUMANN");
 // all the above are usually neumann
 
@@ -2330,6 +2330,34 @@ bool periodicity(int dir)
   }
 }
 
+double phi_directional_seeds(double x, double y){
+  double yshift_val = 0.*front_location(); //front_location.val;
+  double xshifts[5] = {0.1*xmax.val, 0.3*xmax.val, 0.5*xmax.val, 0.7*xmax.val, 0.9*xmax.val};
+  double yshifts[5] = {yshift_val, yshift_val, yshift_val, yshift_val, yshift_val};
+
+
+  // First, get all the relevant LSF values for each seed:
+  double LSF_vals[5];
+  double current_min =1.0e9;/* -(y - front_location())*/; //1.0e9;
+  for(int n=0; n < 5; n++){
+    double r = sqrt(SQR(x - xshifts[n]) + SQR(y - yshifts[n]));
+    LSF_vals[n] = seed_radius.val - r;
+
+//    if((r > seed_radius.val) && (y < front_location())){
+//      LSF_vals[n] = -(y - front_location());
+//    }
+
+    if(fabs(LSF_vals[n]) < fabs(current_min)){
+      current_min = LSF_vals[n];
+    }
+  }
+
+  return current_min;
+//  return -(y - front_location());
+
+}
+
+
 class front_phi_cf_t : public CF_DIM
 {
 public:
@@ -2345,7 +2373,16 @@ public:
       case -2: return analytic::rf_exact(t) - ABS2(x-xc(),
                                                    y-yc());
       case -1: return analytic::rf_exact(t) - ABS1(y-ymin());
-      case 0: return -(y - front_location());//-(y - front_location()) + 0.001/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.001/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
+      case 0: {
+
+        // 5 seeds:
+        return phi_directional_seeds(x,y);
+
+        // Normal directional:
+//        return -(y - front_location());
+
+        //-(y - front_location()) + 0.001/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.001/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
+      }
       case 1: return -(ABS2(x-xc(), y-yc())-seed_radius());
       case 2: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
       case 3: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
@@ -4044,7 +4081,24 @@ int main (int argc, char* argv[])
   // save initial conditon:
 //  PetscPrintf(mpi.comm(), "Saving the initial condition to vtk ... \n");
 //  mas.save_VTK(-1);
+  if(1){
+    PetscPrintf(mpi.comm(), "Trying to save initial phi ... \n");
+    // TEMPORARY -- troubleshooting
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+    point_fields.push_back(Vec_for_vtk_export_t(/*front_phi.vec*/ mas.get_front_phi(), "phi"));
+    const char* out_dir = getenv("OUT_DIR");
+    if(!out_dir){
+      throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+    }
 
+    char filename[1000];
+    sprintf(filename, "%s/snapshot_initial_phi_%d", out_dir, -1);
+    my_p4est_vtk_write_all_lists(p4est, nodes, ngbd->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+    point_fields.clear();
+    PetscPrintf(mpi.comm(), "Done! \n \n \n");
+
+  }
   PetscPrintf(mpi.comm(), "Entering time loop ! \n");
   if(geometry.val == 8 && use_convergence_dt.val){
     mas.set_dt(convergence_dt.val);
