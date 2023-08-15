@@ -286,7 +286,7 @@ param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of 
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
 
 param_t<BoundaryConditionType> bc_type_conc (pl, NEUMANN, "bc_type_conc", "DIRICHLET/NEUMANN");
-param_t<BoundaryConditionType> bc_type_temp (pl, DIRICHLET, "bc_type_temp", "DIRICHLET/NEUMANN");
+param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRICHLET/NEUMANN");
 //param_t<BoundaryConditionType> bc_wall_type_vel  (pl, NEUMANN, "bc_wall_type_vel", "DIRICHLET/NEUMANN");
 // all the above are usually neumann
 
@@ -2331,28 +2331,37 @@ bool periodicity(int dir)
 }
 
 double phi_directional_seeds(double x, double y){
-  double yshift_val = 0.*front_location(); //front_location.val;
+  double yshift_val = 0.9*front_location(); //front_location.val;
   double xshifts[5] = {0.1*xmax.val, 0.3*xmax.val, 0.5*xmax.val, 0.7*xmax.val, 0.9*xmax.val};
   double yshifts[5] = {yshift_val, yshift_val, yshift_val, yshift_val, yshift_val};
+  seed_radius.val = 0.01;
 
 
-  // First, get all the relevant LSF values for each seed:
+//  // First, get all the relevant LSF values for each seed:
   double LSF_vals[5];
   double current_min =1.0e9;/* -(y - front_location())*/; //1.0e9;
   for(int n=0; n < 5; n++){
     double r = sqrt(SQR(x - xshifts[n]) + SQR(y - yshifts[n]));
     LSF_vals[n] = seed_radius.val - r;
 
-//    if((r > seed_radius.val) && (y < front_location())){
-//      LSF_vals[n] = -(y - front_location());
-//    }
+    if((r > seed_radius.val) && (y < front_location())){
+      LSF_vals[n] = -(y - front_location());
+    }
 
     if(fabs(LSF_vals[n]) < fabs(current_min)){
       current_min = LSF_vals[n];
     }
   }
+//    double noise = 0.001;
+
+//    return -(y - front_location()) + noise*front_location()*sin(5.*PI*(x + 0.1));
+//  return current_min;
 
   return current_min;
+//  return -(y-front_location());
+
+
+
 //  return -(y - front_location());
 
 }
@@ -3927,8 +3936,8 @@ int main (int argc, char* argv[])
   }
 
   my_p4est_level_set_t ls(ngbd);
-  //  ls.reinitialize_2nd_order(front_phi.vec);
-  //  ls.perturb_level_set_function(front_phi.vec, EPS);
+    ls.reinitialize_2nd_order(front_phi.vec);
+    ls.perturb_level_set_function(front_phi.vec, EPS);
 
   // set alloy parameters
   double solute_diff_all[] = { solute_diff_0.val, solute_diff_1.val, solute_diff_2.val, solute_diff_3.val };
