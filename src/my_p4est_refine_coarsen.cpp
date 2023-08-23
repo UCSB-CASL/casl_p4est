@@ -1651,7 +1651,7 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 //		const double quad_denom = (( double ) P4EST_QUADRANT_LEN( quad->level )) / (( double ) P4EST_ROOT_LEN);
 //		const double quad_diag = sqrt(SUMD( SQR( tree_dimensions[0] ), SQR( tree_dimensions[1] ), SQR( tree_dimensions[2] ))) * quad_denom;
 		const double plastron_smallest_dy = tree_dimensions[1] * (((double) P4EST_QUADRANT_LEN((int8_t) PLASTRON_MAX_LVL))/((double) P4EST_ROOT_LEN));
-		const double h1 = uniform_band * plastron_smallest_dy * 0.5;		// Height of max level wave in specially refined grid.  Note that comparison is made with respect to plastron's band.
+		const double h1 = uniform_band * plastron_smallest_dy * 0.1;		// Height of max level wave in specially refined grid.  Note that comparison is made with respect to plastron's band.
 
 		auto wave1 = [&](const double& t) -> double {				// First wave for special refinement (closest to wall).
 			return h1 * pow( cos( M_PI * (t + R/2) / P) , 6);
@@ -1691,7 +1691,7 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 			if (NUM_MID_LEVELS > 0)
 				return h1 + (midBounds[0] - uniform_band * plastron_smallest_dy) / 2 + h2 / 2 * cos( 2 * M_PI * (t + R/2) / P);
 			else
-				return DELTA * 0.3; //return h1 + (DELTA * 0.325 - uniform_band * plastron_smallest_dy) / 2 + h2;
+				return DELTA * 0.15; //return h1 + (DELTA * 0.15 - uniform_band * plastron_smallest_dy) / 2 + h2;
 		};
 
 		bool refine = quad->level < max_lvl - (state > 0? int( SPECIAL_REFINEMENT ) : 0);
