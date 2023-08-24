@@ -612,6 +612,7 @@ public:
 	const double DELTA;					// Channel half-height (on the y-axis).
 	const double LMID_DELTA_PERCENT;	// How far to extend mid-level cells (use 0 to disable this option).
 	const bool SPECIAL_REFINEMENT;		// Whether we'll use sine waves instead of rectangular bands everywhere (only valid in 3D).
+	const bool WALL_REFINEMENT;         // Whether to have an additional sine wave at the wall (vaid only if special_refinement is true).
 	const int PLASTRON_MAX_LVL;			// Maximum level of refinement for plastron.
 	const double GF;					// Gas fraction.
 	const double P;						// Pitch.
@@ -648,12 +649,12 @@ public:
 	splitting_criteria_cf_and_uniform_band_shs_t( const int& minLvl, const int& maxLvl, const CF_DIM *phi, const double& uniformBand,
 												  const double& delta, const double& lmidDeltaPercent, const double& lip, const double& gf,
 												  const double& pitch, const double xyzDim[P4EST_DIM], const int nTrees[P4EST_DIM],
-												  const bool& spRef=false ONLY3D(COMMA const bool& spanwise=false) ) :
+												  const bool& spRef=false, const bool& wallRef=false ONLY3D(COMMA const bool& spanwise=false) ) :
 		splitting_criteria_cf_and_uniform_band_t( minLvl, maxLvl, phi, uniformBand, lip ),
 		DELTA( delta ), LMID_DELTA_PERCENT( lmidDeltaPercent ), GF( gf ),  P( pitch ), XYZ_DIM{DIM( xyzDim[0], xyzDim[1], xyzDim[2] )},
 		XYZ_MIN{DIM( -xyzDim[0]/2, -xyzDim[1]/2, -xyzDim[2]/2 )}, XYZ_MAX{DIM( xyzDim[0]/2, xyzDim[1]/2, xyzDim[2]/2 )},
-		SPECIAL_REFINEMENT( P4EST_DIM < 3? false : spRef ),		// NOLINT
-		N_TREES{DIM( nTrees[0], nTrees[1], nTrees[2] )}, PLASTRON_MAX_LVL( SPECIAL_REFINEMENT? (maxLvl - 1) : maxLvl ),
+		SPECIAL_REFINEMENT( P4EST_DIM < 3? false : spRef ), WALL_REFINEMENT( P4EST_DIM < 3? false : spRef ),		// NOLINT
+		N_TREES{DIM( nTrees[0], nTrees[1], nTrees[2] )}, PLASTRON_MAX_LVL(maxLvl - (SPECIAL_REFINEMENT ? 1 : 0) - (WALL_REFINEMENT ? 1 : 0)),
 		state( STATE::COARSEN_AND_REFINE_MAX_LVL ) ONLY3D(COMMA SPANWISE( spanwise ))
 	{
 		std::string errorPrefix = "[CASL_ERROR] splitting_criteria_cf_and_uniform_band_shs_t::constructor: ";
@@ -674,12 +675,17 @@ public:
 
 #ifdef P4_TO_P8
 		// For special refinement, we'll use one layer of 2 smallest dy for the whole wall, and then the next level of refinement for the
-		// plastron will be maxLvl - 1.  Also, we need at least 2 mid-level layers.
-		//if( SPECIAL_REFINEMENT && maxLvl - minLvl < 3 )
-		//{
-			//throw std::invalid_argument( errorPrefix + "The difference between min and max levels of refinement must be at least 3 "
-			//										   "for special (sinusoidal) refinement!" );
-		//}
+		// plastron will be maxLvl - 1.  Also, we need at least 1 mid-level layers.
+		if( SPECIAL_REFINEMENT && maxLvl - minLvl < 2 )
+			throw std::invalid_argument( errorPrefix + "The difference between min and max levels of refinement must be at least 2 "
+													   "for special (sinusoidal) refinement!" );
+
+		if( WALL_REFINEMENT && !SPECIAL_REFINEMENT )
+			throw std::invalid_argument( errorPrefix + "Wall refinement requires special refinement!" );
+
+		if( WALL_REFINEMENT && maxLvl - minLvl < 3 )
+			throw std::invalid_argument( errorPrefix + "The difference between min and max levels of refinement must be at least 3 "
+													   "for additional wall refinement!" );
 
 		if( SPECIAL_REFINEMENT && SPANWISE )
 			throw std::invalid_argument( errorPrefix + "Spanwise option is not available if you've chosen special refinement!" );
