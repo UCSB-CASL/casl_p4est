@@ -5416,6 +5416,59 @@ int main(int argc, char** argv) {
 
       dt = stefan_w_fluids_solver->get_dt();
 
+//      // ELYCE TRYING TO TRIGGER A BUG:
+//      MPI_Barrier(mpi.comm());
+//      PetscPrintf(mpi.comm(), "\nBEGIN:: ELYCE TRYING TO TRIGGER THE BUG \n");
+//      ngbd_np1 = stefan_w_fluids_solver->get_ngbd_np1();
+//      nodes_np1 = stefan_w_fluids_solver->get_nodes_np1();
+//      p4est_np1 = stefan_w_fluids_solver->get_p4est_np1();
+//      my_p4est_interpolation_nodes_t interp_test(ngbd_np1);
+
+//      const static double  threshold_  = 0.01*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL) / (double) P4EST_ROOT_LEN;
+//      PetscPrintf(mpi.comm(), "Threshold is %0.12e \n", threshold_);
+
+//      double threshold = 0.;//2.794003e-11;//03125e-11;//3.5e-11;
+//      PetscPrintf(mpi.comm(), "Our defined threshold is %0.12e \n", threshold);
+
+//      foreach_node(n, nodes_np1){
+//        double xyz_n[P4EST_DIM];
+//        node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz_n);
+
+//        double xloc = 3.0;
+//        double yloc = 1.96875;//1.99219;
+
+
+
+//        bool is_xloc = fabs(xloc - xyz_n[0])<EPS;
+//        bool is_yloc = fabs(yloc - xyz_n[1])<EPS;
+
+////        if(is_xloc){printf("We have xloc on rank %d \n", mpi.rank());}
+////        if(is_yloc){printf("We have yloc on rank %d \n", mpi.rank());}
+//        if(is_xloc/* && is_yloc*/){
+//          printf("We've got our point registered by rank %d \n", mpi.rank());
+//          xyz_n[0]+=threshold;
+//          interp_test.add_point(n, xyz_n);
+//        }
+
+//      }
+//      T_l_n = stefan_w_fluids_solver->get_T_l_n();
+//      interp_test.set_input(T_l_n.vec, quadratic_non_oscillatory_continuous_v2);
+
+
+
+//      vec_and_ptr_t Tl_out;
+//      Tl_out.create(p4est_np1, nodes_np1);
+//      PetscPrintf(mpi.comm(), "Trying to interpolate ... \n");
+//      MPI_Barrier(mpi.comm());
+//      interp_test.interpolate(Tl_out.vec);
+//      Tl_out.destroy();
+
+//      MPI_Barrier(mpi.comm());
+
+//      PetscPrintf(mpi.comm(), "END:: ELYCE TRYING TO TRIGGER THE BUG \n \n");
+//      if(tstep==0){
+//        std::exit(0);
+//      }
       // -------------------------------
       // Save as relevant
       // -------------------------------

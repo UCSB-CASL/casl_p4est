@@ -147,6 +147,7 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
      * the source processor has made a mistake when search for possible
      * remote candidates
      */
+
     if (rank_found == p4est->mpirank)
     {
       P4EST_ASSERT(best_match.p.piggy3.local_num < p4est->local_num_quadrants);
@@ -163,17 +164,32 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
       /* this cannot happen as it means the source processor made a mistake in
        * calculating its remote matches.
        */
-      printf( "Relevant info: rank = %d \n"
-                       "rank found = %d \n"
-                        "(x, y) = (%0.4f, %0.4f) \n"
-                                  "tree index = %d \n"
-             "quad index = %d \n",p4est->mpirank ,rank_found, xyz[i], xyz[i+1],
+      printf("About to throw an error due to rank/tree not found \n"
+             "Rank = %d \n"
+             "Relevant info:"
+             "rank found = %d \n"
+             "(x, y) = (%0.12f, %0.12f) \n"
+             "tree index = %d \n"
+             "quad index = %d \n",
+             p4est->mpirank ,rank_found, xyz[i], xyz[i+1],
                                   best_match.p.piggy3.which_tree,
                                   best_match.p.piggy3.local_num);
+      printf("Will now ask to find the quadrant one more time with verbose error printing before throwing... \n -----------------------\n");
+      int rank_found = ngbd_n->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches, false, true, true);
+      printf("\n---------------------\n additional call completed for info on rank %d \n \n", p4est->mpirank);
+
 
       throw std::runtime_error("[ERROR] process_incoming_query: A remote processor could not find a local or ghost quadrant "
                                "for a query point sent by the source processor. \n");
     }
+
+//    printf( "Relevant info: rank = %d \n"
+//           "rank found = %d \n"
+//           "(x, y) = (%0.12f, %0.12f) \n"
+//           "tree index = %d \n"
+//           "quad index = %d \n",p4est->mpirank ,rank_found, xyz[i], xyz[i+1],
+//           best_match.p.piggy3.which_tree,
+//           best_match.p.piggy3.local_num);
   }
   // we are done, let's send the buffer back
   send_response_back_to_query(buff, status);

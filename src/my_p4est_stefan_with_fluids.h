@@ -751,6 +751,7 @@ public:
   // Grid variables
   // -----------------------------------------------
 
+  p4est_t* get_p4est_np1(){return p4est_np1;}
   p4est_nodes* get_nodes_np1(){return nodes_np1;}
   my_p4est_node_neighbors_t* get_ngbd_np1(){return ngbd_np1;}
   // (WIP)

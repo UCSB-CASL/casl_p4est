@@ -357,7 +357,7 @@ class my_p4est_hierarchy_t {
    *                                NOTE: when set to true, this function's outcome may change for a given p4est as the number of
    *                                      processes used at runtime is changed!
    */
-  void find_quadrant_containing_point(const int* tr_xyz_orig, PointDIM& s, int& current_rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches, const bool &prioritize_local) const;
+  void find_quadrant_containing_point(const int* tr_xyz_orig, PointDIM& s, int& current_rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches, const bool &prioritize_local, bool verbose_error_report = false) const;
   const bool periodic[P4EST_DIM];
 
 
@@ -459,7 +459,7 @@ public:
    *    case)
    */
   int find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches,
-                                              const bool &prioritize_local = false, const bool &set_cumulative_local_index_in_piggy3_of_best_match = false) const;
+                                              const bool &prioritize_local = false, const bool &set_cumulative_local_index_in_piggy3_of_best_match = false, bool verbose_error_report = false) const;
 
   /*!
    * \brief get_all_quadrants_in establishes the list of local indices of the quadrants being found in another quadrant

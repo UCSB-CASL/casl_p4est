@@ -262,13 +262,14 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
 }
 
 int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches,
-                                                                  const bool &prioritize_local, const bool &set_cumulative_local_index_in_piggy3_of_best_match) const
+                                                                  const bool &prioritize_local, const bool &set_cumulative_local_index_in_piggy3_of_best_match, bool verbose_error_report) const
 {
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_hierarchy_t_find_smallest_quad, 0, 0, 0, 0); CHKERRXX(ierr);
 #endif
 
+  if(verbose_error_report)printf("\nfind_smallest_quadrant_containing_point: verbose error report activated on rank %d: \n", p4est->mpirank);
   /* In order to use the standard vectors of HierarchyCell's, i.e. trees[tree_idx], as
    * constructed by this object, we need to rescale these coordinates to
    * [0, nx] x [0, ny] x [0, nz] where nx, ny and nz are the numbers of trees in the brick,
@@ -296,6 +297,10 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
 
   int rank = -1; // initialize the return value --> this is what is returned if the quadrant of interest is remote
   P4EST_QUADRANT_INIT(&best_match);
+
+  if(verbose_error_report){
+    printf("Rank %d has xyz_ = (%0.12f, %0.12f) \n", p4est->mpirank, xyz_[0], xyz_[1]);
+  }
 
   /*
    * At this stage, an integer value for xyz_[i], say "xyz_[i] == nn", theoretically means that the point of interest
@@ -334,6 +339,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
    */
   const static double  threshold  = 0.01*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL); // == thresh*P4EST_ROOT_LEN
 
+
   /* In case of nonperiodic domain, we need to make sure that any point lying on the boundary of the domain is clearly
    * and unambiguously clipped inside, without changing the quadrant of interest, before we proceed further.
    * Otherwise, the routine will try to access a tree that does not exist...
@@ -347,6 +353,11 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
   }
   double ii = (xyz_[0] - tr_xyz_orig[0]) * P4EST_ROOT_LEN;
   double jj = (xyz_[1] - tr_xyz_orig[1]) * P4EST_ROOT_LEN;
+
+  if(verbose_error_report){
+    printf("Rank %d has (ii, jj) = (%0.12f, %0.12f) \n", p4est->mpirank, ii, jj);
+  }
+
 #ifdef P4_TO_P8
   double kk = (xyz_[2] - tr_xyz_orig[2]) * P4EST_ROOT_LEN;
 #endif
@@ -357,6 +368,9 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
 
   const bool is_on_face_x = (fabs(ii - floor(ii)) < threshold || fabs(ceil(ii) - ii) < threshold);
   const bool is_on_face_y = (fabs(jj - floor(jj)) < threshold || fabs(ceil(jj) - jj) < threshold);
+  if(verbose_error_report){
+    printf("Rank %d has (is_on_face_x, is_on_face_y) = (%d, %d) \n", p4est->mpirank, is_on_face_x, is_on_face_y);
+  }
 #ifdef P4_TO_P8
   const bool is_on_face_z = (fabs(kk - floor(kk)) < threshold || fabs(ceil(kk) - kk) < threshold);
 #endif
@@ -369,7 +383,10 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
       {
         // perturb the point (note that i, j and/or k are 0 is no perturbation is required)
         PointDIM s(DIM(i == 0 ? ii : ii + i*threshold, j == 0 ? jj : jj + j*threshold, k == 0 ? kk : kk + k*threshold));
-        find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches, prioritize_local);
+        if(verbose_error_report){
+          printf("Rank %d has i = %d, j = %d: s.x, s.y = (%0.12f, %0.12f) \n", p4est->mpirank, i, j, s.xyz(0), s.xyz(1));
+        }
+        find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches, prioritize_local, verbose_error_report);
       }
 
   if(set_cumulative_local_index_in_piggy3_of_best_match && rank != -1)
@@ -387,18 +404,31 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
   return rank;
 }
 
-void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig, PointDIM& s, int& current_rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches, const bool &prioritize_local) const
+void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig, PointDIM& s, int& current_rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches, const bool &prioritize_local, bool verbose_error_report) const
 {
   const static p4est_qcoord_t qh = P4EST_QUADRANT_LEN(P4EST_QMAXLEVEL);
 
   int tr_xyz[P4EST_DIM] = {DIM(tr_xyz_orig[0], tr_xyz_orig[1], tr_xyz_orig[2])};
+
+  if(verbose_error_report) {
+    printf("\n Find_quadrant_containing_point : commencing verbose error report on rank %d: \n", p4est->mpirank);
+    printf("Rank %d: Find quadrant containing point: s.x = %0.12f, s.y = %0.12f \n", p4est->mpirank, s.xyz(0), s.xyz(1));
+  }
 
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     if (s.xyz(dir) < 0 || s.xyz(dir)  >= (double) P4EST_ROOT_LEN){
 
       // Elyce attempted fix, seems to work:
       const int ntree_to_slide = (int) floor(s.xyz(dir)/((double) P4EST_ROOT_LEN));
+
+      if(verbose_error_report){
+        printf("Rank %d ntree_to_slide = %d \n"
+               "(old way) ntree_to_slide = %d \n", p4est->mpirank, ntree_to_slide,
+               (int) ceil(s.xyz(dir)/((double) P4EST_ROOT_LEN)) - 1 );
+      }
+
       // Old way: this caused a bug that Elyce discovered, it is resolved as of 1/18/21
+
       //const int ntree_to_slide = (int) ceil(s.xyz(dir)/((double) P4EST_ROOT_LEN)) - 1;
 //      if(ntree_to_slide == 0) ntree_to_slide =1; // Elyce temp bug fix 1/14/21
 
@@ -407,6 +437,12 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
       tr_xyz[dir] = tr_xyz_orig[dir] + ntree_to_slide;
       if(periodic[dir])
         tr_xyz[dir] = mod(tr_xyz[dir], myb->nxyztrees[dir]);
+    }
+
+    if(verbose_error_report){
+      printf("Rank %d: s.x new = %0.12f, s.y new = %0.12f \n"
+             "tr_x = %d, tr_y = %d, periodic(x) = %d, periodic(y) = %d \n",
+             p4est->mpirank, s.xyz(0), s.xyz(1), tr_xyz[0], tr_xyz[1], periodic[0], periodic[1]);
     }
     P4EST_ASSERT(0 <= tr_xyz[dir] && tr_xyz[dir] < myb->nxyztrees[dir] && 0.0 <= s.xyz(dir) && s.xyz(dir) < (double) P4EST_ROOT_LEN);
   }
