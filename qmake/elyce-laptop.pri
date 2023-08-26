@@ -35,7 +35,7 @@ VORO_LIBS_DEBUG       = -L$$VORO_DIR_DBG/lib -lvoro++
 #MATLAB_LIBS = -Wl,-rpath,$$MATLAB_DIR/bin/glnxa64/ -L$$MATLAB_DIR/bin/glnxa64/ -leng -lmx
 
 # mpi
-MPI_DIR = /usr/lib/mpich
+MPI_DIR = PETSC_DIR_DBG #/usr/lib/mpich
 
 MPI_INCLUDES = $$MPI_DIR/include
 MPI_LIBS = -Wl,-rpath,$$MPI_DIR/lib -L$$MPI_DIR/lib -lmpi -lmpicxx

@@ -299,7 +299,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
   P4EST_QUADRANT_INIT(&best_match);
 
   if(verbose_error_report){
-    printf("Rank %d has xyz_ = (%0.12f, %0.12f) \n", p4est->mpirank, xyz_[0], xyz_[1]);
+    printf("Rank %d has xyz_ = (%0.16f, %0.16f) \n", p4est->mpirank, xyz_[0], xyz_[1]);
   }
 
   /*
@@ -338,7 +338,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
    * this gives thresh > 0.001*qeps so I suggest to define thresh as
    */
   const static double  threshold  = 0.01*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL); // == thresh*P4EST_ROOT_LEN
-
+  if(verbose_error_report) printf("Rank %d has threshold = %0.16f \n", p4est->mpirank, threshold);
 
   /* In case of nonperiodic domain, we need to make sure that any point lying on the boundary of the domain is clearly
    * and unambiguously clipped inside, without changing the quadrant of interest, before we proceed further.
@@ -355,7 +355,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
   double jj = (xyz_[1] - tr_xyz_orig[1]) * P4EST_ROOT_LEN;
 
   if(verbose_error_report){
-    printf("Rank %d has (ii, jj) = (%0.12f, %0.12f) \n", p4est->mpirank, ii, jj);
+    printf("Rank %d has (ii, jj) = (%0.16f, %0.16f) \n", p4est->mpirank, ii, jj);
   }
 
 #ifdef P4_TO_P8
@@ -384,7 +384,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
         // perturb the point (note that i, j and/or k are 0 is no perturbation is required)
         PointDIM s(DIM(i == 0 ? ii : ii + i*threshold, j == 0 ? jj : jj + j*threshold, k == 0 ? kk : kk + k*threshold));
         if(verbose_error_report){
-          printf("Rank %d has i = %d, j = %d: s.x, s.y = (%0.12f, %0.12f) \n", p4est->mpirank, i, j, s.xyz(0), s.xyz(1));
+          printf("\n \n :Rank %d has i = %d, j = %d: s.x, s.y = (%0.16f, %0.16f) \n", p4est->mpirank, i, j, s.xyz(0), s.xyz(1));
         }
         find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches, prioritize_local, verbose_error_report);
       }
@@ -412,7 +412,7 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 
   if(verbose_error_report) {
     printf("\n Find_quadrant_containing_point : commencing verbose error report on rank %d: \n", p4est->mpirank);
-    printf("Rank %d: Find quadrant containing point: s.x = %0.12f, s.y = %0.12f \n", p4est->mpirank, s.xyz(0), s.xyz(1));
+    printf("Rank %d: Find quadrant containing point: s.x = %0.16f, s.y = %0.16f \n", p4est->mpirank, s.xyz(0), s.xyz(1));
   }
 
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
@@ -455,21 +455,26 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
   while (CELL_LEAF != it->child)
     it = begin + it->get_index_of_child_containing(s);
 
+  if(verbose_error_report) printf("Rank %d: it->owner_rank = %d \n", it->owner_rank);
   if (it->owner_rank != REMOTE_OWNER) { // local or ghots quadrant
+    if(verbose_error_report) printf("Rank %d: AAA \n", p4est->mpirank);
     p4est_quadrant_t *tmp;
     p4est_locidx_t pos;
     if(it->owner_rank == p4est->mpirank){
+      if(verbose_error_report) printf("Rank %d: AAA-1 \n", p4est->mpirank);
       p4est_tree_t *p4est_tr = p4est_tree_array_index(p4est->trees, tt);
       pos = it->quad - p4est_tr->quadrants_offset;
       tmp = p4est_quadrant_array_index(&p4est_tr->quadrants, pos);
     }
     else
     {
+      if(verbose_error_report) printf("Rank %d: AAA-2 \n", p4est->mpirank);
       pos = it->quad - p4est->local_num_quadrants;
       tmp = p4est_quadrant_array_index(&ghost->ghosts, pos);
     }
     // The quadrant was found, now check if it is better than the current candidate
     if (tmp->level > best_match.level || (prioritize_local && it->owner_rank == p4est->mpirank && tmp->level == best_match.level && current_rank != p4est->mpirank)) {
+      if(verbose_error_report) printf("Rank %d: AAA-3 \n", p4est->mpirank);
       // note the '(prioritize_local && tmp->level >= best_match.level && rank != p4est->mpirank)' here above
       // --> ensures that we pick a local quadrant over a ghost one, if we find one
       // --> useful for on-the-fly interpolations up to the very border of the local domain's partition!
@@ -483,6 +488,7 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
     if (it->quad != NOT_A_P4EST_QUADRANT)
       throw std::runtime_error("my_p4est_hierarchy_t::find_quadrant_containing_point: a quadrant was marked both remote and not remote!");
 #endif
+    if(verbose_error_report) printf("Rank %d: BBB \n", p4est->mpirank);
     p4est_quadrant_t sq;
     P4EST_QUADRANT_INIT(&sq);
     sq.level = P4EST_QMAXLEVEL;

@@ -168,7 +168,7 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
              "Rank = %d \n"
              "Relevant info:"
              "rank found = %d \n"
-             "(x, y) = (%0.12f, %0.12f) \n"
+             "(x, y) = (%0.18f, %0.18f) \n"
              "tree index = %d \n"
              "quad index = %d \n",
              p4est->mpirank ,rank_found, xyz[i], xyz[i+1],
