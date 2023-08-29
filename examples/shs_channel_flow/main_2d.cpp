@@ -1130,11 +1130,12 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   }
   P4EST_ASSERT(data == nullptr);
   double dimensions[P4EST_DIM] = {DIM(channel.length(), channel.height(), channel.width())};
-  data = new splitting_criteria_cf_and_uniform_band_shs_t(cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl),
+  int lmin = cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl);
+  data = new splitting_criteria_cf_and_uniform_band_shs_t(lmin,
       channel.lmax(), &channel, uniform_band, channel.delta(), cmd.get<double>("lmid_delta_percent", default_lmid_delta_percent ), lip,
 	  channel.GF(), channel.get_pitch(), dimensions, brick->nxyztrees, cmd.contains("special_refinement"), cmd.contains("wall_refinement") ONLY3D(COMMA channel.spanwise_grooves()));
   auto* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
-  bool fix_restarted_grid = (channel.lmax() != to_delete->max_lvl);
+  bool fix_restarted_grid = (channel.lmax() != to_delete->max_lvl) || (lmin != to_delete->min_lvl);
   delete to_delete;
   p4est_n->user_pointer   = (void*) data;
   p4est_nm1->user_pointer = (void*) data; // p4est_n and p4est_nm1 always point to the same splitting_criteria_t no need to delete the nm1 one, it's just been done
