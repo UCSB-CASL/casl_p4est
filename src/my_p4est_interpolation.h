@@ -54,6 +54,7 @@ class my_p4est_interpolation_t : public CF_DIM
   friend class my_p4est_level_set_cells_t;
   friend class my_p4est_level_set_t;
 private:
+    bool debugging_error_report=false;
   /*!
    * \brief The input_buffer_t struct stores points that have been added to the set of interpolation points,
    * and that belong to the same owner process.
@@ -383,6 +384,9 @@ protected:
   void evaluate_interface_bc(const BoundaryConditionsDIM &bc_to_sample, bc_sample *interface_bc);
 
 public:
+    void set_debugging_error_report(bool set_){
+      debugging_error_report=set_;
+    }
   /*!
    * \brief my_p4est_interpolation_t constructor. Sets ngbd_n, p4est, ghost, myb, initializes Fi to one
    * NULL input, bs_f is set to 0 and "senders" are all unset.

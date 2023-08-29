@@ -137,7 +137,18 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
 
     p4est_quadrant_t best_match;
     std::vector<p4est_quadrant_t> remote_matches;
-    int rank_found = ngbd_n->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches, false, true);
+//    debugging_error_report = debugging_error_report && (p4est->mpirank == 2);
+    if(debugging_error_report){
+      printf("------------------\nRank %d, debugging error report starting for point: (%0.16f, %0.16f) \n ---------------------------\n", p4est->mpirank, xyz[0], xyz[1]);
+    }
+
+    int num_tries_find_smallest_quad = 0;
+    bool try_reduced_threshold_val = false;
+
+    try_finding_smallest_quad_containing_point:
+      int rank_found = ngbd_n->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_clip, best_match,     remote_matches, false, true, debugging_error_report, try_reduced_threshold_val);
+      if(true)printf("process_incoming_query:Rank %d (%0.12f, %0.12f) rank found = %d\n", p4est->mpirank, xyz[0], xyz[1], rank_found);
+
 
     /* only accept the quadrant if it is in our local part. If the point
      * is in our ghost it means another processor will eventually be able
@@ -164,23 +175,35 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
       /* this cannot happen as it means the source processor made a mistake in
        * calculating its remote matches.
        */
-      printf("About to throw an error due to rank/tree not found \n"
-             "Rank = %d \n"
-             "Relevant info:"
-             "rank found = %d \n"
-             "(x, y) = (%0.18f, %0.18f) \n"
-             "tree index = %d \n"
-             "quad index = %d \n",
-             p4est->mpirank ,rank_found, xyz[i], xyz[i+1],
-                                  best_match.p.piggy3.which_tree,
-                                  best_match.p.piggy3.local_num);
-      printf("Will now ask to find the quadrant one more time with verbose error printing before throwing... \n -----------------------\n");
-      int rank_found = ngbd_n->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches, false, true, true);
-      printf("\n---------------------\n additional call completed for info on rank %d \n \n", p4est->mpirank);
+
+      // [E] We will allow this to happen once, and try decreasing the threshold value that find
+      // smallest_quad_containing_point uses. If it happens twice, then we will go ahead and throw that error as per usual.
+      num_tries_find_smallest_quad++;
+      try_reduced_threshold_val=true;
+      if(false/*num_tries_find_smallest_quad==1*/){
+        printf("Rank %d did not find an appropriate owning process in process incoming query. We are trying one more time with a decreased threshold for find_smallest_quadrant_containing point ... \n", p4est->mpirank);
+        debugging_error_report=true;
+        goto try_finding_smallest_quad_containing_point;
+      }
+      else{
+        printf("About to throw an error due to rank/tree not found \n"
+               "Rank = %d \n"
+               "Relevant info:"
+               "rank found = %d \n"
+               "(x, y) = (%0.18f, %0.18f) \n"
+               "tree index = %d \n"
+               "quad index = %d \n",
+               p4est->mpirank ,rank_found, xyz[i], xyz[i+1],
+               best_match.p.piggy3.which_tree,
+               best_match.p.piggy3.local_num);
+        printf("Will now ask to find the quadrant one more time with verbose error printing before throwing... \n -----------------------\n");
+        int rank_found = ngbd_n->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches, false, true, true);
+        printf("\n---------------------\n additional call completed for info on rank %d. Rank found = %d \n \n", p4est->mpirank, rank_found);
 
 
-      throw std::runtime_error("[ERROR] process_incoming_query: A remote processor could not find a local or ghost quadrant "
-                               "for a query point sent by the source processor. \n");
+        throw std::runtime_error("[ERROR] process_incoming_query: A remote processor could not find a local or ghost quadrant "
+                                 "for a query point sent by the source processor. \n");
+      }
     }
 
 //    printf( "Relevant info: rank = %d \n"

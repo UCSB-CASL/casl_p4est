@@ -262,7 +262,7 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
 }
 
 int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches,
-                                                                  const bool &prioritize_local, const bool &set_cumulative_local_index_in_piggy3_of_best_match, bool verbose_error_report) const
+                                                                  const bool &prioritize_local, const bool &set_cumulative_local_index_in_piggy3_of_best_match, bool verbose_error_report, bool try_smaller_threshold) const
 {
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr;
@@ -337,8 +337,13 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
    * Assuming that we can safely set log2(max(number of trees along a cartesian direction)) = 10,
    * this gives thresh > 0.001*qeps so I suggest to define thresh as
    */
-  const static double  threshold  = 0.01*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL); // == thresh*P4EST_ROOT_LEN
-  if(verbose_error_report) printf("Rank %d has threshold = %0.16f \n", p4est->mpirank, threshold);
+  const /*static */double  threshold  = (try_smaller_threshold? 0.001: 0.01)*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL); // == thresh*P4EST_ROOT_LEN
+
+  if(try_smaller_threshold){
+    printf("Rank %d has TRYING REDUCED THRESHOLD : %0.16f \n\n\n",p4est->mpirank, threshold);
+  }
+
+  if(verbose_error_report) printf("Rank %d has threshold = %0.16f but qeps = %0.16f \n", p4est->mpirank, threshold, qeps);
 
   /* In case of nonperiodic domain, we need to make sure that any point lying on the boundary of the domain is clearly
    * and unambiguously clipped inside, without changing the quadrant of interest, before we proceed further.
@@ -383,10 +388,12 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
       {
         // perturb the point (note that i, j and/or k are 0 is no perturbation is required)
         PointDIM s(DIM(i == 0 ? ii : ii + i*threshold, j == 0 ? jj : jj + j*threshold, k == 0 ? kk : kk + k*threshold));
-        if(verbose_error_report){
-          printf("\n \n :Rank %d has i = %d, j = %d: s.x, s.y = (%0.16f, %0.16f) \n", p4est->mpirank, i, j, s.xyz(0), s.xyz(1));
-        }
+
         find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches, prioritize_local, verbose_error_report);
+        if(rank == -1){
+          printf("\n \n :Find_smallest_quad: Rank %d has i = %d, j = %d: s.x, s.y = (%0.16f, %0.16f) and rank found = %d \n", p4est->mpirank, i, j, s.xyz(0), s.xyz(1), rank);
+        }
+
       }
 
   if(set_cumulative_local_index_in_piggy3_of_best_match && rank != -1)
@@ -396,11 +403,24 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
     else
       best_match.p.piggy3.local_num += p4est->local_num_quadrants;
   }
+  bool we_had_rank_m1=false;
+  if(rank==-1 /*&& p4est->mpirank==3*/){
+    // ELYCE TO DO-- PRINT BEST MATCHES AND SEE MORE INFO ABOUT WHAT'S GOING ON.
+    // it seems pointless to have find_quad_containg_point actually find potential best matches if they don't end up being actually used?
+    printf("Find_smallest_quad:Rank %d (%0.12f, %0.12f)-- owner rank found was %d, but has matches: \n", p4est->mpirank, xyz[0], xyz[1], rank);
+    we_had_rank_m1=true;
+    int num_matches = remote_matches.size();
+    for (int i=0; i<num_matches; i++){
+      printf("match %d, sq tree = %d, sq rank = %d , sq.x = %d, sq.y = %d \n  ", i, remote_matches[i].p.which_tree,remote_matches[i].p.piggy1.owner_rank, remote_matches[i].x, remote_matches[i].y);
+
+    }
+  }
 
 #ifdef CASL_LOG_TINY_EVENTS
   ierr = PetscLogEventEnd(log_my_p4est_hierarchy_t_find_smallest_quad, 0, 0, 0, 0); CHKERRXX(ierr);
 #endif
 
+  if(we_had_rank_m1){printf("find_smallest_quad (on rank %d) -- we had rank -1 --> returning rank %d \n", p4est->mpirank, rank);}
   return rank;
 }
 
@@ -412,7 +432,7 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 
   if(verbose_error_report) {
     printf("\n Find_quadrant_containing_point : commencing verbose error report on rank %d: \n", p4est->mpirank);
-    printf("Rank %d: Find quadrant containing point: s.x = %0.16f, s.y = %0.16f \n", p4est->mpirank, s.xyz(0), s.xyz(1));
+    printf("Rank %d: Find quadrant containing point: s.x = %0.16f, s.y = %0.16f, tr_x = %d, tr_y = %d \n", p4est->mpirank, s.xyz(0), s.xyz(1), tr_xyz[0], tr_xyz[1]);
   }
 
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
@@ -437,6 +457,10 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
       tr_xyz[dir] = tr_xyz_orig[dir] + ntree_to_slide;
       if(periodic[dir])
         tr_xyz[dir] = mod(tr_xyz[dir], myb->nxyztrees[dir]);
+
+      if(verbose_error_report){
+        printf("Rank %d, After ntree slide adjustment: s.x = %0.16f, s.y = %0.16f, tr_x = %d, tr_y = %d \n", p4est->mpirank, s.xyz(0), s.xyz(1), tr_xyz[0], tr_xyz[1]);
+      }
     }
 
     if(verbose_error_report){
@@ -455,7 +479,7 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
   while (CELL_LEAF != it->child)
     it = begin + it->get_index_of_child_containing(s);
 
-  if(verbose_error_report) printf("Rank %d: it->owner_rank = %d \n", it->owner_rank);
+  if(verbose_error_report) printf("Rank %d: it->owner_rank = %d \n", p4est->mpirank, it->owner_rank);
   if (it->owner_rank != REMOTE_OWNER) { // local or ghots quadrant
     if(verbose_error_report) printf("Rank %d: AAA \n", p4est->mpirank);
     p4est_quadrant_t *tmp;
@@ -503,8 +527,15 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 #ifdef P4_TO_P8
     sq.z = (p4est_qcoord_t)(s.z) & ~(qh - 1);
 #endif
+    if(verbose_error_report){
+      printf("Rank %d -- about to call p4est_comm_find_owner \n"
+             "--> tt = %d, qh = %d \n s.x = %d, s.y = %d, \n"
+             "sq.x = %d, sq.y = %d \n",
+             p4est->mpirank, tt, qh, (p4est_qcoord_t) s.x, (p4est_qcoord_t)s.y, sq.x, sq.y);
+    }
     sq.p.piggy1.owner_rank = p4est_comm_find_owner(p4est, tt, &sq, p4est->mpirank);
 
+    if(verbose_error_report) printf("Rank %d: found rank %d to be the owner process \n", p4est->mpirank, sq.p.piggy1.owner_rank);
     remote_matches.push_back(sq);
   }
 }

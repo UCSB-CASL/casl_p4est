@@ -459,7 +459,7 @@ public:
    *    case)
    */
   int find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches,
-                                              const bool &prioritize_local = false, const bool &set_cumulative_local_index_in_piggy3_of_best_match = false, bool verbose_error_report = false) const;
+                                              const bool &prioritize_local = false, const bool &set_cumulative_local_index_in_piggy3_of_best_match = false, bool verbose_error_report = false, bool try_smaller_threshold=false) const;
 
   /*!
    * \brief get_all_quadrants_in establishes the list of local indices of the quadrants being found in another quadrant

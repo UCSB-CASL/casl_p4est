@@ -5411,64 +5411,97 @@ int main(int argc, char** argv) {
       compute_pressure_ = are_we_saving_vtk(tstep, tn, tstep == load_tstep, out_idx, false ) || example_is_a_test_case;
       stefan_w_fluids_solver->set_compute_pressure(compute_pressure_);
 
-
       stefan_w_fluids_solver->solve_all_fields_for_one_timestep();
 
       dt = stefan_w_fluids_solver->get_dt();
 
 //      // ELYCE TRYING TO TRIGGER A BUG:
-//      MPI_Barrier(mpi.comm());
-//      PetscPrintf(mpi.comm(), "\nBEGIN:: ELYCE TRYING TO TRIGGER THE BUG \n");
-//      ngbd_np1 = stefan_w_fluids_solver->get_ngbd_np1();
-//      nodes_np1 = stefan_w_fluids_solver->get_nodes_np1();
-//      p4est_np1 = stefan_w_fluids_solver->get_p4est_np1();
-//      my_p4est_interpolation_nodes_t interp_test(ngbd_np1);
-
-//      const static double  threshold_  = 0.01*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL) / (double) P4EST_ROOT_LEN;
-//      PetscPrintf(mpi.comm(), "Threshold is %0.12e \n", threshold_);
-
-//      double threshold = 0.;//2.794003e-11;//03125e-11;//3.5e-11;
-//      PetscPrintf(mpi.comm(), "Our defined threshold is %0.12e \n", threshold);
-
-//      foreach_node(n, nodes_np1){
-//        double xyz_n[P4EST_DIM];
-//        node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz_n);
-
-//        double xloc = 3.0;
-//        double yloc = 1.96875;//1.99219;
+      MPI_Barrier(mpi.comm());
+      PetscPrintf(mpi.comm(), "\nBEGIN:: ELYCE TRYING TO TRIGGER THE BUG \n");
 
 
+      ngbd_np1 = stefan_w_fluids_solver->get_ngbd_np1();
+      nodes_np1 = stefan_w_fluids_solver->get_nodes_np1();
+      p4est_np1 = stefan_w_fluids_solver->get_p4est_np1();
 
-//        bool is_xloc = fabs(xloc - xyz_n[0])<EPS;
-//        bool is_yloc = fabs(yloc - xyz_n[1])<EPS;
+      // TEMPORARY: output the grid that we are seeing
+      // -------------------------------------------------
+      if(1){
+        std::vector<Vec_for_vtk_export_t> point_fields;
+        std::vector<Vec_for_vtk_export_t> cell_fields = {};
+        phi = stefan_w_fluids_solver->get_phi();
+        point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
 
-////        if(is_xloc){printf("We have xloc on rank %d \n", mpi.rank());}
-////        if(is_yloc){printf("We have yloc on rank %d \n", mpi.rank());}
-//        if(is_xloc/* && is_yloc*/){
-//          printf("We've got our point registered by rank %d \n", mpi.rank());
+
+        const char* out_dir = getenv("OUT_DIR_VTK");
+        if(!out_dir){
+          throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
+        }
+
+        char filename[1000];
+        sprintf(filename, "%s/snapshot_before_interp_bug_%d", out_dir, tstep);
+        my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+        point_fields.clear();
+      }
+
+      my_p4est_interpolation_nodes_t interp_test(ngbd_np1);
+      interp_test.set_debugging_error_report(false);
+
+      const static double  threshold_  = 0.01*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL) / (double) P4EST_ROOT_LEN;
+      PetscPrintf(mpi.comm(), "Threshold is %0.12e \n", threshold_);
+
+      double threshold = 0.;//2.794003e-11;//03125e-11;//3.5e-11;
+      PetscPrintf(mpi.comm(), "Our defined threshold is %0.12e \n", threshold);
+
+      foreach_node(n, nodes_np1){
+        double xyz_n[P4EST_DIM];
+        node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz_n);
+
+        double xloc = 3.0;
+        double yloc = 1.171875;//1.96875;//1.99219;
+        // working counterexample -- y loc = 1.03125;//
+
+
+        bool is_xloc = fabs(xloc - xyz_n[0])<EPS;
+        bool is_yloc = fabs(yloc - xyz_n[1])<EPS;
+
+//        if(is_xloc){printf("We have xloc on rank %d \n", mpi.rank());}
+//        if(is_yloc){printf("We have yloc on rank %d \n", mpi.rank());}
+        if(is_xloc && is_yloc){
+          printf("We've got our point registered by rank %d \n", mpi.rank());
 //          xyz_n[0]+=threshold;
+          // triggers problem:
+          xyz_n[0]=3.000000000027939429;
+
+          // try this instead:
+//          xyz_n[0]=3.000000000028;
+          interp_test.add_point(n, xyz_n);
+        }
+//        else if(is_xloc && !is_yloc){
 //          interp_test.add_point(n, xyz_n);
+
 //        }
 
-//      }
-//      T_l_n = stefan_w_fluids_solver->get_T_l_n();
-//      interp_test.set_input(T_l_n.vec, quadratic_non_oscillatory_continuous_v2);
+
+      }
+      T_l_n = stefan_w_fluids_solver->get_T_l_n();
+      interp_test.set_input(T_l_n.vec, quadratic_non_oscillatory_continuous_v2);
 
 
 
-//      vec_and_ptr_t Tl_out;
-//      Tl_out.create(p4est_np1, nodes_np1);
-//      PetscPrintf(mpi.comm(), "Trying to interpolate ... \n");
-//      MPI_Barrier(mpi.comm());
-//      interp_test.interpolate(Tl_out.vec);
-//      Tl_out.destroy();
+      vec_and_ptr_t Tl_out;
+      Tl_out.create(p4est_np1, nodes_np1);
+      PetscPrintf(mpi.comm(), "Trying to interpolate ... \n");
+      MPI_Barrier(mpi.comm());
+      interp_test.interpolate(Tl_out.vec);
+      Tl_out.destroy();
 
-//      MPI_Barrier(mpi.comm());
+      MPI_Barrier(mpi.comm());
 
-//      PetscPrintf(mpi.comm(), "END:: ELYCE TRYING TO TRIGGER THE BUG \n \n");
-//      if(tstep==0){
-//        std::exit(0);
-//      }
+      PetscPrintf(mpi.comm(), "END:: ELYCE TRYING TO TRIGGER THE BUG \n \n");
+      if(tstep==0){
+        std::exit(0);
+      }
       // -------------------------------
       // Save as relevant
       // -------------------------------
