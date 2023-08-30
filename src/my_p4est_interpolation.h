@@ -171,9 +171,9 @@ private:
     // 2) the data (serialized) --> nelements_per_point 'data_to_communicate' elements (all with 'value' well-defined)
     // that makes a (maximum) memory requirement of (vec_size/P4EST_DIM)*(1 + nelements_per_point)
 
-    buff.reserve((vec_size/P4EST_DIM)*(nelements_per_point + 1));
+//    buff.reserve((vec_size/P4EST_DIM)*(nelements_per_point + 1));
 //    // added conversion from int to size_t for consistency // Elyce 1/12/22 -- did not change bug though
-//    buff.reserve((static_cast<size_t>(vec_size)/P4EST_DIM)*(nelements_per_point + 1));
+    buff.reserve((static_cast<size_t>(vec_size)/P4EST_DIM)*(nelements_per_point + 1));
 
     P4EST_ASSERT(buff.size() == 0);
     return;

@@ -465,7 +465,7 @@ void set_geometry(){
       r0 = s0; // for consistency, and for setting up NS problem (if wanted)
       break;
       }
-    
+
     case FLOW_PAST_CYLINDER: // intentionally waterfalls into same settings as ice around cylinder
 
     case ICE_AROUND_CYLINDER:{ // Ice layer growing around a constant temperature cooled cylinder
@@ -5415,7 +5415,10 @@ int main(int argc, char** argv) {
 
       dt = stefan_w_fluids_solver->get_dt();
 
-//      // ELYCE TRYING TO TRIGGER A BUG:
+      /*
+       * The code below corresponds to Elyce trying to intentionally reproduce the nefarious "process_incoming_query" bug using the Two_Grains_Clogging setup. I'm leaving it here for now because I'm not entirely sure this is fixed for good.
+       *
+      // ELYCE TRYING TO TRIGGER A BUG:
       MPI_Barrier(mpi.comm());
       PetscPrintf(mpi.comm(), "\nBEGIN:: ELYCE TRYING TO TRIGGER THE BUG \n");
 
@@ -5445,13 +5448,13 @@ int main(int argc, char** argv) {
       }
 
       my_p4est_interpolation_nodes_t interp_test(ngbd_np1);
-      interp_test.set_debugging_error_report(false);
 
       const static double  threshold_  = 0.01*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL) / (double) P4EST_ROOT_LEN;
       PetscPrintf(mpi.comm(), "Threshold is %0.12e \n", threshold_);
 
-      double threshold = 0.;//2.794003e-11;//03125e-11;//3.5e-11;
+      double threshold = 0.000000000027939429;//2.794003e-11;//03125e-11;//3.5e-11;
       PetscPrintf(mpi.comm(), "Our defined threshold is %0.12e \n", threshold);
+      interp_test.set_debugging_error_report(true);
 
       foreach_node(n, nodes_np1){
         double xyz_n[P4EST_DIM];
@@ -5469,9 +5472,10 @@ int main(int argc, char** argv) {
 //        if(is_yloc){printf("We have yloc on rank %d \n", mpi.rank());}
         if(is_xloc && is_yloc){
           printf("We've got our point registered by rank %d \n", mpi.rank());
-//          xyz_n[0]+=threshold;
+          xyz_n[0]+=threshold;
           // triggers problem:
-          xyz_n[0]=3.000000000027939429;
+//          xyz_n[0]=3.000000000027939429;
+//          xyz_n[0]=3.000000000027950;
 
           // try this instead:
 //          xyz_n[0]=3.000000000028;
@@ -5487,12 +5491,13 @@ int main(int argc, char** argv) {
       T_l_n = stefan_w_fluids_solver->get_T_l_n();
       interp_test.set_input(T_l_n.vec, quadratic_non_oscillatory_continuous_v2);
 
-
-
       vec_and_ptr_t Tl_out;
       Tl_out.create(p4est_np1, nodes_np1);
       PetscPrintf(mpi.comm(), "Trying to interpolate ... \n");
+      interp_test.set_debugging_error_report(false);
+
       MPI_Barrier(mpi.comm());
+
       interp_test.interpolate(Tl_out.vec);
       Tl_out.destroy();
 
@@ -5502,6 +5507,8 @@ int main(int argc, char** argv) {
       if(tstep==0){
         std::exit(0);
       }
+
+      */
       // -------------------------------
       // Save as relevant
       // -------------------------------

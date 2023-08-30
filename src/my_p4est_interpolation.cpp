@@ -75,7 +75,21 @@ void my_p4est_interpolation_t::add_point_general(const p4est_locidx_t &node_idx_
 
   // find the quadrant
   std::vector<p4est_quadrant_t> remote_matches;
-  int rank_found = ngbd_n->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches, false, true);
+  int rank_found = ngbd_n->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches, false, true, debugging_error_report);
+
+  if(debugging_error_report){
+    printf("\nRank %d (add point general): "
+           "point (%0.16f, %0.16f) node idx %d -- rank_found = %d\n\n",
+           p4est->mpirank, xyz_clip[0], xyz_clip[1],
+           node_idx_on_output,
+           rank_found);
+    int remote_matches_size = remote_matches.size();
+    printf("\nRank %d (add point general): num remote matches = %d \n", p4est->mpirank, remote_matches_size);
+    for(int i=0; i<remote_matches_size; i++){
+      printf("\nRank %d (add point general): remote match # %d: tree %d, rank %d \n", p4est->mpirank, i,
+             remote_matches[i].p.piggy1.which_tree, remote_matches[i].p.piggy1.owner_rank);
+    }
+  }
 
   /* check who is going to own the quadrant.
    * we add the best_match quadrant to the local buffer if it is locally owned
@@ -123,6 +137,7 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
 #ifdef CASL_LOG_EVENTS
   receive_queried_coordinates_and_allocate_send_buffer_in_map(xyz, send_buffer, nelements_per_point, status, entry);
 #else
+
   receive_queried_coordinates_and_allocate_send_buffer_in_map(xyz, send_buffer, nelements_per_point, status);
 #endif
 
@@ -137,17 +152,14 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
 
     p4est_quadrant_t best_match;
     std::vector<p4est_quadrant_t> remote_matches;
-//    debugging_error_report = debugging_error_report && (p4est->mpirank == 2);
+
     if(debugging_error_report){
       printf("------------------\nRank %d, debugging error report starting for point: (%0.16f, %0.16f) \n ---------------------------\n", p4est->mpirank, xyz[0], xyz[1]);
     }
 
-    int num_tries_find_smallest_quad = 0;
-    bool try_reduced_threshold_val = false;
 
-    try_finding_smallest_quad_containing_point:
-      int rank_found = ngbd_n->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_clip, best_match,     remote_matches, false, true, debugging_error_report, try_reduced_threshold_val);
-      if(true)printf("process_incoming_query:Rank %d (%0.12f, %0.12f) rank found = %d\n", p4est->mpirank, xyz[0], xyz[1], rank_found);
+      int rank_found = ngbd_n->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_clip, best_match,     remote_matches, false, true, debugging_error_report);
+//      if(true) printf("process_incoming_query:Rank %d (%0.12f, %0.12f) rank found = %d \n", p4est->mpirank, xyz[0], xyz[1], rank_found);
 
 
     /* only accept the quadrant if it is in our local part. If the point
@@ -178,12 +190,12 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
 
       // [E] We will allow this to happen once, and try decreasing the threshold value that find
       // smallest_quad_containing_point uses. If it happens twice, then we will go ahead and throw that error as per usual.
-      num_tries_find_smallest_quad++;
-      try_reduced_threshold_val=true;
+//      num_tries_find_smallest_quad++;
+//      try_reduced_threshold_val=true;
       if(false/*num_tries_find_smallest_quad==1*/){
         printf("Rank %d did not find an appropriate owning process in process incoming query. We are trying one more time with a decreased threshold for find_smallest_quadrant_containing point ... \n", p4est->mpirank);
-        debugging_error_report=true;
-        goto try_finding_smallest_quad_containing_point;
+//        debugging_error_report=true;
+//        goto try_finding_smallest_quad_containing_point;
       }
       else{
         printf("About to throw an error due to rank/tree not found \n"
@@ -198,21 +210,14 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
                best_match.p.piggy3.local_num);
         printf("Will now ask to find the quadrant one more time with verbose error printing before throwing... \n -----------------------\n");
         int rank_found = ngbd_n->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches, false, true, true);
-        printf("\n---------------------\n additional call completed for info on rank %d. Rank found = %d \n \n", p4est->mpirank, rank_found);
+        printf("\n---------------------\n additional call completed for info on rank %d. Rank found = %d \n \n"
+               "A side note regarding this bug: Elyce previously worked on this, and implemented a sort of sketchy fix that you can find notes regarding in the function my_p4est_hierarchy_t::find_quadrant_containing_containing_point. If you Ctrl-F the library for `Elyce 8-30-23 super sketchy fix', you'll find the info you need in those comments! If you're reading this, I'm sorry, apparently there is more work to be done. Best of luck to you, and godspeed. \n", p4est->mpirank, rank_found);
 
 
         throw std::runtime_error("[ERROR] process_incoming_query: A remote processor could not find a local or ghost quadrant "
                                  "for a query point sent by the source processor. \n");
       }
     }
-
-//    printf( "Relevant info: rank = %d \n"
-//           "rank found = %d \n"
-//           "(x, y) = (%0.12f, %0.12f) \n"
-//           "tree index = %d \n"
-//           "quad index = %d \n",p4est->mpirank ,rank_found, xyz[i], xyz[i+1],
-//           best_match.p.piggy3.which_tree,
-//           best_match.p.piggy3.local_num);
   }
   // we are done, let's send the buffer back
   send_response_back_to_query(buff, status);
@@ -429,6 +434,7 @@ void my_p4est_interpolation_t::interpolate(double * const *Fo_p, const u_int &co
 #ifdef CASL_LOG_EVENTS
         process_incoming_query(status, comp, log_entry);
 #else
+        if(debugging_error_report){printf("Rank %d, probing for incoming queries (num_remaining_queries = %d) \n", p4est->mpirank, num_remaining_queries);}
         process_incoming_query(status, comp);
 #endif
         num_remaining_queries--;
@@ -439,7 +445,13 @@ void my_p4est_interpolation_t::interpolate(double * const *Fo_p, const u_int &co
     if (num_remaining_replies > 0) {
       int is_msg_pending;
       int mpiret = MPI_Iprobe(MPI_ANY_SOURCE, reply_tag, p4est->mpicomm, &is_msg_pending, &status); SC_CHECK_MPI(mpiret);
-      if (is_msg_pending) { process_incoming_reply(status, Fo_p, comp); num_remaining_replies--; }
+      if (is_msg_pending) {
+        process_incoming_reply(status, Fo_p, comp);
+        if(debugging_error_report){
+          printf("Rank %d, probing for incoming replies (num_remaining_replies = %d) \n", p4est->mpirank, num_remaining_replies);
+        }
+        num_remaining_replies--;
+      }
     }
 
     done = num_remaining_queries == 0 && num_remaining_replies == 0 && it == end;
