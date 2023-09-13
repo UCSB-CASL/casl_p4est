@@ -1659,7 +1659,7 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 
 		const double h1 = uniform_band * plastron_smallest_dy * 0.5;		// Height of max level wave in specially refined grid.  Note that comparison is made with respect to plastron's band.
 		auto wave1 = [&](const double& t) -> double {				// First wave for special refinement (closest to wall).
-            double ret = UNIFORM_FIRST_REFINEMENT ? h1 * 2.0 : h1 * pow( cos( M_PI * (t + R/2) / P) , 6);
+            double ret = UNIFORM_FIRST_REFINEMENT ? h1 : h1 * pow( cos( M_PI * (t + R/2) / P) , 6);
             return WALL_REFINEMENT ? MAX( ret, wave0( t ) ) : ret;
 		};
 
