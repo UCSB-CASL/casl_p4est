@@ -1652,15 +1652,15 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 //		const double quad_diag = sqrt(SUMD( SQR( tree_dimensions[0] ), SQR( tree_dimensions[1] ), SQR( tree_dimensions[2] ))) * quad_denom;
 		const double plastron_smallest_dy = tree_dimensions[1] * (((double) P4EST_QUADRANT_LEN((int8_t) PLASTRON_MAX_LVL))/((double) P4EST_ROOT_LEN));
 
-		const double h0 = uniform_band * plastron_smallest_dy * 0.1;
+		const double h0 = uniform_band * plastron_smallest_dy * 0.05;
 		auto wave0 = [&](const double& t) -> double {
-			return h0 * pow( cos( M_PI * (t + R/2) / P) , 6);
+			return h0;
 		};
 
 		const double h1 = uniform_band * plastron_smallest_dy * 0.5;		// Height of max level wave in specially refined grid.  Note that comparison is made with respect to plastron's band.
 		auto wave1 = [&](const double& t) -> double {				// First wave for special refinement (closest to wall).
-			double ret = h1 * 2.0;//* pow( cos( M_PI * (t + R/2) / P) , 6);
-			return WALL_REFINEMENT ? MAX( ret, wave0( t ) ) : ret;
+            double ret = UNIFORM_FIRST_REFINEMENT ? h1 * 2.0 : h1 * pow( cos( M_PI * (t + R/2) / P) , 6);
+            return WALL_REFINEMENT ? MAX( ret, wave0( t ) ) : ret;
 		};
 
 		bool coarsen = false;
@@ -1680,8 +1680,8 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 					double minDistToWall = MIN( ABS( xyz[1] + DELTA ), ABS( xyz[1] - DELTA ) );
 
 					// Coarsening if we are out of the (possibly wavy) uniform band?
-					if( SPECIAL_REFINEMENT)
-						cor_band = minDistToWall > wave1( xyz[2] );
+                    if ( SPECIAL_REFINEMENT )
+                        cor_band = minDistToWall > wave1( xyz[2] );
 					else
 						cor_band = minDistToWall > h1;
 
@@ -1699,7 +1699,7 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 			return MAX( ret, wave1( t ) );
 		};
 
-		bool refine = quad->level < max_lvl - (state > 0? int( SPECIAL_REFINEMENT ) : 0);
+		bool refine = quad->level < max_lvl - (state > 0 ? int( SPECIAL_REFINEMENT ) + int ( WALL_REFINEMENT ) : 0);
 		double xyz[P4EST_DIM];
 		if( refine )
 		{

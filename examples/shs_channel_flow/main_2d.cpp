@@ -1133,7 +1133,7 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   int lmin = cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl);
   data = new splitting_criteria_cf_and_uniform_band_shs_t(lmin,
       channel.lmax(), &channel, uniform_band, channel.delta(), cmd.get<double>("lmid_delta_percent", default_lmid_delta_percent ), lip,
-	  channel.GF(), channel.get_pitch(), dimensions, brick->nxyztrees, cmd.contains("special_refinement"), cmd.contains("wall_refinement") ONLY3D(COMMA channel.spanwise_grooves()));
+	  channel.GF(), channel.get_pitch(), dimensions, brick->nxyztrees, cmd.contains("special_refinement"), cmd.contains("uniform_refinement"), cmd.contains("wall_refinement") ONLY3D(COMMA channel.spanwise_grooves()));
   auto* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
   bool fix_restarted_grid = (channel.lmax() != to_delete->max_lvl) || (lmin != to_delete->min_lvl);
   delete to_delete;
@@ -1592,6 +1592,7 @@ int main (int argc, char* argv[])
   cmd.add_option("wall_layer",          "number of finest cells desired to layer the channel walls, default is " + std::to_string(default_wall_layer) + " or value deduced from solver state if restarted.");
   cmd.add_option("lmid_delta_percent", 	"how far to use mid-level refinement cells away from the wall (as percent w.r.t. delta); provide 0 to disable this option; default is " + std::to_string( default_lmid_delta_percent ) );
   cmd.add_option("special_refinement",  "if present, use special refinement for plastron and ridges upon restart in 3D. Use this option carefully because it will increase the resolution over the ridges while keeping a lower (banded) resolution over the gas interfaces.");
+  cmd.add_option("uniform_refinement",  "if present, use above special refinement with a unifrom layer for highest refinement.");
   cmd.add_option("wall_refinement",     "if special refinement is used, adds an additional wavy layer at the channel wall");
   cmd.add_option("lip",                 "Lipschitz constant L for grid refinement. The levelset is defined as the negative distance to the top/bottom wall in case of spanwise grooves or to the closest no-slip region with streamwise grooves. \n\tWarning: this application uses a modified criterion comparin the levelset value to L\\Delta y (as opposed to L*diag(C)). \n\tDefault value is " + std::to_string(default_lip) + (default_lip < 10.0 ? " (fyi: that's thin for turbulent cases)" : "") + " or value read from solver state if restarted.");
   cmd.add_option("nx",                  "number of trees in the x-direction. \n\tThe default value is " + std::to_string(default_ntree_y) + "*length/height  to ensure aspect ratio of cells = 1 when using default dimensions");
