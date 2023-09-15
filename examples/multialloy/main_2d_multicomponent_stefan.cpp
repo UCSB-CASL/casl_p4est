@@ -2428,9 +2428,16 @@ public:
 
         //
 //        return phi_directional_seeds(x,y);
+        double frequency = floor(num_seeds_directional.val/2.);
 
         // Normal directional:
-        return -(y - front_location()*(1. +  0.5* abs(sin(floor(num_seeds_directional.val/2.) * PI*x))));
+        if(x < 5./frequency || x>xmax.val - 5./frequency){
+          return -(y - front_location());
+        }
+        else{
+          return -(y - front_location()*(1. +  0.5* abs(sin(frequency * PI * x))));
+
+        }
 
         //-(y - front_location()) + 0.001/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.001/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
       }
