@@ -3089,6 +3089,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
 
   VecScaleGhost(front_velo_norm_[0].vec, 1./scaling_);
 
+  PetscPrintf(p4est_->mpicomm, "Attempting to save VTK in %s\n", name);
   my_p4est_vtk_write_all_lists(p4est_, nodes_, ghost_,
                                P4EST_TRUE, P4EST_TRUE,
                                name,
