@@ -2318,6 +2318,7 @@ int my_p4est_multialloy_t::one_step_w_fluids(int it_scheme, double *bc_error_max
 
   PetscPrintf(p4est_->mpicomm, "\n ------------------------- \n Iteration = %d, Time = %3e, Number of Nodes = %d "
                                "\n -------------------------- \n", iteration_one_step, time_,num_nodes);
+  PetscPrintf(p4est_->mpicomm, "dxyz_min = %0.4e \n", dxyz_min_);
     PetscPrintf(p4est_->mpicomm, "Solving nonlinear system:\n");
 
   // update time in interface and boundary conditions

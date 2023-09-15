@@ -2330,6 +2330,9 @@ bool periodicity(int dir)
   }
 }
 
+param_t<double> num_seeds_directional  (pl, 10., "num_seeds_directional", "Number of seeds for directional cases run by Elyce \n");
+
+
 double phi_directional_seeds(double x, double y){
   const int num_seeds=20;
   double yshift_val = 0.9*front_location(); //front_location.val;
@@ -2427,7 +2430,7 @@ public:
 //        return phi_directional_seeds(x,y);
 
         // Normal directional:
-        return -(y - front_location()*(1. +  seed_radius.val* abs(sin(100*x))));
+        return -(y - front_location()*(1. +  0.5* abs(sin(floor(num_seeds_directional.val/2.) * PI*x))));
 
         //-(y - front_location()) + 0.001/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.001/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
       }
@@ -3314,6 +3317,8 @@ param_t<double> u0   (pl, 0., "u0", "Fluid velocity value in x direction for dir
 param_t<double> v0   (pl, 0., "v0", "Fluid velocity value in y direction for dirichlet boundary conditions (and initial conditions) TO-DO: ADD UNITS" );
 
 
+
+
 double outflow_u=0.;
 double outflow_v=0.;
 // --------------------------------------------------------------------------------------------------------------
@@ -3711,6 +3716,11 @@ int main (int argc, char* argv[])
   //  volumetric_heat.val  /= (scaling()*scaling()*scaling());
   temp_gradient.val    /= scaling();
   cooling_velocity.val *= scaling();
+
+  if(solve_w_fluids.val){
+      mu_l.val /=scaling();
+      gravity_.val *= scaling() * scaling();
+  }
 
 
   // initialize constants in initial and boundary conditions
