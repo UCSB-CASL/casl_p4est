@@ -607,7 +607,7 @@ private:
 	double _offset() const;
 
 public:
-	enum STATE { COARSEN_AND_REFINE_MAX_LVL = 0, REFINE_MAX_LVL_PLASTRON, REFINE_MID_BANDS };
+	enum STATE { COARSEN_GRID = 0, COARSEN_AND_REFINE_MAX_LVL, REFINE_MAX_LVL_PLASTRON, REFINE_MID_BANDS };
 
 	const double DELTA;					// Channel half-height (on the y-axis).
 	const double LMID_DELTA_PERCENT;	// How far to extend mid-level cells (use 0 to disable this option).
@@ -657,7 +657,7 @@ public:
 		XYZ_MIN{DIM( -xyzDim[0]/2, -xyzDim[1]/2, -xyzDim[2]/2 )}, XYZ_MAX{DIM( xyzDim[0]/2, xyzDim[1]/2, xyzDim[2]/2 )},
 		SPECIAL_REFINEMENT( P4EST_DIM < 3? false : spRef ),UNIFORM_FIRST_REFINEMENT( P4EST_DIM < 3? false : uniRef ), WALL_REFINEMENT( P4EST_DIM < 3? false : wallRef ),		// NOLINT
 		N_TREES{DIM( nTrees[0], nTrees[1], nTrees[2] )}, PLASTRON_MAX_LVL(maxLvl - (SPECIAL_REFINEMENT ? 1 : 0) - (WALL_REFINEMENT ? 1 : 0)),
-		state( STATE::COARSEN_AND_REFINE_MAX_LVL ) ONLY3D(COMMA SPANWISE( spanwise ))
+		state( STATE::COARSEN_GRID ) ONLY3D(COMMA SPANWISE( spanwise ))
 	{
 		std::string errorPrefix = "[CASL_ERROR] splitting_criteria_cf_and_uniform_band_shs_t::constructor: ";
 

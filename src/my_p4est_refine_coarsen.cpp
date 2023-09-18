@@ -1552,8 +1552,8 @@ void splitting_criteria_cf_and_uniform_band_shs_t::init_fn(p4est_t* p4est, p4est
 
 bool splitting_criteria_cf_and_uniform_band_shs_t::refine_and_coarsen( p4est_t* p4est, p4est_nodes_t* nodes, Vec phi )
 {
-	if( state < STATE::COARSEN_AND_REFINE_MAX_LVL || (state == STATE::REFINE_MAX_LVL_PLASTRON && !SPECIAL_REFINEMENT) || state > STATE::REFINE_MID_BANDS )
-		throw std::runtime_error( "[CASL_ERROR] splitting_criteria_cf_and_uniform_band_shs_t::refine_and_coarsen: Invalid state!" );
+	// if( state < STATE::COARSEN_AND_REFINE_MAX_LVL || (state == STATE::REFINE_MAX_LVL_PLASTRON && !SPECIAL_REFINEMENT) || state > STATE::REFINE_MID_BANDS )
+	// 	throw std::runtime_error( "[CASL_ERROR] splitting_criteria_cf_and_uniform_band_shs_t::refine_and_coarsen: Invalid state!" );
 
 	const double *phi_p;
 	phi_p = nullptr;
@@ -1664,9 +1664,10 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 		};
 
 		bool coarsen = false;
-		if( state == STATE::COARSEN_AND_REFINE_MAX_LVL )			// We coarsen only in the first round, otherwise the grid never stabilizes.
+		if( state == STATE::COARSEN_GRID )			// We coarsen only in the first round, otherwise the grid never stabilizes.
 		{
 			coarsen = (quad->level > min_lvl);
+#if 0
 			if( coarsen )
 			{
 				bool cor_band;
@@ -1690,6 +1691,13 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 						break;
 				}
 			}
+#endif
+			if (coarsen)
+				quad->p.user_int = COARSEN_QUADRANT;
+			else
+				quad->p.user_int = SKIP_QUADRANT;
+
+			return;
 		}
 
 		const double h2 = SPECIAL_REFINEMENT ? uniform_band * plastron_smallest_dy / 2 : 0;	// Height of second wave (at max lvl of refinement on plastron).
@@ -1699,7 +1707,7 @@ void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est,
 			return MAX( ret, wave1( t ) );
 		};
 
-		bool refine = quad->level < max_lvl - (state > 0 ? int( SPECIAL_REFINEMENT ) + int ( WALL_REFINEMENT ) : 0);
+		bool refine = quad->level < max_lvl - (state > 1 ? int( SPECIAL_REFINEMENT ) + int ( WALL_REFINEMENT ) : 0);
 		double xyz[P4EST_DIM];
 		if( refine )
 		{

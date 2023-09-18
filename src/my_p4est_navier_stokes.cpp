@@ -2297,7 +2297,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_for_shs_restart( const CF_
 		p4est_ghost_t *ghost_np1 = nullptr;
 		my_p4est_hierarchy_t *hierarchy_np1 = nullptr;
 		my_p4est_node_neighbors_t *ngbd_n_np1 = nullptr;
-		criteria->state = splitting_criteria_cf_and_uniform_band_shs_t::STATE::COARSEN_AND_REFINE_MAX_LVL;
+		criteria->state = splitting_criteria_cf_and_uniform_band_shs_t::STATE::COARSEN_GRID;
 		while( !iterative_grid_update_converged )
 		{
 			/* ---   FIND THE NEXT ADAPTIVE GRID   --- */
@@ -2450,8 +2450,11 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_for_shs_restart( const CF_
 			{
 				switch( criteria->state )
 				{
+					case splitting_criteria_cf_and_uniform_band_shs_t::STATE::COARSEN_GRID:
+						CHKERRXX( PetscPrintf( p4est_n->mpicomm, "+++ Done coarsening grid.\n" ) );
+						break;
 					case splitting_criteria_cf_and_uniform_band_shs_t::STATE::COARSEN_AND_REFINE_MAX_LVL:
-						CHKERRXX( PetscPrintf( p4est_n->mpicomm, "+++ Done coarsening/refining for max lvl %i.\n", criteria->max_lvl ) );
+						CHKERRXX( PetscPrintf( p4est_n->mpicomm, "+++ Done refining for max lvl %i.\n", criteria->max_lvl ) );
 						break;
 					case splitting_criteria_cf_and_uniform_band_shs_t::STATE::REFINE_MAX_LVL_PLASTRON:
 						CHKERRXX( PetscPrintf( p4est_n->mpicomm, "+++ Done refining plastron max lvl %i.\n", criteria->PLASTRON_MAX_LVL ) );
@@ -2464,7 +2467,11 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_for_shs_restart( const CF_
 												  "Bad coarsening/refining state!" );
 				}
 
-				criteria->state += (criteria->SPECIAL_REFINEMENT? 1 : 2);		// Next state.
+				if ( criteria->state == splitting_criteria_cf_and_uniform_band_shs_t::STATE::COARSEN_GRID)
+					criteria->state += 1;
+				else
+					criteria->state += (criteria->SPECIAL_REFINEMENT? 1 : 2);		// Next state.
+
 				if( criteria->state <= splitting_criteria_cf_and_uniform_band_shs_t::STATE::REFINE_MID_BANDS )
 					iterative_grid_update_converged = false;					// Force loop continuation.
 			}
