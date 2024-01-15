@@ -678,9 +678,11 @@ public:
 #ifdef P4_TO_P8
 		// For special refinement, we'll use one layer of 2 smallest dy for the whole wall, and then the next level of refinement for the
 		// plastron will be maxLvl - 1.  Also, we need at least 1 mid-level layers.
+#if 0
 		if( SPECIAL_REFINEMENT && maxLvl - minLvl < 2 )
 			throw std::invalid_argument( errorPrefix + "The difference between min and max levels of refinement must be at least 2 "
 													   "for special (sinusoidal) refinement!" );
+#endif
 
     if( UNIFORM_FIRST_REFINEMENT && !SPECIAL_REFINEMENT )
       throw std::invalid_argument( errorPrefix + "uniform first refinement requires special refinement!" );
@@ -688,9 +690,11 @@ public:
 		if( WALL_REFINEMENT && !SPECIAL_REFINEMENT )
 			throw std::invalid_argument( errorPrefix + "Wall refinement requires special refinement!" );
 
+#if 0
 		if( WALL_REFINEMENT && maxLvl - minLvl < 3 )
 			throw std::invalid_argument( errorPrefix + "The difference between min and max levels of refinement must be at least 3 "
 													   "for additional wall refinement!" );
+#endif
 
 		if( SPECIAL_REFINEMENT && SPANWISE )
 			throw std::invalid_argument( errorPrefix + "Spanwise option is not available if you've chosen special refinement!" );
