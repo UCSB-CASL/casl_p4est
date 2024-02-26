@@ -2330,18 +2330,44 @@ bool periodicity(int dir)
   }
 }
 
+param_t<double> num_seeds_directional  (pl, 10., "num_seeds_directional", "Number of seeds for directional cases run by Elyce \n");
+
+
 double phi_directional_seeds(double x, double y){
+  const int num_seeds=20;
   double yshift_val = 0.9*front_location(); //front_location.val;
-  double xshifts[5] = {0.1*xmax.val, 0.3*xmax.val, 0.5*xmax.val, 0.7*xmax.val, 0.9*xmax.val};
-  double yshifts[5] = {yshift_val, yshift_val, yshift_val, yshift_val, yshift_val};
+//  double xshifts[5] = {0.1*xmax.val, 0.3*xmax.val, 0.5*xmax.val, 0.7*xmax.val, 0.9*xmax.val};
+//  double yshifts[5] = {yshift_val, yshift_val, yshift_val, yshift_val, yshift_val};
 //  seed_radius.val = 0.001;
 
 
+  // many seeds case:
+  double xshifts[num_seeds];
+  double yshifts[num_seeds];
+
+  double dx = (1.0/(num_seeds+1))*xmax.val;
+
+  // adjust radius if need be:
+  seed_radius.val = dx * 0.0001;
+  if(dx < seed_radius.val){
+    printf("seed_radius = %0.3e, dx = %0.3e \n", seed_radius.val, dx);
+    seed_radius.val = 0.25 *dx;
+
+//    seed_radius.val = 0.25*dx;
+//    printf("ALERT!!!!! SEED RADIUS HAS BEEN CHANGED TO %0.5e \n", seed_radius.val);
+  }
+
+  for(int i=0; i<num_seeds; i++){
+    xshifts[i] = (i+1)*dx ;/* * xmax.val*/;
+//    printf("xshifts %d = %0.4f \n", i, xshifts[i]);
+    yshifts[i] = yshift_val;
+  }
+
 //  // First, get all the relevant LSF values for each seed:
-  double LSF_vals[5];
+  double LSF_vals[num_seeds];
   double current_min =1.0e9;/* -(y - front_location())*/; //1.0e9;
   bool point_inside_seed=false;
-  for(int n=0; n < 5; n++){
+  for(int n=0; n < num_seeds; n++){
     double r = sqrt(SQR(x - xshifts[n]) + SQR(y - yshifts[n]));
     LSF_vals[n] = seed_radius.val - r;
 
@@ -2400,11 +2426,18 @@ public:
       case -1: return analytic::rf_exact(t) - ABS1(y-ymin());
       case 0: {
 
-        // 5 seeds:
-        return phi_directional_seeds(x,y);
+        //
+//        return phi_directional_seeds(x,y);
+        double frequency = floor(num_seeds_directional.val/2.);
 
         // Normal directional:
-//        return -(y - front_location());
+        if(x < 5./frequency || x>xmax.val - 5./frequency){
+          return -(y - front_location());
+        }
+        else{
+          return -(y - front_location()*(1. +  0.5* abs(sin(frequency * PI * x))));
+
+        }
 
         //-(y - front_location()) + 0.001/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.001/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
       }
@@ -3291,6 +3324,8 @@ param_t<double> u0   (pl, 0., "u0", "Fluid velocity value in x direction for dir
 param_t<double> v0   (pl, 0., "v0", "Fluid velocity value in y direction for dirichlet boundary conditions (and initial conditions) TO-DO: ADD UNITS" );
 
 
+
+
 double outflow_u=0.;
 double outflow_v=0.;
 // --------------------------------------------------------------------------------------------------------------
@@ -3689,7 +3724,10 @@ int main (int argc, char* argv[])
   temp_gradient.val    /= scaling();
   cooling_velocity.val *= scaling();
 
-  mu_l.val /=scaling();
+  if(solve_w_fluids.val){
+      mu_l.val /=scaling();
+      gravity_.val *= scaling() * scaling();
+  }
 
 
   // initialize constants in initial and boundary conditions
