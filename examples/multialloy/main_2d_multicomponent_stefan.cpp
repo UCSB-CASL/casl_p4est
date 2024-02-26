@@ -3689,6 +3689,8 @@ int main (int argc, char* argv[])
   temp_gradient.val    /= scaling();
   cooling_velocity.val *= scaling();
 
+  mu_l.val /=scaling();
+
 
   // initialize constants in initial and boundary conditions
   for (int i = 0; i < num_comps.val; ++i) {
