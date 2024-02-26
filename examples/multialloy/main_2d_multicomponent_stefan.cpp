@@ -230,7 +230,7 @@ param_t<double> Ra_C_1(pl, -1.0, "Ra_C_1", "species Rayleigh number for comp 1 -
 param_t<double> Ra_C_2(pl, -1.0, "Ra_C_2", "species Rayleigh number for comp 2 -- boussinesq");
 param_t<double> Ra_C_3(pl, -1.0, "Ra_C_3", "species Rayleigh number for comp 3 -- boussinesq");
 
-param_t<double> gravity_(pl, 9.81, "gravity_", "gravity value used for boussinesq");
+param_t<double> gravity_(pl, 981, "gravity_", "gravity value used for boussinesq");
 
 
 param_t<bool> do_boussinesq(pl, false, "do_boussinesq", "whether or not to use the boussinesq approx when solving the problem with fluid flow ");
@@ -3726,7 +3726,7 @@ int main (int argc, char* argv[])
 
   if(solve_w_fluids.val){
       mu_l.val /=scaling();
-      gravity_.val *= scaling() * scaling();
+      gravity_.val *= scaling();
   }
 
 
