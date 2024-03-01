@@ -1267,8 +1267,12 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     if (assembling_main)
     {
 //      row_main->push_back(mat_entry_t(petsc_gloidx_[n], 0));
-      mask_m_ptr[n] = MAX(mask_m_ptr[n], infc_phi_eff_000 < 0 ? -1. : 1.);
-      mask_p_ptr[n] = MAX(mask_p_ptr[n], infc_phi_eff_000 < 0 ?  1. :-1.);
+      //mask_m_ptr[n] = MAX(mask_m_ptr[n], infc_phi_eff_000 < 0 ? -1. : 1.);
+      //mask_p_ptr[n] = MAX(mask_p_ptr[n], infc_phi_eff_000 < 0 ?  1. :-1.);
+      //NMB attempt below
+      mask_m_ptr[n] = MAX(mask_m_ptr[n], infc_phi_eff_000 < 0 ? 1. : -1.);
+      mask_p_ptr[n] = MAX(mask_p_ptr[n], infc_phi_eff_000 < 0 ?  -1. :1.);
+
     }
 
     // discretize
@@ -1278,7 +1282,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
       {
         if (assembling_main) {
           row_main->push_back(mat_entry_t(petsc_gloidx_[n], 1));
-          mask_m_ptr[n] = mask_p_ptr[n] = 1.;
+          mask_m_ptr[n] = mask_p_ptr[n] = 1.; //nmb changed. THIS IS THE LINE. was originally 1 on rhs
         }
 
         if (setup_rhs) {

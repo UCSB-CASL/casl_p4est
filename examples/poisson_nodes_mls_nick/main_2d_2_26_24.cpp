@@ -273,7 +273,7 @@ void set_example(int example_)
          // Define the geometry (here we solve for hodge in standard rectangular domain, i.e. which_geometry_for_bdry_00.val = 0):
          num_bdry.val = 1;
          is_bdry_00_present.val = true;
-         which_geometry_for_bdry_00.val = 1;    // 0: entire domain.    1: circle.
+         which_geometry_for_bdry_00.val = 0;    // 0: entire domain.    1: circle.
          bdry_00_opn.val = MLS_INT;
          bdry_00_bc_type.val = NEUMANN;
 
@@ -365,7 +365,7 @@ public:
                case LAP:
                   return -(*mag) * (2 * x - PI) * (y * y * y / 3. - PI * y * y / 2.)
                          - (*mag) * (2 * y - PI) * (x * x * x / 3. - PI * x * x / 2.);
-#endif
+#endif  //  (PI - 2.*x)*(y * y * y / 3. - PI * y * y / 2.) + (PI - 2.*x)*(x * x * x / 3. - PI * x * x / 2.)
                default:
                   throw std::invalid_argument("Invalid \"what\" in case 0 of class hodge_choices_cf_t");
             }
@@ -429,37 +429,39 @@ public:
    double operator()(DIM(double x, double y, double z)) const override {
       switch (*n) {
          case 0: // no boundaries
-         {
-            switch (what) {
-               _CODE(case VAL:
-                  return -1);
-               XCODE(case DDX:
-                  return 0);
-               YCODE(case DDY:
-                  return 0);
-               ZCODE(case DDZ:
-                  return 0);
-               default:
-                  throw std::invalid_argument("Invalid \"what\" in default values of class bdry_phi_choices_cf_t");
-            }
-         }
+            break;
          case 1: // circle/sphere interior
          {
             static const double r0 = 0.911, DIM(xc = 0, yc = 0, zc = 0);
             static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc));
             switch (what) {
                _CODE(case VAL:
-                  return circle.phi(DIM(x, y, z)));
+                        return circle.phi(DIM(x, y, z)));
                XCODE(case DDX:
-                  return circle.phi_x(DIM(x, y, z)));
+                        return circle.phi_x(DIM(x, y, z)));
                YCODE(case DDY:
-                  return circle.phi_y(DIM(x, y, z)));
-               ZCODE(case DDZ:
-                  return circle.phi_z(DIM(x, y, z)));
+                        return circle.phi_y(DIM(x, y, z)));
+                  ZCODE(case DDZ:
+                           return circle.phi_z(DIM(x, y, z)));
                default:
                   throw std::invalid_argument("Invalid \"what\" in case 1 of class bdry_phi_choices_cf_t");
             }
          }
+            break;
+      }
+
+      // default values
+      switch (what) {
+         _CODE(case VAL:
+                  return 1);
+         XCODE(case DDX:
+                  return 0);
+         YCODE(case DDY:
+                  return 0);
+            ZCODE(case DDZ:
+                     return 0);
+         default:
+            throw std::invalid_argument("Invalid \"what\" in default values of class bdry_phi_choices_cf_t");
       }
    }
 };
@@ -678,8 +680,8 @@ int main(int argc, char *argv[]) {
    vector<double> error_hodge_extrapolated_p_arr;
    vector<double> error_gradient_hodge_p_arr;
 
-   vector<double> error_unp1_m_arr, error_vnp1_m_arr, error_minus_div_Ustar_m_arr;
-   vector<double> error_unp1_p_arr, error_vnp1_p_arr, error_minus_div_Ustar_p_arr;
+   vector<double> error_unp1_m_arr, error_vnp1_m_arr;
+   vector<double> error_unp1_p_arr, error_vnp1_p_arr;
 
    parStopWatch w;
    w.start("total time");
@@ -876,8 +878,6 @@ int main(int argc, char *argv[]) {
       Vec vec_minus_div_Ustar_p; double *ptr_minus_div_Ustar_p;
       ierr = VecCreateGhostNodes(p4est, nodes, &vec_minus_div_Ustar_m); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est, nodes, &vec_minus_div_Ustar_p); CHKERRXX(ierr);
-      ierr = VecGetArray(vec_minus_div_Ustar_m, &ptr_minus_div_Ustar_m); CHKERRXX(ierr);
-      ierr = VecGetArray(vec_minus_div_Ustar_p, &ptr_minus_div_Ustar_p); CHKERRXX(ierr);
 
       double xyz[P4EST_DIM];
       foreach_local_node(n, nodes) {
@@ -907,7 +907,10 @@ int main(int argc, char *argv[]) {
       ierr = VecGhostUpdateEnd(vec_vstar_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateEnd(vec_vstar_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-      quad_neighbor_nodes_of_node_t qnnn{};
+
+       ierr = VecGetArray(vec_minus_div_Ustar_m, &ptr_minus_div_Ustar_m); CHKERRXX(ierr);
+       ierr = VecGetArray(vec_minus_div_Ustar_p, &ptr_minus_div_Ustar_p); CHKERRXX(ierr);
+       quad_neighbor_nodes_of_node_t qnnn{};
       // Compute -div(U*) = - ( ddx(u*) + ddy(v*) ):
       foreach_local_node(n, nodes) {
          auto *ni = (p4est_indep_t *) sc_array_index(&nodes->indep_nodes, n);
@@ -918,12 +921,32 @@ int main(int argc, char *argv[]) {
          double x = xyz[0], y = xyz[1], z = xyz[2];
          if (phi_eff_cf(x, y) < 0) {
             ptr_minus_div_Ustar_m[n] = -(qnnn.dx_central(ptr_ustar_m) + qnnn.dy_central(ptr_vstar_m));
-            ptr_minus_div_Ustar_p[n] = 0;
+            if (ABS(ptr_minus_div_Ustar_m[n]+((PI - 2.*x)*(y * y * y / 3. - PI * y * y / 2.) + (PI - 2.*y)*(x * x * x / 3. - PI * x * x / 2.))) > 4e-4)
+             {
+                 cout << "calculated: " << ptr_minus_div_Ustar_m[n] << "\t exact: "
+                      << -((PI - 2. * x) * (y * y * y / 3. - PI * y * y / 2.) +
+                           (PI - 2. * y) * (x * x * x / 3. - PI * x * x / 2.)) << "\t error = "
+                      << ABS(ptr_minus_div_Ustar_m[n] + ((PI - 2. * x) * (y * y * y / 3. - PI * y * y / 2.) +
+                                                         (PI - 2. * y) * (x * x * x / 3. - PI * x * x / 2.))) << endl;
+             }
+                ptr_minus_div_Ustar_p[n] = 20000000000000;
          } else {
-            ptr_minus_div_Ustar_m[n] = 0;
+            ptr_minus_div_Ustar_m[n] = 200000000000000;
             ptr_minus_div_Ustar_p[n] = -(qnnn.dx_central(ptr_ustar_p) + qnnn.dy_central(ptr_vstar_p));
+             if (ABS(ptr_minus_div_Ustar_p[n]+((PI - 2.*x)*(y * y * y / 3. - PI * y * y / 2.) + (PI - 2.*y)*(x * x * x / 3. - PI * x * x / 2.))) > 4e-4)
+             {
+                 cout << "calculated: " << ptr_minus_div_Ustar_p[n] << "\t exact: "
+                      << -((PI - 2. * x) * (y * y * y / 3. - PI * y * y / 2.) +
+                           (PI - 2. * y) * (x * x * x / 3. - PI * x * x / 2.)) << "\t error = "
+                      << ABS(ptr_minus_div_Ustar_p[n] + ((PI - 2. * x) * (y * y * y / 3. - PI * y * y / 2.) +
+                                                         (PI - 2. * y) * (x * x * x / 3. - PI * x * x / 2.))) << endl;
+             }
          }
       }
+
+      ierr = VecRestoreArray(vec_minus_div_Ustar_m, &ptr_minus_div_Ustar_m); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vec_minus_div_Ustar_p, &ptr_minus_div_Ustar_p); CHKERRXX(ierr);
+
 
       // solve for the hodge variable with the right-hand side set to vec_minus_div_Ustar_m
 //      solver.set_rhs(vec_rhs_m, vec_rhs_p);
@@ -988,16 +1011,16 @@ int main(int argc, char *argv[]) {
 
       Vec mask_m = solver.get_mask_m();
       Vec mask_p = solver.get_mask_p();
-      double *ptr_mask_m;
-      double *ptr_mask_p;
-      ierr = VecGetArray(mask_m, &ptr_mask_m); CHKERRXX(ierr);
-      ierr = VecGetArray(mask_p, &ptr_mask_p); CHKERRXX(ierr);
+      double *mask_m_ptr;
+      double *mask_p_ptr;
+      ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
       foreach_local_node(n, nodes) {
          auto *ni = (p4est_indep_t *) sc_array_index(&nodes->indep_nodes, n);
          node_xyz_fr_n(n, p4est, nodes, xyz);
          double x = xyz[0], y = xyz[1], z = xyz[2];
-//         if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(ptr_mask_m)) {
+//         if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(mask_m_ptr)) {
          if (!is_node_Wall(p4est, ni)) {
             ngbd_n.get_neighbors(n, qnnn);
             if (phi_eff_cf(x, y) < 0) {
@@ -1021,7 +1044,7 @@ int main(int argc, char *argv[]) {
       }
 
       //----------------------------------------------------------------------------------------------
-      // calculate the max error of unp1, vnp1, minus_div_Ustar
+      // calculate the max error of unp1 and vnp1
       //----------------------------------------------------------------------------------------------
       ierr = VecGetArray(vec_unp1_m, &ptr_unp1_m); CHKERRXX(ierr);
       ierr = VecGetArray(vec_vnp1_m, &ptr_vnp1_m); CHKERRXX(ierr);
@@ -1030,8 +1053,9 @@ int main(int argc, char *argv[]) {
       ierr = VecGetArray(vec_minus_div_Ustar_m, &ptr_minus_div_Ustar_m); CHKERRXX(ierr);
       ierr = VecGetArray(vec_minus_div_Ustar_p, &ptr_minus_div_Ustar_p); CHKERRXX(ierr);
 
-      double err_unp1_m_max = 0, err_vnp1_m_max = 0, err_minus_div_Ustar_m_max = 0;
-      double err_unp1_p_max = 0, err_vnp1_p_max = 0, err_minus_div_Ustar_p_max = 0;
+      double err_unp1_m_max = 0, err_vnp1_m_max = 0;
+      double err_unp1_p_max = 0, err_vnp1_p_max = 0;
+      double err_dustar_m_max = 0, err_dustar_p_max =0;
 
       foreach_local_node(n, nodes) {
          node_xyz_fr_n(n, p4est, nodes, xyz);
@@ -1040,43 +1064,46 @@ int main(int argc, char *argv[]) {
          if (phi_eff_cf(x, y) < 0) {
             err_unp1_m_max = MAX(err_unp1_m_max, ABS(ptr_unp1_m[n] - sin(x) * cos(y)));
             err_vnp1_m_max = MAX(err_vnp1_m_max, ABS(ptr_vnp1_m[n] + sin(y) * cos(x)));
-            err_minus_div_Ustar_m_max = MAX(err_minus_div_Ustar_m_max, ABS(ptr_minus_div_Ustar_m[n]  + (PI - 2*x) * (y*y*y / 3. - PI*y*y / 2.) + (PI - 2*y) * (x*x*x / 3. - PI*x*x / 2.)));
-            err_unp1_p_max = 0;
-            err_vnp1_p_max = 0;
-            err_minus_div_Ustar_p_max = 0;
+            err_dustar_m_max = MAX(err_dustar_m_max, ABS(ptr_minus_div_Ustar_m[n] + ((PI - 2.*x)*(y * y * y / 3. - PI * y * y / 2.) + (PI - 2.*y)*(x * x * x / 3. - PI * x * x / 2.)) ));
          } else {
-            err_unp1_m_max = 0;
-            err_vnp1_m_max = 0;
-            err_minus_div_Ustar_m_max = 0;
+
             err_unp1_p_max = MAX(err_unp1_p_max, ABS(ptr_unp1_p[n] - sin(x) * cos(y)));
             err_vnp1_p_max = MAX(err_vnp1_p_max, ABS(ptr_vnp1_p[n] + sin(y) * cos(x)));
-            err_minus_div_Ustar_p_max = MAX(err_minus_div_Ustar_p_max, ABS(ptr_minus_div_Ustar_p[n]  + (PI - 2*x) * (y*y*y / 3. - PI*y*y / 2.) + (PI - 2*y) * (x*x*x / 3. - PI*x*x / 2.)));
+            err_dustar_p_max = MAX(err_dustar_p_max, ABS(ptr_minus_div_Ustar_p[n] + ((PI - 2.*x)*(y * y * y / 3. - PI * y * y / 2.) + (PI - 2.*y)*(x * x * x / 3. - PI * x * x / 2.)) ));
          }
+         
+         
+         
+
+        //err_minus_div_ustar_m_max = MAX(err_minus_div_ustar_m_max, ABS(ptr_unp1_p[n] - sin(x) * cos(y)));
+
+
       }
 
       // Take the max of the local unp1 we just computed:
       mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_unp1_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
       mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_vnp1_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-      mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_minus_div_Ustar_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
       mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_unp1_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
       mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_vnp1_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-      mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_minus_div_Ustar_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
       // Restoring vectors:
       ierr = VecRestoreArray(vec_ustar_m, &ptr_ustar_m); CHKERRXX(ierr);
       ierr = VecRestoreArray(vec_vstar_m, &ptr_vstar_m); CHKERRXX(ierr);
       ierr = VecRestoreArray(vec_ustar_p, &ptr_ustar_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(vec_vstar_p, &ptr_vstar_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vec_minus_div_Ustar_m, &ptr_minus_div_Ustar_m); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vec_minus_div_Ustar_p, &ptr_minus_div_Ustar_p); CHKERRXX(ierr);
       ierr = VecDestroy(vec_ustar_m); CHKERRXX(ierr);
       ierr = VecDestroy(vec_vstar_m); CHKERRXX(ierr);
       ierr = VecDestroy(vec_ustar_p); CHKERRXX(ierr);
-      ierr = VecDestroy(vec_vstar_p); CHKERRXX(ierr);
       ierr = VecDestroy(vec_vstar_p); CHKERRXX(ierr);
 
       ierr = VecGhostUpdateBegin(vec_minus_div_Ustar_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateBegin(vec_minus_div_Ustar_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateEnd(vec_minus_div_Ustar_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateEnd(vec_minus_div_Ustar_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+
 
       ierr = VecGhostUpdateBegin(vec_unp1_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateBegin(vec_vnp1_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1097,7 +1124,7 @@ int main(int argc, char *argv[]) {
 
       /***********************************************************************************
        *
-       * COMPUTE ERROR FIELDS AND SAVE TO FILES:
+       * COMPUTE ERRORS AND SAVE TO FILES:
        *
        ***********************************************************************************/
 
@@ -1109,63 +1136,45 @@ int main(int argc, char *argv[]) {
 
       Mat A = solver.get_matrix();
 
-      double *ptr_bdry_phi_eff;
+      double *bdry_phi_eff_ptr;
 
-      Vec vec_hodge_m = vec_hodge; double *ptr_hodge_m;
-      Vec vec_hodge_p = vec_hodge; double *ptr_hodge_p;
+      Vec hodge_m = vec_hodge; double *hodge_m_ptr;
+      Vec hodge_p = vec_hodge; double *hodge_p_ptr;
 
       //----------------------------------------------------------------------------------------------
-      // calculate error of hodge and -div(U*)
+      // calculate error of hodge
       //----------------------------------------------------------------------------------------------
-      Vec vec_error_hodge_m; double *ptr_error_hodge_m;
-      Vec vec_error_hodge_p; double *ptr_error_hodge_p;
-
-      Vec vec_error_minus_div_Ustar_m; double *ptr_error_minus_div_Ustar_m;
-      Vec vec_error_minus_div_Ustar_p; double *ptr_error_minus_div_Ustar_p;
+      Vec vec_error_hodge_m; double *vec_error_hodge_m_ptr;
+      Vec vec_error_hodge_p; double *vec_error_hodge_p_ptr;
 
       ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_hodge_m); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_hodge_p); CHKERRXX(ierr);
 
-      ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_minus_div_Ustar_m); CHKERRXX(ierr);
-      ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_minus_div_Ustar_p); CHKERRXX(ierr);
+      ierr = VecGetArray(hodge_m, &hodge_m_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(hodge_p, &hodge_p_ptr); CHKERRXX(ierr);
 
-      ierr = VecGetArray(vec_hodge_m, &ptr_hodge_m); CHKERRXX(ierr);
-      ierr = VecGetArray(vec_hodge_p, &ptr_hodge_p); CHKERRXX(ierr);
-
-      ierr = VecGetArray(vec_minus_div_Ustar_m, &ptr_minus_div_Ustar_m); CHKERRXX(ierr);
-      ierr = VecGetArray(vec_minus_div_Ustar_p, &ptr_minus_div_Ustar_p); CHKERRXX(ierr);
-
-      ierr = VecGetArray(vec_error_hodge_m, &ptr_error_hodge_m); CHKERRXX(ierr);
-      ierr = VecGetArray(vec_error_hodge_p, &ptr_error_hodge_p); CHKERRXX(ierr);
-
-      ierr = VecGetArray(vec_error_minus_div_Ustar_m, &ptr_error_minus_div_Ustar_m); CHKERRXX(ierr);
-      ierr = VecGetArray(vec_error_minus_div_Ustar_p, &ptr_error_minus_div_Ustar_p); CHKERRXX(ierr);
+      ierr = VecGetArray(vec_error_hodge_m, &vec_error_hodge_m_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(vec_error_hodge_p, &vec_error_hodge_p_ptr); CHKERRXX(ierr);
 
       double hodge_max = 0;
 
       foreach_local_node(n, nodes) {
          node_xyz_fr_n(n, p4est, nodes, xyz);
-         double x = xyz[0], y = xyz[1], z = xyz[2];
 
-         ptr_error_hodge_m[n] = ptr_mask_m[n] < 0 ? ABS(ptr_hodge_m[n] - hodge_m_cf.value(xyz)) : 0;
-         ptr_error_hodge_p[n] = ptr_mask_p[n] < 0 ? ABS(ptr_hodge_p[n] - hodge_p_cf.value(xyz)) : 0;
-         ptr_error_minus_div_Ustar_m[n] = ptr_mask_m[n] < 0 ? ABS(ptr_minus_div_Ustar_m[n] + (PI - 2 * x) * (y * y * y / 3. - PI * y * y / 2.) + (PI - 2 * y) * (x * x * x / 3. - PI * x * x / 2.)) : 0;
-         ptr_error_minus_div_Ustar_p[n] = ptr_mask_p[n] < 0 ? ABS(ptr_minus_div_Ustar_p[n] + (PI - 2 * x) * (y * y * y / 3. - PI * y * y / 2.) + (PI - 2 * y) * (x * x * x / 3. - PI * x * x / 2.)) : 0;
+         vec_error_hodge_m_ptr[n] = mask_m_ptr[n] < 0 ? ABS(hodge_m_ptr[n] - hodge_m_cf.value(xyz)) : 0;
+         vec_error_hodge_p_ptr[n] = mask_p_ptr[n] < 0 ? ABS(hodge_p_ptr[n] - hodge_p_cf.value(xyz)) : 0;
 
          hodge_max = MAX(hodge_max, fabs(hodge_m_cf.value(xyz)), fabs(hodge_p_cf.value(xyz)));
       }
 
-      ierr = VecRestoreArray(mask_m, &ptr_mask_m); CHKERRXX(ierr);
-      ierr = VecRestoreArray(mask_p, &ptr_mask_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
-      ierr = VecRestoreArray(vec_hodge_m, &ptr_hodge_m); CHKERRXX(ierr);
-      ierr = VecRestoreArray(vec_hodge_p, &ptr_hodge_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(hodge_m, &hodge_m_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(hodge_p, &hodge_p_ptr); CHKERRXX(ierr);
 
-      ierr = VecRestoreArray(vec_error_hodge_m, &ptr_error_hodge_m); CHKERRXX(ierr);
-      ierr = VecRestoreArray(vec_error_hodge_p, &ptr_error_hodge_p); CHKERRXX(ierr);
-
-      ierr = VecRestoreArray(vec_error_minus_div_Ustar_m, &ptr_error_minus_div_Ustar_m); CHKERRXX(ierr);
-      ierr = VecRestoreArray(vec_error_minus_div_Ustar_p, &ptr_error_minus_div_Ustar_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vec_error_hodge_m, &vec_error_hodge_m_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vec_error_hodge_p, &vec_error_hodge_p_ptr); CHKERRXX(ierr);
 
       ierr = VecGhostUpdateBegin(vec_error_hodge_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateBegin(vec_error_hodge_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1175,20 +1184,20 @@ int main(int argc, char *argv[]) {
       //----------------------------------------------------------------------------------------------
       // calculate error of |gradient(hodge)|:
       //----------------------------------------------------------------------------------------------
-      Vec vec_error_grad_hodge_m; double *ptr_error_gradient_hodge_m;
-      Vec vec_error_grad_hodge_p; double *ptr_error_gradient_hodge_p;
+      Vec vec_error_grad_hodge_m; double *vec_error_gradient_hodge_m_ptr;
+      Vec vec_error_grad_hodge_p; double *vec_error_gradient_hodge_p_ptr;
 
       ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_grad_hodge_m); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_grad_hodge_p); CHKERRXX(ierr);
 
-      ierr = VecGetArray(vec_hodge_m, &ptr_hodge_m); CHKERRXX(ierr);
-      ierr = VecGetArray(vec_hodge_p, &ptr_hodge_p); CHKERRXX(ierr);
+      ierr = VecGetArray(hodge_m, &hodge_m_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(hodge_p, &hodge_p_ptr); CHKERRXX(ierr);
 
-      ierr = VecGetArray(mask_m, &ptr_mask_m); CHKERRXX(ierr);
-      ierr = VecGetArray(mask_p, &ptr_mask_p); CHKERRXX(ierr);
+      ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
-      ierr = VecGetArray(vec_error_grad_hodge_m, &ptr_error_gradient_hodge_m); CHKERRXX(ierr);
-      ierr = VecGetArray(vec_error_grad_hodge_p, &ptr_error_gradient_hodge_p); CHKERRXX(ierr);
+      ierr = VecGetArray(vec_error_grad_hodge_m, &vec_error_gradient_hodge_m_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(vec_error_grad_hodge_p, &vec_error_gradient_hodge_p_ptr); CHKERRXX(ierr);
 
       double gradient_hodge_max = 0;
 
@@ -1201,36 +1210,36 @@ int main(int argc, char *argv[]) {
          if (!compute_grad_between()) {
             ngbd_n.get_neighbors(n, qnnn);
 
-            if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(ptr_mask_m)) {
+            if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(mask_m_ptr)) {
                double DIM(ddx_hodge_m_exact = ddx_hodge_m_cf(DIM(xyz[0], xyz[1], xyz[2])),
                           ddy_hodge_m_exact = ddy_hodge_m_cf(DIM(xyz[0], xyz[1], xyz[2])),
                           ddz_hodge_m_exact = ddz_hodge_m_cf(DIM(xyz[0], xyz[1], xyz[2])));
 
                gradient_hodge_max = MAX(gradient_hodge_max, sqrt(SUMD(SQR(ddx_hodge_m_exact), SQR(ddy_hodge_m_exact), SQR(ddz_hodge_m_exact))));
 
-               double DIM(ddx_hodge_m_error = fabs(qnnn.dx_central(ptr_hodge_m) - ddx_hodge_m_exact),
-                          ddy_hodge_m_error = fabs(qnnn.dy_central(ptr_hodge_m) - ddy_hodge_m_exact),
-                          ddz_hodge_m_error = fabs(qnnn.dz_central(ptr_hodge_m) - ddz_hodge_m_exact));
+               double DIM(ddx_hodge_m_error = fabs(qnnn.dx_central(hodge_m_ptr) - ddx_hodge_m_exact),
+                          ddy_hodge_m_error = fabs(qnnn.dy_central(hodge_m_ptr) - ddy_hodge_m_exact),
+                          ddz_hodge_m_error = fabs(qnnn.dz_central(hodge_m_ptr) - ddz_hodge_m_exact));
 
-               ptr_error_gradient_hodge_m[n] = sqrt(SUMD(SQR(ddx_hodge_m_error), SQR(ddy_hodge_m_error), SQR(ddz_hodge_m_error)));
+               vec_error_gradient_hodge_m_ptr[n] = sqrt(SUMD(SQR(ddx_hodge_m_error), SQR(ddy_hodge_m_error), SQR(ddz_hodge_m_error)));
             } else {
-               ptr_error_gradient_hodge_m[n] = 0;
+               vec_error_gradient_hodge_m_ptr[n] = 0;
             }
 
-            if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(ptr_mask_p)) {
+            if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(mask_p_ptr)) {
                double DIM(ddx_hodge_p_exact = ddx_hodge_p_cf(DIM(xyz[0], xyz[1], xyz[2])),
                           ddy_hodge_p_exact = ddy_hodge_p_cf(DIM(xyz[0], xyz[1], xyz[2])),
                           ddz_hodge_p_exact = ddz_hodge_p_cf(DIM(xyz[0], xyz[1], xyz[2])));
 
                gradient_hodge_max = MAX(gradient_hodge_max, sqrt(SUMD(SQR(ddx_hodge_p_exact), SQR(ddy_hodge_p_exact), SQR(ddz_hodge_p_exact))));
 
-               double DIM(ddx_hodge_p_error = fabs(qnnn.dx_central(ptr_hodge_p) - ddx_hodge_p_exact),
-                          ddy_hodge_p_error = fabs(qnnn.dy_central(ptr_hodge_p) - ddy_hodge_p_exact),
-                          ddz_hodge_p_error = fabs(qnnn.dz_central(ptr_hodge_p) - ddz_hodge_p_exact));
+               double DIM(ddx_hodge_p_error = fabs(qnnn.dx_central(hodge_p_ptr) - ddx_hodge_p_exact),
+                          ddy_hodge_p_error = fabs(qnnn.dy_central(hodge_p_ptr) - ddy_hodge_p_exact),
+                          ddz_hodge_p_error = fabs(qnnn.dz_central(hodge_p_ptr) - ddz_hodge_p_exact));
 
-               ptr_error_gradient_hodge_p[n] = sqrt(SUMD(SQR(ddx_hodge_p_error), SQR(ddy_hodge_p_error), SQR(ddz_hodge_p_error)));
+               vec_error_gradient_hodge_p_ptr[n] = sqrt(SUMD(SQR(ddx_hodge_p_error), SQR(ddy_hodge_p_error), SQR(ddz_hodge_p_error)));
             } else {
-               ptr_error_gradient_hodge_p[n] = 0;
+               vec_error_gradient_hodge_p_ptr[n] = 0;
             }
          } else {
             p4est_locidx_t neighbors[num_neighbors_cube];
@@ -1240,8 +1249,8 @@ int main(int argc, char *argv[]) {
             double xyz_mid[P4EST_DIM];
             double normal[P4EST_DIM];
 
-            ptr_error_gradient_hodge_m[n] = 0;
-            ptr_error_gradient_hodge_p[n] = 0;
+            vec_error_gradient_hodge_m_ptr[n] = 0;
+            vec_error_gradient_hodge_p_ptr[n] = 0;
 
             if (!is_node_Wall(p4est, ni)) {
                ngbd_n.get_all_neighbors(n, neighbors, neighbors_exist);
@@ -1261,25 +1270,25 @@ int main(int argc, char *argv[]) {
 
                   foreach_dimension(i) normal[i] /= delta;
 
-                  if (ptr_mask_m[n] < 0) {
-                     if (ptr_mask_m[n_nei] < 0) {
+                  if (mask_m_ptr[n] < 0) {
+                     if (mask_m_ptr[n_nei] < 0) {
                         double grad_hodge_exact = SUMD(ddx_hodge_m_cf.value(xyz_mid) * normal[0],
                                                        ddy_hodge_m_cf.value(xyz_mid) * normal[1],
                                                        ddz_hodge_m_cf.value(xyz_mid) * normal[2]);
-                        ptr_error_gradient_hodge_m[n] = MAX(ptr_error_gradient_hodge_m[n],
-                                                            fabs((ptr_hodge_m[n_nei] - ptr_hodge_m[n]) / delta -
+                        vec_error_gradient_hodge_m_ptr[n] = MAX(vec_error_gradient_hodge_m_ptr[n],
+                                                                fabs((hodge_m_ptr[n_nei] - hodge_m_ptr[n]) / delta -
                                                                      grad_hodge_exact));
                         gradient_hodge_max = MAX(gradient_hodge_max, fabs(grad_hodge_exact));
                      }
                   }
 
-                  if (ptr_mask_p[n] < 0) {
-                     if (ptr_mask_p[n_nei] < 0) {
+                  if (mask_p_ptr[n] < 0) {
+                     if (mask_p_ptr[n_nei] < 0) {
                         double grad_hodge_exact = SUMD(ddx_hodge_p_cf.value(xyz_mid) * normal[0],
                                                        ddy_hodge_p_cf.value(xyz_mid) * normal[1],
                                                        ddz_hodge_p_cf.value(xyz_mid) * normal[2]);
-                        ptr_error_gradient_hodge_p[n] = MAX(ptr_error_gradient_hodge_p[n],
-                                                            fabs((ptr_hodge_p[n_nei] - ptr_hodge_p[n]) / delta -
+                        vec_error_gradient_hodge_p_ptr[n] = MAX(vec_error_gradient_hodge_p_ptr[n],
+                                                                fabs((hodge_p_ptr[n_nei] - hodge_p_ptr[n]) / delta -
                                                                      grad_hodge_exact));
                         gradient_hodge_max = MAX(gradient_hodge_max, fabs(grad_hodge_exact));
                      }
@@ -1289,14 +1298,14 @@ int main(int argc, char *argv[]) {
          }
       }
 
-      ierr = VecRestoreArray(vec_hodge_m, &ptr_hodge_m); CHKERRXX(ierr);
-      ierr = VecRestoreArray(vec_hodge_p, &ptr_hodge_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(hodge_m, &hodge_m_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(hodge_p, &hodge_p_ptr); CHKERRXX(ierr);
 
-      ierr = VecRestoreArray(mask_m, &ptr_mask_m); CHKERRXX(ierr);
-      ierr = VecRestoreArray(mask_p, &ptr_mask_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
-      ierr = VecRestoreArray(vec_error_grad_hodge_m, &ptr_error_gradient_hodge_m); CHKERRXX(ierr);
-      ierr = VecRestoreArray(vec_error_grad_hodge_p, &ptr_error_gradient_hodge_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vec_error_grad_hodge_m, &vec_error_gradient_hodge_m_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vec_error_grad_hodge_p, &vec_error_gradient_hodge_p_ptr); CHKERRXX(ierr);
 
       ierr = VecGhostUpdateBegin(vec_error_grad_hodge_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateBegin(vec_error_grad_hodge_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1306,8 +1315,8 @@ int main(int argc, char *argv[]) {
       //----------------------------------------------------------------------------------------------
       // calculate extrapolation error
       //----------------------------------------------------------------------------------------------
-      Vec    vec_error_hodge_extrapolated_m, vec_error_hodge_extrapolated_p;
-      double *ptr_error_extrapolated_hodge_m, *ptr_error_extrapolated_hodge_p;
+      Vec vec_error_hodge_extrapolated_m, vec_error_hodge_extrapolated_p;
+      double *vec_error_extrapolated_hodge_m_ptr, *vec_error_extrapolated_hodge_p_ptr;
       ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_hodge_extrapolated_m); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_hodge_extrapolated_p); CHKERRXX(ierr);
 
@@ -1315,14 +1324,14 @@ int main(int argc, char *argv[]) {
 
       // copy hodge into a new Vec
       Vec hodge_m_extrapolated;
-      double *ptr_hodge_m_extrapolated;
+      double *hodge_m_extrapolated_ptr;
       ierr = VecCreateGhostNodes(p4est, nodes, &hodge_m_extrapolated); CHKERRXX(ierr);
       Vec hodge_p_extrapolated;
-      double *ptr_hodge_p_extrapolated;
+      double *hodge_p_extrapolated_ptr;
       ierr = VecCreateGhostNodes(p4est, nodes, &hodge_p_extrapolated); CHKERRXX(ierr);
 
-      VecCopyGhost(vec_hodge_m, hodge_m_extrapolated);
-      VecCopyGhost(vec_hodge_p, hodge_p_extrapolated);
+      VecCopyGhost(hodge_m, hodge_m_extrapolated);
+      VecCopyGhost(hodge_p, hodge_p_extrapolated);
 
       Vec phi_m;
       ierr = VecDuplicate(bdry_phi_eff, &phi_m); CHKERRXX(ierr);
@@ -1367,14 +1376,14 @@ int main(int argc, char *argv[]) {
       }
 
       // calculate error of extrapolation:
-      ierr = VecGetArray(hodge_m_extrapolated, &ptr_hodge_m_extrapolated); CHKERRXX(ierr);
-      ierr = VecGetArray(hodge_p_extrapolated, &ptr_hodge_p_extrapolated); CHKERRXX(ierr);
+      ierr = VecGetArray(hodge_m_extrapolated, &hodge_m_extrapolated_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(hodge_p_extrapolated, &hodge_p_extrapolated_ptr); CHKERRXX(ierr);
 
-      ierr = VecGetArray(vec_error_hodge_extrapolated_m, &ptr_error_extrapolated_hodge_m); CHKERRXX(ierr);
-      ierr = VecGetArray(vec_error_hodge_extrapolated_p, &ptr_error_extrapolated_hodge_p); CHKERRXX(ierr);
+      ierr = VecGetArray(vec_error_hodge_extrapolated_m, &vec_error_extrapolated_hodge_m_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(vec_error_hodge_extrapolated_p, &vec_error_extrapolated_hodge_p_ptr); CHKERRXX(ierr);
 
-      ierr = VecGetArray(mask_m, &ptr_mask_m); CHKERRXX(ierr);
-      ierr = VecGetArray(mask_p, &ptr_mask_p); CHKERRXX(ierr);
+      ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
       ierr = VecGetArray(phi_m, &phi_m_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(phi_p, &phi_p_ptr); CHKERRXX(ierr);
@@ -1383,18 +1392,18 @@ int main(int argc, char *argv[]) {
          double xyz[P4EST_DIM];
          node_xyz_fr_n(n, p4est, nodes, xyz);
 
-         ptr_error_extrapolated_hodge_m[n] = (ptr_mask_m[n] > 0. && phi_m_ptr[n] < band * dxyz_max) ? ABS(ptr_hodge_m_extrapolated[n] - hodge_m_cf.value(xyz)) : 0;
-         ptr_error_extrapolated_hodge_p[n] = (ptr_mask_p[n] > 0. && phi_p_ptr[n] < band * dxyz_max) ? ABS(ptr_hodge_p_extrapolated[n] - hodge_p_cf.value(xyz)) : 0;
+         vec_error_extrapolated_hodge_m_ptr[n] = (mask_m_ptr[n] > 0. && phi_m_ptr[n] < band * dxyz_max) ? ABS(hodge_m_extrapolated_ptr[n] - hodge_m_cf.value(xyz)) : 0;
+         vec_error_extrapolated_hodge_p_ptr[n] = (mask_p_ptr[n] > 0. && phi_p_ptr[n] < band * dxyz_max) ? ABS(hodge_p_extrapolated_ptr[n] - hodge_p_cf.value(xyz)) : 0;
       }
 
-      ierr = VecRestoreArray(hodge_m_extrapolated, &ptr_hodge_m_extrapolated); CHKERRXX(ierr);
-      ierr = VecRestoreArray(hodge_p_extrapolated, &ptr_hodge_p_extrapolated); CHKERRXX(ierr);
+      ierr = VecRestoreArray(hodge_m_extrapolated, &hodge_m_extrapolated_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(hodge_p_extrapolated, &hodge_p_extrapolated_ptr); CHKERRXX(ierr);
 
-      ierr = VecRestoreArray(vec_error_hodge_extrapolated_m, &ptr_error_extrapolated_hodge_m); CHKERRXX(ierr);
-      ierr = VecRestoreArray(vec_error_hodge_extrapolated_p, &ptr_error_extrapolated_hodge_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vec_error_hodge_extrapolated_m, &vec_error_extrapolated_hodge_m_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vec_error_hodge_extrapolated_p, &vec_error_extrapolated_hodge_p_ptr); CHKERRXX(ierr);
 
-      ierr = VecRestoreArray(mask_m, &ptr_mask_m); CHKERRXX(ierr);
-      ierr = VecRestoreArray(mask_p, &ptr_mask_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
       ierr = VecRestoreArray(phi_m, &phi_m_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(phi_p, &phi_p_ptr); CHKERRXX(ierr);
@@ -1451,8 +1460,6 @@ int main(int argc, char *argv[]) {
       error_vnp1_m_arr.push_back(err_vnp1_m_max);
       error_unp1_p_arr.push_back(err_unp1_p_max);
       error_vnp1_p_arr.push_back(err_vnp1_p_max);
-      error_minus_div_Ustar_m_arr.push_back(err_minus_div_Ustar_m_max);
-      error_minus_div_Ustar_p_arr.push_back(err_minus_div_Ustar_p_max);
 
       // Print current errors
       if (iter > -1) {
@@ -1461,7 +1468,7 @@ int main(int argc, char *argv[]) {
          ierr = PetscPrintf(p4est->mpicomm, "|grad(hodge)| = %3.2e (%+3.2f), ", err_grad_hodge_m_max, log(error_gradient_hodge_m_arr[iter - 1] / error_gradient_hodge_m_arr[iter]) / log(2)); CHKERRXX(ierr);
          ierr = PetscPrintf(p4est->mpicomm, "unp1 = %3.2e (%+3.2f), ", err_unp1_m_max, log(error_unp1_m_arr[iter - 1] / error_unp1_m_arr[iter]) / log(2)); CHKERRXX(ierr);
          ierr = PetscPrintf(p4est->mpicomm, "vnp1 = %3.2e (%+3.2f), ", err_vnp1_m_max, log(error_vnp1_m_arr[iter - 1] / error_vnp1_m_arr[iter]) / log(2)); CHKERRXX(ierr);
-         ierr = PetscPrintf(p4est->mpicomm, "-div(U*) = %3.2e (%+3.2f).", err_minus_div_Ustar_m_max, log(error_minus_div_Ustar_m_arr[iter - 1] / error_minus_div_Ustar_m_arr[iter]) / log(2)); CHKERRXX(ierr);
+         ierr = PetscPrintf(p4est->mpicomm, "minus divergence ustar = %3.2e .", err_dustar_m_max); CHKERRXX(ierr);
          ierr = PetscPrintf(p4est->mpicomm, "\n"); CHKERRXX(ierr);
 
          ierr = PetscPrintf(p4est->mpicomm, "Errors Pos: "); CHKERRXX(ierr);
@@ -1469,7 +1476,7 @@ int main(int argc, char *argv[]) {
          ierr = PetscPrintf(p4est->mpicomm, "|grad(hodge)| = %3.2e (%+3.2f), ", err_grad_hodge_p_max, log(error_gradient_hodge_p_arr[iter - 1] / error_gradient_hodge_p_arr[iter]) / log(2)); CHKERRXX(ierr);
          ierr = PetscPrintf(p4est->mpicomm, "unp1 = %3.2e (%+3.2f), ", err_unp1_p_max, log(error_unp1_p_arr[iter - 1] / error_unp1_p_arr[iter]) / log(2)); CHKERRXX(ierr);
          ierr = PetscPrintf(p4est->mpicomm, "vnp1 = %3.2e (%+3.2f), ", err_vnp1_p_max, log(error_vnp1_p_arr[iter - 1] / error_vnp1_p_arr[iter]) / log(2)); CHKERRXX(ierr);
-         ierr = PetscPrintf(p4est->mpicomm, "-div(U*) = %3.2e (%+3.2f).", err_minus_div_Ustar_p_max, log(error_minus_div_Ustar_p_arr[iter - 1] / error_minus_div_Ustar_p_arr[iter]) / log(2)); CHKERRXX(ierr);
+         ierr = PetscPrintf(p4est->mpicomm, "minus divergence ustar = %3.2e .", err_dustar_p_max); CHKERRXX(ierr);
          ierr = PetscPrintf(p4est->mpicomm, "\n"); CHKERRXX(ierr);
       }
 
@@ -1506,97 +1513,92 @@ int main(int argc, char *argv[]) {
          }
 
          Vec vec_hodge_exact;
-         double *ptr_hodge_exact;
+         double *hodge_exact_ptr;
 
          ierr = VecDuplicate(vec_hodge, &vec_hodge_exact); CHKERRXX(ierr);
          sample_cf_on_nodes(p4est, nodes, hodge_cf, vec_hodge_exact);
 
-         ierr = VecGetArray(bdry_phi_eff, &ptr_bdry_phi_eff); CHKERRXX(ierr);
+         ierr = VecGetArray(bdry_phi_eff, &bdry_phi_eff_ptr); CHKERRXX(ierr);
 
          ierr = VecGetArray(vec_hodge, &ptr_hodge); CHKERRXX(ierr);
-         ierr = VecGetArray(vec_hodge_exact, &ptr_hodge_exact); CHKERRXX(ierr);
+         ierr = VecGetArray(vec_hodge_exact, &hodge_exact_ptr); CHKERRXX(ierr);
 
-         ierr = VecGetArray(hodge_m_extrapolated, &ptr_hodge_m_extrapolated); CHKERRXX(ierr);
-         ierr = VecGetArray(hodge_p_extrapolated, &ptr_hodge_p_extrapolated); CHKERRXX(ierr);
+         ierr = VecGetArray(hodge_m_extrapolated, &hodge_m_extrapolated_ptr); CHKERRXX(ierr);
+         ierr = VecGetArray(hodge_p_extrapolated, &hodge_p_extrapolated_ptr); CHKERRXX(ierr);
 
-         ierr = VecGetArray(vec_error_hodge_m, &ptr_error_hodge_m); CHKERRXX(ierr);
-         ierr = VecGetArray(vec_error_grad_hodge_m, &ptr_error_gradient_hodge_m); CHKERRXX(ierr);
-         ierr = VecGetArray(vec_error_hodge_extrapolated_m, &ptr_error_extrapolated_hodge_m); CHKERRXX(ierr);
-         ierr = VecGetArray(vec_error_minus_div_Ustar_m, &ptr_error_minus_div_Ustar_m); CHKERRXX(ierr);
+         ierr = VecGetArray(vec_error_hodge_m, &vec_error_hodge_m_ptr); CHKERRXX(ierr);
+         ierr = VecGetArray(vec_error_grad_hodge_m, &vec_error_gradient_hodge_m_ptr); CHKERRXX(ierr);
+         ierr = VecGetArray(vec_error_hodge_extrapolated_m, &vec_error_extrapolated_hodge_m_ptr); CHKERRXX(ierr);
 
-         ierr = VecGetArray(vec_error_hodge_p, &ptr_error_hodge_p); CHKERRXX(ierr);
-         ierr = VecGetArray(vec_error_grad_hodge_p, &ptr_error_gradient_hodge_p); CHKERRXX(ierr);
-         ierr = VecGetArray(vec_error_hodge_extrapolated_p, &ptr_error_extrapolated_hodge_p); CHKERRXX(ierr);
-         ierr = VecGetArray(vec_error_minus_div_Ustar_p, &ptr_error_minus_div_Ustar_p); CHKERRXX(ierr);
+         ierr = VecGetArray(vec_error_hodge_p, &vec_error_hodge_p_ptr); CHKERRXX(ierr);
+         ierr = VecGetArray(vec_error_grad_hodge_p, &vec_error_gradient_hodge_p_ptr); CHKERRXX(ierr);
+         ierr = VecGetArray(vec_error_hodge_extrapolated_p, &vec_error_extrapolated_hodge_p_ptr); CHKERRXX(ierr);
 
-         ierr = VecGetArray(mask_m, &ptr_mask_m); CHKERRXX(ierr);
-         ierr = VecGetArray(mask_p, &ptr_mask_p); CHKERRXX(ierr);
+         ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+         ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
-         double *ptr_mu_m;
-         double *ptr_mu_p;
+          ierr = VecGetArray(vec_minus_div_Ustar_m, &ptr_minus_div_Ustar_m); CHKERRXX(ierr);
+          ierr = VecGetArray(vec_minus_div_Ustar_p, &ptr_minus_div_Ustar_p); CHKERRXX(ierr);
 
-         ierr = VecGetArray(vec_mu_m, &ptr_mu_m); CHKERRXX(ierr);
-         ierr = VecGetArray(vec_mu_p, &ptr_mu_p); CHKERRXX(ierr);
+         double *vec_mu_m_ptr;
+         double *vec_mu_p_ptr;
 
-         ierr = VecGetArray(vec_minus_div_Ustar_m, &ptr_minus_div_Ustar_m); CHKERRXX(ierr);
-         ierr = VecGetArray(vec_minus_div_Ustar_p, &ptr_minus_div_Ustar_p); CHKERRXX(ierr);
+         ierr = VecGetArray(vec_mu_m, &vec_mu_m_ptr); CHKERRXX(ierr);
+         ierr = VecGetArray(vec_mu_p, &vec_mu_p_ptr); CHKERRXX(ierr);
 
          my_p4est_vtk_write_all(p4est, nodes, ghost,
                                 P4EST_TRUE, P4EST_TRUE,
                                 17, 1, oss.str().c_str(),
-                                VTK_POINT_DATA, "phi", ptr_bdry_phi_eff,
+                                VTK_POINT_DATA, "phi", bdry_phi_eff_ptr,
                                 VTK_POINT_DATA, "hodge", ptr_hodge,
-                                VTK_POINT_DATA, "hodge_exact", ptr_hodge_exact,
-                                VTK_POINT_DATA, "hodge_m_extrapolated", ptr_hodge_m_extrapolated,
-                                VTK_POINT_DATA, "hodge_p_extrapolated", ptr_hodge_p_extrapolated,
-                                VTK_POINT_DATA, "mu_m", ptr_mu_m,
-                                VTK_POINT_DATA, "mu_p", ptr_mu_p,
-                                VTK_POINT_DATA, "mask_m", ptr_mask_m,
-                                VTK_POINT_DATA, "mask_p", ptr_mask_p,
-                                VTK_POINT_DATA, "error_hodge_m", ptr_error_hodge_m,
-                                VTK_POINT_DATA, "error_minus_div_Ustar_m", ptr_error_minus_div_Ustar_m,
-                                VTK_POINT_DATA, "error_minus_div_Ustar_p", ptr_error_minus_div_Ustar_p,
-                                VTK_POINT_DATA, "error_gradient_hodge_m", ptr_error_gradient_hodge_m,
-                                VTK_POINT_DATA, "error_hodge_extrapolated_m", ptr_error_extrapolated_hodge_m,
-                                VTK_POINT_DATA, "error_hodge_p", ptr_error_hodge_p,
-                                VTK_POINT_DATA, "error_gradient_hodge_p", ptr_error_gradient_hodge_p,
-                                VTK_POINT_DATA, "error_hodge_extrapolated_p", ptr_error_extrapolated_hodge_p,
-                                VTK_CELL_DATA, "leaf_level", l_p);
+                                VTK_POINT_DATA, "hodge_exact", hodge_exact_ptr,
+                                VTK_POINT_DATA, "hodge_m_extrapolated", hodge_m_extrapolated_ptr,
+                                VTK_POINT_DATA, "hodge_p_extrapolated", hodge_p_extrapolated_ptr,
+                                VTK_POINT_DATA, "vec_mu_m", vec_mu_m_ptr,
+                                VTK_POINT_DATA, "vec_mu_p", vec_mu_p_ptr,
+                                VTK_POINT_DATA, "mask_m", mask_m_ptr,
+                                VTK_POINT_DATA, "mask_p", mask_p_ptr,
+                                VTK_POINT_DATA, "error_hodge_m", vec_error_hodge_m_ptr,
+                                VTK_POINT_DATA, "error_gradient_hodge_m", vec_error_gradient_hodge_m_ptr,
+                                VTK_POINT_DATA, "error_hodge_extrapolated_m", vec_error_extrapolated_hodge_m_ptr,
+                                VTK_POINT_DATA, "error_hodge_p", vec_error_hodge_p_ptr,
+                                VTK_POINT_DATA, "error_gradient_hodge_p", vec_error_gradient_hodge_p_ptr,
+                                VTK_POINT_DATA, "error_hodge_extrapolated_p", vec_error_extrapolated_hodge_p_ptr,
+                                VTK_CELL_DATA, "leaf_level", l_p,
+                                VTK_POINT_DATA, "minus_div_u_star_m",vec_minus_div_Ustar_m,
+                                VTK_CELL_DATA, "minus_div_u_star_p",vec_minus_div_Ustar_p);
 
-         ierr = VecRestoreArray(bdry_phi_eff, &ptr_bdry_phi_eff); CHKERRXX(ierr);
+         ierr = VecRestoreArray(bdry_phi_eff, &bdry_phi_eff_ptr); CHKERRXX(ierr);
 
          ierr = VecRestoreArray(vec_hodge, &ptr_hodge); CHKERRXX(ierr);
-         ierr = VecRestoreArray(vec_hodge_exact, &ptr_hodge_exact); CHKERRXX(ierr);
+         ierr = VecRestoreArray(vec_hodge_exact, &hodge_exact_ptr); CHKERRXX(ierr);
 
-         ierr = VecRestoreArray(hodge_m_extrapolated, &ptr_hodge_m_extrapolated); CHKERRXX(ierr);
-         ierr = VecRestoreArray(hodge_p_extrapolated, &ptr_hodge_p_extrapolated); CHKERRXX(ierr);
+         ierr = VecRestoreArray(hodge_m_extrapolated, &hodge_m_extrapolated_ptr); CHKERRXX(ierr);
+         ierr = VecRestoreArray(hodge_p_extrapolated, &hodge_p_extrapolated_ptr); CHKERRXX(ierr);
 
-         ierr = VecRestoreArray(vec_error_hodge_m, &ptr_error_hodge_m); CHKERRXX(ierr);
-         ierr = VecRestoreArray(vec_error_grad_hodge_m, &ptr_error_gradient_hodge_m); CHKERRXX(ierr);
-         ierr = VecRestoreArray(vec_error_hodge_extrapolated_m, &ptr_error_extrapolated_hodge_m); CHKERRXX(ierr);
+         ierr = VecRestoreArray(vec_error_hodge_m, &vec_error_hodge_m_ptr); CHKERRXX(ierr);
+         ierr = VecRestoreArray(vec_error_grad_hodge_m, &vec_error_gradient_hodge_m_ptr); CHKERRXX(ierr);
+         ierr = VecRestoreArray(vec_error_hodge_extrapolated_m, &vec_error_extrapolated_hodge_m_ptr); CHKERRXX(ierr);
 
-         ierr = VecRestoreArray(vec_error_hodge_p, &ptr_error_hodge_p); CHKERRXX(ierr);
-         ierr = VecRestoreArray(vec_error_grad_hodge_p, &ptr_error_gradient_hodge_p); CHKERRXX(ierr);
-         ierr = VecRestoreArray(vec_error_hodge_extrapolated_p, &ptr_error_extrapolated_hodge_p); CHKERRXX(ierr);
+         ierr = VecRestoreArray(vec_error_hodge_p, &vec_error_hodge_p_ptr); CHKERRXX(ierr);
+         ierr = VecRestoreArray(vec_error_grad_hodge_p, &vec_error_gradient_hodge_p_ptr); CHKERRXX(ierr);
+         ierr = VecRestoreArray(vec_error_hodge_extrapolated_p, &vec_error_extrapolated_hodge_p_ptr); CHKERRXX(ierr);
 
-         ierr = VecRestoreArray(vec_error_minus_div_Ustar_m, &ptr_error_minus_div_Ustar_m); CHKERRXX(ierr);
-         ierr = VecRestoreArray(vec_error_minus_div_Ustar_p, &ptr_error_minus_div_Ustar_p); CHKERRXX(ierr);
+         ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+         ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
-         ierr = VecRestoreArray(mask_m, &ptr_mask_m); CHKERRXX(ierr);
-         ierr = VecRestoreArray(mask_p, &ptr_mask_p); CHKERRXX(ierr);
-
-         ierr = VecRestoreArray(vec_mu_m, &ptr_mu_m); CHKERRXX(ierr);
-         ierr = VecRestoreArray(vec_mu_p, &ptr_mu_p); CHKERRXX(ierr);
+         ierr = VecRestoreArray(vec_mu_m, &vec_mu_m_ptr); CHKERRXX(ierr);
+         ierr = VecRestoreArray(vec_mu_p, &vec_mu_p_ptr); CHKERRXX(ierr);
 
          ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
          ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
          ierr = VecDestroy(vec_hodge_exact); CHKERRXX(ierr);
 
-         ierr = VecRestoreArray(vec_minus_div_Ustar_m, &ptr_minus_div_Ustar_m); CHKERRXX(ierr);
-         ierr = VecRestoreArray(vec_minus_div_Ustar_p, &ptr_minus_div_Ustar_p); CHKERRXX(ierr);
-         ierr = VecDestroy(vec_minus_div_Ustar_m); CHKERRXX(ierr);
-         ierr = VecDestroy(vec_minus_div_Ustar_p); CHKERRXX(ierr);
 
+          ierr = VecRestoreArray(vec_minus_div_Ustar_m, &ptr_minus_div_Ustar_m); CHKERRXX(ierr);
+          ierr = VecRestoreArray(vec_minus_div_Ustar_p, &ptr_minus_div_Ustar_p); CHKERRXX(ierr);
+          ierr = VecDestroy(vec_minus_div_Ustar_m); CHKERRXX(ierr);
+          ierr = VecDestroy(vec_minus_div_Ustar_p); CHKERRXX(ierr);
 
          PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
       }
@@ -1609,9 +1611,6 @@ int main(int argc, char *argv[]) {
       ierr = VecDestroy(vec_error_hodge_p); CHKERRXX(ierr);
       ierr = VecDestroy(vec_error_grad_hodge_p); CHKERRXX(ierr);
       ierr = VecDestroy(vec_error_hodge_extrapolated_p); CHKERRXX(ierr);
-
-      ierr = VecDestroy(vec_error_minus_div_Ustar_m); CHKERRXX(ierr);
-      ierr = VecDestroy(vec_error_minus_div_Ustar_p); CHKERRXX(ierr);
 
       ierr = VecDestroy(hodge_m_extrapolated); CHKERRXX(ierr);
       ierr = VecDestroy(hodge_p_extrapolated); CHKERRXX(ierr);
