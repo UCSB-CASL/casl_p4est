@@ -199,7 +199,6 @@ protected:
 
   const WallBCDIM *wc_type_;
   const CF_DIM    *wc_value_;
-  const CF_DIM    *wc_coeff_;
 
   void save_wall_data(p4est_locidx_t n, vector<int> &wall_id, vector<double> &wall_area, vector<interface_point_t> &wall_xyz);
   void load_wall_data(p4est_locidx_t n, vector<int> &wall_id, vector<double> &wall_area, vector<interface_point_t> &wall_xyz);
@@ -446,7 +445,6 @@ public:
   inline void set_interface_phi_eff(Vec phi_eff) { infc_.phi_eff = phi_eff; infc_.calculate_phi_eff(); }
 
   // set wall conditions
-  //  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, const CF_DIM &wc_coeff)
   inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, bool new_submat_main = true)
   {
     this->wc_type_  = &wc_type;
@@ -458,14 +456,10 @@ public:
   inline void set_wc(BoundaryConditionType wc_type, const CF_DIM &wc_value, bool new_submat_main = true)
   {
     switch (wc_type) {
-      case DIRICHLET: this->wc_type_ = &dirichlet_cf; break;
-      case NEUMANN:   this->wc_type_ = &neumann_cf;   break;
+      case DIRICHLET: set_wc(dirichlet_cf, wc_value, new_submat_main); break;
+      case NEUMANN:   set_wc(neumann_cf, wc_value, new_submat_main);   break;
       default: throw;
     }
-
-    this->wc_value_ = &wc_value;
-
-    new_submat_main_  = new_submat_main;
   }
 
   // overwrite boundary conditions (optional)
