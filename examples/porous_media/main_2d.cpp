@@ -304,7 +304,7 @@ void select_solvers(){
     case EVOLVING_POROUS_MEDIA:
 //      solve_stefan=true;
 //      solve_navier_stokes=true;
-        // 1/31/22 -- changed to select solvers manually
+        // 1/31/22 -- changed to select solvers manually - in the bash, those are set to true when running a EVOLVING_POROUS_MEDIA.
       break;
     case PLANE_POIS_FLOW:
       solve_stefan=false;
