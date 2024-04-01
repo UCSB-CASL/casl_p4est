@@ -8,7 +8,7 @@ set (DIMENSION 2d)
 ###################################### Compiler custom macros for current project ######################################
 message('hello')
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC main_2d_karla_vincent.cpp )
+	list( APPEND SRC main_2d.cpp )
 elseif( DIMENSION MATCHES 3d )
 	list( APPEND SRC main_3d.cpp )
 else()
