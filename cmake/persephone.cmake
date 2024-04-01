@@ -43,14 +43,16 @@ list( APPEND INC_DIRS					# Include directories.
 		${P4EST_DIR}/include
 		${VORO_DIR}/include/voro++
 		${MPI_DIR}/include
-		${BOOST_DIR}/include )
+		${BOOST_DIR}/include
+        ${BOOST_DIR}/ )
 
 list( APPEND LIB_DIRS					# Library directories.
 		${PETSC_DIR}/lib
 		${P4EST_DIR}/lib
 		${VORO_DIR}/lib
 		${MPI_DIR}/lib
-		${BOOST_DIR}/lib )
+		${BOOST_DIR}/lib
+        ${BOOST_DIR}/ )
 
 list( APPEND LIBS						# Libraries: Note we don't include Boost --we need header-only functions.
 		petsc
