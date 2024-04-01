@@ -12,7 +12,9 @@ namespace std {
 }
 #endif
 #include <boost/random.hpp>
-#include <boost/random/normal_distribution.hpp>
+#include "/home/elyce/workspace/source_libraries/boost_1_70_0/boost/random.hpp"
+#include "/home/elyce/workspace/source_libraries/boost_1_70_0/boost/random/normal_distribution.hpp"
+//#include <boost/random/normal_distribution.hpp>
 //#else
 //#include <random>
 //#endif

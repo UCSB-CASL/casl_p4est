@@ -6,7 +6,7 @@ project( porous_media )
 set( CMAKE_CXX_STANDARD 14 )
 set (DIMENSION 2d)
 ###################################### Compiler custom macros for current project ######################################
-message('hello')
+
 if( DIMENSION MATCHES 2d )
 	list( APPEND SRC main_2d.cpp )
 elseif( DIMENSION MATCHES 3d )
