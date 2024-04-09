@@ -118,7 +118,7 @@ DEFINE_PARAMETER(pl, bool, save_to_vtk, true, "We save vtk files using a "
 DEFINE_PARAMETER(pl, bool, save_using_dt, false, "We save vtk files using a "
                                                  "given dt increment if this is set to true \n");
 
-DEFINE_PARAMETER(pl, bool, save_using_iter, true, "We save every prescribed number "
+DEFINE_PARAMETER(pl, bool, save_using_iter, false, "We save every prescribed number "
                                                    "of iterations if this is set to true \n");
 
 DEFINE_PARAMETER(pl, int, save_every_iter, 1, "Saves vtk every n number "
@@ -144,7 +144,7 @@ DEFINE_PARAMETER(pl, bool, save_state, false, "Saves the simulation state (as pe
 DEFINE_PARAMETER(pl, bool, save_state_using_iter, false, "Saves the simulation state every specified number of iterations \n");
 DEFINE_PARAMETER(pl, bool, save_state_using_dt, false, "Saves the simulation state using every specified dt \n");
 
-DEFINE_PARAMETER(pl, int, save_state_every_iter, -1., "Saves simulation state every n number of iterations (default is -1) \n");
+DEFINE_PARAMETER(pl, int, save_state_every_iter, 1000., "Saves simulation state every n number of iterations (default is -1) \n");
 DEFINE_PARAMETER(pl, double, save_state_every_dt, -1., "Save state every dt -- tells us how often (in seconds) to save the simulation state. Default is -1. \n");
 DEFINE_PARAMETER(pl, int, num_save_states, 20, "Number of save states we keep on file (default is 20) \n");
 
@@ -2207,7 +2207,7 @@ class INITIAL_TEMP: public CF_DIM
       }
     }
     case EVOLVING_POROUS_MEDIA:{
-      //      return theta_interface;
+        return theta_interface;
       switch(dom){
       case LIQUID_DOMAIN:
         if(is_dissolution_case){
@@ -5293,7 +5293,7 @@ int main(int argc, char** argv) {
 
     if(save_to_vtk){
       if(!loading_from_previous_state){
-        out_idx=-1;
+        out_idx=0;
         stefan_w_fluids_solver->set_tstep(0);
         stefan_w_fluids_solver->save_fields_to_vtk(out_idx);
       }
