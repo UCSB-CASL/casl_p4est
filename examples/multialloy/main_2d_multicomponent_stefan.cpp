@@ -280,7 +280,7 @@ double scale = 30.0;//1./*30*/; // [Elyce  2/16/23] changing this to 1 bc it see
 param_t<double> cooling_velocity        (pl, 0.001,  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio          (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
 param_t<double> temp_gradient           (pl, 500, "temp_gradient",    "Temperature gradient (pl, K/cm");
-param_t<bool>   start_from_moving_front (pl, 0, "start_from_moving_front", "Relevant only for geometry==0");
+param_t<bool>   start_from_moving_front (pl, 1, "start_from_moving_front", "Relevant only for geometry==0");
 
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
