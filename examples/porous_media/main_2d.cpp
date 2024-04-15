@@ -534,11 +534,11 @@ void set_geometry(){
 //      ny = 1.0;
 
       // Periodicity:
-      px = 0;
-      py = 1;
+//      px = 0;
+//      py = 1;
 
       // Problem geometry:
-      r0 = 0.1;     // Computational radius of the sphere // to-do: check this, p sure it gets ignored
+//      r0 = 0.1;     // Computational radius of the sphere // to-do: check this, p sure it gets ignored
       break;
     }
     case DISSOLVING_DISK_BENCHMARK:{
@@ -746,7 +746,7 @@ double return_LSF_porous_media(DIM(double x, double y, double z), bool is_inner_
   double dxyz_min = tree_size/(pow(2.0, lmax));
 
   double radius_addition = 0.0;
-  if(!is_inner_) radius_addition = porous_media_initial_thickness*dxyz_min;
+    //if(!is_inner_) radius_addition = porous_media_initial_thickness*dxyz_min;
 
   double lsf_vals[num_grains];
   // First, grab all the relevant LSF values for each grain:
