@@ -28,7 +28,8 @@ else()
 endif()
 
 # MPI.
-set( MPI_DIR /usr/bin )
+#set( MPI_DIR /usr/bin )
+set( MPI_DIR $ENV{HOME}/workspace/software/mpich-casl-local-install )
 
 # Boost.  For header-only functions, you don't need to specify a particular component in
 # `link_libraries`-- just add the path to boost headers in `include_directories`.  If you need
