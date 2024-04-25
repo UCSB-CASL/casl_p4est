@@ -8,7 +8,10 @@
 
 # Checking mode: Created by visiting CLion | Preferences | Build, Execution, Deployment | CMake
 # Based on https://intellij-support.jetbrains.com/hc/en-us/community/posts/360000919039-Clion-how-to-build-cmake-to-support-debug-release
-message( "" )
+
+message(PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+message(CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
+message(CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
 if( CMAKE_BUILD_TYPE MATCHES Debug )
 	message( "******* CASL CMAKE IN DEBUG MODE *******" )
 
@@ -102,8 +105,6 @@ if( ENABLE_ML MATCHES 1 )		# Set this CMake variable as -DENABLE_ML=1.
 	message( "** frugally-deep: " ${FDEEP_DIR} )
 
 endif()
-
-message( "" )
 
 ###################################################### Compilers #######################################################
 
