@@ -15,16 +15,16 @@ message(CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
 if( CMAKE_BUILD_TYPE MATCHES Debug )
 	message( "******* CASL CMAKE IN DEBUG MODE *******" )
 
-	set( PETSC_DIR $ENV{HOME}/workspace/software/petsc-debug )	# PETSc.
-	set( P4EST_DIR $ENV{HOME}/workspace/software/p4est-debug )	# p4est.
-	set( VORO_DIR  $ENV{HOME}/workspace/software/voro-build )	# Voro++.
+	set( PETSC_DIR $ENV{HOME}/CASL/casl_code_base/external_libraries/petsc_debug )	# PETSc.
+	set( P4EST_DIR $ENV{HOME}/CASL/casl_code_base/external_libraries/p4est_debug )	# p4est.
+	set( VORO_DIR  $ENV{HOME}/CASL/casl_code_base/external_libraries/voro_build )	# Voro++.
 
 elseif( CMAKE_BUILD_TYPE MATCHES Release )
 	message( "******* CASL CMAKE IN RELEASE MODE *******" )
 
-	set( PETSC_DIR $ENV{HOME}/workspace/software/petsc-release )	# PETSc.
-	set( P4EST_DIR $ENV{HOME}/workspace/software/p4est-release )	# p4est.
-	set( VORO_DIR  $ENV{HOME}/workspace/software/voro-build )	# Voro++
+	set( PETSC_DIR $ENV{HOME}/CASL/casl_code_base/external_libraries/petsc_release )	# PETSc.
+	set( P4EST_DIR $ENV{HOME}/CASL/casl_code_base/external_libraries/p4est_release )	# p4est.
+	set( VORO_DIR  $ENV{HOME}/CASL/casl_code_base/external_libraries/voro_build )	# Voro++
 
 else()
 	message( FATAL_ERROR "Invalid or missing CMAKE_BUILD_TYPE macro --it should be 'Debug' or 'Release'." )
@@ -32,14 +32,14 @@ endif()
 
 # MPI.
 #set( MPI_DIR /usr/bin )
-set( MPI_DIR $ENV{HOME}/workspace/software/mpich-casl-local-install )
+set( MPI_DIR $ENV{HOME}/CASL/casl_code_base/external_libraries/mpich_casl_local_install )
 
 # Boost.  For header-only functions, you don't need to specify a particular component in
 # `link_libraries`-- just add the path to boost headers in `include_directories`.  If you need
 # some component use:
 # find_package( Boost COMPONENTS filesystem REQUIRED )  <-- filesystem component.
 # then `link_libraries( ${Boost_FILESYSTEM_LIBRARY} )` and  `include_directories( ${Boost_INCLUDE_DIR} )`.
-set( BOOST_DIR $ENV{HOME}/workspace/software/boost-build )
+set( BOOST_DIR $ENV{HOME}/CASL/casl_code_base/external_libraries/boost_build )
 
 # Let's add libraries to the lists.
 list( APPEND INC_DIRS					# Include directories.
