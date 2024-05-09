@@ -1,48 +1,48 @@
 #!bash/sh
 
-export LMIN=4
-export LINT=0
-export LMAX=10
+#
+# This is example 1 in Fisrt_Author et al, "Title", Journal Volume (Year).
+# Simulation of precipitation in a porous media with 2 grains.
+# The precipitate at a given concentrations flows from left to right and contributes to the growth of each grain.
+# The simulation output is saved in the folder CASL/simulation_output/porous_media/two_grains/
+# In addition to the standard graphics software, the python code "plot_porous_media.py" can be used to plot 
+# the concentration and the norm of the velocity field.
+#
 
-export DA=0.1
-export PRESS_DROP=0.1 #dP in Pa
 
-export DO_PHI_ADV_SUBSTEPS=1
-export CFL_PHI_ADV_SUBSTEP=1e-3
 
-export DIR_NAME=two_grain_simulation
-export BASE_DIR=/home/elyce/workspace/CASL/simulation_output/porous_media
+export BASE_DIR=$HOME/workspace/CASL/simulations_output/porous_media
+export DIR_NAME=two_grains
+
+# -------------------------------------------------
+# Toggle whether to run in debug or release mode:
+# -------------------------------------------------
+export EXECUTABLE=cmake_build_release	# cmake_build_debug
 
 # -------------------------------------------------
 # Output directories:
 # -------------------------------------------------
 export OUT_DIR_VTK=$BASE_DIR/$DIR_NAME
 export OUT_DIR_FILES=$BASE_DIR/$DIR_NAME
-
-
-# make the directory in case it doesn't exist
-mkdir $OUT_DIR_VTK
+mkdir $OUT_DIR_VTK	# make the directory in case it doesn't exist
 
 # -------------------------------------------------
 # Save and load information:
 # -------------------------------------------------
-
-
 # loading from previous state?
 export LOADING_FROM_PREV_STATE=0
-
 #Load dir info:
 export INIT_TRANSIENCE=$BASE_DIR/initial_transience
 export LOAD_STATE_BASE=$BASE_DIR/$DIR_NAME #$INIT_TRANSIENCE
 export LOAD_STATE_BACKUP_NO=18
 # it will auto-name the load state paths with the refinement level we are considering
-
 # Save state info:
 export OUT_DIR_SAVE_STATE=$BASE_DIR/$DIR_NAME
+
 # -------------------------------------------------
 # Geometry directory:
 # -------------------------------------------------
-export GEOMETRY_DIR=/home/elyce/workspace/CASL/porous-media-elyce-pot-pourrit/geometry_files/two_grains_test1
+export GEOMETRY_DIR=./geometry/two_grains_test1
 
 # ------------------------------------------------------------------------------------------------------
 # Input variables:
@@ -72,26 +72,30 @@ export XMIN=0.0
 export XMAX=6.0
 export YMIN=0.0
 export YMAX=3.0 #2.0
-
 export NX=2
 export NY=1
+export LMIN=4				# Minimum level of the tree.
+export LINT=0				
+export LMAX=10				# Maximum level of the tree.
+export DA=0.1
 
 # ------------------------
 # Refinement settings
 # ------------------------
-
 export UNIFORM_BAND=8.0
 export REFINE_BY_D2T=1
 export D2T_REFINE_THRESH=50.0 #10.0 #80.0 # was 100 for theta_init=2, so for theta_init=100 I multiplied that by 100
 export D2T_COARSEN_THRESH=1.0 #10.0
+
 # ------------------------
 # CFL settings
 # ------------------------
 export CFL=0.5
 export CFL_NS=1. #2.0
-
 export NS_MAX=1000.0 # Max NS norm allowed before it "blows up"
 export VINT_MAX=1000.0 # max interfacial velocity allowed before it "blows up"
+export DO_PHI_ADV_SUBSTEPS=1
+export CFL_PHI_ADV_SUBSTEP=1e-3
 
 # ------------------------
 # Initial fluid nondim conc and wall nondim conc
@@ -103,14 +107,14 @@ export THETA_INIT=2.0 # the initial C/Csat value in the fluid domain
 # Settings for governing the dissolution/precip problem
 # ------------------------
 export GAMMA_DISS=-1.e-3 #-1.0e-10  
-
 # Note: we set gamma_diss = -1 because when we nondim as C/Csat, it needs to have a negative. When we nondim by C/Cinf, as used in dissolution benchmark, we need gamma_diss to be positive. I may change the convention in the code later but for now this works
 #export DA=200.0 #.0
 export SC=1000.0 # 1000.0 #1000.0
+
 # ------------------------
 # Pressure drop
 # ------------------------
-#export PRESS_DROP=0.10 #1.0e-3 # dimensional pressure drop in Pascals
+export PRESS_DROP=0.10			# dimensional pressure drop in Pascals
 
 # ------------------------
 # Frequency of reinitialization
@@ -122,10 +126,7 @@ export REINIT_EVERY_N=50
 # ------------------------
 #export DO_PHI_ADV_SUBSTEPS=0
 #export CFL_PHI_ADV_SUBSTEP=1.e-3
-
 export PHI_ADV_SUBSTEP_STARTUP_TIME=3.0  # seconds
-
-
 
 # ------------------------
 # Characteristic length scale
@@ -158,24 +159,20 @@ export START_W_MERGED_GRAINS=1
 # Save settings
 # ------------------------
 export SAVE_TO_VTK=1
-
 export SAVE_USING_ITER=0
 export SAVE_EVERY_ITER=1
-
 export SAVE_USING_DT=1
 export SAVE_EVERY_DT=0.1 # in seconds
 
 # ------------------------
 # Save STATE settings
 # ------------------------
-
 export SAVE_STATE=1
-
 export SAVE_STATE_USING_ITER=0
 export SAVE_STATE_USING_DT=1
-
 export SAVE_STATE_EVERY_DT=3600.0 #seconds
 export SAVE_STATE_EVERY_ITER=100000
+
 # ------------------------
 # Getting timing info
 # ------------------------
@@ -185,11 +182,8 @@ export TIMING_EVERY_N=1000
 # Naming the load state path appropriately: 
 # ---------------------------------------------------
 export LOAD_STATE_NAME=$LOAD_STATE_BASE/"save_states_output_lmin_"$LMIN"_lmax_"$LMAX"_advection_order_2_example_8"
-
 export LOAD_STATE_PATH=$LOAD_STATE_NAME"-1"/"backup_18" #$LOAD_STATE_BACKUP_NO
-
 export LOAD_STATE_PATH_NS=$LOAD_STATE_NAME"_navier_stokes-1"/"backup_19" #$LOAD_STATE_BACKUP_NO
-
 
 # ---------------------------------------------------
 # Logfile name: 
@@ -198,10 +192,18 @@ export LOGNAME=$OUT_DIR_VTK/logfile"lmin"$LMIN"lmax"$LMAX"_reload"$LOADING_FROM_
 #valgrind --leak-check=full --track-origins=yes --log-file=valgrind_clogging_porous_reload
 
 # ---------------------------------------------------
-# Now run the case:
+# Executable: 
 # ---------------------------------------------------
+export EXECUTABLE=$HOME/CASL/workspace/built_examples/porous_media/$DEBUG_OR_RELEASE/porous_media
 
-mpirun -np 10 /home/elyce/workspace/CASL/built_examples/porous_media/cmake_build_release/porous_media \
+echo $EXECUTABLE
+echo $OUT_DIR_SAVE_STATE
+echo $GEOMETRY_DIR
+
+# ---------------------------------------------------
+# Command to run the case:
+# ---------------------------------------------------
+mpirun -np 10 $EXECUTABLE \
 \
 -example_ 8 \
 \
