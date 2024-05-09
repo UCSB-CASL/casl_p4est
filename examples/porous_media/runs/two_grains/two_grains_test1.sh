@@ -21,11 +21,11 @@ export DEBUG_OR_RELEASE=cmake-build-release	# cmake-build-debug
 # -------------------------------------------------
 # Output directories:
 # -------------------------------------------------
-export OUTPUT_BASE_DIR=$HOME/CASL/workspace/simulations_output/porous_media
-export OUTPUT_DIR_NAME=two_grains
+export OUTPUT_BASE_DIR=$HOME/CASL/workspace/simulations_output/porous_media/two_grains
+export OUTPUT_DIR_NAME=two_grains_test1
 export OUT_DIR_VTK=$OUTPUT_BASE_DIR/$OUTPUT_DIR_NAME
 export OUT_DIR_FILES=$OUTPUT_BASE_DIR/$OUTPUT_DIR_NAME
-mkdir $OUT_DIR_VTK									# make the directory in case it doesn't exist
+mkdir $OUT_DIR_VTK			# make the directory in case it doesn't exist
 
 # -------------------------------------------------
 # Save and load information:
