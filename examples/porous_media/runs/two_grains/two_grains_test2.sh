@@ -10,9 +10,6 @@
 #
 
 
-# ESSAI
-
-
 # -------------------------------------------------
 # Toggle whether to run in debug or release mode:
 # -------------------------------------------------
@@ -72,7 +69,7 @@ export TRACK_EVOLVING_GEOM=1
 export XMIN=0.0
 export XMAX=6.0
 export YMIN=0.0
-export YMAX=3.0 #2.0
+export YMAX=12.0 #2.0
 export NX=2
 export NY=1
 export LMIN=4				# Minimum level of the tree.
