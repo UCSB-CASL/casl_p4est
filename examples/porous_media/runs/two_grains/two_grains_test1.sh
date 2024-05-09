@@ -11,20 +11,21 @@
 
 
 
-export BASE_DIR=$HOME/workspace/CASL/simulations_output/porous_media
-export DIR_NAME=two_grains
+
 
 # -------------------------------------------------
 # Toggle whether to run in debug or release mode:
 # -------------------------------------------------
-export EXECUTABLE=cmake_build_release	# cmake_build_debug
+export DEBUG_OR_RELEASE=cmake-build-release	# cmake-build-debug
 
 # -------------------------------------------------
 # Output directories:
 # -------------------------------------------------
-export OUT_DIR_VTK=$BASE_DIR/$DIR_NAME
-export OUT_DIR_FILES=$BASE_DIR/$DIR_NAME
-mkdir $OUT_DIR_VTK	# make the directory in case it doesn't exist
+export OUTPUT_BASE_DIR=$HOME/CASL/workspace/simulations_output/porous_media
+export OUTPUT_DIR_NAME=two_grains
+export OUT_DIR_VTK=$OUTPUT_BASE_DIR/$OUTPUT_DIR_NAME
+export OUT_DIR_FILES=$OUTPUT_BASE_DIR/$OUTPUT_DIR_NAME
+mkdir $OUT_DIR_VTK									# make the directory in case it doesn't exist
 
 # -------------------------------------------------
 # Save and load information:
@@ -32,17 +33,17 @@ mkdir $OUT_DIR_VTK	# make the directory in case it doesn't exist
 # loading from previous state?
 export LOADING_FROM_PREV_STATE=0
 #Load dir info:
-export INIT_TRANSIENCE=$BASE_DIR/initial_transience
-export LOAD_STATE_BASE=$BASE_DIR/$DIR_NAME #$INIT_TRANSIENCE
+export INIT_TRANSIENCE=$OUTPUT_BASE_DIR/initial_transience
+export LOAD_STATE_BASE=$OUTPUT_BASE_DIR/$OUTPUT_DIR_NAME #$INIT_TRANSIENCE
 export LOAD_STATE_BACKUP_NO=18
 # it will auto-name the load state paths with the refinement level we are considering
 # Save state info:
-export OUT_DIR_SAVE_STATE=$BASE_DIR/$DIR_NAME
+export OUT_DIR_SAVE_STATE=$OUTPUT_BASE_DIR/$OUTPUT_DIR_NAME
 
 # -------------------------------------------------
 # Geometry directory:
 # -------------------------------------------------
-export GEOMETRY_DIR=./geometry/two_grains_test1
+export GEOMETRY_DIR=$HOME/CASL/casl_code_base/casl_p4est/examples/porous_media/runs/two_grains/geometry/two_grains_test1
 
 # ------------------------------------------------------------------------------------------------------
 # Input variables:
@@ -196,9 +197,7 @@ export LOGNAME=$OUT_DIR_VTK/logfile"lmin"$LMIN"lmax"$LMAX"_reload"$LOADING_FROM_
 # ---------------------------------------------------
 export EXECUTABLE=$HOME/CASL/workspace/built_examples/porous_media/$DEBUG_OR_RELEASE/porous_media
 
-echo $EXECUTABLE
-echo $OUT_DIR_SAVE_STATE
-echo $GEOMETRY_DIR
+
 
 # ---------------------------------------------------
 # Command to run the case:
