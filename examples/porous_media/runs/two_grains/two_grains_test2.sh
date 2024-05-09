@@ -6,8 +6,8 @@
 # The precipitate at a given concentrations flows from left to right and contributes to the growth of each grain.
 # The simulation output is saved in the folder CASL/simulation_output/porous_media/two_grains/
 # In addition to the standard graphics software, the python code "plot_porous_media.py" can be used to plot 
-# the concentration and the norm of the velocity field.
-#
+# the concentration and the norm of the velocity field (that has to be simply calculated on Excel).
+# For some more info on paraview and how to export files on python/matlab or your favorite coding program you can  ask Pr. Gibou for the Google drive turorial file named ''Saving DATA from a Paraview simulation + Useful stuff''
 
 
 # -------------------------------------------------
@@ -52,9 +52,9 @@ export NONDIM_TYPE=1 # 0 = by fluid vel, 1 = by diffusivity
 # ------------------------
 # physics to solve
 # ------------------------
-export SOLVE_STEFAN=1
-export SOLVE_NS=1
-export IS_DISSOLUTION_CASE=1
+export SOLVE_STEFAN=1 # solve the Stefan equations (evolving boundary)
+export SOLVE_NS=1 # solve the NS equations
+export IS_DISSOLUTION_CASE=1 #  1 = precipitation , 0 = dissolution
 
 # ------------------------
 # settings for regularize front
