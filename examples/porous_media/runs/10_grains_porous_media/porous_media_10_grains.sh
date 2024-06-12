@@ -2,12 +2,15 @@
 
 #
 # This is example 1 in Fisrt_Author et al, "Title", Journal Volume (Year).
-# Simulation of precipitation in a porous media with 2 grains.
+# Simulation of precipitation in a porous media with 10 grains (small porous media).
 # The precipitate at a given concentrations flows from left to right and contributes to the growth of each grain.
 # The simulation output is saved in the folder CASL/simulation_output/porous_media/two_grains/
 # In addition to the standard graphics software, the python code "plot_porous_media.py" can be used to plot 
 # the concentration and the norm of the velocity field (that has to be simply calculated on Excel).
 # For some more info on paraview and how to export files on python/matlab or your favorite coding program you can  ask Pr. Gibou for the Google drive turorial file named ''Saving DATA from a Paraview simulation + Useful stuff''
+
+
+
 
 
 # -------------------------------------------------
@@ -18,8 +21,8 @@ export DEBUG_OR_RELEASE=cmake-build-release	# cmake-build-debug
 # -------------------------------------------------
 # Output directories:
 # -------------------------------------------------
-export OUTPUT_BASE_DIR=$HOME/CASL/workspace/simulations_output/porous_media/two_grains
-export OUTPUT_DIR_NAME=two_grains_test2
+export OUTPUT_BASE_DIR=$HOME/CASL/workspace/simulations_output/porous_media/ten_grains
+export OUTPUT_DIR_NAME=ten_grains_porous_media
 export OUT_DIR_VTK=$OUTPUT_BASE_DIR/$OUTPUT_DIR_NAME
 export OUT_DIR_FILES=$OUTPUT_BASE_DIR/$OUTPUT_DIR_NAME
 mkdir $OUT_DIR_VTK			# make the directory in case it doesn't exist
@@ -32,7 +35,7 @@ export LOADING_FROM_PREV_STATE=0
 #Load dir info:
 export INIT_TRANSIENCE=$OUTPUT_BASE_DIR/initial_transience
 export LOAD_STATE_BASE=$OUTPUT_BASE_DIR/$OUTPUT_DIR_NAME #$INIT_TRANSIENCE
-export LOAD_STATE_BACKUP_NO=18
+export LOAD_STATE_BACKUP_NO=0
 # it will auto-name the load state paths with the refinement level we are considering
 # Save state info:
 export OUT_DIR_SAVE_STATE=$OUTPUT_BASE_DIR/$OUTPUT_DIR_NAME
@@ -40,7 +43,7 @@ export OUT_DIR_SAVE_STATE=$OUTPUT_BASE_DIR/$OUTPUT_DIR_NAME
 # -------------------------------------------------
 # Geometry directory:
 # -------------------------------------------------
-export GEOMETRY_DIR=$HOME/CASL/casl_code_base/casl_p4est/examples/porous_media/runs/two_grains/geometry/two_grains_test2
+export GEOMETRY_DIR=$HOME/CASL/casl_code_base/casl_p4est/examples/porous_media/runs/10_grains_porous_media/geometry
 
 # ------------------------------------------------------------------------------------------------------
 # Input variables:
@@ -54,7 +57,7 @@ export NONDIM_TYPE=1 # 0 = by fluid vel, 1 = by diffusivity
 # ------------------------
 export SOLVE_STEFAN=1 # solve the Stefan equations (evolving boundary)
 export SOLVE_NS=1 # solve the NS equations
-export IS_DISSOLUTION_CASE=1 #  1 = precipitation , 0 = dissolution
+export IS_DISSOLUTION_CASE=1 #  1 = precipitation , 0 = dissolution   
 
 # ------------------------
 # settings for regularize front
@@ -67,15 +70,14 @@ export TRACK_EVOLVING_GEOM=1
 # Domain settings 
 # ------------------------
 export XMIN=0.0
-export XMAX=6.0
+export XMAX=2.0
 export YMIN=0.0
-export YMAX=12.0 #2.0
+export YMAX=2.0 #2.0
 export NX=1
-export NY=2
+export NY=1
 export LMIN=4				# Minimum level of the tree.
 export LINT=0				
-export LMAX=10				# Maximum level of the tree.
-export DA=0.1
+export LMAX=7			# Maximum level of the tree.
 
 # ------------------------
 # Refinement settings
@@ -104,15 +106,16 @@ export THETA_INIT=2.0 # the initial C/Csat value in the fluid domain
 # ------------------------
 # Settings for governing the dissolution/precip problem
 # ------------------------
-export GAMMA_DISS=-1.e-3 #-1.0e-10  
+export GAMMA_DISS=1.e-3 #-1.0e-10  
 # Note: we set gamma_diss = -1 because when we nondim as C/Csat, it needs to have a negative. When we nondim by C/Cinf, as used in dissolution benchmark, we need gamma_diss to be positive. I may change the convention in the code later but for now this works
 #export DA=200.0 #.0
-export SC=1000.0 # 1000.0 #1000.0
+export DA=0.05
+export SC=800 #1000.0 #1000.0
 
 # ------------------------
 # Pressure drop
 # ------------------------
-export PRESS_DROP=0.1			# dimensional pressure drop in Pascals
+export PRESS_DROP=1			# dimensional pressure drop in Pascals
 
 # ------------------------
 # Frequency of reinitialization
@@ -148,24 +151,24 @@ export FLUSH_DUR=-0.075 #0.005 # next try 0.01 # really want to try 0.05
 # ------------------------
 # Grain geometry properties
 # ------------------------
-export NUM_GRAINS=2
+export NUM_GRAINS=9
 export USE_INNER_SURFACE=0
 export OUTER_SURFACE_THICKNESS=4.0
-export START_W_MERGED_GRAINS=1
+export START_W_MERGED_GRAINS=0
 
 # ------------------------
 # Save settings
 # ------------------------
 export SAVE_TO_VTK=1
-export SAVE_USING_ITER=0
-export SAVE_EVERY_ITER=1
-export SAVE_USING_DT=1
-export SAVE_EVERY_DT=0.1 # in seconds
+export SAVE_USING_ITER=1
+export SAVE_EVERY_ITER=5
+export SAVE_USING_DT=0
+export SAVE_EVERY_DT=0 # in seconds
 
 # ------------------------
 # Save STATE settings
 # ------------------------
-export SAVE_STATE=1
+export SAVE_STATE=0
 export SAVE_STATE_USING_ITER=0
 export SAVE_STATE_USING_DT=1
 export SAVE_STATE_EVERY_DT=3600.0 #seconds
