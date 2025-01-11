@@ -1,88 +1,70 @@
 # This CMakeLists.txt file has been built manually from the common.pri and libparcasl.pri config files under qmake/
 # To create different configurations, look into https://www.jetbrains.com/help/clion/quick-cmake-tutorial.html
-cmake_minimum_required( VERSION 3.17 )
+cmake_minimum_required( VERSION 3.16 )
 project( ml_mass_conservation )
 
 set( CMAKE_CXX_STANDARD 14 )
 
-######################## Source code ########################
+###################################### Compiler custom macros for current project ######################################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC data_sets/generate_data_sets_2d.cpp )
+	list( APPEND SRC rotation_vortex_patch_2d.cpp )
+else()
+	message( FATAL_ERROR "Invalid or missing DIMENSION macro --it should be '2d'." )
 endif()
 
-#if( DIMENSION MATCHES 3d )
-#	list( APPEND SRC main_3d.cpp )
-#endif()
-#add_compile_definitions( PRIVATE P4_TO_P8 )
 add_compile_definitions( PRIVATE CASL_THROWS )
 add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=float )		# Frugally deep floating-point precision.
 add_compile_definitions( PRIVATE EIGEN_DONT_PARALLELIZE )		# Prevents parallelization in Eigen library.
 
-######################## Settings ########################
+############################# Load paths to libraries and set compiler for current system ##############################
 
-# CASL library root directory.
-set( PARCASL ${CMAKE_CURRENT_SOURCE_DIR}/../../ )
+set( PARCASL ${CMAKE_CURRENT_SOURCE_DIR}/../../ )				# CASL library root directory.
 
-# Compilers.
-set( CMAKE_C_COMPILER mpicc )
-set( CMAKE_CXX_COMPILER mpicxx )
+if( DEFINED ENV{CASL_CMAKE_PROFILE} )							# Set paths for this machine and populate LIBS, INC_DIRS,
+	include( ${PARCASL}/cmake/$ENV{CASL_CMAKE_PROFILE} )		# and LIB_DIRS lists.  You must create the environment
+else()															# variable CASL_CMAKE_PROFILE.
+	message( FATAL_ERROR "Environment variable CASL_CMAKE_PROFILE is not set!" )
+endif()
 
-# Optimization flags.  Comment these out when using debugger.
-#set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
-#set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
-#set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+if( CMAKE_BUILD_TYPE MATCHES Debug )
+	add_compile_definitions( PRIVATE DEBUG )					# Enable debug macro.
+endif()
 
-######################## Libraries ########################
+############################################# Compiler optimization flags ##############################################
+
+if( CMAKE_BUILD_TYPE MATCHES Release AND NOT CASL_ON_STAMPEDE )	# These optimization flags don't work on Stampede2.
+	set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
+	set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+endif()
+
+################################################## Loading libraries ###################################################
 # These commands must be given prior to defining any target.
 
-# OpenMP flags.
-# See http://blog.llvm.org/2015/05/openmp-support_22.html
+# Library just used for this project (i.e., not included in cmake/<machine>.cmake)
+# Let's load OpenMP and its flags.  See http://blog.llvm.org/2015/05/openmp-support_22.html for more details.
 find_package( OpenMP )
 if( OPENMP_FOUND )
 	set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}" )
 	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}" )
+	list( APPEND LIBS ${OpenMP_C_LIBRARIES} ${OpenMP_CXX_LIBRARIES} )
+	list( APPEND INC_DIRS ${OpenMP_C_INCLUDE_DIRS} ${OpenMP_CXX_INCLUDE_DIRS} )
 endif()
 
-# JSON library.
-find_package( nlohmann_json CONFIG REQUIRED )
+# Libraries and their linking/include directories (see cmake/<machine>.cmake).  Also adding OpenMP from above.
+link_directories( ${LIB_DIRS} )
 
-# find_package( MPI REQUIRED )		# Not needed if using mpich rather than openmpi.
-find_package( Boost COMPONENTS filesystem REQUIRED )
-
-# Library linking directories.
-link_directories(
-		/usr/local/lib
-		/usr/local/petsc/lib
-		/usr/local/p4est-2.2/lib
-		/usr/local/opt/libomp/lib
-		/usr/local/OpenBlas/lib )
-
-link_libraries(
-		mpi
-		petsc
-		p4est
-		sc
-		voro++
-		omp
-		openblas
-		nlohmann_json::nlohmann_json
-		${Boost_FILESYSTEM_LIBRARY} )
+link_libraries( ${LIBS} )
 
 include_directories(
 		.
 		${PARCASL}
-		/usr/local/include
-		/usr/local/petsc/include
-		/usr/local/p4est-2.2/include
-		/usr/local/include/voro++
-		/usr/local/opt/libomp/include
-		/usr/local/OpenBlas/include
-		${Boost_INCLUDE_DIR} )
+		${INC_DIRS} )
 
-######################## Creating the executable ########################
+############################################### Creating the executable ################################################
 
-include( ${PARCASL}/libparcasl.cmake )
+include( ${PARCASL}/cmake/libparcasl.cmake )
 
 add_executable( ml_mass_conservation
 		${SRC} ${HEADERS} ${SOURCES} )

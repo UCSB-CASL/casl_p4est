@@ -34,6 +34,12 @@ inline T SQR(const T& val)
   return  val*val;
 }
 
+template<typename T>
+inline T CUBE( const T& val )
+{
+	return val * val * val;
+}
+
 inline int mod(int a, int b)
 {
 #ifdef CASL_THROWS
@@ -438,25 +444,29 @@ inline T compute_L2_norm( const T v[], unsigned int n )
  * @param [in] n Number of equidistant points in the closed range [start, end].
  * @param [out] values Vector of resulting values.
  * @warning Any previous contents of output vector will be discarded.
- * @throws Runtime error if end <= start or if n < 2.
+ * @return Step size between two consecutive values.
+ * @throws invalid_argument error if end <= start or if n < 2.
  */
-inline void linspace( const double& start, const double& end, const unsigned int& n, std::vector<double>& values )
+template<typename T = double >
+inline T linspace( const T& start, const T& end, const unsigned int& n, std::vector<T>& values )
 {
 	// Validations.
 	if( end <= start )
-		throw std::runtime_error( "CASL_MATH::linspace - Degenerate range: end must be strictly larger than start!" );
+		throw std::invalid_argument( "CASL_MATH::linspace: Degenerate range: end must be strictly larger than start!" );
 	if( n < 2 )
-		throw std::runtime_error( "CASL_MATH::linspace - Requested points must be more than 1!" );
+		throw std::invalid_argument( "CASL_MATH::linspace: Requested points must be more than 1!" );
 
 	// Start afresh with results.
 	values.clear();
 	values.reserve( n );
 
-	const double dx = (end - start) / (n - 1);
+	const T dx = (end - start) / (n - 1);
 	values.push_back( start );						// values shall contain the start and end points by construction.
 	for( unsigned int i = 1; i < n - 1; i++ )
 		values.push_back( start + i * dx );			// Intermediate values in open range (start, end).
 	values.push_back( end );
+
+	return dx;
 }
 
 /**

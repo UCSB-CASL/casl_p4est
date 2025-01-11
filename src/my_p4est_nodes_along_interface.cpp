@@ -524,3 +524,22 @@ void NodesAlongInterface::getIndepIndices( const Vec *phi, const p4est_ghost_t *
 }
 
 
+bool NodesAlongInterface::isInterfaceStencil( const std::vector<double>& phiStencil )
+{
+	if( phiStencil.size() < num_neighbors_cube )
+		throw std::runtime_error( "[CASL_ERROR] NodesAlongInterface::isInterfaceStencil: Not enough elements to check!" );
+
+#ifdef P4_TO_P8
+	int centerIdx = 13;
+	std::vector<int> neighborIdx = {4, 22, 10, 16, 12, 14};
+#else
+	int centerIdx = 4;
+	std::vector<int> neighborIdx = {1, 7, 3, 5};
+#endif
+
+	return std::any_of( neighborIdx.begin(), neighborIdx.end(), [&phiStencil, &centerIdx]( int n ){
+		return phiStencil[centerIdx] * phiStencil[n] <= 0 ;
+	} );
+}
+
+

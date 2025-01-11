@@ -131,7 +131,7 @@ refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, 
 
     double f;
     bool vmmm_is_neg = phi(DIM(x, y, z)) <= 0.0;
-    bool is_crossed = false;;
+    bool is_crossed = false;
 #ifdef P4_TO_P8
     for (unsigned short ck = 0; ck<=2; ++ck)
 #endif
@@ -1526,4 +1526,316 @@ bool splitting_criteria_band_t::refine_and_coarsen_with_band( p4est_t *p4est, p4
 	SC_CHECK_MPI( mpiret );
 
 	return hasGridchanged;
+}
+
+
+p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad )
+{
+	auto *data = (splitting_criteria_cf_and_uniform_band_shs_t *) p4est->user_pointer;
+	if( quad->level < data->min_lvl )		// Refine until we get to the desired min level.
+		return P4EST_TRUE;
+	else if( quad->level >= data->max_lvl )	// Stop refining beyond max level.
+		return P4EST_FALSE;
+	else
+	{
+		p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN * which_tree + 0];
+		p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN * which_tree + P4EST_CHILDREN - 1];
+
+		double tree_xmin = p4est->connectivity->vertices[3 * v_m + 0];
+		double tree_ymin = p4est->connectivity->vertices[3 * v_m + 1];
+#ifdef P4_TO_P8
+		double tree_zmin = p4est->connectivity->vertices[3 * v_m + 2];
+#endif
+
+		double tree_xmax = p4est->connectivity->vertices[3 * v_p + 0];
+		double tree_ymax = p4est->connectivity->vertices[3 * v_p + 1];
+#ifdef P4_TO_P8
+		double tree_zmax = p4est->connectivity->vertices[3 * v_p + 2];
+#endif
+
+		double dmin = (double)P4EST_QUADRANT_LEN( quad->level ) / (double)P4EST_ROOT_LEN;
+		double dx = (tree_xmax - tree_xmin) * dmin;
+		double dy = (tree_ymax - tree_ymin) * dmin;
+#ifdef P4_TO_P8
+		double dz = (tree_zmax - tree_zmin) * dmin;
+#endif
+		double smallest_dy = (tree_ymax - tree_ymin) * (double)P4EST_QUADRANT_LEN( data->max_lvl ) / P4EST_ROOT_LEN;
+
+		// Use smallest_dy to define the limits for mid-level-cell refinement.
+		std::vector<double> midBounds;
+		bool midLvlCellsOK = data->getBandedBounds( smallest_dy, midBounds );
+		const int NUM_MID_LEVELS = (int)midBounds.size();
+
+		double x = (tree_xmax - tree_xmin) * (double)quad->x / (double)P4EST_ROOT_LEN + tree_xmin;
+		double y = (tree_ymax - tree_ymin) * (double)quad->y / (double)P4EST_ROOT_LEN + tree_ymin;
+#ifdef P4_TO_P8
+		double z = (tree_zmax - tree_zmin) * (double)quad->z / (double)P4EST_ROOT_LEN + tree_zmin;
+#endif
+		const CF_DIM& phi = *(data->phi);
+		double f;
+		bool vmmm_is_neg = phi( DIM( x, y, z ) ) <= 0.0;
+		bool is_crossed = false;
+#ifdef P4_TO_P8
+		for( unsigned short ck = 0; ck <= 2; ++ck )
+#endif
+			for( unsigned short cj = 0; cj <= 2; ++cj )
+				for( unsigned short ci = 0; ci <= 2; ++ci )
+				{
+					double xyz[P4EST_DIM] = {DIM( x + ci * 0.5 * dx, y + cj * 0.5 * dy, z + ck * 0.5 * dz )};
+					f = phi( DIM( xyz[0], xyz[1], xyz[2] ) );
+					is_crossed = is_crossed || (vmmm_is_neg != (f <= 0.0));
+					if( fabs( f ) < data->uniformBand() * smallest_dy || is_crossed )
+						return P4EST_TRUE;
+
+					// Check if any of quad's corners/midpoints are in the negative domain.
+					if( f <= 0 )
+					{
+						// If after the above condition we didn't refine a quad, we need to check cells next to the
+						// air interface (which is not considered by the solid-ridge-based level-set function).
+						double minDistToWall = MIN( ABS( xyz[1] + data->DELTA ), ABS( xyz[1] - data->DELTA ) );
+						if( minDistToWall < data->uniformBand() * smallest_dy )
+							return P4EST_TRUE;	// Enforce uniform band along the wall, regardless of interface type.
+
+						// Check the mid-level cells (and their bands) only if requested and valid.
+						if( NUM_MID_LEVELS > 0 && midLvlCellsOK )
+						{
+							int boundIdx = MAX( 0, MIN( (data->max_lvl - 1) - (quad->level + 1), NUM_MID_LEVELS - 1 ) );	// We want to check if we can go one level up.
+							if( minDistToWall < midBounds[boundIdx] && quad->level < data->max_lvl - boundIdx - 1 )
+								return P4EST_TRUE;
+						}
+					}
+				}
+	}
+	return refine_levelset_cf( p4est, which_tree, quad );
+}
+
+int splitting_criteria_cf_and_uniform_band_shs_t::refine_fn(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad) {
+	(void) p4est;
+	(void) which_tree;
+	return quad->p.user_int == REFINE_QUADRANT;
+}
+
+int splitting_criteria_cf_and_uniform_band_shs_t::coarsen_fn(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad) {
+	(void) p4est;
+	(void) which_tree;
+
+	int coarsen = quad[0]->p.user_int == COARSEN_QUADRANT;
+	for (short i = 1; i<P4EST_CHILDREN; i++)
+		coarsen = coarsen && (quad[i]->p.user_int == COARSEN_QUADRANT);
+	return coarsen;
+}
+
+void splitting_criteria_cf_and_uniform_band_shs_t::init_fn(p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t* quad) {
+	(void) p4est;
+	(void) which_tree;
+	quad->p.user_int = NEW_QUADRANT;
+}
+
+bool splitting_criteria_cf_and_uniform_band_shs_t::refine_and_coarsen( p4est_t* p4est, p4est_nodes_t* nodes, Vec phi )
+{
+	const double *phi_p;
+	phi_p = nullptr;
+	CHKERRXX( VecGetArrayRead( phi, &phi_p ) );
+
+	double tree_dimensions[P4EST_DIM];		// Cell dimensions in each direction.
+	p4est_locidx_t *t2v = p4est->connectivity->tree_to_vertex;
+	double *v2c = p4est->connectivity->vertices;
+
+	// Tag the quadrants that need to be refined or coarsened.
+	for( p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx )
+	{
+		p4est_tree_t *tree = p4est_tree_array_index( p4est->trees, tree_idx );
+		for( u_char dir = 0; dir < P4EST_DIM; ++dir )
+			tree_dimensions[dir] = v2c[3 * t2v[P4EST_CHILDREN * tree_idx + P4EST_CHILDREN - 1] + dir] - v2c[3 * t2v[P4EST_CHILDREN * tree_idx + 0] + dir];
+
+		const double smallest_dy = tree_dimensions[1] * (((double) P4EST_QUADRANT_LEN((int8_t) max_lvl))/((double) P4EST_ROOT_LEN));
+		std::vector<double> midBounds;
+		getBandedBounds( smallest_dy, midBounds );
+
+		for( p4est_locidx_t q = 0; q < tree->quadrants.elem_count; ++q )
+		{
+			p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+			tag_quadrant( p4est, quad_idx, tree_idx, nodes, tree_dimensions, phi_p, midBounds );
+		}
+	}
+
+	my_p4est_coarsen( p4est, P4EST_FALSE, splitting_criteria_cf_and_uniform_band_shs_t::coarsen_fn, splitting_criteria_cf_and_uniform_band_shs_t::init_fn );
+	my_p4est_refine( p4est, P4EST_FALSE, splitting_criteria_cf_and_uniform_band_shs_t::refine_fn, splitting_criteria_cf_and_uniform_band_shs_t::init_fn );
+
+	int is_grid_changed = false;
+	for( p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it )
+	{
+		p4est_tree_t *tree = p4est_tree_array_index( p4est->trees, it );
+		for( size_t q = 0; q < tree->quadrants.elem_count; ++q )
+		{
+			p4est_quadrant_t *quad = p4est_quadrant_array_index( &tree->quadrants, q );
+			if( quad->p.user_int == NEW_QUADRANT )
+			{
+				is_grid_changed = true;
+				goto function_end;
+			}
+		}
+	}
+
+function_end:
+	MPI_Allreduce( MPI_IN_PLACE, &is_grid_changed, 1, MPI_INT, MPI_LOR, p4est->mpicomm );
+
+	CHKERRXX( VecRestoreArrayRead( phi, &phi_p ) );
+	return is_grid_changed;
+}
+
+void splitting_criteria_cf_and_uniform_band_shs_t::tag_quadrant( p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx,
+																 p4est_nodes_t *nodes, const double *tree_dimensions, const double *phi_p,
+																 const std::vector<double>& midBounds )
+{
+	p4est_tree_t *tree = p4est_tree_array_index( p4est->trees, tree_idx );
+	p4est_quadrant_t *quad = p4est_quadrant_array_index( &tree->quadrants, quad_idx - tree->quadrants_offset );
+	const int NUM_MID_LEVELS = (int)midBounds.size();
+
+	if( quad->level < min_lvl )
+		quad->p.user_int = REFINE_QUADRANT;
+	else if( quad->level > max_lvl )
+		quad->p.user_int = COARSEN_QUADRANT;
+	else
+	{
+		const double quad_denom = (( double ) P4EST_QUADRANT_LEN( quad->level )) / (( double ) P4EST_ROOT_LEN);
+		const double quad_diag = sqrt(SUMD( SQR( tree_dimensions[0] ), SQR( tree_dimensions[1] ), SQR( tree_dimensions[2] ))) * quad_denom;
+		const double smallest_dy = tree_dimensions[1] * (((double) P4EST_QUADRANT_LEN((int8_t) max_lvl))/((double) P4EST_ROOT_LEN));
+
+		bool coarsen = (quad->level > min_lvl);
+		if( coarsen )
+		{
+			bool all_pos = true;
+			bool cor_band = true;
+			bool cor_intf = true;
+			p4est_locidx_t node_idx;
+
+			for( unsigned char k = 0; k < P4EST_CHILDREN; ++k )
+			{
+				node_idx = nodes->local_nodes[P4EST_CHILDREN * quad_idx + k];
+				double xyz[P4EST_DIM];
+				node_xyz_fr_n( node_idx, p4est, nodes, xyz );
+				double minDistToWall = MIN( ABS( xyz[1] + DELTA ), ABS( xyz[1] - DELTA ) );
+				cor_band = cor_band && minDistToWall > uniform_band * smallest_dy;
+				cor_intf = cor_intf && minDistToWall >= lip * 2.0 * quad_diag;
+
+				all_pos = all_pos && SIGN(phi_p[node_idx]) * minDistToWall > MAX( 2.0, uniform_band ) * smallest_dy;
+				if( cor_band && cor_intf )
+				{
+					int boundIdx = MAX( 0, MIN( (max_lvl - 1) - quad->level, NUM_MID_LEVELS - 1 ) );
+					cor_band = minDistToWall > midBounds[boundIdx];
+				}
+
+				coarsen = (cor_band && cor_intf) || all_pos;
+				if( !coarsen )
+					break;
+			}
+		}
+
+		bool refine = (quad->level < max_lvl);
+		if( refine )
+		{
+			bool is_neg = false;
+			bool ref_band = false;
+			bool ref_intf = false;
+			p4est_locidx_t node_idx;
+			bool node_found;
+			// check possibly finer points
+			const p4est_qcoord_t mid_qh = P4EST_QUADRANT_LEN( quad->level + 1 );
+#ifdef P4_TO_P8
+			for( unsigned char k = 0; k < 3; ++k )
+#endif
+				for( unsigned char j = 0; j < 3; ++j )
+					for( unsigned char i = 0; i < 3; ++i )
+					{
+						if( ANDD( i == 1, j == 1, k == 1 ))
+							continue;
+						if( ANDD( i == 0 || i == 2, j == 0 || j == 2, k == 0 || k == 2 ))
+						{
+							node_found = true;
+							node_idx = nodes->local_nodes[P4EST_CHILDREN * quad_idx +
+														  SUMD( i / 2, 2 * (j / 2), 4 * (k / 2))]; // integer divisions!
+						}
+						else
+						{
+							p4est_quadrant_t r, c;
+							r.level = P4EST_MAXLEVEL;
+							r.x = quad->x + i * mid_qh;
+							r.y = quad->y + j * mid_qh;
+#ifdef P4_TO_P8
+							r.z = quad->z + k * mid_qh;
+#endif
+							P4EST_ASSERT ( p4est_quadrant_is_node( &r, 0 ));
+							p4est_node_canonicalize( p4est, tree_idx, &r, &c );
+							node_found = index_of_node( &c, nodes, node_idx );
+						}
+						if( node_found )
+						{
+							P4EST_ASSERT( node_idx < (( p4est_locidx_t ) nodes->indep_nodes.elem_count));
+							double xyz[P4EST_DIM];
+							node_xyz_fr_n( node_idx, p4est, nodes, xyz );
+							double minDistToWall = MIN( ABS( xyz[1] + DELTA ), ABS( xyz[1] - DELTA ) );
+
+							ref_band = ref_band || minDistToWall < MAX( 2.0, uniform_band ) * smallest_dy;
+							ref_intf = ref_intf || minDistToWall <= lip * quad_diag;
+							is_neg = is_neg || SIGN(phi_p[node_idx]) * minDistToWall < MAX( 2.0, uniform_band ) * smallest_dy;
+
+							if( is_neg && !ref_band )
+							{
+								// Check the mid-level cells (and their bands) only if requested and valid.
+								if( NUM_MID_LEVELS > 0 )
+								{
+									int boundIdx = MAX( 0, MIN( (max_lvl - 1) - (quad->level + 1), NUM_MID_LEVELS - 1 ) );	// We want to check if we can go one level up.
+									if( minDistToWall < midBounds[boundIdx] && quad->level < max_lvl - boundIdx - 1 )
+										ref_band = true;
+								}
+							}
+
+							refine = is_neg && (ref_band || ref_intf);
+							if( refine )
+								goto end_of_function;
+						}
+					}
+		}
+
+end_of_function:
+		if( refine )
+			quad->p.user_int = REFINE_QUADRANT;
+		else if( coarsen )
+			quad->p.user_int = COARSEN_QUADRANT;
+		else
+			quad->p.user_int = SKIP_QUADRANT;
+	}
+}
+
+bool splitting_criteria_cf_and_uniform_band_shs_t::getBandedBounds( const double& smallest_dy, std::vector<double>& midBounds ) const
+{
+	// Use smallest_dy to define the limits for mid-level-cell refinement.
+	const int NUM_MID_LEVELS = max_lvl - min_lvl - 1;
+	double midEffectiveDist = DELTA * LMID_DELTA_PERCENT - uniformBand() * smallest_dy;
+	bool midLvlCellsOK = false;
+	midBounds.clear();
+	if( NUM_MID_LEVELS > 0 && LMID_DELTA_PERCENT > 0 )	// Use option only if user allowed it with a percent > 0.
+	{
+		if( midEffectiveDist <= 0 )		// Check mid-level cells have space to be placed; if not, don't enforce anything.
+		{
+			std::cerr << "[CASL_WARNING] splitting_criteria_cf_and_uniform_band_shs_t::getBandedBounds: The uniform band of finest cells "
+					  << "extends beyond the requested space for mid-level cells!  Check your calculations..." << std::endl;
+		}
+		else
+		{
+			midBounds.reserve( NUM_MID_LEVELS );						// Mid bands are spaced like (b, 2b, 4b,..., 2^{n-1}b).
+			double b = midEffectiveDist / ((1<<NUM_MID_LEVELS) - 1);	// where n is number of mid levels.
+			for( int i = 0; i < NUM_MID_LEVELS; i++ )
+			{
+				if( i == 0 )
+					midBounds.push_back( uniformBand() * smallest_dy + (1 << i) * b );
+				else
+					midBounds.push_back( midBounds.back() + (1 << i) * b );
+			}
+			midLvlCellsOK = true;
+		}
+	}
+
+	return midLvlCellsOK;
 }

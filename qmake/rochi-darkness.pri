@@ -35,3 +35,6 @@ BOOST_INCLUDES          = /home/ebayat/workspace/libraries/boost_1_66_0
 QMAKE_CC                = /usr/local/bin/mpicc
 QMAKE_CXX               = /usr/local/bin/mpicxx
 QMAKE_LINK              = /usr/local/bin/mpicxx
+
+# BOOST
+BOOST_INCLUDES          = /home/ebayat/workspace/libraries/boost_1_66_0

@@ -1,13 +1,16 @@
-/*
+/**
  * The navier stokes solver applied for super-hydrophobic surfaces simulations
  *
  * run the program with the -help flag to see the available options
+ *
+ * Author: Raphael Egan, with updates by Luis Ángel.
+ * Updated: July 8, 2022.
  */
 
 // System
 #include <mpi.h>
 #include <iterator>
-#include <stdio.h>
+#include <cstdio>
 
 // p4est Library
 #ifdef P4_TO_P8
@@ -29,7 +32,7 @@
 #undef MAX
 
 // --> extra info to be printed when -help is invoked
-const std::string extra_info =
+const std::string extra_info =		// NOLINT.
       std::string("This program provides a general setup for superhydrophobic channel flow simulations.\n\n")
     + std::string("It assumes no solid object and no passive scalar (i.e. no smoke) in the channel. If no dimension is set by the user, the \n")
     + std::string("channel is set to be 6 x 2 (x 3) by default. If the number of trees in the streamwise (spanwise) direction, i.e. nx (nz),\n")
@@ -68,21 +71,22 @@ const std::string extra_info =
     + std::string("Developers: Raphael Egan (raphaelegan@ucsb.edu) with Fernando Temprano-Coleto's help for the analytical solutions.\n");
 
 #if defined(POD_CLUSTER)
-const std::string default_export_dir  = "/scratch/regan/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/scratch/regan/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";	// NOLINT.
 #elif defined(STAMPEDE)
-const std::string default_export_dir  = "/scratch/04965/tg842642/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/scratch/04965/tg842642/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";	// NOLINT.
 #elif defined(LAPTOP)
-const std::string default_export_dir  = "/home/raphael/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/home/raphael/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";	// NOLINT.
 #elif defined(JUPITER)
-const std::string default_export_dir  = "/home/temprano/Output/p4est_ns_shs/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/home/temprano/Output/p4est_ns_shs/" + std::to_string(P4EST_DIM) + "D_channel";	// NOLINT.
 #else
-const std::string default_export_dir  = "/home/regan/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/home/regan/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";	// NOLINT.
 #endif
 
 const int default_lmin                        = 4;
 const int default_lmax                        = 6;
 const double default_thresh                   = 0.1;
 const int default_wall_layer                  = 6;
+const double default_lmid_delta_percent		  = 0;
 const double default_lip                      = 1.2;
 const int default_ntree_y                     = 2;
 const double default_length                   = 6.0;
@@ -100,22 +104,23 @@ const double default_u_tol                    = 1.0e-6;
 const unsigned int default_n_hodge            = 10;
 const hodge_control def_hodge_control         = uvw_components;
 const unsigned int default_grid_update        = 1;
-const std::string default_pc_cell             = "sor";
-const std::string default_cell_solver         = "bicgstab";
-const std::string default_pc_face             = "sor";
+const std::string default_pc_cell             = "sor";			// NOLINT.
+const std::string default_cell_solver         = "bicgstab";		// NOLINT.
+const double default_cell_solver_rtol		  = 1e-12;
+const std::string default_pc_face             = "sor";			// NOLINT.
 const unsigned int default_save_nstates       = 1;
 const unsigned int default_nexport_avg        = 100;
 const int default_nterms                      = 2500;
 const int periodicity[P4EST_DIM]              = {DIM(1, 0, 1)};
-const std::string drag_output_format          = std::string("%g %g %g") ONLY3D(+ std::string(" %g")) + std::string("\n");
+const std::string drag_output_format          = std::string("%g %g %g") ONLY3D(+ std::string(" %g")) + std::string("\n");	// NOLINT.
 
 class external_force_per_unit_mass_t : public CF_DIM {
 private:
   double forcing_term;
 public:
-  external_force_per_unit_mass_t(const double &forcing_term_) : forcing_term(forcing_term_) {}
+  explicit external_force_per_unit_mass_t(const double &forcing_term_) : forcing_term(forcing_term_) {}
   external_force_per_unit_mass_t(): external_force_per_unit_mass_t(0.0) {}
-  double operator()(DIM(double, double, double)) const  { return forcing_term; }
+  double operator()(DIM(double, double, double)) const override  { return forcing_term; }
   void update_term(const double &correction)            { forcing_term += correction; }
   double get_value() const                              { return forcing_term; }
   void set_value(const double &new_forcing_term)        { forcing_term = new_forcing_term; }
@@ -157,7 +162,7 @@ public:
   double read_latest_mass_flow() const    { return latest_mass_flow; }
   double targeted_bulk_velocity() const   { P4EST_ASSERT(forcing_is_on); return desired_bulk_velocity; }
 
-  ~mass_flow_controller_t(){}
+  ~mass_flow_controller_t()= default;
 };
 
 struct simulation_setup
@@ -181,6 +186,8 @@ struct simulation_setup
   const std::string des_pc_cell;
   const std::string des_solver_cell;
   const std::string des_pc_face;
+  const double cell_solver_rtol;
+  const bool cell_solver_verbose;
   KSPType cell_solver_type;
   PCType pc_cell, pc_face;
   const flow_setting flow_condition;
@@ -189,17 +196,28 @@ struct simulation_setup
   // exportation
   const std::string export_dir;
   const bool save_vtk;
+  const bool minimal_vtk;
+  const bool save_ratios;
   const bool save_timing;
   double vtk_dt;
+  double ratios_dt;
   const bool save_drag;
   const bool do_accuracy_check;
+  const bool do_running_stats;
+  double running_stats_dt;
+  int running_stats_num_steps;	// How many steps has the user requested to account for the running stats?
+  int running_stats_cur_count;	// Counts for how many steps we have accumulated stats.
+  int running_stats_step;		// Helps us determine when it's time to update running stats.
+  bool running_stats_done;
+  bool running_stats_only_sum;	// Allows us to reduce running stats by computing only their sums (not the avg).  Useful for collecting data across restarts.
   const bool save_state;
   double dt_save_data;
   const unsigned int n_states;
   const bool save_profiles;
   const unsigned int nexport_avg;
   int export_vtk, save_data_idx;
-  std::string file_monitoring, vtk_path, file_drag, file_timings;
+  int export_ratios;
+  std::string file_monitoring, vtk_path, ratios_path, file_drag, file_timings;
   bool accuracy_check_done;
   std::map<ns_task, double> global_computational_times;
 
@@ -215,14 +233,20 @@ struct simulation_setup
     nterms_in_series(cmd.get<int>("nterms", default_nterms)),
     des_pc_cell(cmd.get<std::string>("pc_cell", default_pc_cell)),
     des_solver_cell(cmd.get<std::string>("cell_solver", default_cell_solver)),
+	cell_solver_rtol(cmd.get<double>("cell_solver_rtol", default_cell_solver_rtol)),
+	cell_solver_verbose(cmd.contains("cell_solver_verbose")),
     des_pc_face(cmd.get<std::string>("pc_face", default_pc_face)),
     flow_condition((cmd.contains("Re_tau") ? constant_pressure_gradient : (cmd.contains("Re_b") ? constant_mass_flow : undefined_flow_condition))),
     Reynolds((cmd.contains("Re_tau") ? cmd.get<double>("Re_tau") : (cmd.contains("Re_b") ? cmd.get<double>("Re_b") : NAN))),
     export_dir(cmd.get<std::string>("export_folder", default_export_dir)),
     save_vtk(cmd.contains("save_vtk")),
+	minimal_vtk(cmd.contains("minimal_vtk")),
+	save_ratios(cmd.contains("save_ratios")),
     save_timing(cmd.contains("timing")),
     save_drag(cmd.contains("save_drag")),
     do_accuracy_check(cmd.contains("accuracy_check") && cmd.contains("restart")),
+	do_running_stats(cmd.contains("running_stats") && cmd.contains("restart") && !cmd.contains("accuracy_check")),
+	running_stats_only_sum(cmd.contains("running_stats_only_sum")),
     save_state(cmd.contains("save_state_dt")),
     n_states(cmd.get<unsigned int>("save_nstates", default_save_nstates)),
     save_profiles(cmd.contains("save_mean_profiles")),
@@ -240,6 +264,42 @@ struct simulation_setup
       if (vtk_dt <= 0.0 && !do_accuracy_check)
         throw std::invalid_argument("simulation_setup::simulation_setup(): the value of vtk_dt must be strictly positive.");
     }
+
+	if(minimal_vtk)
+	{
+	  if(!cmd.contains("save_vtk"))
+		throw std::runtime_error("simulation_setup::simulation_setup(): the argument save_vtk MUST be provided if minimal vtk exportations are desired.");
+	}
+
+	ratios_dt = -1;
+	if( save_ratios )
+	{
+	  if( !cmd.contains( "ratios_dt" ) )
+		throw std::runtime_error( "simulation_setup::simulation_setup(): the value of ratios_dt MUST be provided if ratios exportation is desired." );
+	  ratios_dt = cmd.get<double>( "ratios_dt", -1 );
+	  if( ratios_dt <= 0 )
+		throw std::invalid_argument( "simulation_setup::simulation_setup(): the value of ratios_dt must be strictly positive." );
+	}
+
+	if( do_running_stats && P4EST_DIM != 3 )	// NOLINT.
+	  throw std::invalid_argument( "simulation_setup::simulation_setup(): running statistics are only available for 3D!" );
+	running_stats_dt = -1;
+	running_stats_num_steps = -1;
+	running_stats_step = -1;
+	running_stats_cur_count = 0;
+	if( do_running_stats )	// We can't collect running stats and do accuracy check at the same time (so those are mutually exclusive).
+	{
+	  running_stats_dt = cmd.get<double>( "running_stats_dt", -1.0 );
+	  if( running_stats_dt <= 0 )
+		throw std::invalid_argument( "simulation_setup::simulation_setup(): the value of running_stats_dt must be strictly positive." );
+	  running_stats_num_steps = cmd.get<int>( "running_stats_num_steps", -1 );
+	  if( running_stats_num_steps <= 0 )
+		throw std::invalid_argument( "simulation_setup::simulation_setup(): the value of running_stats_num_steps must be strictly positive" );
+	  if( running_stats_only_sum && !save_state )
+		throw std::invalid_argument( "simulation_steup::simulation_setup(): the only-sum feature for running stats requires to enable save_state" );
+	}
+	running_stats_done = false;
+
     dt_save_data = -1.0;
     if (save_state)
     {
@@ -276,6 +336,8 @@ struct simulation_setup
         std::cerr << "The desired preconditioner for the face-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << std::endl;
       pc_face = PCSOR;
     }
+	if(cell_solver_rtol <= 0 || cell_solver_rtol >= 1)
+	  throw std::invalid_argument("simulation_setup::simulation_setup(): Krylov solver relative tolerance must be in the range of (0, 1).");
 
     if (cmd.contains("Re_b") && cmd.contains("Re_tau")) // safeguard...
       throw std::invalid_argument("simulation_setup::simulation_setup(): forcing a constant bulk velocity AND a constant pressure gradient cannot be done: you have to choose only one!");
@@ -284,6 +346,7 @@ struct simulation_setup
 
 
     export_vtk = -1;
+	export_ratios = -1;
     iter = 0;
     accuracy_check_done = false;
     // initialize those
@@ -300,12 +363,20 @@ struct simulation_setup
 
   bool done() const
   {
-    return tn + 0.01*dt > tstart + duration || accuracy_check_done;
+    return tn + 0.01*dt > tstart + duration || accuracy_check_done || running_stats_done;
   }
 
   int running_export_vtk() const  { return (int) floor(tn/vtk_dt); }
   void update_export_vtk()        { export_vtk = running_export_vtk(); }
   bool time_to_save_vtk() const   { return (save_vtk && running_export_vtk() != export_vtk); }
+
+  int running_export_ratios() const { return (int) floor(tn/ratios_dt); }
+  void update_export_ratios()		{ export_ratios = running_export_ratios(); }
+  bool time_to_save_ratios() const	{ return (save_ratios && running_export_ratios() != export_ratios); }
+
+  int running_step_running_stats() const  { return (int) floor(tn/running_stats_dt); }
+  void update_step_running_stats() 		  { running_stats_step = running_step_running_stats(); }
+  bool time_to_save_running_stats() const { return (do_running_stats && running_step_running_stats() != running_stats_step); }
 
   double max_tolerated_velocity(const mass_flow_controller_t* controller, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], const my_p4est_shs_channel_t& channel) const
   {
@@ -332,7 +403,19 @@ struct simulation_setup
       ns->set_dt(dt);
     }
 
-    return ns->update_from_tn_to_tnp1(NULL, (iter%steps_grid_update != 0), false);
+	if( save_ratios && dt > ratios_dt )
+	{
+	  dt = ratios_dt;	// So that we don't miss requested ratios data.
+	  ns->set_dt(dt);
+	}
+
+	if( do_running_stats && dt > running_stats_dt )
+	{
+	  dt = running_stats_dt;	// So that we don't miss accumulating running stats.
+	  ns->set_dt( dt );
+	}
+
+    return ns->update_from_tn_to_tnp1(nullptr, (iter%steps_grid_update != 0), false);
   }
 
   void export_and_accumulate_timings(const my_p4est_navier_stokes_t* ns)
@@ -350,7 +433,7 @@ struct simulation_setup
     if(!ns->get_mpirank())
     {
       FILE* fp_timing = fopen(file_timings.c_str(), "a");
-      if(fp_timing == NULL)
+      if(fp_timing == nullptr)
         throw std::invalid_argument("export_and_accumulate_timings: could not open file for timings output.");
       fprintf(fp_timing, "%g %g %g %g %g %u %g %g\n",
               tn,
@@ -381,31 +464,31 @@ struct simulation_setup
 
 void truncate_exportation_file_up_to_tstart(const double &tstart, const std::string &filename, const bool &two_header_lines = false)
 {
-  FILE* fp = fopen(filename.c_str(), "r+");
-  char* read_line = NULL;
+  FILE* file = fopen(filename.c_str(), "r+");
+  char* read_line = nullptr;
   size_t len = 0;
   ssize_t len_read;
   long size_to_keep = 0;
-  if (((len_read = getline(&read_line, &len, fp)) != -1))
+  if (((len_read = getline(&read_line, &len, file)) != -1))
     size_to_keep += (long) len_read;
   else
     throw std::runtime_error("simulation_setup::truncate_exportation_file_up_to_tstart: couldn't read the first header line of " + filename);
   if(two_header_lines)
   {
-    if (((len_read = getline(&read_line, &len, fp)) != -1))
+    if (((len_read = getline(&read_line, &len, file)) != -1))
       size_to_keep += (long) len_read;
     else
       throw std::runtime_error("simulation_setup::truncate_exportation_file_up_to_tstart: couldn't read the second header line of " + filename);
   }
   double time;
-  while ((len_read = getline(&read_line, &len, fp)) != -1) {
-    sscanf(read_line, "%lg %*[^\n]", &time);
+  while ((len_read = getline(&read_line, &len, file)) != -1) {
+    sscanf(read_line, "%lg %*[^\n]", &time);	// NOLINT.
     if (time <= tstart - (1.0e-12)*pow(10.0, ceil(log10(tstart)))) // (1.0e-12)*pow(10.0, ceil(log10(tstart))) == given precision when exporting
       size_to_keep += (long) len_read;
     else
       break;
   }
-  fclose(fp);
+  fclose(file);
   if (read_line)
     free(read_line);
   if (truncate(filename.c_str(), size_to_keep))
@@ -419,7 +502,7 @@ void initialize_velocity_profile_file(const std::string &filename, const my_p4es
     if (!file_exists(filename))
     {
       FILE* fp_avg_profile = fopen(filename.c_str(), "w");
-      if (fp_avg_profile == NULL)
+      if (fp_avg_profile == nullptr)
         throw std::invalid_argument("initialize_velocity_profile_file: could not open file " + filename + ".");
       fprintf(fp_avg_profile, "%% __ | coordinates along y axis \n");
       fprintf(fp_avg_profile, "%% tn");
@@ -479,6 +562,7 @@ class velocity_profiler_t
   vector<unsigned int>      bin_index;
   int                       iter_export_profile;
   unsigned int              nbins;
+
   void set_number_of_bins(const unsigned int &nbins_)
   {
     nbins = nbins_;
@@ -495,13 +579,15 @@ class velocity_profiler_t
     ierr = PetscPrintf(ns->get_mpicomm(), "Saving slice-averaged velocity profile in %s\n", file_slice_avg_velocity_profile.c_str()); CHKERRXX(ierr);
     initialize_velocity_profile_file(file_slice_avg_velocity_profile, ns, tstart);
   #ifdef P4_TO_P8
-    const double smallest_traverse_length_scale = (channel.spanwise_grooves() ? channel.length()/(ns->get_brick()->nxyztrees[0]*(1 << ns->get_lmax())) : channel.width()/(ns->get_brick()->nxyztrees[2]*(1 << ns->get_lmax())));
+    const double smallest_traverse_length_scale = (channel.spanwise_grooves() ?
+		channel.length()/(ns->get_brick()->nxyztrees[0]*(1 << ns->get_lmax())) :
+		channel.width()/(ns->get_brick()->nxyztrees[2]*(1 << ns->get_lmax())));
   #else
     const double smallest_traverse_length_scale = channel.length()/(ns->get_brick()->nxyztrees[0]*(1 << ns->get_lmax()));
   #endif
 
-    const unsigned int nb_cells_in_groove = (unsigned int) (channel.get_pitch()*channel.GF()/smallest_traverse_length_scale);
-    const unsigned int nb_cells_in_ridge  = (unsigned int) (channel.get_pitch()*(1.0 - channel.GF())/smallest_traverse_length_scale);
+    const auto nb_cells_in_groove = (unsigned int) (channel.get_pitch()*channel.GF()/smallest_traverse_length_scale);
+    const auto nb_cells_in_ridge  = (unsigned int) (channel.get_pitch()*(1.0 - channel.GF())/smallest_traverse_length_scale);
     const unsigned int nb_cells_to_map = nb_cells_in_groove + nb_cells_in_ridge;
     P4EST_ASSERT(nb_cells_to_map == (unsigned int) (channel.get_pitch()/smallest_traverse_length_scale));
     bin_index.resize(nb_cells_to_map);
@@ -557,14 +643,15 @@ class velocity_profiler_t
     for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx) {
       file_line_avg_velocity_profile[bin_idx] = std::string(profile_path) + "/line_averaged_velocity_profile_index_" + std::to_string(bin_idx) + ".dat";
       ierr = PetscPrintf(ns->get_mpicomm(), "Saving line-averaged velocity profile in %s\n", file_line_avg_velocity_profile[bin_idx].c_str()); CHKERRXX(ierr);
-      initialize_velocity_profile_file(file_line_avg_velocity_profile[bin_idx].c_str(), ns, tstart);
+      initialize_velocity_profile_file(file_line_avg_velocity_profile[bin_idx], ns, tstart);
     }
     int mpiret = MPI_Barrier(ns->get_mpicomm()); SC_CHECK_MPI(mpiret);
   }
 
 public:
-  velocity_profiler_t(const cmdParser cmd, const my_p4est_navier_stokes_t* ns, const simulation_setup &setup, const my_p4est_shs_channel_t &channel)
+  velocity_profiler_t(const cmdParser& cmd, const my_p4est_navier_stokes_t* ns, const simulation_setup &setup, const my_p4est_shs_channel_t &channel)
   {
+	nbins = -1;
     profile_path = setup.export_dir +  "/profiles";
     if (create_directory(profile_path, ns->get_mpirank(), ns->get_mpicomm()))
       throw std::runtime_error("velocity_profiler_t::velocity_profiler_t(...): could not create exportation directory for velocity profiles " + profile_path);
@@ -576,7 +663,7 @@ public:
     {
       bool all_binary_files_nm1_are_there = true;
       if (ns->get_mpirank() == 0)
-        all_binary_files_nm1_are_there = all_binary_files_nm1_are_there && file_exists(profile_path + "/slice_velocity_profile_nm1.bin");
+        all_binary_files_nm1_are_there = file_exists( profile_path + "/slice_velocity_profile_nm1.bin");
 
       for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx)
         if ((unsigned int) ns->get_mpirank() == bin_idx%ns->get_mpisize())
@@ -585,7 +672,7 @@ public:
       int load_binary_files = (all_binary_files_nm1_are_there ? 1 : 0);
       int mpiret = MPI_Allreduce(MPI_IN_PLACE, &load_binary_files, 1, MPI_INT, MPI_LAND, ns->get_mpicomm()); SC_CHECK_MPI(mpiret);
 
-      if (load_binary_files)
+      if (load_binary_files)	// If we are restarting, this should evaluate to true.
       {
         if (ns->get_mpirank() == 0)
         {
@@ -609,7 +696,10 @@ public:
 
   void gather_and_dump_profiles(const simulation_setup &setup, my_p4est_navier_stokes_t* ns, const double& u_scaling ONLY3D(COMMA const bool& spanwise))
   {
+	// First part works on the slice averaged velocity profile.  Note we are interested on the x-component (i.e., u) of
+	// the velocity, which gets averaged for every "height" along the y-axis.
     ns->get_slice_averaged_vnp1_profile(dir::x, dir::y, slice_averaged_profile, u_scaling);
+	bool will_save_avged_running_stats = setup.time_to_save_running_stats() && setup.running_stats_cur_count + 1 >= setup.running_stats_num_steps;
     if (ns->get_mpirank() == 0)
     {
       if (iter_export_profile == 0)
@@ -627,12 +717,12 @@ public:
         }
       }
 
-      if (iter_export_profile != 0 && (iter_export_profile%setup.nexport_avg == 0 || setup.time_to_save_state()))
+      if (iter_export_profile != 0 && (iter_export_profile%setup.nexport_avg == 0 || setup.time_to_save_state() || will_save_avged_running_stats))
       {
         // we export velocity profile data every nexport_avg iterations *OR* if the solver state is about to be exported at the beginning of next iteration
         // this second condition avoids truncation errors in the relevant data files when restarting the simulation from a saved solver state
         // In the latter case, we need to export nm1 profiles for it to be read in case of restart
-        if (setup.time_to_save_state())
+        if (setup.time_to_save_state() || will_save_avged_running_stats)	// Also check if we'll be saving averaged running stats, implying saving state too.
         {
           const std::string path_to_binary_slice_velocity_profile_nm1 = profile_path + "/slice_velocity_profile_nm1.bin";
           if (file_exists(path_to_binary_slice_velocity_profile_nm1))
@@ -660,6 +750,8 @@ public:
         t_slice_average = setup.tn;
       }
     }
+
+	// Second part works on line averaged velocity profiles.
     ns->get_line_averaged_vnp1_profiles(DIM(dir::x, dir::y, spanwise ? dir::z : dir::x), bin_index, line_averaged_profiles, u_scaling);
     for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx) {
       if ((unsigned int) ns->get_mpirank() == bin_idx%ns->get_mpisize())
@@ -679,12 +771,12 @@ public:
           }
         }
 
-        if (iter_export_profile != 0 && (iter_export_profile%setup.nexport_avg == 0 || (setup.time_to_save_state())))
+        if (iter_export_profile != 0 && (iter_export_profile%setup.nexport_avg == 0 || setup.time_to_save_state() || will_save_avged_running_stats))
         {
           // we export velocity profile data every nexport_avg iterations *OR* if the solver state is about to be exported at the beginning of next iteration
           // this second condition avoids truncation errors in the relevant data files when restarting the simulation from a saved solver state
           // In the latter case, we need to export nm1 profiles for it to be read in case of restart
-          if (setup.time_to_save_state())
+          if (setup.time_to_save_state() || will_save_avged_running_stats)	// Also check if we'll be saving averaged running stats, implying saving state too.
           {
             const std::string path_to_binary_line_velocity_profile_nm1 = profile_path + "/line_velocity_profile_nm1_index_" + std::to_string(bin_idx) + ".bin";
             if (file_exists(path_to_binary_line_velocity_profile_nm1))
@@ -714,7 +806,7 @@ public:
       }
     }
     // if we exported velocity profile data because of an exported solver state but not because of a reached value of iter_export_profile, we reset its value to 0!
-    if (iter_export_profile != 0 && setup.time_to_save_state() && iter_export_profile%setup.nexport_avg != 0)
+    if (iter_export_profile != 0 && (setup.time_to_save_state() || will_save_avged_running_stats) && iter_export_profile%setup.nexport_avg != 0)
       iter_export_profile = 0;
 
     iter_export_profile++;
@@ -962,7 +1054,7 @@ void initialize_timing_output(simulation_setup & setup, const my_p4est_navier_st
 
 void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
                             my_p4est_navier_stokes_t* &ns, my_p4est_brick_t* &brick, my_p4est_shs_channel_t &channel,
-                            external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], splitting_criteria_cf_and_uniform_band_t* &data,
+                            external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], splitting_criteria_cf_and_uniform_band_shs_t* &data,
                             mass_flow_controller_t* &controller, simulation_setup &setup)
 {
   const std::string backup_directory = cmd.get<std::string>("restart", "");
@@ -971,10 +1063,9 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   if (ORD(cmd.contains("nx"), cmd.contains("ny"), cmd.contains("nz")) || ORD(cmd.contains("length"), cmd.contains("height"), cmd.contains("width")))
     throw std::invalid_argument("load_solver_from_state: the length, height and width as well as the numbers of trees along x, y and z cannot be reset when restarting a simulation.");
 
-  if (ns != NULL)
-    delete  ns;
+  delete  ns;
 
-  ns                      = new my_p4est_navier_stokes_t(mpi, backup_directory.c_str(), setup.tstart);
+  ns                      = new my_p4est_navier_stokes_t(mpi, backup_directory.c_str(), setup.tstart, cmd.get<double>("cfl", 0));	// If a cfl is provided, use that to restructure saved forest's ghost layers.
   setup.dt                = ns->get_dt();
   p4est_t *p4est_n        = ns->get_p4est();
   p4est_t *p4est_nm1      = ns->get_p4est_nm1();
@@ -982,23 +1073,22 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
     if (is_periodic(p4est_n, dir) != periodicity[dir] || is_periodic(p4est_nm1, dir) != periodicity[dir])
       throw std::invalid_argument("load_solver_from_state: the periodicity from the loaded state does not match the requirements.");
 
-  if (brick != NULL && brick->nxyz_to_treeid != NULL)
+  if (brick != nullptr && brick->nxyz_to_treeid != nullptr)
   {
-    P4EST_FREE(brick->nxyz_to_treeid); brick->nxyz_to_treeid = NULL;
-    delete brick; brick = NULL;
+    P4EST_FREE(brick->nxyz_to_treeid); brick->nxyz_to_treeid = nullptr;
+    delete brick; brick = nullptr;
   }
-  P4EST_ASSERT(brick == NULL);
+  P4EST_ASSERT(brick == nullptr);
   brick                   = ns->get_brick();
   channel.configure(brick, DIM(cmd.get<double>("pitch", default_pitch_to_height*ns->get_height_of_domain()),
                                cmd.get<double>("GF", default_gas_fraction),
-                               cmd.contains("spanwise")), cmd.get<int>("lmax", ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl));
+                               cmd.contains("spanwise")), (char)cmd.get<int>("lmax", ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl));
 
-  if (controller != NULL)
-    delete controller;
+  delete controller;
   controller = new mass_flow_controller_t(dir::x, brick->xyz_min[dir::x]);
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
-    if(external_acceleration[dir] != NULL)
+    if(external_acceleration[dir] != nullptr)
       delete external_acceleration[dir];
     external_acceleration[dir] = new external_force_per_unit_mass_t;
   }
@@ -1027,12 +1117,13 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   if (cmd.contains("wall_layer")) // reset the uniform band to desired value if given
     uniform_band          = channel.calculate_uniform_band_for_ns_solver(cmd.get<unsigned int>("wall_layer"));
 
-  if (data != NULL) {
-    delete data; data = NULL;
+  if (data != nullptr) {
+    delete data; data = nullptr;
   }
-  P4EST_ASSERT(data == NULL);
-  data = new splitting_criteria_cf_and_uniform_band_t(cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl), channel.lmax(), &channel, uniform_band, lip);
-  splitting_criteria_t* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
+  P4EST_ASSERT(data == nullptr);
+  data = new splitting_criteria_cf_and_uniform_band_shs_t(cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl),
+      channel.lmax(), &channel, uniform_band, channel.delta(), cmd.get<double>("lmid_delta_percent", default_lmid_delta_percent ), lip);
+  auto* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
   bool fix_restarted_grid = (channel.lmax() != to_delete->max_lvl);
   delete to_delete;
   p4est_n->user_pointer   = (void*) data;
@@ -1042,21 +1133,42 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   ns->set_bc(channel.get_bc_on_velocity(), channel.get_bc_on_pressure());
   CF_DIM* tmp[P4EST_DIM] = {DIM(external_acceleration[0], external_acceleration[1], external_acceleration[2])};
   ns->set_external_forces_per_unit_mass(tmp);
-  if (fix_restarted_grid)
-    ns->refine_coarsen_grid_after_restart(&channel, false);
+  if( fix_restarted_grid )
+  {
+	ns->refine_coarsen_grid_after_restart( &channel, false, true );
+	CHKERRXX( PetscPrintf( ns->get_mpicomm(), "Applied refine/coarsening to adapt to new grid configuration." ) );
+  }
 
+  // Bug! The following two functions make use of setup.tn, but tn is not yet initialized!  I'll assign temporarily tstart to tn just in case.
+  double tmp1 = setup.tn; setup.tn = setup.tstart;
   if(setup.save_vtk)
     setup.update_export_vtk(); // so that we don't overwrite visualization files that were possibly already exported...
+
+  if( setup.save_ratios )
+	setup.update_export_ratios(); 	// Similarly, we don't want to overwrite ratios files already exported.
+
+#ifdef P4_TO_P8
+  if( setup.do_running_stats )		// To perform running statistics, we're asking for enough simulation time to collect them.
+  {
+	if( setup.duration <= setup.running_stats_dt )
+	  throw std::runtime_error( "load_solver_from_state: requested duration is not enough to collect running statistics!" );
+	ns->init_nodal_running_statistics( setup.tn );
+	setup.running_stats_cur_count = 0;
+	setup.update_step_running_stats();
+  }
+#endif
+
+  setup.tn = tmp1;
 
   PetscErrorCode ierr = PetscPrintf(ns->get_mpicomm(), "Simulation restarted from state saved in %s\n", (cmd.get<std::string>("restart")).c_str()); CHKERRXX(ierr);
 }
 
 p4est_connectivity_t* build_brick_and_get_connectivity(my_p4est_brick_t* &brick, const cmdParser &cmd)
 {
-  const double length     = cmd.get<double>("length", default_length);
-  const double height     = cmd.get<double>("height", default_height);
+  const auto length     = cmd.get<double>("length", default_length);
+  const auto height     = cmd.get<double>("height", default_height);
 #ifdef P4_TO_P8
-  const double width      = cmd.get<double>("width",  default_width);
+  const auto width      = cmd.get<double>("width",  default_width);
 #endif
   double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
   int n_tree_xyz[P4EST_DIM];
@@ -1065,31 +1177,34 @@ p4est_connectivity_t* build_brick_and_get_connectivity(my_p4est_brick_t* &brick,
 #ifdef P4_TO_P8
   n_tree_xyz[2]           = cmd.get<int>("nz", (int) (default_ntree_y*width/height));   xyz_min[2] = -0.5*width;  xyz_max[2] = 0.5*width;
 #endif
-  if (brick != NULL && brick->nxyz_to_treeid != NULL)
+  if (brick != nullptr && brick->nxyz_to_treeid != nullptr)
   {
-    P4EST_FREE(brick->nxyz_to_treeid); brick->nxyz_to_treeid = NULL;
-    delete brick; brick = NULL;
+    P4EST_FREE(brick->nxyz_to_treeid); brick->nxyz_to_treeid = nullptr;
+    delete brick; brick = nullptr;
   }
-  P4EST_ASSERT(brick == NULL);
+  P4EST_ASSERT(brick == nullptr);
   brick = new my_p4est_brick_t;
   return my_p4est_brick_new(n_tree_xyz, xyz_min, xyz_max, brick, periodicity);
 }
 
 void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &cmd,
                                 my_p4est_navier_stokes_t* &ns, my_p4est_brick_t* &brick, my_p4est_shs_channel_t &channel,
-                                external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], splitting_criteria_cf_and_uniform_band_t* &data,
+                                external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], splitting_criteria_cf_and_uniform_band_shs_t* &data,
                                 mass_flow_controller_t* &controller, simulation_setup &setup)
 {
   p4est_connectivity_t* connectivity = build_brick_and_get_connectivity(brick, cmd);
-  channel.configure(brick, DIM(cmd.get<double>("pitch", default_pitch_to_height*(brick->xyz_max[1] - brick->xyz_min[1])), cmd.get<double>("GF", default_gas_fraction), cmd.contains("spanwise")), cmd.get<int>("lmax", default_lmax));
+  channel.configure(brick, DIM(cmd.get<double>("pitch", default_pitch_to_height*(brick->xyz_max[1] - brick->xyz_min[1])),
+      cmd.get<double>("GF", default_gas_fraction), cmd.contains("spanwise")), (char)cmd.get<int>("lmax", default_lmax));
   // create grid at time nm1
-  p4est_t *p4est_nm1        = NULL;
-  p4est_ghost_t* ghost_nm1  = NULL;
-  p4est_nodes_t* nodes_nm1  = NULL;
+  p4est_t *p4est_nm1        = nullptr;
+  p4est_ghost_t* ghost_nm1  = nullptr;
+  p4est_nodes_t* nodes_nm1  = nullptr;
   channel.create_p4est_ghost_and_nodes(p4est_nm1, ghost_nm1, nodes_nm1, data, connectivity, mpi,
-                                       cmd.get<int>("lmin", default_lmin), cmd.get<unsigned int>("wall_layer", default_wall_layer), cmd.get<double>("lip", default_lip));
-  my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
-  my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
+                                       cmd.get<int>("lmin", default_lmin), cmd.get<unsigned int>("wall_layer", default_wall_layer),
+                                       cmd.get<double>("lmid_delta_percent", default_lmid_delta_percent), cmd.get<double>("lip", default_lip),
+									   cmd.get<double>("cfl", default_cfl));
+  auto *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
+  auto *ngbd_nm1      = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
   /* create the initial forest at time n (copy of the former one) */
   p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
   p4est_n->user_pointer = p4est_nm1->user_pointer; // just to make sure
@@ -1097,14 +1212,15 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   p4est_ghost_t *ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_n, ghost_n);
   const double tree_dim[P4EST_DIM] = {DIM(channel.length()/brick->nxyztrees[0], channel.height()/brick->nxyztrees[1], channel.width()/brick->nxyztrees[2])};
-  if(third_degree_ghost_are_required(tree_dim))
+  int n_ghost_addtnl_expansions = cmd.get<double>("cfl", default_cfl) > 1? (int)ceil(cmd.get<double>("cfl", default_cfl) - 1) : (int)third_degree_ghost_are_required(tree_dim);
+  for(int i = 0; i < n_ghost_addtnl_expansions; i++)
     my_p4est_ghost_expand(p4est_n, ghost_n);
 
   p4est_nodes_t *nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
-  my_p4est_hierarchy_t *hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
-  my_p4est_node_neighbors_t *ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
-  my_p4est_cell_neighbors_t *ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_n);
-  my_p4est_faces_t *faces_n         = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
+  auto *hierarchy_n      = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
+  auto *ngbd_n           = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
+  auto *ngbd_c           = new my_p4est_cell_neighbors_t(hierarchy_n);
+  auto *faces_n          = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
 
   Vec phi;
   PetscErrorCode ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
@@ -1114,12 +1230,11 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   ns = new my_p4est_navier_stokes_t(ngbd_nm1, ngbd_n, faces_n);
   ns->set_phi(phi);
 
-  if (controller != NULL)
-    delete controller;
+  delete controller;
   controller = new mass_flow_controller_t(dir::x, brick->xyz_min[dir::x]);
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
-    if(external_acceleration[dir] != NULL)
+    if(external_acceleration[dir] != nullptr)
       delete external_acceleration[dir];
     external_acceleration[dir] = new external_force_per_unit_mass_t;
   }
@@ -1130,7 +1245,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
     const double desired_u_tau  = 1.0;
     const double viscosity      = mass_density*desired_u_tau*channel.delta()/setup.Reynolds;
     external_acceleration[dir::x]->set_value(channel.acceleration_for_canonical_u_tau(desired_u_tau));
-    ns->set_parameters(viscosity, mass_density, cmd.get<int>("sl_order", default_sl_order), data->uniform_band, cmd.get<double>("thresh", default_thresh), cmd.get<double>("cfl", default_cfl));
+    ns->set_parameters(viscosity, mass_density, cmd.get<int>("sl_order", default_sl_order), data->uniformBand(), cmd.get<double>("thresh", default_thresh), cmd.get<double>("cfl", default_cfl));
     P4EST_ASSERT(fabs(channel.canonical_Re_tau(external_acceleration[0]->get_value(), ns->get_nu()) - setup.Reynolds) < setup.Reynolds*10.0*EPS);
   }
   else
@@ -1139,7 +1254,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
     controller->activate_forcing(desired_U_b);
     external_acceleration[dir::x]->set_value(channel.acceleration_for_constant_mass_flow(desired_U_b, setup.Reynolds, setup.nterms_in_series));
     const double viscosity      = mass_density*desired_U_b*channel.delta()/setup.Reynolds;
-    ns->set_parameters(viscosity, mass_density, cmd.get<int>("sl_order", default_sl_order), data->uniform_band, cmd.get<double>("thresh", default_thresh), cmd.get<double>("cfl", default_cfl));
+    ns->set_parameters(viscosity, mass_density, cmd.get<int>("sl_order", default_sl_order), data->uniformBand(), cmd.get<double>("thresh", default_thresh), cmd.get<double>("cfl", default_cfl));
     P4EST_ASSERT(fabs(channel.Re_b(ns->get_rho()*MULTD(controller->targeted_bulk_velocity(), channel.height(), channel.width()), ns->get_rho(), ns->get_nu()) - setup.Reynolds) < setup.Reynolds*10.0*EPS);
   }
 
@@ -1154,11 +1269,13 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   ns->set_external_forces_per_unit_mass(tmp);
 }
 
-void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_channel_t &channel, simulation_setup& setup)
+void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_channel_t &channel, simulation_setup& setup,
+								external_force_per_unit_mass_t* const external_acceleration[P4EST_DIM],
+								const mass_flow_controller_t* controller)
 {
   double my_errors[2*P4EST_DIM];
-  for (unsigned char dir = 0; dir < 2*P4EST_DIM; ++dir)
-    my_errors[dir] = 0.0;
+  for( double& my_error : my_errors )
+    my_error = 0.0;
   PetscErrorCode ierr;
 
   // calculate the analytical solution if not done, yet
@@ -1186,8 +1303,8 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
   // Compute the node errors
 
   const Vec* v_nodes; v_nodes = ns->get_velocity_np1();
-  Vec v_exact_nodes[P4EST_DIM] = { DIM(NULL, NULL, NULL) };
-  Vec error_nodes[P4EST_DIM]  = { DIM(NULL, NULL, NULL) };
+  Vec v_exact_nodes[P4EST_DIM] = { DIM(nullptr, nullptr, nullptr) };
+  Vec error_nodes[P4EST_DIM]  = { DIM(nullptr, nullptr, nullptr) };
   const double *v_nodes_p[P4EST_DIM];
   double *v_exact_nodes_p[P4EST_DIM], *error_nodes_p[P4EST_DIM];
 
@@ -1202,7 +1319,7 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
     }
   }
 
-  for (size_t n = 0; n < ns->get_nodes()->indep_nodes.elem_count; ++n)
+  for (p4est_locidx_t n = 0; n < ns->get_nodes()->indep_nodes.elem_count; ++n)
   {
     double xyz[P4EST_DIM]; node_xyz_fr_n(n, ns->get_p4est(), ns->get_nodes(), xyz);
     double v_exact_tmp[P4EST_DIM];
@@ -1259,12 +1376,13 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
   }
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
-    if (error_nodes[dir] != NULL){
+    if (error_nodes[dir] != nullptr){
       ierr = VecDestroy(error_nodes[dir]); CHKERRXX(ierr); }
-    if (v_exact_nodes[dir] != NULL){
+    if (v_exact_nodes[dir] != nullptr){
       ierr = VecDestroy(v_exact_nodes[dir]); CHKERRXX(ierr); }
   }
 
+  ierr = PetscPrintf(ns->get_mpicomm(), "Friction velocity u_tau is %.6E\n", channel.canonical_u_tau(external_acceleration[0]->get_value())); CHKERRXX( ierr );
   ierr = PetscPrintf(ns->get_mpicomm(), "The face-error on u is %.6E\n", my_errors[0]); CHKERRXX(ierr);
   ierr = PetscPrintf(ns->get_mpicomm(), "The face-error on v is %.6E\n", my_errors[1]); CHKERRXX(ierr);
 #ifdef P4_TO_P8
@@ -1275,17 +1393,34 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
 #ifdef P4_TO_P8
   ierr = PetscPrintf(ns->get_mpicomm(), "The node-error on w is %.6E\n", my_errors[P4EST_DIM + 2]); CHKERRXX(ierr);
 #endif
+
+  // Let's compute the analytical Re_b and compare it with the estimation.
+  double Re_b = channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu());
+  double cosPi_GF_2 = cos( M_PI * channel.GF() / 2 );
+  if( cosPi_GF_2 <= 0 )
+	  throw std::domain_error( "[CASL_ERROR] check_accuracy_of_solution: we can't compute log of infty or a negative number!" );
+  double lambda = channel.get_pitch() / M_PI * log( 1 / cosPi_GF_2 );
+  double Re_b_star = SQR(channel.canonical_Re_tau(external_acceleration[0]->get_value(), ns->get_nu())) * (lambda / channel.delta() + 1./3);
+  ierr = PetscPrintf(ns->get_mpicomm(), "Estimated  Re_b   = %.6E\n", Re_b ); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "Analytical Re_b^* = %.6E\n", Re_b_star ); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "Relative error |Re_b - Re_b^*|/|Re_b^*| = %.6E\n", ABS(Re_b - Re_b_star) / ABS(Re_b_star) ); CHKERRXX(ierr);
+
   setup.accuracy_check_done = true;
 }
 
-void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, const cmdParser &cmd, const my_p4est_shs_channel_t &channel, simulation_setup &setup,  velocity_profiler_t* &profiler)
+void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, const cmdParser &cmd,
+											const my_p4est_shs_channel_t &channel, simulation_setup &setup,
+											velocity_profiler_t* &profiler, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM])
 {
   PetscErrorCode ierr;
   ierr = PetscPrintf(ns->get_mpicomm(), (std::string("Parameters : ") + (setup.flow_condition == constant_pressure_gradient ? std::string("Re_tau") : std::string("Re_b"))
                                          + std::string(" = %g, domain is %dx2") ONLY3D(+ std::string("x%d")) + std::string(" (delta units), P/delta = %g, GF = %g\n")).c_str(),
                      DIM(setup.Reynolds, (int) (channel.length()/channel.delta()), (int) (channel.width()/channel.delta())), channel.pitch_to_delta(), channel.GF()); CHKERRXX(ierr);
 
-  ierr = PetscPrintf(ns->get_mpicomm(), "cfl = %g, wall layer = %u, rho = %g, mu = %g (1/mu = %g)\n", ns->get_cfl(), channel.ncells_layering_walls_from_ns_solver(ns->get_uniform_band()), ns->get_rho(), ns->get_mu(), 1.0/ns->get_mu());
+  ierr = PetscPrintf(ns->get_mpicomm(), "cfl = %g, wall layer = %u, rho = %g, mu = %g (1/mu = %g), u_tau = %g\n",
+					 ns->get_cfl(), channel.ncells_layering_walls_from_ns_solver(ns->get_uniform_band()), ns->get_rho(),
+					 ns->get_mu(), 1.0/ns->get_mu(), channel.canonical_u_tau(external_acceleration[0]->get_value()));
+  CHKERRXX( ierr );
 
   if (create_directory(setup.export_dir, ns->get_mpirank(), ns->get_mpicomm()))
     throw std::runtime_error("initialize_exportations_and_monitoring: could not create exportation directory " + setup.export_dir);
@@ -1293,6 +1428,11 @@ void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, 
   setup.vtk_path = setup.export_dir + "/vtu";
   if (setup.save_vtk && create_directory(setup.vtk_path, ns->get_mpirank(), ns->get_mpicomm()))
     throw std::runtime_error("initialize_exportations_and_monitoring: could not create exportation directory for vtk files " + setup.vtk_path);
+
+  // ratios dxyz/uvw exportation.
+  setup.ratios_path = setup.export_dir + "/ratios";
+  if( setup.save_ratios && create_directory( setup.ratios_path, ns->get_mpirank(), ns->get_mpicomm() ) )
+	throw std::runtime_error( "initialize_exportations_and_monitoring: couldn't create exportation directory for ratios files " + setup.ratios_path );
 
   // drag exportation and simulation monitoring
   if (setup.save_drag)
@@ -1302,20 +1442,55 @@ void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, 
   initialize_monitoring(setup, ns);
 
   // exportation of slice-averaged and line-averaged velocity profile(s)
-  if (profiler != NULL)
-    delete  profiler;
-  profiler = NULL;
+  delete profiler;
+  profiler = nullptr;
 
   if (setup.save_profiles)
     profiler = new velocity_profiler_t(cmd, ns, setup, channel);
 }
 
-bool monitor_simulation(const simulation_setup &setup, const mass_flow_controller_t* controller, my_p4est_navier_stokes_t* ns, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], const my_p4est_shs_channel_t &channel)
+void gather_and_dump_ratio_files( const std::string& path, const int& idx, const my_p4est_navier_stokes_t& ns )
+{
+	// We must compute dx/u, dy/v[, dz/w].
+	std::vector<double> dxyz_uvw[P4EST_DIM];
+	for( u_char dim = 0; dim < P4EST_DIM; dim++ )
+	{
+		// File names are dx_u_#.dat, dy_v_#.dat[, dz_w_#.dat], where # is the file index according to tn/ratios_dt.
+		std::string dxyzName = (dim == 0? "dx" : (dim == 1? "dy" : "dz"));
+		std::string velDirName = (dim == 0? "u" : (dim == 1? "v" : "w"));
+		std::string fileName = dxyzName + "_";
+		fileName += velDirName + "_";
+		fileName += std::to_string( idx ) + ".dat";
+
+		// Collect all ratios into rank 0's dxyz_uvw vector.
+		int numValues = ns.get_dxyz_uvw_ratios( dim, dxyz_uvw[dim] );
+		if( ns.get_mpirank() == 0 )
+		{
+			std::ofstream file;
+			std::string fullFileName = path + fileName;
+			file.open( fullFileName, std::ofstream::trunc );
+			if( !file.is_open() )
+				throw std::runtime_error( "main_shs::gather_and_dup_ratio_files: Output file " + fullFileName + " couldn't be opened!" );
+
+			file << "%% " << dxyzName << " | " << dxyzName << "_" << velDirName << std::endl;	// Header.
+			file.precision( 12 );
+			int numRatios = numValues / 2;
+			for( int i = 0; i < numRatios; i++ )
+				file << dxyz_uvw[dim][i * 2] << " " << dxyz_uvw[dim][i * 2 + 1] << std::endl;	// Values as pairs "dxyz dxyz/uvw".
+			file.close();
+
+			CHKERRXX( PetscPrintf( ns.get_mpicomm(), "Saved %d ratios %s/%s to ... %s\n", numRatios, dxyzName.c_str(), velDirName.c_str(), fullFileName.c_str() ) );
+		}
+	}
+}
+
+bool monitor_simulation(const simulation_setup &setup, const mass_flow_controller_t* controller, my_p4est_navier_stokes_t* ns,
+						external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], const my_p4est_shs_channel_t &channel)
 {
   if (ns->get_mpirank() == 0)
   {
     FILE* fp_monitor = fopen(setup.file_monitoring.c_str(), "a");
-    if (fp_monitor == NULL)
+    if (fp_monitor == nullptr)
       throw std::runtime_error("monitor_simulation: could not open monitoring file.");
     fprintf(fp_monitor, "%g %g %g\n", setup.tn,
             (external_acceleration[0]->get_value() > 0.0 ?  channel.canonical_Re_tau(external_acceleration[0]->get_value(), ns->get_nu()) : -1.0),
@@ -1325,24 +1500,30 @@ bool monitor_simulation(const simulation_setup &setup, const mass_flow_controlle
 
   PetscErrorCode ierr;
   if (external_acceleration[0]->get_value() > 0.0){
-    ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t Re_tau = %.2f, \t Re_b = %.2f\n",
+    ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : tn = %.5e, percent done : %.2f%%, \t max_L2_norm_u = %.5e, \t leaves = %d, \t Re_tau = %.2f, \t Re_b = %.2f, \tQ = %.2f\n",
                        setup.iter, setup.tn, 100*(setup.tn - setup.tstart)/setup.duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
                        channel.canonical_Re_tau(external_acceleration[0]->get_value(), ns->get_nu()),
-                       channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu())); CHKERRXX(ierr); }
+                       channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu()), controller->read_latest_mass_flow()); CHKERRXX(ierr); }
   else{
     ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : driving bulk force is currently negative\n", setup.iter); CHKERRXX(ierr);
-    ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t f_x = %.2f, \t Re_b = %.2f\n",
+    ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : tn = %.5e, percent done : %.2f%%, \t max_L2_norm_u = %.5e, \t leaves = %d, \t f_x = %.2f, \t Re_b = %.2f, \tQ = %.2f\n",
                        setup.iter, setup.tn, 100*(setup.tn - setup.tstart)/setup.duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
                        external_acceleration[0]->get_value(),
-                       channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu())); CHKERRXX(ierr); }
+                       channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu()), controller->read_latest_mass_flow()); CHKERRXX(ierr); }
 
   if (ns->get_max_L2_norm_u() > setup.max_tolerated_velocity(controller, external_acceleration, channel))
   {
     if (setup.save_vtk)
     {
       const std::string vtk_name = setup.vtk_path + "/snapshot_" + std::to_string(setup.export_vtk + 1);
-      ns->save_vtk(vtk_name.c_str());
+	  if(!setup.minimal_vtk)
+      	ns->save_vtk(vtk_name.c_str());
+	  else
+		ns->save_vtk(vtk_name.c_str(), false, 1, 1, false);
     }
+
+	if( setup.save_ratios  )
+	  gather_and_dump_ratio_files( setup.ratios_path + "/", setup.export_ratios + 1, *ns );
     std::cerr << "The simulation blew up..." << std::endl;
     return true;
   }
@@ -1356,10 +1537,10 @@ void export_drag(const simulation_setup &setup, const my_p4est_navier_stokes_t* 
   if (ns->get_mpirank() == 0)
   {
     const double U_b = channel.mean_u(controller->read_latest_mass_flow(), ns->get_rho());
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-      drag[dir] /= (-2.0*SQR(U_b)*MULTD(ns->get_rho(), channel.length(), channel.width()));
+    for(double& dir : drag)
+      dir /= (-2.0*SQR(U_b)*MULTD(ns->get_rho(), channel.length(), channel.width()));
     FILE* fp_drag = fopen(setup.file_drag.c_str(), "a");
-    if (fp_drag == NULL)
+    if (fp_drag == nullptr)
       throw std::runtime_error("export_drag: could not open file for drag output.");
     fprintf(fp_drag, drag_output_format.c_str(), setup.tn, DIM(drag[0], drag[1], drag[2]));
     fclose(fp_drag);
@@ -1388,7 +1569,7 @@ void check_voronoi_tesselation_and_print_warnings_if_wrong(const my_p4est_navier
 
 int main (int argc, char* argv[])
 {
-  mpi_environment_t mpi;
+  mpi_environment_t mpi{};
   mpi.init(argc, argv);
 
   cmdParser cmd;
@@ -1398,6 +1579,7 @@ int main (int argc, char* argv[])
   cmd.add_option("lmax",                "max level of the trees, default is " + std::to_string(default_lmax) + " or value read from solver state if restarted.");
   cmd.add_option("thresh",              "the threshold used for the refinement criteria, default is " + std::to_string(default_thresh));
   cmd.add_option("wall_layer",          "number of finest cells desired to layer the channel walls, default is " + std::to_string(default_wall_layer) + " or value deduced from solver state if restarted.");
+  cmd.add_option("lmid_delta_percent", 	"how far to use mid-level refinement cells away from the wall (as percent w.r.t. delta); provide 0 to disable this option; default is " + std::to_string( default_lmid_delta_percent ) );
   cmd.add_option("lip",                 "Lipschitz constant L for grid refinement. The levelset is defined as the negative distance to the top/bottom wall in case of spanwise grooves or to the closest no-slip region with streamwise grooves. \n\tWarning: this application uses a modified criterion comparin the levelset value to L\\Delta y (as opposed to L*diag(C)). \n\tDefault value is " + std::to_string(default_lip) + (default_lip < 10.0 ? " (fyi: that's thin for turbulent cases)" : "") + " or value read from solver state if restarted.");
   cmd.add_option("nx",                  "number of trees in the x-direction. \n\tThe default value is " + std::to_string(default_ntree_y) + "*length/height  to ensure aspect ratio of cells = 1 when using default dimensions");
   cmd.add_option("ny",                  "number of trees in the y-direction. \n\tThe default value is " + std::to_string(default_ntree_y) + "                to ensure aspect ratio of cells = 1 when using default dimensions");
@@ -1428,12 +1610,21 @@ int main (int argc, char* argv[])
   cmd.add_option("grid_update",         "number of time steps between grid updates, default is " + std::to_string(default_grid_update));
   cmd.add_option("pc_cell",             "preconditioner for cell-solver: jacobi, sor or hypre, default is " + default_pc_cell);
   cmd.add_option("cell_solver",         "Krylov solver used for cell-poisson problem, i.e. hodge variable: cg or bicgstab, default is " + default_cell_solver);
+  cmd.add_option("cell_solver_rtol",	"Krylov solver relative tolerance; default is " + std::to_string( default_cell_solver_rtol ) );
+  cmd.add_option("cell_solver_verbose",	"Print stats about the Krylov solver at every Hodge iteration");
   cmd.add_option("pc_face",             "preconditioner for face-solver: jacobi, sor or hypre, default is " + default_pc_face);
   cmd.add_option("nterms",              "number of terms used in the truncated series of the analytical solution (used for initialization and accuracy check is desired). Default is " + std::to_string(default_nterms));
   // output-control parameters
   cmd.add_option("export_folder",       "exportation folder (monitoring and drag files in there, velocity profiles, vtk and backup files in subfolder), will be created if inexistent;\n\t default is " + default_export_dir);
   cmd.add_option("save_vtk",            "activates exportation of results in vtk format");
   cmd.add_option("vtk_dt",              "export vtk files every vtk_dt time lapse (REQUIRED if save_vtk is activated)");
+  cmd.add_option("minimal_vtk",			"don't include lambada-2, Q, phi, and leaf level in the vtk exportations (requires save_vtk to be provided)");
+  cmd.add_option("save_ratios",			"activates exportation of ratios dx/u, dy/v[, dz/w]");
+  cmd.add_option("ratios_dt",			"export ratios files every ratios_dt time lapse (REQUIRED if save_ratios is activated)");
+  cmd.add_option("running_stats", 		"collect average nodal running statistics, including velocity (u,v,w), component products (uu,vv,ww,uv,uw,vw), pressure, pressure variance, and vorticity components. Export also results to VTK.\n\tThis option is only available for 3D and on restart, if the grid won't change, and if accuracy check is not requested." );
+  cmd.add_option("running_stats_dt", 	"accumulate nodal running statistics every running_stats_dt time lapse (REQUIRED if running_stats is activated)");
+  cmd.add_option("running_stats_num_steps", "collect average nodal running statistics for as many as running_stats_num_steps or until the requested simulation's duration is attained (REQUIRED if running_stats is activated)");
+  cmd.add_option("running_stats_only_sum", "export only the running statistic sums and avoid averaging over the simulation duration. This allows collecting stats across restarts. This option requires the save_state option enabled to save the state right after saving stats to file. Default is 'not given'");
   cmd.add_option("save_drag",           "activates exportation of the total drag, non-dimensionalized by 2.0*rho*U_b^2*length (*width) (--> estimate of (Re_tau/Re_b)^2 at steady state)");
   cmd.add_option("save_state_dt",       "if present, this activates the 'save-state' feature. \n\tThe solver state is saved every save_state_dt time steps in backup_ subfolders.");
   cmd.add_option("save_nstates",        "determines how many solver states must be memorized in backup_ folders, default is " + std::to_string(default_save_nstates));
@@ -1449,11 +1640,11 @@ int main (int argc, char* argv[])
 
   simulation_setup setup(mpi, cmd);
 
-  my_p4est_navier_stokes_t* ns                    = NULL;
-  my_p4est_brick_t* brick                         = NULL;
-  splitting_criteria_cf_and_uniform_band_t* data  = NULL;
-  mass_flow_controller_t *flow_controller         = NULL;
-  external_force_per_unit_mass_t* external_acceleration[P4EST_DIM] = { DIM(NULL, NULL, NULL) };
+  my_p4est_navier_stokes_t* ns                        = nullptr;
+  my_p4est_brick_t* brick                             = nullptr;
+  splitting_criteria_cf_and_uniform_band_shs_t* data  = nullptr;
+  mass_flow_controller_t *flow_controller             = nullptr;
+  external_force_per_unit_mass_t* external_acceleration[P4EST_DIM] = { DIM(nullptr, nullptr, nullptr) };
 
   my_p4est_shs_channel_t channel(mpi);
 
@@ -1463,8 +1654,8 @@ int main (int argc, char* argv[])
   else
     create_solver_from_scratch(mpi, cmd, ns, brick, channel, external_acceleration, data, flow_controller, setup);
 
-  velocity_profiler_t *profiler = NULL;
-  initialize_exportations_and_monitoring(ns, cmd, channel, setup, profiler);
+  velocity_profiler_t *profiler = nullptr;
+  initialize_exportations_and_monitoring(ns, cmd, channel, setup, profiler, external_acceleration);
 
   if(setup.save_timing)
     ns->activate_timer();
@@ -1472,8 +1663,8 @@ int main (int argc, char* argv[])
   setup.tn = setup.tstart;
   setup.update_save_data_idx(); // so that we don't save the very first one which was either already read from file, or the known initial condition...
 
-  my_p4est_poisson_cells_t* cell_solver = NULL;
-  my_p4est_poisson_faces_t* face_solver = NULL;
+  my_p4est_poisson_cells_t* cell_solver = nullptr;
+  my_p4est_poisson_faces_t* face_solver = nullptr;
   Vec dxyz_hodge_old[P4EST_DIM];
 
   while (!setup.done())
@@ -1481,13 +1672,13 @@ int main (int argc, char* argv[])
     if (setup.iter > 0)
     {
       if (flow_controller->read_latest_mass_flow() <= 0.0)
-        std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d: something went wrong, the mass flow should be strictly positive and known to at this stage...");
+        throw std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d: something went wrong, the mass flow should be strictly positive and known to at this stage...");
 
       bool solvers_can_be_reused = setup.set_dt_and_update_grid(ns);
-      if (cell_solver != NULL && !solvers_can_be_reused){
-        delete cell_solver; cell_solver = NULL; }
-      if (face_solver != NULL && !solvers_can_be_reused){
-        delete face_solver; face_solver = NULL; }
+      if (cell_solver != nullptr && !solvers_can_be_reused){
+        delete cell_solver; cell_solver = nullptr; }
+      if (face_solver != nullptr && !solvers_can_be_reused){
+        delete face_solver; face_solver = nullptr; }
     }
 
     if (setup.time_to_save_state())
@@ -1504,12 +1695,14 @@ int main (int argc, char* argv[])
     {
       ns->copy_dxyz_hodge(dxyz_hodge_old);
 
-      ns->solve_viscosity(face_solver, (face_solver != NULL), KSPBCGS, setup.pc_face);
+      ns->solve_viscosity(face_solver, (face_solver != nullptr), KSPBCGS, setup.pc_face);
 #ifdef P4EST_DEBUG
       check_voronoi_tesselation_and_print_warnings_if_wrong(ns, face_solver);
 #endif
 
-      convergence_check_on_dxyz_hodge = ns->solve_projection(cell_solver, (cell_solver != NULL), setup.cell_solver_type, setup.pc_cell, false, NULL, dxyz_hodge_old, setup.control_hodge);
+      convergence_check_on_dxyz_hodge = ns->solve_projection(cell_solver, (cell_solver != nullptr), setup.cell_solver_type, setup.pc_cell,
+															 false, nullptr, dxyz_hodge_old, setup.control_hodge, setup.cell_solver_rtol,
+															 setup.cell_solver_verbose);
 
       flow_controller->evaluate_current_mass_flow(ns);
       if (setup.flow_condition == constant_mass_flow)
@@ -1526,8 +1719,9 @@ int main (int argc, char* argv[])
       }
       iter_hodge++;
     }
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-      ierr = VecDestroy(dxyz_hodge_old[dir]); CHKERRXX(ierr); }
+    for( auto& dir : dxyz_hodge_old ) {
+      ierr = VecDestroy(dir); CHKERRXX(ierr);
+	}
 
     ns->compute_velocity_at_nodes(setup.steps_grid_update > 1);
 
@@ -1554,38 +1748,77 @@ int main (int argc, char* argv[])
 
     // exporting velocity profiles if desired
     if (setup.save_profiles)
-      profiler->gather_and_dump_profiles(setup, ns, (setup.flow_condition == constant_pressure_gradient ? channel.canonical_u_tau(external_acceleration[0]->get_value()) : flow_controller->targeted_bulk_velocity()) ONLY3D(COMMA channel.spanwise_grooves()));
+      profiler->gather_and_dump_profiles(setup, ns,
+										 (setup.flow_condition == constant_pressure_gradient ? channel.canonical_u_tau(external_acceleration[0]->get_value()) : flow_controller->targeted_bulk_velocity())
+										 ONLY3D(COMMA channel.spanwise_grooves()));
 
     if (setup.time_to_save_vtk() && !setup.do_accuracy_check)
     {
       setup.update_export_vtk();
       const std::string vtk_name = setup.vtk_path + "/snapshot_" + std::to_string(setup.export_vtk);
-      ns->save_vtk(vtk_name.c_str(), true, channel.mean_u(flow_controller->read_latest_mass_flow(), ns->get_rho()), channel.height()*0.5);
+	  if(!setup.minimal_vtk)
+      	ns->save_vtk(vtk_name.c_str(), true, channel.mean_u(flow_controller->read_latest_mass_flow(), ns->get_rho()), channel.height()*0.5);
+	  else
+		ns->save_vtk(vtk_name.c_str(), false, 1, 1, false);
     }
 
+	if( setup.time_to_save_ratios() )
+	{
+	  setup.update_export_ratios();
+	  gather_and_dump_ratio_files( setup.ratios_path + "/", setup.export_ratios, *ns );
+	}
+
+#ifdef P4_TO_P8
+	if( setup.time_to_save_running_stats() )
+	{
+		setup.update_step_running_stats();
+		ns->accumulate_nodal_running_statistics( setup.tn );
+		setup.running_stats_cur_count++;
+		CHKERRXX( PetscPrintf(mpi.comm(), "--> Completed running stats step %d/%d...\n", setup.running_stats_cur_count, setup.running_stats_num_steps ) );
+		if( setup.running_stats_cur_count >= setup.running_stats_num_steps )
+		{
+		  ns->compute_and_save_nodal_running_statistics_averages( setup.iter, setup.export_dir + "/vtu", setup.export_dir, setup.running_stats_only_sum );
+		  ns->clear_running_statistics_map();
+		  setup.running_stats_done = true;
+
+		  if( setup.save_state )
+			ns->save_state(setup.export_dir.c_str(), setup.tn, setup.n_states);
+		}
+	}
+#endif
+
     if (setup.do_accuracy_check)
-      check_accuracy_of_solution(ns, channel, setup);
+      check_accuracy_of_solution(ns, channel, setup, external_acceleration, flow_controller);
 
     setup.iter++;
   }
 
+#ifdef P4_TO_P8
+  if( setup.do_running_stats && !setup.running_stats_done )
+  {
+	CHKERRXX( PetscPrintf( mpi.comm(), "--> Didn't complete expected number of steps for running stats, but we'll reduce them now...\n" ) );
+	ns->compute_and_save_nodal_running_statistics_averages( setup.iter, setup.export_dir + "/vtu", setup.export_dir, setup.running_stats_only_sum );
+	ns->clear_running_statistics_map();
+	setup.running_stats_done = true;
+
+	if( setup.save_state )
+	  ns->save_state(setup.export_dir.c_str(), setup.tn, setup.n_states);
+  }
+#endif
 
   if(setup.save_timing)
     setup.print_averaged_timings(mpi);
 
-  if (cell_solver != NULL)
-    delete  cell_solver;
-  if (face_solver != NULL)
-    delete face_solver;
+  delete cell_solver;
+  delete face_solver;
 
   delete ns;        // deletes the navier-stokes solver
-  // the brick and the connectivity are deleted within the above destructor...
+  					// the brick and the connectivity are deleted within the above destructor...
   delete data;      // deletes the splitting criterion object
-  if (flow_controller != NULL)
-    delete flow_controller;
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    if(external_acceleration[dir] != NULL)
-      delete external_acceleration[dir];
+  delete flow_controller;
+  for(auto& dir : external_acceleration)
+    delete dir;
+  delete profiler;
 
   return 0;
 }

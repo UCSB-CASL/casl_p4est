@@ -15,21 +15,22 @@ Q = @(u,v) a*u.^2 + b*v.^2;
 % Curvature function.
 K = @(u,v) (2*a*(1+4*b^2*v.^2) + 2*b*(1+4*a^2*u.^2)) ./ (1+4*a^2*u.^2 + 4*b^2*v.^2).^1.5;
 
-% In 2D, we had hk_min=0.005. In 3D, hk_min=2*0.005=0.01.
-kmin = 1/(100*h);
+% Let's use hk_min=0.005 in 2D. In 3D, hk_min=2*0.005=0.01.
+hk_min = 0.01;
+kmin = hk_min/h;
 
 %%%%%%%%%%%%%%% 1) Find level curve on Q where curvature achieves the minimum faster %%%%%%%%%%%%%%%
 
 % Let's use Newton's method to find what u value (with v=0) yields kmin.
 fu = @(x) kmin - (2*a+2*b*(1+4*a^2*x.^2))./(1+4*a^2*x.^2).^1.5;
-dfu = @(x) (8*a^2*x.*(4*b*a^2*x.^2 + 3*a + b))./(4*a^2*x.^2 + 1).^(2.5);
-ulim = abs( findZero( fu, dfu, h, 100, 1e-8*h ) );
+dfdu = @(x) (8*a^2*x.*(4*b*a^2*x.^2 + 3*a + b))./(4*a^2*x.^2 + 1).^(2.5);
+ulim = abs( findZero( fu, dfdu, h, 100, 1e-8*h ) );
 qulim = Q( ulim, 0 );		% We've gotten the points (-ulim, 0, qulim) and (ulim, 0, qulim).
 
 % Same as before, but now for v (with u=0).
 fv = @(y) kmin - (2*a*(1+4*b^2*y.^2)+2*b)./(1+4*b^2*y.^2).^1.5;
-dfv = @(y) (8*b^2*y.*(4*a*b^2*y.^2 + 3*b + a))./(4*b^2*y.^2 + 1).^(2.5);
-vlim = abs( findZero( fv, dfv, h, 100, 1e-8*h ) );
+dfdv = @(y) (8*b^2*y.*(4*a*b^2*y.^2 + 3*b + a))./(4*b^2*y.^2 + 1).^(2.5);
+vlim = abs( findZero( fv, dfdv, h, 100, 1e-8*h ) );
 qvlim = Q( 0, vlim );		% We've gotten the points (0, -vlim, qvlim) and (0, vlim, qvlim).
 
 %%%%%%% 2) Pick the minimum Q value and modify the other axis so that it produces the same Q %%%%%%%

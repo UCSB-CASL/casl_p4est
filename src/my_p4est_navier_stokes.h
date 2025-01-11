@@ -165,6 +165,8 @@ protected:
   Vec vorticity;
   Vec norm_grad_u;
 
+  Vec vorticity_components[P4EST_DIM];	// Allocate these only as needed (for running statistics).  Works only in 3D.
+
   Vec pressure;
 
   Vec smoke;
@@ -187,7 +189,25 @@ protected:
   CF_DIM *external_forces_per_unit_mass[P4EST_DIM];
   Vec external_force_per_unit_volume;
   Vec second_derivatives_external_force_per_unit_volume[P4EST_DIM];
-  public:bool boussinesq_approx=false;
+
+#ifdef P4_TO_P8
+  // These are data structs we need to compute running averages.  Hadn't we done this, we'd need a lot of space storing VTKs periodically
+  // to collect data for a long period of time.
+  struct RunningStatistics {	// These are local nodal statistics collected for some period of time, preferrably around the steady-state.
+	  double u, v, w;					// Velocity components.
+	  double uu, vv, ww, uv, uw, vw;	// Products of velocity components to compute Reynold's stresses later.
+	  double vort_u, vort_v, vort_w;	// Vorticity components.
+	  double pressure;					// Pressure and pressure squared to compute the pressure variance.
+	  double pressure2;
+  };
+
+  std::unordered_map<std::string, RunningStatistics> _nodalRunningStatisticsMap;
+  double _runningStatisticsStartTime = 0;		// Record when we initialized the running-stats structs.
+  double _runningStatisticsLastTime = 0;		// Keep track of the last time we recorded running stats.
+#endif
+
+public:
+  bool boussinesq_approx=false;
 
   my_p4est_interpolation_nodes_t *interp_phi, *interp_grad_phi;
 
@@ -361,12 +381,13 @@ protected:
    * \param mpi             [in]    mpi environment to load the solver state in
    * \param path_to_folder  [in]    path to the folder where the solver state has been stored (absolute path)
    * \param tn              [inout] simulation time at which the data were saved (to be read from saved solver state)
+   * \param override_saved_cfl [in] allows overriding saved cfl value the ghost layer can be constructed accordingly (<=0 to use saved cfl).
    * [NOTE :] the function will destroy and overwrite any grid-related structure like p4est_n, nodes_n, ghost_n, faces_n, etc.
    * if they have already been constructed beforehand...
    * WARNING: this function throws an std::invalid_argument exception if path_to_folder is invalid
    * Raphael EGAN
    */
-  void load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn);
+  void load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn, const double& override_saved_cfl=0);
 
   /*!
    * \brief compute_velocity_at_local_node : function for interpolating face-sampled velocity components at a local grid node. Made private
@@ -425,7 +446,7 @@ protected:
 
 public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
-  my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double &simulation_time);
+  my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double& simulation_time, const double& override_cfl=0);
   ~my_p4est_navier_stokes_t();
 
   void set_parameters(double mu, double rho, int sl_order, double uniform_band, double vorticity_threshold_split_cell, double n_times_dt, double norm_grad_u_threshold_split_cell = DBL_MAX);
@@ -691,7 +712,8 @@ public:
     delete cell_solver;
   }
   double solve_projection(my_p4est_poisson_cells_t* &cell_poisson_solver, const bool& use_initial_guess = false, const KSPType& ksp = KSPBCGS, const PCType& pc = PCSOR,
-                          const bool& shift_to_zero_mean_if_floating = true, Vec hodge_old = NULL, Vec former_dxyz_hodge[P4EST_DIM] = NULL, const hodge_control& dxyz_hodge_chek = hodge_value);
+                          const bool& shift_to_zero_mean_if_floating = true, Vec hodge_old = NULL, Vec former_dxyz_hodge[P4EST_DIM] = NULL, const hodge_control& dxyz_hodge_chek = hodge_value,
+						  const double& ksp_rtol=1e-12, const bool& verbose=false);
 
   /*!
    * \brief get_correction_in_hodge_derivative_for_enforcing_mass_flow
@@ -745,6 +767,8 @@ public:
 
   bool update_from_tn_to_tnp1(const CF_DIM *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 
+  void update_from_tn_to_tnp1_for_shs_restart(const CF_DIM *level_set=NULL);
+
   /*!
    * \brief update_from_tn_to_tnp1_grid_external
    * This function performs the sliding of all necessary fields internal to the navier_stokes solver from the grid at time n to a user-provided grid and level-set function at time np1.
@@ -776,7 +800,8 @@ public:
 
   void compute_forces(double *f);
 
-  void save_vtk(const char* name, bool with_Q_and_lambda_2_value = false, const double U_scaling_for_Q_and_lambda_2 = 1.0, const double x_scaling_for_Q_and_lambda_2 = 1.0);
+  void save_vtk(const char* name, bool with_Q_and_lambda_2_value = false, const double& U_scaling_for_Q_and_lambda_2=1.0,
+				const double& x_scaling_for_Q_and_lambda_2=1.0, const bool& with_phi_and_leaf_level=true);
 
   /*!
    * \brief calculates the mass flow through a slice in Cartesian direction in the computational domain. The slice must coincide with
@@ -833,9 +858,10 @@ public:
    * loaded from disk.
    * \param level_set           [in] : levelset function
    * \param do_reinitialization [in] : requires reinitialization for the node-sampled levelset function values, if true (default is true)
+   * \param from_shs			[in] : set it to true if you want use the splitting criteria from the banded shs channel; false otherwise.
    * Raphael EGAN
    */
-  void refine_coarsen_grid_after_restart(const CF_DIM *level_set, bool do_reinitialization = true);
+  void refine_coarsen_grid_after_restart(const CF_DIM *level_set, bool do_reinitialization = true, const bool& from_shs=false );
 
   /*!
    * \brief memory_estimate: self-explanatory
@@ -866,6 +892,21 @@ public:
    * Raphael EGAN
    */
   void get_slice_averaged_vnp1_profile(const unsigned char& vel_component, const unsigned char& axis, std::vector<double>& avg_velocity_profile, const double u_scaling = 1.0);
+
+  /**
+   * Calculate the ratio dx/u, dy/v [or dz/w] and place the results in a single array with pairs of values.  For example, [dx0, dx0/u0, dx1,
+   * dx1/u1, ...], where (dxi, dxi/ui) is a pair.  For each face considered in the requested direction, we collect a ratio for each distinct
+   * quad levels that share the face.  Thus, the result array has, at least, twice as many as velocity face locations there are in the whole
+   * domain for the chosen direction.
+   * @note 1: only proc 0 has the correct result after completion.
+   * @note local complexity: every processor loops through their local faces only once.
+   * @note communication: MPI_reduce to proc 0, who is the only holding the correct results after completion.
+   * @param [in] direction Direction of interest, 0 <= direction < P4EST_DIM.
+   * @param [in,out] allRatios Resulting ratios from all processes (but only rank 0 owns these values).
+   * @param [in] scaling Whether to scale ratio or not (e.g., normalizing by u_tau).
+   * @return Number of values collected across processes (i.e., 2 * num of ratios).
+   */
+  int get_dxyz_uvw_ratios( const u_char& direction, std::vector<double>& allRatios, const double& scaling=1.0 ) const;
 
   /*!
    * \brief get_line_averaged_vnp1_profiles: calculates line-averaged profiles for a velocity component in the domain. The direction along which
@@ -935,8 +976,62 @@ public:
   Vec const* get_node_velocities_np1() const  { return vnp1_nodes;  }
   Vec get_phi() const { return phi; }
 
+#ifdef P4_TO_P8
+  /**
+   * Retrieve the discrete coordinates of a grid point.  These are expressed as ratios of each component and their corresponding min cell
+   * size.  This function is to be used with the map of nodal running statistics.
+   * @param [in] xyz Grid point coordinates.
+   * @return "a,b,c", where a = x/dx, b = y/dy, and c = z/dz.
+   */
+  std::string get_discrete_coords( const double xyz[P4_TO_P8] )
+  {
+	  return std::to_string( (int)round(xyz[0] / dxyz_min[0]) ) + "," +
+	  		 std::to_string( (int)round(xyz[1] / dxyz_min[1]) ) + "," +
+			 std::to_string( (int)round(xyz[2] / dxyz_min[2]) );
+  }
 
+  /**
+   * Empty nodal running statistics map.
+   */
+  void clear_running_statistics_map()
+  {
+	  _nodalRunningStatisticsMap.clear();
+  }
 
+  /**
+   * Allocate a map of running statistics for each node.  This functionality makes sense only if the grid doesn't change during the period
+   * on which you're interested in collecting stats.
+   * @param [in] initialTime When we're starting to record running stats.
+   * @throws runtime_error if two grid points map to the same key.
+   */
+  void init_nodal_running_statistics( const double& initialTime=0 );
+
+  /**
+   * Accumulate velocity (u,v,w), velocity component products (uu, vv, ww, uv, uw, vw), pressure, pressure^2, and vorticity components from
+   * the local nodes into the stats structures and hashmap.
+   * @param [in] currentTime Simulation time at which we accumulate stats.
+   * @throws runtime_error if running stats hash map is empty, or if the grid changed and we couldn't find some coordinates in the map, or
+   * 		 if the vorticity components are not computed.
+   */
+  void accumulate_nodal_running_statistics( const double& currentTime );
+
+  /**
+   * Compute the average of the running statistics over the local nodes.  Then, export these averages alongside nodal coordinates in a file
+   * average_running_statistics_#.csv with format:
+   *       "x", "y", "z", "u", "v", "w", "uu", "vv", "ww", "uv", "uw", "vw", "pressure", "vort_u", "vort_v", "vort_w", "pressure_2"
+   * where # is the iteration number at which we saved data.  Similarly, export these variables to VTK files to ease visualization.
+   * @param [in] iter Iteration number to be appended to exported file.
+   * @param [in] vtkPath Folder where to save the VTK export for visualization (by default, the build directory).
+   * @param [in] csvPath Folder where to save the csv data file (by default, the build directory).
+   * @param [in] onlySum Whether we want to reduce by averaging or keeping the sum of the running stats.  Useful for data collection across
+   * 					 restarts.
+   * @throws runtime_error if running stats hash map is empty, or if the grid changed and we couldn't locate some coordinates in the map, or
+   * 		 if collecting data from all ranks fails, or if we couldn't save data to a file, or if the vorticity components are not computed,
+   * 		 or if the time span over which we desire the average is near 0, or if we can't create or open target directories.
+   */
+  void compute_and_save_nodal_running_statistics_averages( const u_int& iter, const std::string& vtkPath=".",
+														   const std::string& csvPath=".", const bool& onlySum=false );
+#endif
 };
 
 

@@ -159,7 +159,7 @@ param_t<double> diff_coeff_iter_num   (pl, 1, "diff_coeff_iter_num",   "Number o
 param_t<double> diff_coeff_m_mult_min (pl, 1, "diff_coeff_m_mult_min", "Minimum value of diffusion coefficient multiplier in negative domain");
 param_t<double> diff_coeff_m_mult_max (pl, 1, "diff_coeff_m_mult_max", "Maximum value of diffusion coefficient multiplier in negative domain");
 
-param_t<int>    wc_type (pl, DIRICHLET, "wc_type", "Type of boundary conditions on the walls");
+param_t<int>    wc_type (pl, NEUMANN, "wc_type", "Type of boundary conditions on the walls");
 
 param_t<int>    rhs_m_value (pl, 0, "rhs_m_value", "Source term in negative domain: 0 - automatic (method of manufactured solutions), 1 - zero");
 param_t<int>    rhs_p_value (pl, 0, "rhs_p_value", "Source term in positive domain: 0 - automatic (method of manufactured solutions), 1 - zero");
@@ -224,7 +224,7 @@ param_t<int>    infc_01_flux_jump  (pl, 0, "infc_01_flux_jump", "0 - automatic, 
 param_t<int>    infc_02_flux_jump  (pl, 0, "infc_02_flux_jump", "0 - automatic, others - hardcoded");
 param_t<int>    infc_03_flux_jump  (pl, 0, "infc_03_flux_jump", "0 - automatic, others - hardcoded");
 
-param_t<int>    example (pl, 1, "example", "Predefined example:\n"
+param_t<int>    example (pl, 0, "example", "Predefined example:\n"
                                             "0 - no interfaces, no boudaries\n"
                                             "1 - sphere interior\n"
                                             "2 - sphere exterior\n"
@@ -2247,7 +2247,6 @@ jc_flux_t jc_flux_cf_all[] = { jc_flux_t(infc_00_flux_jump.val, DIM(&infc_phi_x_
                                jc_flux_t(infc_02_flux_jump.val, DIM(&infc_phi_x_cf_all[2], &infc_phi_y_cf_all[2], &infc_phi_z_cf_all[2])),
                                jc_flux_t(infc_03_flux_jump.val, DIM(&infc_phi_x_cf_all[3], &infc_phi_y_cf_all[3], &infc_phi_z_cf_all[3])) };
 
-
 class bc_wall_type_t : public WallBCDIM
 {
 public:
@@ -2256,6 +2255,47 @@ public:
     return (BoundaryConditionType) wc_type.val;
   }
 } bc_wall_type;
+
+class bc_wall_value_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    if (wc_type.val == DIRICHLET) {
+      return u_cf(DIM(x, y, z));
+    } else {
+      double dists[P4EST_FACES] = {
+        DIMPM(
+        ABS(x - xmin.val), ABS(x - xmax.val),
+        ABS(y - ymin.val), ABS(y - ymax.val),
+        ABS(z - zmin.val), ABS(z - zmax.val)
+        )
+      };
+
+      double closest_dist = dists[0];
+      uint8_t closest_wall = 0;
+      for (uint8_t wall_ind = 1; wall_ind < P4EST_FACES; ++wall_ind) {
+        if (dists[wall_ind] < closest_dist) {
+          closest_dist = dists[wall_ind];
+          closest_wall = wall_ind;
+        }
+      }
+
+      switch (closest_wall) {
+      case 0: return -mu_cf(DIM(x, y, z)) * ux_cf(DIM(x, y, z));
+      case 1: return mu_cf(DIM(x, y, z)) * ux_cf(DIM(x, y, z));
+      case 2: return -mu_cf(DIM(x, y, z)) * uy_cf(DIM(x, y, z));
+      case 3: return mu_cf(DIM(x, y, z)) * uy_cf(DIM(x, y, z));
+#ifdef P4_TO_P8
+      case 4: return -mu_cf(DIM(x, y, z)) * uz_cf(DIM(x, y, z));
+      case 5: return mu_cf(DIM(x, y, z)) * uz_cf(DIM(x, y, z));
+#endif
+      default: throw;
+      }
+
+    }
+  }
+} bc_wall_value;
 
 class perturb_cf_t: public CF_DIM
 {
@@ -2681,7 +2721,7 @@ int main (int argc, char* argv[])
               solver.set_mu(mu_m, DIM(NULL, NULL, NULL),
                             mu_p, DIM(NULL, NULL, NULL));
 
-              solver.set_wc(bc_wall_type, u_cf);
+              solver.set_wc(bc_wall_type, bc_wall_value);
               solver.set_rhs(rhs_m, rhs_p);
               solver.set_diag(linear_term_m_coeff, linear_term_p_coeff);
 

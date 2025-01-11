@@ -524,8 +524,8 @@ namespace slml
 		 * Input fields order or indices, as they should be given when setting up the inputs of the Data Fetcher object.
 		 * The LAST type is only used for iteration purposes.
 		 */
-		enum InputFields : int {PHI = 0, VEL_U __unused, VEL_V __unused, ONLY3D( VEL_W __unused COMMA )
-								PHI_XX __unused, PHI_YY __unused, ONLY3D( PHI_ZZ __unused )};
+		enum InputFields : int {PHI = 0, VEL_U __attribute__((unused)), VEL_V __attribute__((unused)), ONLY3D( VEL_W __attribute__((unused)) COMMA )
+								PHI_XX __attribute__((unused)), PHI_YY __attribute__((unused)), ONLY3D( PHI_ZZ __attribute__((unused)) )};
 
 		/**
 		 * Constructor.

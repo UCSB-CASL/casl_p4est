@@ -1,3 +1,10 @@
+/**
+ * A collection of local utility functions for the curvature problem.
+ * Developer: Luis Ángel.
+ * Created: May 2, 2021.
+ * Updated: February 9, 2022.
+ */
+
 #ifndef ML_CURVATURE_LOCAL_UTILS_H
 #define ML_CURVATURE_LOCAL_UTILS_H
 
@@ -6,7 +13,7 @@
 #include <string>
 #include <src/my_p4est_utils.h>
 #include <unordered_map>
-#include "data_sets/star_theta_root_finding.h"
+#include "data_sets/star/star_theta_root_finding.h"
 
 namespace kutils
 {

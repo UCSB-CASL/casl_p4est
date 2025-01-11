@@ -11,7 +11,7 @@
  *
  * Developer: Luis Ángel.
  * Date: May 12, 2020.
- * Updated: November 25, 2021.
+ * Updated: March 3, 2022.
  *
  * [Update on May 3, 2021] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
  * angle in the range [0, pi/2].  That is, we collect samples where the gradient points towards the first quadrant of
@@ -53,7 +53,7 @@ int main ( int argc, char* argv[] )
 	param_t<double> maxHK( pl, 2./3, "maxHK", "Maximum dimensionless curvature (default: 2./3)" );
 	param_t<int> circlesPerH( pl, 2, "circlesPerH", "How many circle radii to fit in a cell (default: 2)" );
 	param_t<int> samplesPerH2( pl, 5, "samplesPerH2", "Samples per H^2 based on the average radius (default: 5)" );
-	param_t<int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
+	param_t<u_short> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
 	param_t<int> keepEveryXSamples( pl, 4, "keepEveryXSamples", "Keep record every x samples next to Gamma randomly (default: 4)" );
 	param_t<bool> writeSDF( pl, true, "writeSDF", "Write signed distance function samples (default: 1)" );
 	param_t<std::string> outputDir( pl, "/Volumes/YoungMinEXT/k_ecnet_data", "outputDir", "Path where file will be written (default: same folder as the executable)" );
@@ -229,7 +229,7 @@ int main ( int argc, char* argv[] )
 				double dxyz[P4EST_DIM]; 			// Dimensions of the smallest quadrants.
 				double dxyz_min;        			// Minimum side length of the smallest quadrants.
 				double diag_min;        			// Diagonal length of the smallest quadrants.
-				get_dxyz_min( p4est, dxyz, dxyz_min, diag_min );
+				get_dxyz_min( p4est, dxyz, &dxyz_min, &diag_min );
 				assert( ABS( dxyz_min - H ) <= EPS );
 
 				// Ghosted parallel PETSc vectors to store level-set function values.
@@ -255,6 +255,7 @@ int main ( int argc, char* argv[] )
 
 				// Compute numerical curvature with reinitialized data, which will be interpolated at the interface.
 				// Also need normal vectors with both level-set functions.
+				// TODO: Need to retrain 2d k_ecnets using compute_mean_curvature( nodeNeighbors, rlsNormal, curvature ) for compatibility with 3D.
 				compute_normals( nodeNeighbors, rlsPhi, rlsNormal );
 				compute_normals( nodeNeighbors, sdfPhi, sdfNormal );
 				compute_mean_curvature( nodeNeighbors, rlsPhi, rlsNormal, curvature );
@@ -326,12 +327,9 @@ int main ( int argc, char* argv[] )
 							// Appending the interpolated hk.
 							double xyz[P4EST_DIM];							// Position of node at the center of the stencil.
 							node_xyz_fr_n( n, p4est, nodes, xyz );
-							double rlsGrad[P4EST_DIM], sdfGrad[P4EST_DIM];
-							for( int dim = 0; dim < P4EST_DIM; dim++ )		// Get negative gradient and make sure no component is exactly zero.
-							{
-								rlsGrad[dim] = (rlsNormalReadPtr[dim][n] == 0)? -EPS : -rlsNormalReadPtr[dim][n];
-								sdfGrad[dim] = (sdfNormalReadPtr[dim][n] == 0)? -EPS : -sdfNormalReadPtr[dim][n];
-							}
+							double rlsGrad[P4EST_DIM];
+							for( int dim = 0; dim < P4EST_DIM; dim++ )		// Get negative gradient.
+								rlsGrad[dim] = -rlsNormalReadPtr[dim][n];
 
 							for( int i = 0; i < P4EST_DIM; i++ )			// Translation: this is where we need to
 								xyz[i] += rlsGrad[i] * rlsPhiReadPtr[n];	// interpolate the numerical curvature.
@@ -341,8 +339,8 @@ int main ( int argc, char* argv[] )
 							sdfDataNve.push_back( -H_KAPPA );		// For signed distance function data, the exact hk.
 
 							// Reorienting stencil so that (negated) gradient at node 00 has an angle in first quadrant.
-							kml::utils::rotateStencilToFirstQuadrant( rlsDataNve, rlsGrad );
-							kml::utils::rotateStencilToFirstQuadrant( sdfDataNve, sdfGrad );
+							kml::utils::rotateStencilToFirstQuadrant( rlsDataNve );
+							kml::utils::rotateStencilToFirstQuadrant( sdfDataNve );
 
 							// Accumulating samples.
 							if( writeSDF() )

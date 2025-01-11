@@ -690,39 +690,46 @@ public:
     return acceleration_for_canonical_u_tau(desired_U_b*Re_tau_from_Re_b(desired_Re_b)/desired_Re_b);
   }
 
-  inline void create_p4est_ghost_and_nodes(p4est_t* &forest, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, splitting_criteria_cf_and_uniform_band_t* &sp, p4est_connectivity_t *conn, const mpi_environment_t& mpi,
-                                           const int& lmin, const unsigned int wall_layer, const double& lip_user)
+  inline void create_p4est_ghost_and_nodes( p4est_t* &forest, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
+										    splitting_criteria_cf_and_uniform_band_shs_t* &sp,
+										    p4est_connectivity_t *conn, const mpi_environment_t& mpi_, const int& lmin,
+											const unsigned int wall_layer, const double& lmid_delta_percent,
+											const double& lip_user, const double& cfl_user )
   {
-    P4EST_ASSERT(is_configured);
-    if (sp != NULL)
-      delete sp;
-    sp = new splitting_criteria_cf_and_uniform_band_t(lmin, max_lvl, this, calculate_uniform_band_for_ns_solver(wall_layer), calculate_lip_for_ns_solver(lip_user));
+    P4EST_ASSERT( is_configured );
+    delete sp;
+    sp = new splitting_criteria_cf_and_uniform_band_shs_t( lmin, max_lvl, this,
+														   calculate_uniform_band_for_ns_solver( wall_layer ), delta(),
+														   lmid_delta_percent, calculate_lip_for_ns_solver( lip_user ) );
 
-    if(forest != NULL)
-      p4est_destroy(forest);
-    forest = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
+    if( forest != nullptr )
+      p4est_destroy( forest );
+    forest = my_p4est_new( mpi_.comm(), conn, 0, nullptr, nullptr );
     forest->user_pointer = (void*) sp;
 
-    for (int l = 0; l < sp->max_lvl; ++l)
+    for( int l = 0; l < sp->max_lvl; ++l )
     {
-      my_p4est_refine(forest, P4EST_FALSE, refine_levelset_cf_and_uniform_band, NULL);
-      my_p4est_partition(forest, P4EST_FALSE, NULL);
+      my_p4est_refine( forest, P4EST_FALSE, refine_levelset_cf_and_uniform_band_shs, nullptr );
+      my_p4est_partition( forest, P4EST_FALSE, nullptr );
     }
-    /* create the initial forest at time nm1 */
-    p4est_balance(forest, P4EST_CONNECT_FULL, NULL);
-    my_p4est_partition(forest, P4EST_FALSE, NULL);
 
-    if(ghost != NULL)
-      p4est_ghost_destroy(ghost);
-    ghost = my_p4est_ghost_new(forest, P4EST_CONNECT_FULL);
-    my_p4est_ghost_expand(forest, ghost);
-    const double tree_dim[P4EST_DIM] = {DIM((brick->xyz_max[0] - brick->xyz_min[0])/brick->nxyztrees[0], (brick->xyz_max[1] - brick->xyz_min[1])/brick->nxyztrees[1], (brick->xyz_max[2] - brick->xyz_min[2])/brick->nxyztrees[2])};
-    if(third_degree_ghost_are_required(tree_dim))
-      my_p4est_ghost_expand(forest, ghost);
-    if(nodes != NULL)
-      p4est_nodes_destroy(nodes);
-    nodes = my_p4est_nodes_new(forest, ghost);
-    return;
+	// Create the initial forest at time nm1.
+    p4est_balance( forest, P4EST_CONNECT_FULL, nullptr );
+    my_p4est_partition( forest, P4EST_FALSE, nullptr );
+
+    if( ghost != nullptr )
+      p4est_ghost_destroy( ghost );
+    ghost = my_p4est_ghost_new( forest, P4EST_CONNECT_FULL );
+    my_p4est_ghost_expand( forest, ghost );
+    const double tree_dim[P4EST_DIM] = {DIM( (brick->xyz_max[0] - brick->xyz_min[0]) / brick->nxyztrees[0],
+										(brick->xyz_max[1] - brick->xyz_min[1]) / brick->nxyztrees[1],
+										(brick->xyz_max[2] - brick->xyz_min[2])/brick->nxyztrees[2] )};
+	int n_ghost_addtnl_expansions = cfl_user > 1? (int)ceil(cfl_user - 1) : (int)third_degree_ghost_are_required(tree_dim);
+	for(int i = 0; i < n_ghost_addtnl_expansions; i++)
+      my_p4est_ghost_expand( forest, ghost );
+    if( nodes != nullptr )
+      p4est_nodes_destroy( nodes );
+    nodes = my_p4est_nodes_new( forest, ghost );
   }
 
   // functions linking integer input parameters "wall_layer" (in terms of number of cells) and N-S solver's uniform_band (absoute distance) to each other

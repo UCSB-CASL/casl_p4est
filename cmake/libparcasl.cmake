@@ -210,10 +210,12 @@ if( DIMENSION MATCHES 3d )
 	# Machine learning.
 	if( ENABLE_ML MATCHES 1 )
 		list( APPEND HEADERS
-				${PARCASL}src/my_p8est_semi_lagrangian_ml.h )
+				${PARCASL}src/my_p8est_semi_lagrangian_ml.h
+				${PARCASL}src/my_p8est_curvature_ml.h )
 
 		list( APPEND SOURCES
-				${PARCASL}src/my_p8est_semi_lagrangian_ml.cpp )
+				${PARCASL}src/my_p8est_semi_lagrangian_ml.cpp
+				${PARCASL}src/my_p8est_curvature_ml.cpp )
 	endif()
 
 	# Others.

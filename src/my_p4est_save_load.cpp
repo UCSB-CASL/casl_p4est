@@ -404,11 +404,11 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
   va_end(args);
 }
 
-void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
-                                   const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
-                                   const p4est_bool_t retrieve_brick, my_p4est_brick_t* &brick,
-                                   const p4est_bool_t create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
-                                   const char* forest_filename, const vector<save_or_load_element_t>& elements)
+void my_p4est_load_forest_and_data(const MPI_Comm& mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
+                                   const p4est_bool_t& expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
+                                   const p4est_bool_t& retrieve_brick, my_p4est_brick_t* &brick,
+                                   const p4est_bool_t& create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
+                                   const char* forest_filename, const vector<save_or_load_element_t>& elements, const double& cfl)
 {
   char absolute_path_to_file[PATH_MAX];
 
@@ -429,6 +429,8 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
   ghost = my_p4est_ghost_new(forest, P4EST_CONNECT_FULL);
   if(expand_ghost)
   {
+	if(cfl <= 0)
+	  throw std::invalid_argument("my_p4est_load_forest_and_data: cfl constant must be strictly positive...");
     my_p4est_ghost_expand(forest, ghost);
     // if expanding ghost, the targeted usage is very likely to be for Navier-Stokes application
     // --> check if the aspect ratio of the cells is unconventional which may enforce a requirement
@@ -438,7 +440,8 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
     p4est_topidx_t v_p  = conn->tree_to_vertex[P4EST_CHILDREN - 1]; // index of the back upper right corner of the first tree in the macro-mesh
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
       tree_dimensions[dir] = conn->vertices[3*v_p + dir] - conn->vertices[3*v_m + dir];
-    if(third_degree_ghost_are_required(tree_dimensions))
+	int n_ghost_addtnl_expansions = cfl > 1? (int)ceil(cfl - 1) : (int)third_degree_ghost_are_required(tree_dimensions);
+	for(int i = 0; i < n_ghost_addtnl_expansions; i++)
       my_p4est_ghost_expand(forest, ghost);
   }
 
@@ -528,10 +531,10 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
   p4est_reset_data(forest, 0, NULL, NULL);
 }
 
-void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
-                                   const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
-                                   const p4est_bool_t retrieve_brick, my_p4est_brick_t* &brick,
-                                   const p4est_bool_t create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
+void my_p4est_load_forest_and_data(const MPI_Comm& mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
+                                   const p4est_bool_t& expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
+                                   const p4est_bool_t& retrieve_brick, my_p4est_brick_t* &brick,
+                                   const p4est_bool_t& create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
                                    const char* forest_filename, u_int num_loads, ...)
 {
   va_list args;
@@ -553,19 +556,44 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
                                 forest_filename, elements);
 }
 
-void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
-                                   const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
-                                   const char* forest_filename, const std::vector<save_or_load_element_t>& elements)
+void my_p4est_load_forest_and_data(const MPI_Comm& mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
+								   const p4est_bool_t& expand_ghost, const double& cfl, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
+								   const p4est_bool_t& retrieve_brick, my_p4est_brick_t* &brick,
+								   const p4est_bool_t& create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
+								   const char* forest_filename, u_int num_loads, ...)
+{
+	va_list args;
+	va_start(args, num_loads);
+	vector<save_or_load_element_t> elements;
+	for (u_int i = 0; i < num_loads; ++i) {
+		save_or_load_element_t to_add;
+		to_add.name             = std::string(va_arg(args, const char*));
+		to_add.DATA_SAMPLING    = va_arg(args, int);
+		to_add.nvecs            = va_arg(args, u_int);
+		to_add.pointer_to_vecs  = va_arg(args, Vec*);
+		elements.push_back(to_add);
+	}
+	va_end(args);
+
+	my_p4est_load_forest_and_data(mpi_comm, absolute_path_to_folder, forest, conn,
+								  expand_ghost, ghost, nodes,
+								  retrieve_brick, brick, create_faces_hierarchy_and_cell_neighbors, faces, hierarchy, ngbd_c,
+								  forest_filename, elements, cfl);
+}
+
+void my_p4est_load_forest_and_data(const MPI_Comm& mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
+                                   const p4est_bool_t& expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
+                                   const char* forest_filename, const std::vector<save_or_load_element_t>& elements, const double& cfl)
 {
   // since we are not dealing with faces for this case, all the following need to be set to NULL
-  my_p4est_brick_t* brick = NULL;
-  my_p4est_faces_t* faces = NULL;
-  my_p4est_hierarchy_t* hierarchy = NULL;
-  my_p4est_cell_neighbors_t* ngbd_c = NULL;
+  my_p4est_brick_t* brick = nullptr;
+  my_p4est_faces_t* faces = nullptr;
+  my_p4est_hierarchy_t* hierarchy = nullptr;
+  my_p4est_cell_neighbors_t* ngbd_c = nullptr;
 
   my_p4est_load_forest_and_data(mpi_comm, absolute_path_to_folder, forest, conn, expand_ghost, ghost, nodes,
                                 P4EST_FALSE, brick, P4EST_FALSE, faces, hierarchy, ngbd_c,
-                                forest_filename, elements);
+                                forest_filename, elements, cfl);
 }
 
 void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
@@ -588,7 +616,25 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
   my_p4est_load_forest_and_data(mpi_comm, absolute_path_to_folder, forest, conn, expand_ghost, ghost, nodes, forest_filename, elements);
 }
 
+void my_p4est_load_forest_and_data(const MPI_Comm& mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
+								   const p4est_bool_t& expand_ghost, const double& cfl, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
+								   const char* forest_filename, u_int num_loads, ...)
+{
+	va_list args;
+	va_start(args, num_loads);
+	vector<save_or_load_element_t> elements;
+	for (u_int i = 0; i < num_loads; ++i) {
+		save_or_load_element_t to_add;
+		to_add.name             = std::string(va_arg(args, const char*));
+		to_add.DATA_SAMPLING    = va_arg(args, int);
+		to_add.nvecs            = va_arg(args, u_int);
+		to_add.pointer_to_vecs  = va_arg(args, Vec*);
+		elements.push_back(to_add);
+	}
+	va_end(args);
 
+	my_p4est_load_forest_and_data(mpi_comm, absolute_path_to_folder, forest, conn, expand_ghost, ghost, nodes, forest_filename, elements, cfl);
+}
 
 my_p4est_brick_t* my_p4est_recover_brick(const p4est_connectivity_t* connectivity)
 {

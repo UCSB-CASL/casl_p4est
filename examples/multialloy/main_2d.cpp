@@ -1988,6 +1988,7 @@ int main (int argc, char* argv[])
         (save_type.val == 0 && iteration    >= vtk_idx*save_every_dn.val) ||
         (save_type.val == 1 && total_growth >= vtk_idx*save_every_dl.val) ||
         (save_type.val == 2 && tn           >= vtk_idx*save_every_dt.val);
+    save_now = false;
 
     // save velocity, area of interface, volume of solid phase, etc
     if (save_characteristics.val)
@@ -2177,7 +2178,17 @@ int main (int argc, char* argv[])
             }
           }
         }
-        ierr = PetscPrintf(mpi.comm(), " Code ran till line 2175 \n", filename_characteristics); CHKERRXX(ierr);
+        contr.restore_array();
+        front.restore_array(); front_exact.restore_array(); front_error.restore_array();
+        ts.restore_array(); ts_exact.restore_array(); ts_error.restore_array();
+        tl.restore_array(); tl_exact.restore_array(); tl_error.restore_array();
+        vn.restore_array(); vn_exact.restore_array(); vn_error.restore_array();
+        ft.restore_array(); ft_exact.restore_array(); ft_error.restore_array();
+        tf.restore_array(); tf_exact.restore_array(); tf_error.restore_array();
+        vf.restore_array(); vf_exact.restore_array(); vf_error.restore_array();
+        cl.restore_array(); cl_exact.restore_array(); cl_error.restore_array();
+        cs.restore_array(); cs_exact.restore_array(); cs_error.restore_array();
+        kps.restore_array();
 
         if (save_vtk_analytical.val) {
           char name[1024];
@@ -2212,84 +2223,123 @@ int main (int argc, char* argv[])
 
           /*
           // cell data
-          std::vector<double *>    cell_data;
-          std::vector<std::string> cell_data_names;
+//          std::vector<double *>    cell_data;
+//          std::vector<std::string> cell_data_names;
+          std::vector<Vec_for_vtk_export_t> cell_fields;
 
           // point data
-          std::vector<double *>    point_data;
-          std::vector<std::string> point_data_names;
+//          std::vector<double *>    point_data;
+//          std::vector<std::string> point_data_names;
+          std::vector<Vec_for_vtk_export_t> point_fields;
 
-          point_data.push_back(contr.ptr); point_data_names.push_back("contr");
-          point_data.push_back(front.ptr); point_data_names.push_back("phi");
-          point_data.push_back(tl.ptr); point_data_names.push_back("tl");
-          point_data.push_back(ts.ptr); point_data_names.push_back("ts");
-          point_data.push_back(vn.ptr); point_data_names.push_back("vn");
-          point_data.push_back(ft.ptr); point_data_names.push_back("ft");
-          point_data.push_back(tf.ptr); point_data_names.push_back("tf");
-          point_data.push_back(vf.ptr); point_data_names.push_back("vf");
+//          point_data.push_back(contr.ptr); point_data_names.push_back("contr");
+          point_fields.push_back(Vec_for_vtk_export_t(contr.vec, "contr"));
 
-          point_data.push_back(front_exact.ptr); point_data_names.push_back("phi_exact");
-          point_data.push_back(tl_exact.ptr); point_data_names.push_back("tl_exact");
-          point_data.push_back(ts_exact.ptr); point_data_names.push_back("ts_exact");
-          point_data.push_back(vn_exact.ptr); point_data_names.push_back("vn_exact");
-          point_data.push_back(ft_exact.ptr); point_data_names.push_back("ft_exact");
-          point_data.push_back(tf_exact.ptr); point_data_names.push_back("tf_exact");
-          point_data.push_back(vf_exact.ptr); point_data_names.push_back("vf_exact");
+          //point_data.push_back(front.ptr); point_data_names.push_back("phi");
+          point_fields.push_back(Vec_for_vtk_export_t(front.vec, "phi"));
 
-          point_data.push_back(front_error.ptr); point_data_names.push_back("phi_error");
-          point_data.push_back(tl_error.ptr); point_data_names.push_back("tl_error");
-          point_data.push_back(ts_error.ptr); point_data_names.push_back("ts_error");
-          point_data.push_back(vn_error.ptr); point_data_names.push_back("vn_error");
-          point_data.push_back(ft_error.ptr); point_data_names.push_back("ft_error");
-          point_data.push_back(tf_error.ptr); point_data_names.push_back("tf_error");
-          point_data.push_back(vf_error.ptr); point_data_names.push_back("vf_error");
-          */
+
+//          point_data.push_back(tl.ptr); point_data_names.push_back("tl");
+          point_fields.push_back(Vec_for_vtk_export_t(tl.vec, "tl"));
+
+//          point_data.push_back(ts.ptr); point_data_names.push_back("ts");
+          point_fields.push_back(Vec_for_vtk_export_t(ts.vec, "ts"));
+
+//          point_data.push_back(vn.ptr); point_data_names.push_back("vn");
+          point_fields.push_back(Vec_for_vtk_export_t(vn.vec, "vn"));
+
+//          point_data.push_back(ft.ptr); point_data_names.push_back("ft");
+          point_fields.push_back(Vec_for_vtk_export_t(ft.vec, "ft"));
+
+//          point_data.push_back(tf.ptr); point_data_names.push_back("tf");
+          point_fields.push_back(Vec_for_vtk_export_t(tf.vec, "tf"));
+
+//          point_data.push_back(vf.ptr); point_data_names.push_back("vf");
+          point_fields.push_back(Vec_for_vtk_export_t(vf.vec, "vf"));
+
+//          point_data.push_back(front_exact.ptr); point_data_names.push_back("phi_exact");
+          point_fields.push_back(Vec_for_vtk_export_t(front_exact.vec, "phi_exact"));
+
+//          point_data.push_back(tl_exact.ptr); point_data_names.push_back("tl_exact");
+          point_fields.push_back(Vec_for_vtk_export_t(tl_exact.vec, "tl_exact"));
+
+//          point_data.push_back(ts_exact.ptr); point_data_names.push_back("ts_exact");
+          point_fields.push_back(Vec_for_vtk_export_t(ts_exact.vec, "ts_exact"));
+
+//          point_data.push_back(vn_exact.ptr); point_data_names.push_back("vn_exact");
+          point_fields.push_back(Vec_for_vtk_export_t(vn_exact.vec, "vn_exact"));
+
+//          point_data.push_back(ft_exact.ptr); point_data_names.push_back("ft_exact");
+          point_fields.push_back(Vec_for_vtk_export_t(ft_exact.vec, "ft_exact"));
+
+//          point_data.push_back(tf_exact.ptr); point_data_names.push_back("tf_exact");
+          point_fields.push_back(Vec_for_vtk_export_t(tf_exact.vec, "tf_exact"));
+
+//          point_data.push_back(vf_exact.ptr); point_data_names.push_back("vf_exact");
+          point_fields.push_back(Vec_for_vtk_export_t(vf_exact.vec, "vf_exact"));
+
+
+          //point_data.push_back(front_error.ptr); point_data_names.push_back("phi_error");
+          point_fields.push_back(Vec_for_vtk_export_t(front_error.vec, "phi_error"));
+
+          //point_data.push_back(tl_error.ptr); point_data_names.push_back("tl_error");
+          point_fields.push_back(Vec_for_vtk_export_t(tl_error.vec, "tl_error"));
+
+          //point_data.push_back(ts_error.ptr); point_data_names.push_back("ts_error");
+          point_fields.push_back(Vec_for_vtk_export_t(ts_error.vec, "ts_error"));
+
+          //point_data.push_back(vn_error.ptr); point_data_names.push_back("vn_error");
+          point_fields.push_back(Vec_for_vtk_export_t(vn_error.vec, "vn_error"));
+
+          //point_data.push_back(ft_error.ptr); point_data_names.push_back("ft_error");
+          point_fields.push_back(Vec_for_vtk_export_t(ft_error.vec, "ft_error"));
+
+          //point_data.push_back(tf_error.ptr); point_data_names.push_back("tf_error");
+          point_fields.push_back(Vec_for_vtk_export_t(tf_error.vec, "tf_error"));
+
+          //point_data.push_back(vf_error.ptr); point_data_names.push_back("vf_error");
+          point_fields.push_back(Vec_for_vtk_export_t(vf_error.vec, "vf_error"));
+
           for (int i = 0; i < num_comps.val; ++i) {
             char numstr[21]; sprintf(numstr, "%d", i);
+
+            //point_data.push_back(cl.ptr[i]);       point_data_names.push_back(std::string("cl") + numstr);
             point_fields.push_back(Vec_for_vtk_export_t(cl.vec[i], std::string("cl") + numstr));
+
+
+            //point_data.push_back(cl_exact.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_exact"));
             point_fields.push_back(Vec_for_vtk_export_t(cl_exact.vec[i], std::string("cl") + numstr + std::string("_exact")));
+
+
+            //point_data.push_back(cl_error.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_error"));
             point_fields.push_back(Vec_for_vtk_export_t(cl_error.vec[i], std::string("cl") + numstr + std::string("_error")));
 
+            //point_data.push_back(cs.ptr[i]);       point_data_names.push_back(std::string("cs") + numstr);
             point_fields.push_back(Vec_for_vtk_export_t(cs.vec[i], std::string("cs") + numstr));
+
+            //point_data.push_back(cs_exact.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_exact"));
             point_fields.push_back(Vec_for_vtk_export_t(cs_exact.vec[i], std::string("cs") + numstr + std::string("_exact")));
+
+            //point_data.push_back(cs_error.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_error"));
             point_fields.push_back(Vec_for_vtk_export_t(cs_error.vec[i], std::string("cs") + numstr + std::string("_error")));
+
           }
-          ierr = PetscPrintf(mpi.comm(), " Code ran till line 2252 \n", filename_characteristics); CHKERRXX(ierr);
 
-          /*
-          for (int i = 0; i < num_comps.val; ++i) {
-            char numstr[21]; sprintf(numstr, "%d", i);
-
-            point_data.push_back(cl.ptr[i]);       point_data_names.push_back(std::string("cl") + numstr);
-            point_data.push_back(cl_exact.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_exact"));
-            point_data.push_back(cl_error.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_error"));
-
-            point_data.push_back(cs.ptr[i]);       point_data_names.push_back(std::string("cs") + numstr);
-            point_data.push_back(cs_exact.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_exact"));
-            point_data.push_back(cs_error.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_error"));
-          }*/
+//          my_p4est_vtk_write_all_lists(p4est, nodes, mas.get_ghost(),
+//                                       P4EST_TRUE, P4EST_TRUE,
+//                                       name,
+//                                       point_data, point_data_names,
+//                                       cell_data, cell_data_names);
 
           my_p4est_vtk_write_all_lists(p4est, nodes, mas.get_ghost(),
-                                       P4EST_TRUE, P4EST_TRUE,
-                                       name,
-                                       point_fields,
-                                       cell_fields);
+                                       P4EST_TRUE,P4EST_TRUE, name,
+                                       point_fields, cell_fields);
 
 
           PetscPrintf(p4est->mpicomm, "VTK with analytic saved in %s\n", name);
         }
 
-        contr.restore_array();
-        front.restore_array(); front_exact.restore_array(); front_error.restore_array();
-        ts.restore_array(); ts_exact.restore_array(); ts_error.restore_array();
-        tl.restore_array(); tl_exact.restore_array(); tl_error.restore_array();
-        vn.restore_array(); vn_exact.restore_array(); vn_error.restore_array();
-        ft.restore_array(); ft_exact.restore_array(); ft_error.restore_array();
-        tf.restore_array(); tf_exact.restore_array(); tf_error.restore_array();
-        vf.restore_array(); vf_exact.restore_array(); vf_error.restore_array();
-        cl.restore_array(); cl_exact.restore_array(); cl_error.restore_array();
-        cs.restore_array(); cs_exact.restore_array(); cs_error.restore_array();
-        kps.restore_array();
+
 
         // write into file
         if (save_accuracy.val) {
@@ -2403,12 +2453,11 @@ int main (int argc, char* argv[])
     }
 
     // advance front to t_{n+1}
-    //mas.set_solve_with_fluids();
-    PetscPrintf(mpi.comm(), "Solve_with_fluids paramter has been set \n");
+    printf("blah \n");
     mas.update_grid();
-    PetscPrintf(mpi.comm(), "Update grid with fluids is complete \n");
+    printf("hello \n");
     mas.update_grid_solid();
-
+    printf("its me \n");
     // solve nonlinear system for temperature, concentration and velocity at t_n
     bc_error_max = 0;
     bc_error_avg = 0;

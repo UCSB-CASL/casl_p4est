@@ -32,6 +32,7 @@
 #include <sstream>
 #include <vector>
 #include <fstream>
+#include <random>
 
 #if SIZE_MAX == UCHAR_MAX
    #define my_MPI_SIZE_T MPI_UNSIGNED_CHAR
@@ -2815,7 +2816,59 @@ struct vec_and_ptr_array_t
   }
 };
 
-void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec phi, Vec normals[], Vec kappa);
+/**
+ * Normalize the components of nodal gradient vectors.  If the numerical norm of the vectors falls below EPS, the compo-
+ * nents are set to 0.
+ * @param [in,out] gradient Gradient vectors, component by component.
+ * @param [in] nodes Nodes structure.
+ * @throws invalid_argument exception if the gradient or any of its components evaluates to nullptr.
+ */
+void normalize_gradient( Vec gradient[P4EST_DIM], const p4est_nodes_t *nodes );
+
+/**
+ * Compute unit normal vectors and (twice) the (3D) mean curvature using compact stencils.
+ * TODO: Revise once we agree to start using the true mean curvature in 3D.
+ * @param [in] neighbors Neighbors' structure.
+ * @param [in] phi Level-set values.
+ * @param [out] normals Unit normal vectors.
+ * @param [out] kappa (Doubled) geometric mean curvature.
+ */
+void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec& phi, Vec normals[], Vec kappa);
+
+#ifdef P4_TO_P8
+/**
+ * Compute Gaussian curvature for all grid nodes using compact stencils (with non-normalized gradient).
+ * @note This function is only available in three dimensions.
+ * @note If second derivatives are provided, phi will be ignored.
+ * @param [in] ngbd Neigborhood structure.
+ * @param [in] phi Level-set values.
+ * @param [in] gradient (Non-normalized) gradient.
+ * @param [in] phi_xxyyzz Vector of second derivatives: phi_xx, phi_yy, and phi_zz.
+ * @param [out] kappaG Gaussian curvature.
+ * @throws invalid_argument exception if either the gradient or the output kappa vector is null, or if both phi and
+ * 		   phi_xxyyzz are null.
+ */
+void compute_gaussian_curvature( const my_p4est_node_neighbors_t &ngbd, const Vec& phi, const Vec gradient[P4EST_DIM],
+								 const Vec phi_xxyyzz[P4EST_DIM], Vec kappaG );
+
+/**
+ * Compute unit normal vectors and the mean, Gaussian, and (optional) principal curvatures for all grid nodes.  To
+ * compute the mean curvature, we use div(n), where n is a unit normal (i.e., the most robust approach).
+ * @note kappaM is defined as 1/(DIM-1)*(k1 + k2), which in 2D reduces to just k1 (i.e., the principal curvature).  That
+ * is, kappaM = 0.5(k1 + k2) and kappaG = k1*k2 are the geometrical mean and Gaussian curvatures, and k1 and k2 are the
+ * principal curvatures.
+ * @note This function is only available in three dimensions.
+ * @param [in] ngbd Neighborhood structure.
+ * @param [in] phi Level-set values.
+ * @param [out] normals Unit normal vectors, component by component.
+ * @param [out] kappaM Mean curvature.
+ * @param [out] kappaG Gaussian curvature.
+ * @param [out] kappa12 (Optional) Principal curvatures (with NAN values if they couldn't be computed).
+ * @throws invalid_argument exception if any of the mandatory input/output vectors are null.
+ */
+void compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, const Vec& phi, Vec normals[P4EST_DIM],
+									 Vec kappaM, Vec kappaG, Vec *kappa12=nullptr );
+#endif
 
 void save_vector(const char *filename, const std::vector<double> &data, std::ios_base::openmode mode = std::ios_base::out, char delim = ',');
 
@@ -3762,6 +3815,20 @@ void truncate_exportation_file_up_to_tstart(const double& tstart, const std::str
  * @param [out] data Pointer to 3D matrix; must be backed by an array of appropriate dimensions in caller.
  */
 void getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, const double *f, double data[P4EST_DIM][2][2] );
+
+
+/**
+ * Add uniform random noise to a level-set function sampled on a vector phi.  This function adds noise to local nodes and then scatters the
+ * altered values to other ranks.
+ * Noise is added as phi += rand, where rand must be already in the appropriate range of values, for example [-1e-5, +1e-5).  To do this,
+ * you must configure the input parameter dist *before* calling this function.
+ * @param [in,out] phi Sampled level-set function.
+ * @param [in] nodes Nodes structure.
+ * @param [in,out] gen Random entine.
+ * @param [in] dist Uniform random distribution with the range of noise you'll add to the level-set values.
+ * @throws invalid_argument if phi is null.
+ */
+void addRandomNoiseToLSFunction( Vec phi, const p4est_nodes_t *nodes, std::mt19937& gen, std::uniform_real_distribution<double>& dist );
 
 #endif // UTILS_H
 

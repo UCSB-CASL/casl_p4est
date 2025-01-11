@@ -75,8 +75,21 @@ SOURCES += $$PARCASL/src/my_p4est_epitaxy.cpp
 
 # similar for ml semilagrangian
 exists(fdeep/fdeep.hpp):exists(nlohmann/json.hpp):exists(cblas.h){
-HEADERS += $$PARCASL/src/my_p4est_semilagrangian_ml.h
-SOURCES += $$PARCASL/src/my_p4est_semilagrangian_ml.cpp
+	CONFIG(2d, 2d|3d): {
+		HEADERS += $$PARCASL/src/my_p4est_semilagrangian_ml.h
+		SOURCES += $$PARCASL/src/my_p4est_semilagrangian_ml.cpp
+
+		HEADERS += $$PARCASL/src/my_p4est_curvature_ml.h
+		SOURCES += $$PARCASL/src/my_p4est_curvature_ml.cpp
+	}
+
+	CONFIG(3d, 2d|3d): {
+		HEADERS += $$PARCASL/src/my_p8est_semilagrangian_ml.h
+        SOURCES += $$PARCASL/src/my_p8est_semilagrangian_ml.cpp
+
+        HEADERS += $$PARCASL/src/my_p8est_curvature_ml.h
+        SOURCES += $$PARCASL/src/my_p8est_curvature_ml.cpp
+	}
 }
 
 HEADERS += \
@@ -119,8 +132,6 @@ HEADERS += \
   $$PARCASL/src/my_p4est_save_load.h \
   $$PARCASL/src/my_p4est_scft.h \
   $$PARCASL/src/my_p4est_semi_lagrangian.h \
-# $$PARCASL/src/my_p4est_semi_lagrangian_ml.h \
-# $$PARCASL/src/my_p4est_curvature_ml.h \
   $$PARCASL/src/my_p4est_shs_channel.h \
   $$PARCASL/src/my_p4est_solve_lsqr.h \
   $$PARCASL/src/my_p4est_stefan_with_fluids.h \
@@ -178,8 +189,6 @@ SOURCES += \
   $$PARCASL/src/my_p4est_save_load.cpp \
   $$PARCASL/src/my_p4est_scft.cpp \
   $$PARCASL/src/my_p4est_semi_lagrangian.cpp \
-# $$PARCASL/src/my_p4est_semi_lagrangian_ml.cpp \
-# $$PARCASL/src/my_p4est_curvature_ml.cpp \
   $$PARCASL/src/my_p4est_solve_lsqr.cpp \
   $$PARCASL/src/my_p4est_stefan_with_fluids.cpp \
   $$PARCASL/src/my_p4est_surfactant.cpp \
@@ -242,7 +251,6 @@ HEADERS += \
   $$PARCASL/src/my_p8est_save_load.h \
 # $$PARCASL/src/my_p8est_scft.h \
   $$PARCASL/src/my_p8est_semi_lagrangian.h \
-# $$PARCASL/src/my_p8est_semi_lagrangian_ml.h \
   $$PARCASL/src/my_p8est_solve_lsqr.h \
   $$PARCASL/src/my_p8est_surfactant.h \
   $$PARCASL/src/my_p8est_shs_channel.h \
@@ -298,7 +306,6 @@ SOURCES += \
   $$PARCASL/src/my_p8est_save_load.cpp \
 # $$PARCASL/src/my_p8est_scft.cpp \
   $$PARCASL/src/my_p8est_semi_lagrangian.cpp \
-# $$PARCASL/src/my_p8est_semi_lagrangian_ml.cpp \
   $$PARCASL/src/my_p8est_solve_lsqr.cpp \
   $$PARCASL/src/my_p8est_surfactant.cpp \
   $$PARCASL/src/my_p8est_trajectory_of_point.cpp \

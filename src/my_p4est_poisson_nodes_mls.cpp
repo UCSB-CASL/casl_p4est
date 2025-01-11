@@ -186,7 +186,6 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   // wall conditions
   wc_type_  = NULL;
   wc_value_ = NULL;
-  wc_coeff_ = NULL;
 
   // solver options
   integration_order_          = 2;

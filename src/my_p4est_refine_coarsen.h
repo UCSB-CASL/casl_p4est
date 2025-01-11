@@ -385,6 +385,16 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
 p4est_bool_t
 refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
 
+/**
+ * Refine the grid based on distances to the walls on the y-axis.
+ * @note This is an especialization of the refine_levelset_cf_and_uniform_band function.
+ * @param [in] p4est Forest object.
+ * @param [in] which_tree Current tree to which the quadrant belongs.
+ * @param [in] quad Current quadrant.
+ * @return 0/1 describing if refinement is needed.
+ */
+p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad );
+
 /*!
  * \fn    refine_levelset_thres
  * \brief Refine based on the threshold of a continuous function.
@@ -542,6 +552,95 @@ public:
 	 * @return True if grid changed, false otherwise.
 	 */
 	bool refine_and_coarsen_with_band( p4est_t *p4est, p4est_nodes_t const *nodes, double const *phiReadPtr );
+};
+
+/**
+ * Class for refining an superhydrophic-surfaced channel where the solid ridges and air interface lie at y=+-DELTA, and
+ * DELTA is half the channel height.  The goal of this refining criteria is to use uniform bands for the distinct levels
+ * of refinements based on cell distances to the solid ridges.  Since the traditional approach doesn't enforce uniform
+ * refinement along the air interfaces, here we add conditions (independent of the Lipschitz condition) so that the
+ * Voronio tesellation doesn't fail in later computations.
+ * @note This class is to be used with the refine_levelset_cf_and_uniform_band_shs() method only.
+ */
+class splitting_criteria_cf_and_uniform_band_shs_t : public splitting_criteria_cf_and_uniform_band_t
+{
+private:
+	// These functions are identical to those from splitting_criteria_tag_t.  I needed to copy them because extending the
+	// splitting_criteria_tag_t class didn't cast to splitting_criteria_t correctly when reading the max level of refinement in
+	// my_p4est_navier_stokes_t::get_lmax().
+	static void init_fn( p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t* quad );
+	static int  refine_fn (p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t*  quad);
+	static int  coarsen_fn(p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t** quad);
+
+	/**
+	 * Tag a quadrant for coarsening, refinement, or leave as is.
+	 * @param [in] p4est P4est structure.
+	 * @param [in] quad_idx Quad index.
+	 * @param [in] tree_idx Tree index.
+	 * @param [in] nodes Nodes structure.
+	 * @param [in] tree_dimensions Owning tree dimensions.
+	 * @param [in] phi_p Pointer to a double array of level-set values.
+	 * @param [in] midBounds Array of max height from wall for mid layers.  If no mid layers exist or lmid_delta_percent is invalid,
+	 * 			   midBounds is empty.
+	 */
+	void tag_quadrant( p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, p4est_nodes_t* nodes,
+					   const double *tree_dimensions, const double *phi_p, const std::vector<double>& midBounds );
+
+public:
+	const double DELTA;					// Channel half-height (on the y-axis).
+	const double LMID_DELTA_PERCENT;	// How far to extend mid-level cells (use 0 to disable this option).
+
+	/**
+	 * Constructor.
+	 * @param [in] minLvl Quad/Octree minimum level of refinement.
+	 * @param [in] maxLvl Quad/Octree maximum level of refinement.
+	 * @param [in] phi Level-set object.
+	 * @param [in] uniformBand Desired uniform band next to the wall (regardless of type of interface: solid or gas).
+	 * @param [in] delta Channel half-height.
+	 * @param [in] lmidDeltaPercent How far to extend mid-level cells away from the wall.  Value must be in [0,1), where 0 disables the option.
+	 * @param [in] lip Lipschitz constant.
+	 */
+	splitting_criteria_cf_and_uniform_band_shs_t( const int& minLvl, const int& maxLvl, const CF_DIM *phi,
+												  const double& uniformBand, const double& delta,
+												  const double& lmidDeltaPercent, const double& lip ) :
+		splitting_criteria_cf_and_uniform_band_t( minLvl, maxLvl, phi, uniformBand, lip ),
+		DELTA( delta ), LMID_DELTA_PERCENT( lmidDeltaPercent )
+	{
+		std::string errorPrefix = "[CASL_ERROR] splitting_criteria_cf_and_uniform_band_shs_t::constructor: ";
+
+		if( minLvl < 0 || minLvl > maxLvl )
+			throw std::invalid_argument( errorPrefix + "Invalid min and max levels of refinement!" );
+
+		// Validate only if we expect mid-level cells and user wants to use mid-level cell percentage option.
+		if( maxLvl > minLvl && (lmidDeltaPercent < 0 || lmidDeltaPercent >= 1) )
+			throw std::invalid_argument( errorPrefix + "Mid-level-cell extension must non-negative and no more than 1*delta away from the wall." );
+	}
+
+	/**
+	 * Refining/coarsening function to update the underlying grid.
+	 * @param [in,out] p4est P4est structure.
+	 * @param [in] nodes Nodes structure (these don't change here -- you need to update them in calling function).
+	 * @param [in] phi Nodal level-set values.
+	 * @return True if grid has changed; false othewise.
+	 */
+	bool refine_and_coarsen( p4est_t* p4est, p4est_nodes_t* nodes, Vec phi );
+
+	/**
+	 * Retrieve the uniform band property.
+	 * @return uniform band half width.
+	 */
+	double uniformBand() const
+	{
+		return uniform_band;
+	}
+
+	/**
+	 * Calculate the limits for each band a different levels.
+	 * @param [in] smallest_dy Smallest mesh dy.
+	 * @param [out] midBounds The limits for each intermediate refinement level (i.e., betwen min_lvl and max_lvl, excluding the ends).
+	 * @return True if computations succeeded; false otherwise.  You can also check for success if midBounds is non-empty.
+	 */
+	bool getBandedBounds( const double& smallest_dy, std::vector<double>& midBounds ) const;
 };
 
 #endif // REFINE_COARSEN_H

@@ -23,12 +23,7 @@
 
 #ifndef P4_TO_P8
 #include <src/my_p4est_utils.h>
-#include <src/my_p4est_nodes.h>
-#include <src/my_p4est_tools.h>
-#include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_macros.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_semi_lagrangian_ml.h>
 #else
@@ -43,7 +38,6 @@
 #include <src/my_p8est_semi_lagrangian.h>
 #endif
 
-#include <src/petsc_compatibility.h>
 #include <src/casl_geometry.h>
 #include <src/parameter_list.h>
 

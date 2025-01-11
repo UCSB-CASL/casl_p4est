@@ -2,7 +2,7 @@
  * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
  * Developer: Luis Ángel.
  * Created: April 30, 2020.
- * Updated: November 24, 2021.
+ * Updated: May 31, 2022.
  */
 
 #ifndef CASL_GEOMETRY_H
@@ -15,6 +15,8 @@
 #include <src/point2.h>
 #include <src/point3.h>
 #include <random>
+#include <unordered_set>
+#include <unordered_map>
 
 namespace geom
 {
@@ -274,10 +276,10 @@ namespace geom
 	 * @return Closest point on the line segment v0v1.
 	 */
 	template<typename Point = Point2>
-	inline Point findClosestPointOnLineSegmentToPoint( const Point& p, const Point& v0, const Point& v1, double TOL = EPS )
+	inline Point findClosestPointOnLineSegmentToPoint( const Point& p, const Point& v0, const Point& v1, const double& TOL=EPS )
 	{
 		static_assert( std::is_base_of<Point2, Point>::value || std::is_base_of<Point3, Point>::value,
-					   "[CASL_ERROR]: geom::interpolatePoint: Function may be called only by Point2 or Point3 objects!" );
+					   "[CASL_ERROR] geom::interpolatePoint: Function may be called only with Point2 or Point3 objects!" );
 
 		Point v = v1 - v0;
 		double denom = v.dot( v );
@@ -290,6 +292,40 @@ namespace geom
 		if( t >= 1 )
 			return v1;
 		return v0 + v * t;
+	}
+
+	/**
+	 * Build a random set of orthonormal basis in 2 or 3d using a numerically stable Gram-Schmidth algorithm, as described on p. 316 in
+	 * "Matrix Analysis and Applied Linear Algebra", by Carl D. Meyer.
+	 * @tparam Point Either Point2 or Point3.
+	 * @param [out] basis Array of randomly generated orthnormal basis vectors.  To be emptied and fill with resulting vectors.
+	 * @param [in,out] gen Random-number-generating engine.
+	 */
+	template<typename Point = PointDIM>
+	inline void buildRandomBasis( std::vector<Point>& basis, std::mt19937& gen )
+	{
+		static_assert( std::is_base_of<Point2, Point>::value || std::is_base_of<Point3, Point>::value,
+			"[CASL_ERROR] geom::buildRandomBasis: Function may be called only with Point2 or Point3 objects!" );
+		u_short dim = std::is_base_of<Point2, Point>::value? 2 : 3;
+		basis.clear();
+
+		// Start with a set of random lin. independent vectors.
+		std::uniform_real_distribution<double> dist(-1, +1);
+		for( int i = 0; i < dim; i++ )
+		{
+			std::vector<double> values( dim );
+			for( int j = 0; j < dim; j++ )
+				values[j] = dist( gen );
+			basis.push_back( Point( values.data() ) );	// The to-be u_i basis vector.
+		}
+
+		// Construct the basis.
+		for( int k = 0; k < dim; k++ )
+		{
+			basis[k] = basis[k].normalize();
+			for( int j = k + 1; j < dim; j++ )
+				basis[j] = basis[j] - basis[k] * basis[k].dot( basis[j] );
+		}
 	}
 
 	/**
@@ -318,6 +354,11 @@ namespace geom
 		}
 	}
 
+	/**
+	 * Determines if a geometric shape (or point) lies inside or on the boundary of a relative area (like a limiting ellipse).
+	 */
+	enum RelPosType : unsigned char {UNDEFINED = 0, INTERIOR, BOUNDARY};
+
 	///////////////////////////// A triangle class useful for triangulating Monge patches //////////////////////////////
 
 	class Triangle
@@ -327,6 +368,7 @@ namespace geom
 		Point3 _n;						// (Non-normalized) normal vector to triangle's underlying plane.
 		double _nNorm2;					// Norm^2 of normal vector.
 		Point3 _edge0, _edge1, _edge2;	// The three sides of the triangle, being careful about the ordering.
+		const RelPosType _relPosType;	// Determines relative location of traingle w.r.t. other enclosing shape (like a limiting ellipse).
 
 		/**
 		 * Project a 3D point on the plane subtended by the triangle.  If the projected point P falls within the
@@ -411,9 +453,11 @@ namespace geom
 		 * @param [in] v1 Pointer to triangle's second vertex.
 		 * @param [in] v2 Pointer to triangle's third vertex.
 		 * @param [in] TOL Optional tolerance to detect degenerate triangles by measuring collinearity.
+		 * @param [in] relPosType Optional triangle type relative to some enclosing boundary.
 		 */
-		Triangle( const Point3 *v0, const Point3 *v1, const Point3 *v2, const double& TOL=EPS )
-				: _v0( v0 ), _v1( v1 ), _v2( v2 )
+		Triangle( const Point3 *v0, const Point3 *v1, const Point3 *v2,
+				  const double& TOL=EPS, const RelPosType& relPosType=RelPosType::UNDEFINED )
+				  : _v0( v0 ), _v1( v1 ), _v2( v2 ), _relPosType( relPosType )
 		{
 			// Compute triangle's subtended plane's normal vector.
 			Point3 v0v1 = *v1 - *v0;
@@ -473,6 +517,15 @@ namespace geom
 		{
 			return &_n;
 		}
+
+		/**
+		 * Retrieve relative position state.
+		 * @return Relative position state (any of the RelPosType enumeration).
+		 */
+		RelPosType getRelPosType() const
+		{
+			return _relPosType;
+		}
 	};
 
 	/////////////////////////////////////// Balltree and related functionalities ///////////////////////////////////////
@@ -531,27 +584,46 @@ namespace geom
 		}
 
 		/**
-		 * Find the closest point in a list S to a query point q.
+		 * Find the k closest points in a list S to a query point q.
 		 * @param [in] q Query point.
 		 * @param [in] S List of (pointers) to test.
 		 * @param [out] d Shortest distance with closest point.
+		 * @param [in] k Maximum number of nearest neighbors to keep track of.
+		 * @param [in] init Whether to discard the contents of xs and ds through initialization.
 		 * @return Closest point.
 		 */
-		static const Point3 *_findClosest( const Point3& q, const std::vector<const Point3 *>& S, double& d )
+		static void _findKClosest( const Point3& q, const std::vector<const Point3 *>& S, Point3 const **xs, double *ds,
+								   const unsigned char& k=1, const bool& init=true )
 		{
-			d = DBL_MAX;
-			const Point3 *closest = nullptr;
-			for( const auto& s : S )
+			// Initialize as needed.
+			if( init )
 			{
-				double dist = (q - *s).norm_L2();
-				if( dist < d )
+				for( int i = 0; i < k; i++ )
 				{
-					d = dist;
-					closest = s;
+					xs[i] = nullptr;
+					ds[i] = DBL_MAX;
 				}
 			}
 
-			return closest;
+			// Search.
+			for( const auto& s : S )
+			{
+				double dist = (q - *s).norm_L2();
+				for( int i = 0; i < k; i++ )	// Find where to place the new closest point and distance.
+				{
+					if( dist < ds[i] )			// ith location must be updated; shift everything after that.
+					{
+						for( int j = k - 1; j > i; j-- )	// Shift data.
+						{
+							xs[j] = xs[j-1];
+							ds[j] = ds[j-1];
+						}
+						xs[i] = s;
+						ds[i] = dist;
+						break;
+					}
+				}
+			}
 		}
 
 		/**
@@ -643,27 +715,24 @@ namespace geom
 		}
 
 		/**
-		 * Explore the (sub)tree rooted at n recursively to find the closest data point x (with distance d) to the query
-		 * point q.
+		 * Explore the (sub)tree rooted at n recursively to find the k closest data points x (with distances d) to the
+		 * query point q.
+		 * @note Prior to calling this function for the first time, make sure the output arrays contain nullptr values.
 		 * @param [in] q Query point.
-		 * @param [out] x Closest point to q in currently explored (sub)tree.
-		 * @param [out] d Distance from q to closest point x.
+		 * @param [out] xs Closest points to q in currently explored (sub)tree.
+		 * @param [out] ds Distances from q to closest points x.
 		 * @param [in] n (Sub)tree root or node to explore (if a leaf).
+		 * @param [in] k Maximum number of closest points to keep track of.
 		 */
-		void _findNearestNeighbor( const Point3& q, const Point3 *& x, double& d, const BalltreeNode *n ) const
+		void _findKNearestNeighbors( const Point3& q, Point3 const **xs, double *ds, const BalltreeNode *n,
+									 const unsigned char& k=1 ) const
 		{
 			if( _trace )
 				std::cout << n->id << " ";
 
-			if( !n->leftChild && !n->rightChild )	// If a leaf, compare against all nodes in it.
+			if( !n->leftChild && !n->rightChild )					// If a leaf, compare against all nodes in it.
 			{
-				double dist;
-				const Point3 *closest = _findClosest( q, n->points, dist );
-				if( dist < d )						// Update closest point and shortest distance.
-				{
-					d = dist;
-					x = closest;
-				}
+				_findKClosest( q, n->points, xs, ds, k, false );	// Find k closest without overwriting current results.
 
 				if( _trace )
 					std::cout << "* tested leaf points" << std::endl;
@@ -686,11 +755,11 @@ namespace geom
 					second = n->leftChild;
 				}
 
-				if( (first->center - q).norm_L2() - first->radius < d )		// Probe and prune left subtree if no
-					_findNearestNeighbor( q, x, d, first );					// member in it is within distance d from q.
+				if( (first->center - q).norm_L2() - first->radius < ds[k - 1] )	// Probe and prune left subtree if no
+					_findKNearestNeighbors( q, xs, ds, first, k );				// member in it is within distance d from q.
 
-				if( (second->center - q).norm_L2() - second->radius < d )	// Probe and prune right subtree if no
-					_findNearestNeighbor( q, x, d, second );				// member in it is within distance d from q.
+				if( (second->center - q).norm_L2() - second->radius < ds[k - 1] )	// Probe and prune right subtree if no
+					_findKNearestNeighbors( q, xs, ds, second, k );					// member in it is within distance d from q.
 			}
 		}
 
@@ -708,8 +777,8 @@ namespace geom
 						   : _k( k ), _rng( 0 ), _nodeCount( 0 ), _trace( trace )	// NOLINT.
 		{
 			// First, copy all points into local storage if user wants that.
-			// At the same time, populate the list to pass to buid function.
-			std::vector<const Point3 *> S;
+			// At the same time, populate the list to pass to build function.
+			std::vector<const Point3*> S;
 			S.reserve( points.size() );
 			if( copyPoints )
 			{
@@ -731,26 +800,67 @@ namespace geom
 		}
 
 		/**
-		 * Find the nearest point in the structure to a query point q.
-		 * @param [in] q Query point.
-		 * @param [out] d Shortest distance.
-		 * @return Nearest neighbor.
+		 * Constructor.
+		 * Default leaf size k based on value used in Python's scikit-learn module.
+		 * @note The user is responsible for providing a list of existing points.
+		 * @param [in] points List of pointers to point objects.
+		 * @param [in] k Maximum number of points in a leaf node.
+		 * @param [in] trace Whether to trace nodes visited during a knn query.
 		 */
-		const Point3 *findNearestNeighbor( const Point3& q, double& d ) const
+		explicit Balltree( const std::vector<const Point3 *>& points, const size_t& k=40, const bool& trace=false )
+						   : _k( k ), _rng( 0 ), _nodeCount( 0 ), _trace( trace )
 		{
+			if( k <= 0 || points.empty() )
+				throw std::runtime_error( "[CASL_ERROR] Balltree:constructor: k must be positive and points non empty!" );
+			_root = _buildTree( points );
+		}
+
+		/**
+		 * Find the k nearest neighbors to a query point q and send them back in distance-ascending order.
+		 * @param [in] q Query point.
+		 * @param [out] xs Nearest neighbor points.
+		 * @param [out] ds Nearest neighbor distances.
+		 * @param [in] k Maximum number of neighbors to keep track of.
+		 * @param [in] init Whether to override xs and ds through initialization.
+		 * @throws invalid_argument exception if k is not at least 1.
+		 */
+		void findKNearestNeighbors( const Point3& q, Point3 const **xs, double *ds, const unsigned char& k=1,
+									const bool& init=true ) const
+		{
+			if( k == 0 )
+				throw std::invalid_argument( "[CASL_ERROR] geom::Balltree::findKNearestNeighbors: k must be at least 1!" );
+
+			if( init )	// Reset output arrays through initialization?
+			{
+				for( int i = 0; i < k; i++ )
+				{
+					xs[i] = nullptr;
+					ds[i] = DBL_MAX;
+				}
+			}
+
 			if( _trace )
 			{
 				std::cout << "Tracing query for [" << q.x << ", " << q.y << ", " << q.z << "]" << std::endl;
 				std::cout << "--- Visited nodes ---" << std::endl;
 			}
 
-			const Point3 *x = nullptr;
-			d = DBL_MAX;
-			_findNearestNeighbor( q, x, d, _root );
+			_findKNearestNeighbors( q, xs, ds, _root, k );
 
 			if( _trace )
 				std::cout << "--- end ---" << std::endl;
+		}
 
+		/**
+		 * Find the nearest point to a query point q.
+		 * @param [in] q Query point.
+		 * @param [out] d Shortest distance.
+		 * @return Nearest neighbor.
+		 */
+		const Point3 *findNearestNeighbor( const Point3& q, double& d ) const
+		{
+			Point3 const* x;
+			findKNearestNeighbors( q, &x, &d, 1, true );
 			return x;
 		}
 
@@ -767,12 +877,18 @@ namespace geom
 	};
 
 	/**
-	 * Abstract Monge patch function f(x,y).
+	 * Abstract Monge patch function Q(u,v).
 	 */
 	class MongeFunction : public CF_2
 	{
 	public:
-		virtual double meanCurvature( const double& x, const double& y ) const = 0;
+		virtual double meanCurvature( const double& u, const double& v ) const = 0;
+		virtual double gaussianCurvature( const double& u, const double& v ) const = 0;
+		virtual double dQdu( const double& u, const double& v, double Q ) const = 0;
+		virtual double dQdv( const double& u, const double& v, double Q ) const = 0;
+		virtual double d2Qdu2( const double& u, const double& v, double Q, double Qu ) const = 0;
+		virtual double d2Qdv2( const double& u, const double& v, double Q, double Qv ) const = 0;
+		virtual double d2Qdudv( const double& u, const double& v, double Q ) const = 0;
 	};
 
 	/**
@@ -781,19 +897,19 @@ namespace geom
 	 * The class describes a Monge patch (x, y, f(x,y)) for (x,y) in a region R that is symmetric in every direction.
 	 * The domain R is rectangular, with h = 2^{-L}, where L > 0.  This is similar to how we handle quadtrees, but here
 	 * there are no intermediate cells.
-	 *
-	 * @warning Not a thread-safe class!
 	 */
 	class DiscretizedMongePatch : public CF_3
 	{
 	protected:
 		size_t _nPointsAlongU, _nPointsAlongV;	// How many points in each Cartesian direction.
 		double _uMin, _vMin;					// Minimum coordinates (_uMin, _vMin) or the lower-left corner.
-		double _h;								// "Mesh" size or the spacing between grid points on the uv plane.
+		double _uvh;							// "Mesh" size or the spacing between grid points on the uv plane (can be different to mesh
+												// size used by derived classes --this allows to possibly refine the discrete surface more).
 		Balltree *_balltree;					// Underlying balltree organization of points in space.
 		std::vector<Triangle> _triangles;		// List of triangles discretizing the Monge patch.
 		const MongeFunction *_mongeFunction;	// Monge function to compute the "height" and curvature at any (x,y).
-		std::vector<Point3> _points;			// Points defining the grid.
+		std::vector<const Point3 *> _points;	// Points defining the grid (or nullptr if they lie outside a limiting ellipse).
+		std::vector<RelPosType> _pointTypes;	// Determines whether created points are interior or boundary.
 		std::vector<std::vector<const Triangle *>> _pointsToTriangles;	// Tracks which triangles each point is part of.
 		mutable Point3 _lastNearestUVQ;					// Stores the u-v-q coords and the triangle of last
 		mutable const Triangle *_lastNearestTriangle;	// nearest-point query
@@ -801,14 +917,17 @@ namespace geom
 	public:
 		/**
 		 * Constructor.
+		 * @note If a limiting ellipse is desired, both sau and sav must be positive and less than DBL_MAX.
 		 * @param [in] ku Number of min cells in u half direction to define a symmetric domain.
 		 * @param [in] kv Number of min cells in v half direction to define a symmetric domain.
 		 * @param [in] L Number of refinement levels per unit length to define the cell width as H = 2^{-L}.
 		 * @param [in] mongeFunction A function of the form f(u,v) --parametrized as [u,v,f(u,v)].
 		 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
+		 * @param [in] sau2 Squared half-axis length on the u direction for the limiting ellipse on the uv plane.
+		 * @param [in] sav2 Squared half-axis length on the v direction for the limiting ellipse on the uv plane.
 		 */
-		DiscretizedMongePatch( const size_t& ku, const size_t& kv, const size_t& L, const MongeFunction *mongeFunction,
-							   const size_t& btKLeaf=40 )
+		DiscretizedMongePatch( const size_t& ku, const size_t& kv, const u_short& L, const MongeFunction *mongeFunction,
+							   const size_t& btKLeaf=40, const double& sau2=DBL_MAX, const double& sav2=DBL_MAX )
 							   : _mongeFunction( mongeFunction ), _lastNearestTriangle( nullptr )
 		{
 			// Validate inputs.
@@ -822,28 +941,72 @@ namespace geom
 			if( ku == 0 || kv == 0 )
 				throw std::runtime_error( errorPrefix + "Number of cells can't be zero!" );
 
+			if( sau2 <= 0 || sav2 <= 0 )
+				throw std::runtime_error( errorPrefix + "Limiting ellipse squared half-axis lengths must be positive!" );
+
 			// Initializing space variables and domain.
-			_h = 1. / (1 << L);								// Spacing.
-			_uMin = -(double)ku * _h;						// Lower-left coordinate is at (_uMin, _vMin).
-			_vMin = -(double)kv * _h;
+			_uvh = 1. / (1 << L);							// Spacing.
+			_uMin = -(double)ku * _uvh;						// Lower-left coordinate is at (_uMin, _vMin).
+			_vMin = -(double)kv * _uvh;
 			_nPointsAlongU = 2 * ku + 1;					// This is equivalent to (2|_dMin|/h + 1).
 			_nPointsAlongV = 2 * kv + 1;
+			_points.resize( _nPointsAlongU * _nPointsAlongV, nullptr );
+			_pointTypes.resize( _nPointsAlongU * _nPointsAlongV, RelPosType::UNDEFINED );
 
-			// Let's create the grid.
-			for( size_t j = 0; j < _nPointsAlongV; j++ )		// Rows, starting from the bottom-left corner.
+			std::vector<const Point3*> balltreePoints;		// Array of (valid) point pointers to build the balltree.
+			balltreePoints.reserve( _nPointsAlongU * _nPointsAlongV );
+
+			// Lambda function for in/out test of bounding ellipse.
+			auto _inOutTest = [&sau2, &sav2]( double& u, double& v ){
+				return SQR( u ) / sau2 + SQR( v ) / sav2 <= 1;
+			};
+
+			// Let's create the points within ellipse and populate the list to pass on to the balltree.
+			for( int j = 0; j < _nPointsAlongV; j++ )		// Rows, starting from the bottom-left corner.
 			{
-				for( size_t i = 0; i < _nPointsAlongU; i++ )	// Columns.
+				for( int i = 0; i < _nPointsAlongU; i++ )	// Columns.
 				{
-					double x = _uMin + (double)i * _h;
-					double y = _vMin + (double)j * _h;
+					double x = _uMin + (double)i * _uvh;
+					double y = _vMin + (double)j * _uvh;
 					double z = _mongeFunction->operator()( x, y );
-					_points.emplace_back( x, y, z );
+					size_t idx = _nPointsAlongU * j + i;
+
+					if( sau2 == DBL_MAX || sav2 == DBL_MAX || _inOutTest( x, y ) )	// No limit or inside ellipse? Interior point.
+					{
+						_points[idx] = new Point3( x, y, z );
+						_pointTypes[idx] = RelPosType::INTERIOR;
+						balltreePoints.emplace_back( _points[idx] );
+					}
+					else	// Bring in any point outside ellipse if it has a neighbor inside.  If so, new point is a boundary point.
+					{
+						int neighbors[8][2] = {
+							{i-1, j-1}, {i, j-1}, {i+1, j-1},	// Bottom neighbors.
+							{i-1,   j}, {i+1, j}, 				// Same row neighbors.
+							{i-1, j+1}, {i, j+1}, {i+1, j+1}	// Top neighbors.
+						};
+
+						for( const auto& neighbor : neighbors )	// See if there's at least one seed neighbor.
+						{
+							if( (neighbor[0] >= 0 && neighbor[0] < _nPointsAlongU) &&
+								(neighbor[1] >= 0 && neighbor[1] < _nPointsAlongV) )
+							{
+								double xn = _uMin + (double)neighbor[0] * _uvh;
+								double yn = _vMin + (double)neighbor[1] * _uvh;
+								if( _inOutTest( xn, yn ) )
+								{
+									_points[idx] = new Point3( x, y, z );
+									_pointTypes[idx] = RelPosType::BOUNDARY;
+									balltreePoints.emplace_back( _points[idx] );
+									break;						// Found seed neighbor -- halt loop.
+								}
+							}
+						}
+					}
 				}
 			}
 
-			// Organize the points into a balltree for fast knn search: don't make copies of points.  We'll keep them in
-			// this object to link them to triangles.
-			_balltree = new Balltree( _points, false, btKLeaf );
+			// Organize the points into a balltree for fast knn search.
+			_balltree = new Balltree( balltreePoints, btKLeaf );
 
 			// Triangulation.  The pattern is the following, starting from the bottom-left corner of the domain.
 			//     :    :    :    :
@@ -857,11 +1020,12 @@ namespace geom
 			//   0      1    2    3
 			_triangles.reserve( (_nPointsAlongU - 1) * (_nPointsAlongV - 1) * 2 );	// Here, we save the real triangles; then we use pointers to them.
 
-			for( size_t p = 0; p < _points.size(); p++ )			// Let's make space for the map of points to triangles.
+			for( const auto& point : _points )				// Let's make space for the map of points to triangles.
 			{
 				_pointsToTriangles.emplace_back( std::vector<const Triangle *>() );
-				_pointsToTriangles.back().reserve( 8 );				// Each point is part of at most 6 triangles under the above scheme plus 2 to
-			}														// complete the quads.  Edge points belong to 3+1, and corners belong to 1+1.
+				if( point ) 								// Each valid point is part of at most 6 triangles under the above scheme plus 2 to
+					_pointsToTriangles.back().reserve( 8 );	// complete the quads.  Edge points belong to 3+1, and corners belong to 1+1.
+			}
 
 			for( size_t j = 0; j < _nPointsAlongV - 1; j++ )		// Rows first (without getting to the very last).
 			{
@@ -877,22 +1041,95 @@ namespace geom
 					size_t idx1 = idx0 + 1;
 					size_t idx2 = idx1 + _nPointsAlongU;
 					size_t idx3 = idx0 + _nPointsAlongU;
-					_triangles.emplace_back( &_points[idx0], &_points[idx1], &_points[idx2] );	// Lower triangle...
-					_pointsToTriangles[idx0].push_back( &_triangles.back() );					// and pointers to it.
-					_pointsToTriangles[idx1].push_back( &_triangles.back() );
-					_pointsToTriangles[idx2].push_back( &_triangles.back() );
-					_pointsToTriangles[idx3].push_back( &_triangles.back() );
-					_triangles.emplace_back( &_points[idx0], &_points[idx2], &_points[idx3] );	// Upper triangle...
-					_pointsToTriangles[idx0].push_back( &_triangles.back() );					// and pointers to it.
-					_pointsToTriangles[idx2].push_back( &_triangles.back() );
-					_pointsToTriangles[idx3].push_back( &_triangles.back() );
-					_pointsToTriangles[idx1].push_back( &_triangles.back() );
+					if( _points[idx0] && _points[idx1] && _points[idx2] )	// Can we create lower triangle?
+					{
+						RelPosType rpt = RelPosType::INTERIOR;
+						if( _pointTypes[idx0] == RelPosType::BOUNDARY || 	// If at least one point is a boundary type,
+							_pointTypes[idx1] == RelPosType::BOUNDARY || 	// triangle will be marked as boundary tye too.
+							_pointTypes[idx2] == RelPosType::BOUNDARY )
+							rpt = RelPosType::BOUNDARY;
+
+						_triangles.emplace_back( _points[idx0], _points[idx1], _points[idx2], EPS, rpt );	// Build it and
+						if( _points[idx0] ) _pointsToTriangles[idx0].push_back( &_triangles.back() );		// add pointers
+						if( _points[idx1] ) _pointsToTriangles[idx1].push_back( &_triangles.back() );		// to it for
+						if( _points[idx2] ) _pointsToTriangles[idx2].push_back( &_triangles.back() );		// defined quad
+						if( _points[idx3] ) _pointsToTriangles[idx3].push_back( &_triangles.back() );		// points.
+					}
+					if( _points[idx0] && _points[idx2] && _points[idx3] )	// Can we create upper triangle?
+					{
+						RelPosType rpt = RelPosType::INTERIOR;
+						if( _pointTypes[idx0] == RelPosType::BOUNDARY || 	// If at least one point is a boundary type,
+							_pointTypes[idx2] == RelPosType::BOUNDARY || 	// triangle will be marked as boundary tye too.
+							_pointTypes[idx3] == RelPosType::BOUNDARY )
+							rpt = RelPosType::BOUNDARY;
+
+						_triangles.emplace_back( _points[idx0], _points[idx2], _points[idx3], EPS, rpt );	// Build it and
+						if( _points[idx0] ) _pointsToTriangles[idx0].push_back( &_triangles.back() );		// add pointers
+						if( _points[idx2] ) _pointsToTriangles[idx2].push_back( &_triangles.back() );		// to it.
+						if( _points[idx3] ) _pointsToTriangles[idx3].push_back( &_triangles.back() );
+						if( _points[idx1] ) _pointsToTriangles[idx1].push_back( &_triangles.back() );
+					}
 				}
 			}
 		}
 
 		/**
-		 * Find nearest point to triangulated surface.
+		 * Find nearest point to triangulated surface using a k-nearest-neighbor approach.
+		 * @param [in] q Query point.
+		 * @param [out] d Shortest distance to triangulated surface.
+		 * @param [out] t Triangle where shortest distance was found.
+		 * @param [in] k Maximum number of neighbors to find and pull triangles from.
+		 * @return Nearest point.
+		 * @throws invalid_argument exception if k == 0.
+		 */
+		Point3 findNearestPointFromKNN( const Point3& q, double& d, const Triangle *& t, const unsigned char& k ) const
+		{
+			if( k == 0 )
+				throw std::invalid_argument( "[CASL_ERROR] geom::DiscretizedMongePatch::findKNearestPointFromKNN: k must be at least 1!" );
+
+			// First, find the closest discrete points in the cloud.
+			auto *ds = new double[k];
+			auto const* *xs = new Point3 const*[k];
+			_balltree->findKNearestNeighbors( q, xs, ds, k, true );		// This function also initializes vars to correct value.
+
+			// Next, compute distance to triangles, and keep the minimum.
+			int nn = 0;
+			d = DBL_MAX;
+			Point3 closestPoint;
+			std::unordered_set<Triangle const*> visitedT( k * 8 );		// Memoization to avoid double-checking triangles.
+			while( nn < k && xs[nn] )							// Check triangles attached to each found nearest point.
+			{
+				auto j = (size_t)((xs[nn]->y - _vMin) / _uvh);	// Row.
+				auto i = (size_t)((xs[nn]->x - _uMin) / _uvh);	// Col.
+				size_t idx = j * _nPointsAlongU + i;			// Node id.
+				for( const auto& triangle : _pointsToTriangles[idx] )
+				{
+					if( visitedT.count( triangle ) )			// Skip triangles already visited.
+						continue;
+					visitedT.insert( triangle );
+
+					Point3 p = triangle->findClosestPointToQuery( &q );
+					double d1 = (p - q).norm_L2();
+					if( d1 < d )								// Found a closer point?
+					{
+						closestPoint = p;
+						d = d1;
+						t = triangle;
+					}
+				}
+
+				nn++;
+			}
+
+			// Clean up.
+			delete [] ds;
+			delete [] xs;
+
+			return closestPoint;
+		}
+
+		/**
+		 * Find nearest point to triangulated surface using a k-nearest-neighbor approach with k = 1.
 		 * @param [in] q Query point.
 		 * @param [out] d Shortest distance to triangulated surface.
 		 * @param [out] t Triangle where shortest distance was found.
@@ -900,29 +1137,7 @@ namespace geom
 		 */
 		Point3 findNearestPoint( const Point3& q, double& d, const Triangle *& t ) const
 		{
-			// First, find the closest discrete point in the cloud.
-			double d0 = DBL_MAX;
-			const Point3* nn = _balltree->findNearestNeighbor( q, d0 );
-
-			// Next, compute distance to triangles, and keep the minimum.
-			auto j = (size_t)((nn->y - _vMin) / _h);		// Row.
-			auto i = (size_t)((nn->x - _uMin) / _h);		// Col.
-			size_t idx = j * _nPointsAlongU + i;			// Node id.
-			d = DBL_MAX;
-			Point3 closestPoint;
-			for( const auto& triangle : _pointsToTriangles[idx] )
-			{
-				Point3 p = triangle->findClosestPointToQuery( &q );
-				double d1 = (p - q).norm_L2();
-				if( d1 < d )								// Found a closer point?
-				{
-					closestPoint = p;
-					d = d1;
-					t = triangle;
-				}
-			}
-
-			return closestPoint;
+			return findNearestPointFromKNN( q, d, t, 1 );
 		}
 
 		/**
@@ -930,6 +1145,8 @@ namespace geom
 		 * Upon exiting, the function sets the variable _lastNearestUVQ with the coordinates of nearest point to query.
 		 * @note A child class should re-implement this function accounting for the signed distance to the discretized
 		 * interface.
+		 * @warning Not a thread-safe method if you need to access to _lastNearestUVQ or _lastNearestTriangle; use the
+		 * findNearestPoint() function instead.
 		 * @param [in] x Coordinate in x.
 		 * @param [in] y Coordinate in y.
 		 * @param [in] z Coordinate in z.
@@ -970,6 +1187,9 @@ namespace geom
 		{
 			delete _balltree;
 			_lastNearestTriangle = nullptr;
+
+			for( const auto &point : _points )	// Release points created dynamically.
+				delete point;
 		}
 
 		/**
@@ -989,6 +1209,249 @@ namespace geom
 				v = triangle.getVertex( 2 );
 				output << v->x << "," << v->y << "," << v->z << std::endl;
 			}
+		}
+	};
+
+	/**
+	 * A class representing an affine-transformed Cartesian frame or coordinate system.  The rigid transformation includes a rotation and/or
+	 * a translation.
+	 */
+	class AffineTransformedSpace
+	{
+	protected:
+		__attribute__((unused)) const double _beta;	// Transformation parameters to vary canonical system w.r.t. world coordinate system.
+		const Point3 _axis;							// These include a rotation (unit) axis and angle, and a translation vector that sets
+		const Point3 _trns;							// the origin of the canonical system to any point in space.
+		const double _c, _s;						// Since we use cosine and sine of beta a lot, let's precompute them.
+		const double _one_m_c;						// (1-cos(beta)).
+
+	public:
+		/**
+		 * Constructor.
+		 * @param [in] trans Translation vector.
+		 * @param [in] rotAxis Rotation axis (must be nonzero) --which will be normalized.
+		 * @param [in] rotAngle Rotation angle about rotAxis.
+		 * @throws invalid_argument exception if rotation axis is (near) singular.
+		 */
+		explicit AffineTransformedSpace( const Point3& trans, const Point3& rotAxis, const double& rotAngle=0 )
+									   : _trns( trans ), _axis( rotAxis.normalize() ), _beta( rotAngle), _c( cos( rotAngle ) ),
+									   _s( sin( rotAngle ) ), _one_m_c( 1 - cos( rotAngle ) )
+		{
+			if( rotAxis.norm_L2() < EPS )		// Singular rotation axis?
+				throw std::invalid_argument( "AffineTransformedSpace::constructor: Rotation axis shouldn't be 0!" );
+		}
+
+		/**
+		 * Default constructor.
+		 */
+		AffineTransformedSpace() : AffineTransformedSpace( Point3( 0, 0, 0 ), Point3( 1, 0, 0 ) ) {}
+
+		/**
+		 * Transform a point/vector in world coordinates to canonical coordinates using the tranformation info.
+		 * @param [in] x x-coordinate.
+		 * @param [in] y y-coordinate.
+		 * @param [in] z z-coordinate.
+		 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
+		 * @return The coordinates of (x,y,z) in the representation of the canonical coordinate system.
+		 */
+		Point3 toCanonicalCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
+		{
+			Point3 r;
+			const double xmt = isVector? x : x - _trns.x;		// Displacements affect points only.
+			const double ymt = isVector? y : y - _trns.y;
+			const double zmt = isVector? z : z - _trns.z;
+			r.x = (_c + _one_m_c*SQR(_axis.x))*xmt + (_one_m_c*_axis.x*_axis.y + _s*_axis.z)*ymt + (_one_m_c*_axis.x*_axis.z - _s*_axis.y)*zmt;
+			r.y = (_one_m_c*_axis.y*_axis.x - _s*_axis.z)*xmt + (_c + _one_m_c*SQR(_axis.y))*ymt + (_one_m_c*_axis.y*_axis.z + _s*_axis.x)*zmt;
+			r.z = (_one_m_c*_axis.z*_axis.x + _s*_axis.y)*xmt + (_one_m_c*_axis.z*_axis.y - _s*_axis.x)*ymt + (_c + _one_m_c*SQR(_axis.z))*zmt;
+
+			return r;
+		}
+
+		/**
+		 * Transform a point/vector in world coordinates to canonical coordinates using the transformation info.
+		 * @param [in] xyz Coordinates in the world frame.
+		 * @param [in] isVector Whether input coords correspond to a vector (true) or a point (false).
+		 * @return The coordinates of xyz in the representation of the canonical coordinate system.
+		 */
+		Point3 toCanonicalCoordinates( const double xyz[P4EST_DIM], const bool& isVector=false ) const
+		{
+			return toCanonicalCoordinates( xyz[0], xyz[1], xyz[2], isVector );
+		}
+
+		/**
+		 * Transform a point/vector from canonical coordinates to world coordinates using the transformation info.
+		 * @param [in] x x-coordinate.
+		 * @param [in] y y-coordinate.
+		 * @param [in] z z-coordinate.
+		 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
+		 * @return The coordinates (x,y,z) in the representation of the world coordinate system.
+		 */
+		Point3 toWorldCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
+		{
+			Point3 r;
+			r.x = x*(_c + _one_m_c*SQR(_axis.x)) + y*(_one_m_c*_axis.y*_axis.x - _s*_axis.z) + z*(_one_m_c*_axis.z*_axis.x + _s*_axis.y);
+			r.y = x*(_one_m_c*_axis.x*_axis.y + _s*_axis.z) + y*(_c + _one_m_c*SQR(_axis.y)) + z*(_one_m_c*_axis.z*_axis.y - _s*_axis.x);
+			r.z = x*(_one_m_c*_axis.x*_axis.z - _s*_axis.y) + y*(_one_m_c*_axis.y*_axis.z + _s*_axis.x) + z*(_c + _one_m_c*SQR(_axis.z));
+
+			if( !isVector )
+			{
+				r.x += _trns.x;
+				r.y += _trns.y;
+				r.z += _trns.z;
+			}
+
+			return r;
+		}
+	};
+
+	/**
+	 * An abstract class for a level-set function whose zero isocontour is discretized into an affine-transformed Monge
+	 * patch.
+	 */
+	class DiscretizedLevelSet : public geom::AffineTransformedSpace, public geom::DiscretizedMongePatch
+	{
+	protected:
+		double _h;		// True min mesh size (which can be, e.g., larger than the one used for creating the balltree).
+		bool _useCache = false;	// Computing distance to triangulated surface is expensive --let's cache distances and
+		mutable std::unordered_map<std::string, std::pair<double, Point3>> _cache;	// nearest points.  Also, cache can-
+		mutable std::unordered_map<std::string, Point3> _canonicalCoordsCache;		// onical coords for grid points.
+
+		/**
+		 * Find nearest point and signed distance to triangulated surface using knn search.
+		 * @param [in] p Query point in canonical coords.
+		 * @param [out] d Computed signed distance.
+		 * @param [in] k Number of nearest neighbors to use.
+		 * @return Nearest point.
+		 */
+		Point3 _findNearestPointAndSignedDistance( const Point3& p, double& d, const unsigned char& k=1 ) const
+		{
+			d = DBL_MAX;
+			const geom::Triangle *nearestTriangle;
+			Point3 nearestPoint;
+			nearestPoint = findNearestPointFromKNN( p, d, nearestTriangle, k );		// Use knn for higher accuracy.
+
+			// Fix sign: points above surface are negative and below are positive.  Because of the way we created the
+			// triangles, their normals point up in the canonical coord system (i.e., into the negative region Omega-).
+			Point3 w = p - *(nearestTriangle->getVertex(0));
+			if( w.dot( *(nearestTriangle->getNormal()) ) >= 0 )	// In the direction of the normal?
+				d *= -1;
+
+			return nearestPoint;
+		}
+
+	public:
+		/**
+		 * Constructor.
+		 * @param [in] trans Translation vector.
+		 * @param [in] rotAxis Rotation axis (must be nonzero).
+		 * @param [in] rotAngle Rotation angle about rotAxis.
+		 * @param [in] ku Number of min cells in u half direction to define a symmetric domain.
+		 * @param [in] kv Number of min cells in v half direction to define a symmetric domain.
+		 * @param [in] L Number of refinement levels per unit length (so that h=2^{-L} is a power of two).
+		 * @param [in] mongeFunction Monge patch in canonical coordinates.
+		 * @param [in] sau2 Squared half-axis length on the u direction for the limiting ellipse on the uv plane.
+		 * @param [in] sav2 Squared half-axis length on the v direction for the limiting ellipse on the uv plane.
+		 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
+		 * @param [in] addToL Adds more "levels of refinement" to triangulate the surface.
+		 * @throws invalid_argument exception if no Monge function object is provided or if the rotation axis is singular.
+		 */
+		DiscretizedLevelSet( const Point3& trans, const Point3& rotAxis, const double& rotAngle, const size_t& ku, const size_t& kv,
+							 const u_short& L, const MongeFunction *mongeFunction, const double& sau2=DBL_MAX, const double& sav2=DBL_MAX,
+							 const size_t& btKLeaf=40, const u_short& addToL=0 )
+							 : AffineTransformedSpace( trans, rotAxis, rotAngle ),
+							 DiscretizedMongePatch( ku * (1 << addToL), kv * (1 << addToL), L + addToL, mongeFunction, btKLeaf, sau2, sav2 )
+		{
+			const std::string errorPrefix = "[CASL_ERROR] DiscretizedLevelSet::constructor: ";
+			_h = 1. / (1 << L);
+			if( !mongeFunction )
+				throw std::invalid_argument( errorPrefix + "Sinusoid surface object can't be null!" );
+		}
+
+		/**
+		 * Compute exact signed distance to Gamma.
+		 * @param [in] x Query x-coordinate.
+		 * @param [in] y Query y-coordinate.
+		 * @param [in] z Query z-coordinate.
+		 * @param [out] updated Status flag set to 1 if exact-distance computation succeeded, 2 otherwise.
+		 * @return Shortest signed distance.
+		 */
+		virtual double computeExactSignedDistance( double x, double y, double z, u_short& updated ) const = 0;
+
+		/**
+		 * @see DiscretizedLevelSet::computeExactSignedDistance( double x, double y, double z, u_short& updated ).
+		 * @param [in] xyz Query point in world coordinates.
+		 * @param [out] updated Status flag set to 1 if exact-distance computation succeeded, 2 otherwise.
+		 * @return Shortest signed distance.
+		 */
+		double computeExactSignedDistance( const double xyz[P4EST_DIM], u_short& updated ) const
+		{
+			return computeExactSignedDistance( xyz[0], xyz[1], xyz[2], updated );
+		}
+
+		/**
+		 * Retrieve discrete coordinates as a triplet normalized by h.
+		 * @param [in] x x-coordinate.
+		 * @param [in] y y-coordinate.
+		 * @param [in] z z-coordinate.
+		 * @return "i,j,k".
+		 */
+		std::string getDiscreteCoords( const double& x, const double& y, const double& z ) const
+		{
+			return std::to_string( (int)(x/_h) ) + "," + std::to_string( (int)(y/_h) ) + "," + std::to_string( (int)(z/_h) );
+		}
+
+		/**
+		 * Dump triangles into a data file for debugging/visualizing.
+		 * @param [in] filename Output file name.
+		 * @throws runtime_error if file can't be opened.
+		 */
+		void dumpTriangles( const std::string& filename )
+		{
+			std::ofstream trianglesFile;				// Dumping triangles' vertices into a file for debugging/visualizing.
+			trianglesFile.open( filename, std::ofstream::trunc );
+			if( !trianglesFile.is_open() )
+				throw std::runtime_error( filename + " couldn't be opened for dumping mesh!" );
+			trianglesFile << R"("x0","y0","z0","x1","y1","z1","x2","y2","z2")" << std::endl;
+			trianglesFile.precision( 15 );
+			geom::DiscretizedMongePatch::dumpTriangles( trianglesFile );
+			trianglesFile.close();
+		}
+
+		/**
+		 * Turn on/off cache for faster distance retrieval.
+		 * @param [in] useCache True to enable cache, false to disable it.
+		 */
+		void toggleCache( const bool& useCache )
+		{
+			_useCache = useCache;
+		}
+
+		/**
+		 * Empty cache.
+		 */
+		void clearCache()
+		{
+			_cache.clear();
+			_canonicalCoordsCache.clear();
+		}
+
+		/**
+		 * Reserve space for cache.  Call this function, preferably, at the beginning of queries or octree construction.
+		 * @param [in] n Reserve size.
+		 */
+		void reserveCache( const size_t& n )
+		{
+			_cache.reserve( n );
+			_canonicalCoordsCache.reserve( n );
+		}
+
+		/**
+		 * Retrieve the cache size.
+		 * @return _cache (and _canonicalCoordsCache) size.
+		 */
+		size_t getCacheSize() const
+		{
+			return _cache.size();
 		}
 	};
 
