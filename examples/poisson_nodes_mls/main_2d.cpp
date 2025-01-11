@@ -1,4 +1,4 @@
-/*
+ /*
  * Test the cell based multi level-set p4est.
  * Intersection of two circles
  *
@@ -159,7 +159,7 @@ param_t<double> diff_coeff_iter_num   (pl, 1, "diff_coeff_iter_num",   "Number o
 param_t<double> diff_coeff_m_mult_min (pl, 1, "diff_coeff_m_mult_min", "Minimum value of diffusion coefficient multiplier in negative domain");
 param_t<double> diff_coeff_m_mult_max (pl, 1, "diff_coeff_m_mult_max", "Maximum value of diffusion coefficient multiplier in negative domain");
 
-param_t<int>    wc_type (pl, NEUMANN, "wc_type", "Type of boundary conditions on the walls");
+param_t<int>    wc_type (pl, DIRICHLET, "wc_type", "Type of boundary conditions on the walls");
 
 param_t<int>    rhs_m_value (pl, 0, "rhs_m_value", "Source term in negative domain: 0 - automatic (method of manufactured solutions), 1 - zero");
 param_t<int>    rhs_p_value (pl, 0, "rhs_p_value", "Source term in positive domain: 0 - automatic (method of manufactured solutions), 1 - zero");
@@ -224,7 +224,7 @@ param_t<int>    infc_01_flux_jump  (pl, 0, "infc_01_flux_jump", "0 - automatic, 
 param_t<int>    infc_02_flux_jump  (pl, 0, "infc_02_flux_jump", "0 - automatic, others - hardcoded");
 param_t<int>    infc_03_flux_jump  (pl, 0, "infc_03_flux_jump", "0 - automatic, others - hardcoded");
 
-param_t<int>    example (pl, 2, "example", "Predefined example:\n"
+param_t<int>    example (pl, 1, "example", "Predefined example:\n"
                                             "0 - no interfaces, no boudaries\n"
                                             "1 - sphere interior\n"
                                             "2 - sphere exterior\n"
