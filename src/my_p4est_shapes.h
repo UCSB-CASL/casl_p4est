@@ -1819,4 +1819,230 @@ struct multi_circle_domain_t {
 };
 #endif
 
+class partial_circle_phi_t : public CF_2 {
+public:
+    std::vector<double> r0;         // radii
+    std::vector<double> xc, yc;     // centers
+    std::vector<double> start_angle; // starting angle for each circle
+    std::vector<double> end_angle;   // ending angle for each circle
+    double beta;                     // deformation parameter
+    double inside;                   // interior (1) or exterior (-1)
+    double theta, cos_theta, sin_theta;  // rotation parameters
+
+    partial_circle_phi_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                        const std::vector<double>& xc = std::vector<double>{0.0},
+                        const std::vector<double>& yc = std::vector<double>{0.0},
+                        const std::vector<double>& start = std::vector<double>{0.0},
+                        const std::vector<double>& end = std::vector<double>{2.0 * M_PI},
+                        double beta = 0.0, double inside = 1.0, double theta = 0.0)
+        : r0(r0), xc(xc), yc(yc), start_angle(start), end_angle(end),
+          beta(beta), inside(inside), theta(theta)
+    {
+        cos_theta = cos(theta);
+        sin_theta = sin(theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                   const std::vector<double>& xc,
+                   const std::vector<double>& yc,
+                   const std::vector<double>& start,
+                   const std::vector<double>& end,
+                   double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        this->r0 = r0;
+        this->xc = xc;
+        this->yc = yc;
+        this->start_angle = start;
+        this->end_angle = end;
+        this->beta = beta;
+        this->inside = inside;
+        this->theta = theta;
+        this->cos_theta = cos(theta);
+        this->sin_theta = sin(theta);
+    }
+
+    double operator()(double x, double y) const {
+        if (r0.empty()) return 0.0;
+
+        double phi_final = evaluate_circle(x, y, 0);
+        for(size_t i = 1; i < r0.size(); ++i) {
+            if(inside > 0) {
+                phi_final = std::min(phi_final, evaluate_circle(x, y, i));
+            } else {
+                phi_final = std::max(phi_final, evaluate_circle(x, y, i));
+            }
+        }
+        return phi_final;
+    }
+
+private:
+    double evaluate_circle(double x, double y, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+
+        // Check angle bounds
+        double angle = atan2(Y, X);
+        while (angle < 0) angle += 2 * M_PI;
+        if (angle < start_angle[idx] || angle > end_angle[idx]) {
+            return inside > 0 ? HUGE_VAL : -HUGE_VAL;
+        }
+
+        double r = sqrt(X*X + Y*Y);
+        if (r < 1.0E-9) r = 1.0E-9;
+        return inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+    }
+};
+
+class partial_circle_phi_x_t : public CF_2 {
+public:
+    std::vector<double> r0;
+    std::vector<double> xc, yc;
+    std::vector<double> start_angle;
+    std::vector<double> end_angle;
+    double beta;
+    double inside;
+    double theta, cos_theta, sin_theta;
+
+    // Same constructor and set_params as phi_t...
+
+    double operator()(double x, double y) const {
+        if (r0.empty()) return 0.0;
+
+        // First find which circle gives the extremum value
+        size_t extremum_idx = 0;
+        double extremum_val = evaluate_circle_phi(x, y, 0);
+
+        for(size_t i = 1; i < r0.size(); ++i) {
+            double current = evaluate_circle_phi(x, y, i);
+            if((inside > 0 && current < extremum_val) ||
+               (inside < 0 && current > extremum_val)) {
+                extremum_val = current;
+                extremum_idx = i;
+            }
+        }
+
+        return evaluate_circle_derivative_x(x, y, extremum_idx);
+    }
+
+private:
+    double evaluate_circle_phi(double x, double y, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+
+        double angle = atan2(Y, X);
+        while (angle < 0) angle += 2 * M_PI;
+        if (angle < start_angle[idx] || angle > end_angle[idx]) {
+            return inside > 0 ? HUGE_VAL : -HUGE_VAL;
+        }
+
+        double r = sqrt(X*X + Y*Y);
+        if (r < 1.0E-9) r = 1.0E-9;
+        return inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+    }
+
+    double evaluate_circle_derivative_x(double x, double y, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+
+        double angle = atan2(Y, X);
+        while (angle < 0) angle += 2 * M_PI;
+        if (angle < start_angle[idx] || angle > end_angle[idx]) {
+            return 0.0;  // No derivative outside angle range
+        }
+
+        double r = sqrt(X*X + Y*Y);
+        if (r < 1.0E-9) r = 1.0E-9;
+
+        double phi_x = inside * X * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
+                    - inside * 20.0 * beta * X * Y * (X*X - Y*Y) / pow(r, 5.0);
+        double phi_y = inside * Y * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
+                    - inside * 5.0 * beta * (pow(Y, 4.0) + pow(X, 4.0) - 6.0 * pow(X * Y, 2.0)) / pow(r, 5.0);
+
+        return phi_x * cos_theta + phi_y * sin_theta;
+    }
+};
+
+class partial_circle_phi_y_t : public CF_2 {
+public:
+    std::vector<double> r0;
+    std::vector<double> xc, yc;
+    std::vector<double> start_angle;
+    std::vector<double> end_angle;
+    double beta;
+    double inside;
+    double theta, cos_theta, sin_theta;
+
+    // Same constructor and set_params...
+
+    double operator()(double x, double y) const {
+        if (r0.empty()) return 0.0;
+
+        // First find which circle gives the extremum value
+        size_t extremum_idx = 0;
+        double extremum_val = evaluate_circle_phi(x, y, 0);
+
+        for(size_t i = 1; i < r0.size(); ++i) {
+            double current = evaluate_circle_phi(x, y, i);
+            if((inside > 0 && current < extremum_val) ||
+               (inside < 0 && current > extremum_val)) {
+                extremum_val = current;
+                extremum_idx = i;
+            }
+        }
+
+        return evaluate_circle_derivative_y(x, y, extremum_idx);
+    }
+
+private:
+    // Same evaluate_circle_phi as phi_x_t...
+
+    double evaluate_circle_derivative_y(double x, double y, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+
+        double angle = atan2(Y, X);
+        while (angle < 0) angle += 2 * M_PI;
+        if (angle < start_angle[idx] || angle > end_angle[idx]) {
+            return 0.0;  // No derivative outside angle range
+        }
+
+        double r = sqrt(X*X + Y*Y);
+        if (r < 1.0E-9) r = 1.0E-9;
+
+        double phi_x = inside * X * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
+                    - inside * 20.0 * beta * X * Y * (X*X - Y*Y) / pow(r, 5.0);
+        double phi_y = inside * Y * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
+                    - inside * 5.0 * beta * (pow(Y, 4.0) + pow(X, 4.0) - 6.0 * pow(X * Y, 2.0)) / pow(r, 5.0);
+
+        return -phi_x * sin_theta + phi_y * cos_theta;
+    }
+};
+
+struct partial_circle_domain_t {
+    partial_circle_phi_t phi;
+    partial_circle_phi_x_t phi_x;
+    partial_circle_phi_y_t phi_y;
+
+    partial_circle_domain_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                          const std::vector<double>& xc = std::vector<double>{0.0},
+                          const std::vector<double>& yc = std::vector<double>{0.0},
+                          const std::vector<double>& start = std::vector<double>{0.0},
+                          const std::vector<double>& end = std::vector<double>{2.0 * M_PI},
+                          double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        set_params(r0, xc, yc, start, end, beta, inside, theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                   const std::vector<double>& xc,
+                   const std::vector<double>& yc,
+                   const std::vector<double>& start,
+                   const std::vector<double>& end,
+                   double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        phi.set_params(r0, xc, yc, start, end, beta, inside, theta);
+        phi_x.set_params(r0, xc, yc, start, end, beta, inside, theta);
+        phi_y.set_params(r0, xc, yc, start, end, beta, inside, theta);
+    }
+};
 #endif // SHAPES_H

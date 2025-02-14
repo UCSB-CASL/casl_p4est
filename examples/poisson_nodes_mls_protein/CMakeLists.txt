@@ -1,27 +1,23 @@
 # This CMakeList.txt can be used to create new project or run existing one.
-# You need to change:
-#		1- the "COMPUTER_NAME" variable to match your computer name.
-#		2- the "PROJECT_NAME" variable to be the example you consider. If it is a new research project,
-# 		   choose a name that best represent it. That will be the name of the executable.
-#
-
-set( COMPUTER_NAME faranak )
-set( PROJECT_NAME poisson_nodes_mls_nick )
-
 # Note: this CMakeLists.txt file has been built manually from the common.pri and libparcasl.pri config files under qmake/
-# To create different configurations, look into https://www.jetbrains.com/help/clion/quick-cmake-tutorial.html
+# To create different configurations, see https://www.jetbrains.com/help/clion/quick-cmake-tutorial.html
 
-cmake_minimum_required( VERSION 3.17 )
-project( ${PROJECT_NAME} )
-
-set( CMAKE_CXX_STANDARD 14 )
+# Choose to run a 2d or a 3d simulation:
 set (DIMENSION 2d)
+
+# Set minimum:
+cmake_minimum_required( VERSION 3.17 )
+set( CMAKE_CXX_STANDARD 14 )
+
+# Automatically get the project's name by parsing the ${CMAKE_CURRENT_SOURCE_DIR}:
+string(REGEX REPLACE .*/ "" THE_PROJECT_NAME ${CMAKE_CURRENT_SOURCE_DIR} )
+
+# Automatically set the project name:
+project( ${THE_PROJECT_NAME} )
 
 ########## Compiler custom macros for current project
 
 if( DIMENSION MATCHES 2d )
-	#	list( APPEND SRC main_2d_iterations.cpp )
-#	list( APPEND SRC main_2d_convergence_neumann.cpp )
 	list( APPEND SRC main_2d_protein.cpp )
 elseif( DIMENSION MATCHES 3d )
 	list( APPEND SRC main_3d.cpp )
@@ -35,54 +31,33 @@ add_compile_definitions( PRIVATE EIGEN_DONT_PARALLELIZE )	# Prevents paralleliza
 
 ##########  Load paths to libraries and set compiler for current system
 
-set(PARCASL ${CMAKE_CURRENT_SOURCE_DIR}/../../) # CASL library root directory
+#set( PARCASL ${CMAKE_CURRENT_SOURCE_DIR}/../../)		# CASL library root directory. This is not working /../.. is not recognized. Do the following instead:
+get_filename_component(PARCASL "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
+get_filename_component(PARCASL "${PARCASL}" DIRECTORY)
 
-#include( ${PARCASL}/cmake/${COMPUTER_NAME}.cmake )		# Set paths for this machine and populate LIBS,
+# Or, we can do this:
+#get_filename_component(PARCASL "${CMAKE_CURRENT_SOURCE_DIR}/../../" ABSOLUTE)
+#message(STATUS "The PARCASL path is: ${PARCASL}")
+set(PARCASL "${PARCASL}/")
+
+include( ${PARCASL}/cmake/casl_generic.cmake )		# Set paths for this machine and populate LIBS,
 # INC_DIRS, and LIB_DIRS lists.
-include("/home/faranak/CASL/casl_code_base/casl_p4est/cmake/faranak.cmake")
 
 if( CMAKE_BUILD_TYPE MATCHES Debug )
 	add_compile_definitions( PRIVATE DEBUG )		# Enable debug macro.
 endif()
 
-message(STATUS "PARCASL is set to: ${PARCASL}")
-message(STATUS "COMPUTER_NAME is set to: ${COMPUTER_NAME}")
-message(STATUS "Attempting to include: ${PARCASL}/cmake/${COMPUTER_NAME}.cmake")
-
-########## Compiler optimization flags
-
-# Comment these out when using debugger (not necessary).
-
-#set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
-#set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
-#set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
-
-########## Loading libraries
-
-## In case we want to use a library not included in cmake/<machine>.cmake, e.g. the OpenMP library, we would
-## add these commands here (must be given prior to defining any target).
-## Here, we are commenting out the following because we do not want to use the OpenMP library
-## Let's load OpenMP and its flags.  See http://blog.llvm.org/2015/05/openmp-support_22.html for more details.
-# find_package( OpenMP )
-# if( OPENMP_FOUND )
-# 	set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}" )
-# 	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}" )
-# endif()
-
-# Libraries and their linking/include directories (see cmake/<machine>.cmake).  Also, showing how to add OpenMP.
+# Libraries and their linking/include directories.
 link_directories(
 		${LIB_DIRS})
-#/usr/local/opt/libomp/lib )			# Uncomment if using the OpenMP library
 
 link_libraries(
 		${LIBS})
-#omp )						# Uncomment if using the OpenMP library
 
 include_directories(
 		.
 		${PARCASL}
 		${INC_DIRS})
-#/usr/local/opt/libomp/include )		# Uncomment if using the OpenMP library
 
 ########## Creating the executable
 
@@ -91,3 +66,7 @@ include( ${PARCASL}/cmake/libparcasl.cmake )
 add_executable( ${PROJECT_NAME}
 		${SRC} ${HEADERS} ${SOURCES}
 )
+
+message("*****************")
+message("This CMake will generate the executable ${PROJECT_NAME} in ${DIMENSION}.")
+message("*****************")
