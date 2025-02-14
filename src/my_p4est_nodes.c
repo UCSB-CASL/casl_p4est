@@ -25,16 +25,17 @@
 #include <p4est_algorithms.h>
 #include <p4est_bits.h>
 #include <p4est_communication.h>
+#include <src/my_p4est_log_wrappers.h>
 #include "my_p4est_nodes.h"
 #else
 #include <p8est_algorithms.h>
 #include <p8est_bits.h>
 #include <p8est_communication.h>
+#include <src/my_p8est_log_wrappers.h>
 #include "my_p8est_nodes.h"
 #endif
 #include <sc_notify.h>
 #include <petsclog.h>
-#include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
 
 // logging variable -- defined in src/petsc_logging.cpp
@@ -71,19 +72,8 @@ p4est_node_peer_t;
 
 #endif
 
-/** Determine the owning tree for a node and clamp it inside the domain.
- *
- * If the node is on the boundary, assign the lowest tree to own it.
- * Clamp it inside the tree bounds if necessary.
- *
- * \param [in] p4est    The p4est to work on.
- * \param [in] treeid   Original tree index for this node.
- * \param [in] n        The node to work on.
- * \param [out] c       The clamped node in owning tree coordinates.
- *                      Its piggy data will be filled with owning tree id.
- */
-static void
-p4est_node_canonicalize (p4est_t * p4est, p4est_topidx_t treeid,
+void
+p4est_node_canonicalize (const p4est_t * p4est, p4est_topidx_t treeid,
                          const p4est_quadrant_t * n, p4est_quadrant_t * c)
 {
   p4est_connectivity_t *conn = p4est->connectivity;
@@ -156,6 +146,7 @@ p4est_node_canonicalize (p4est_t * p4est, p4est_topidx_t treeid,
     /* Transform the node into the other tree's coordinates */
     ntreeid2 = p4est_find_face_transform (conn, treeid, face, ftransform);
     P4EST_ASSERT (ntreeid2 == ntreeid);
+    (void) ntreeid2; // Raphael: to avoid compiler warning
     p4est_quadrant_transform_face (n, &o, ftransform);
     if (ntreeid < lowest) {
       /* we have found a new owning tree */

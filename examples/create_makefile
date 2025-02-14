@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+PARCASL_EXAMPLES_DIR="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+PARCASL_DIR="$(dirname $PARCASL_EXAMPLES_DIR)"
+
+
+help="-- Use this script to create a Makefile for a specific project --
+
+usage:
+      ./$(basename "$0") project_file dimension makefile_destination [version]
+    to be executed in the $PARCASL_EXAMPLES_DIR directory.
+
+where:
+    - project_file is the path to the .pro file (mandatory);
+    - dimension is either 2d, 2D, 3d or 3D (mandatory);
+    - makefile_destination is the name of the directory where the Makefile will be placed. If the
+    directory does not exist, it will be created (mandatory);
+    - version is either release or debug (optional, default is release).
+"
+
+directory_instruction="This script can only be executed from the $PARCASL_EXAMPLES_DIR directory.
+Change directory and execute again, i.e. do the following
+  cd $PARCASL_EXAMPLES_DIR
+  ./$(basename "$0") "$1" "$2" "$3" "$4"
+"
+
+
+if { [ "$#" -ne 3 ] && [ "$#" -ne 4 ]; }  || [ "$1" == "-h" ] || [ "$1" == "-help" ]; then
+  echo "$help"
+  exit 1;
+elif [[ "$PWD" != "$PARCASL_EXAMPLES_DIR" ]]; then
+  echo "$directory_instruction"
+  exit 1;
+else
+  project_file=$1
+  if [ ! -f ${project_file} ]; then
+    echo "The file $project_file does not exist... Aborting. "
+    exit 1;
+  fi
+  dimension=$(echo "$2" | tr '[:upper:]' '[:lower:]')
+  if [[ "$dimension" != "2d" ]] && [[ "$dimension" != "3d" ]]; then
+    echo "Unknown dimensionality: choose 2d, 2D, 3d or 3D for the second argument... Aborting. "
+    exit 1;
+  fi
+  makefile_dir=$3
+  if [ ! -d $3 ]; then
+    echo "Creating directory $3"
+    mkdir -p $3
+    if [ ! -e $3 ]; then
+      echo "Failed to create directory $3... Aborting."
+      exit 1;
+    fi
+  fi
+  if [ "$#" -eq 4 ]; then
+    version=$4
+  else
+    version="release"
+  fi
+  if [[ "$version" != "debug" ]] && [[ "$version" != "release" ]]; then
+    echo "Unknown version: choose debug or release... Aborting. "
+    exit 1;
+  fi
+
+  qmake "CONFIG+=$dimension" "CONFIG+=$version" $project_file -o $3/Makefile
+fi

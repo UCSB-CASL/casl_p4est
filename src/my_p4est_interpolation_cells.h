@@ -19,11 +19,7 @@ private:
 
   Vec phi;
 
-#ifdef P4_TO_P8
-  const BoundaryConditions3D *bc;
-#else
-  const BoundaryConditions2D *bc;
-#endif
+  const BoundaryConditionsDIM *bc;
 
   // rule of three -- disable copy ctr and assignment if not useful
   my_p4est_interpolation_cells_t(const my_p4est_interpolation_cells_t& other);
@@ -32,22 +28,17 @@ private:
 public:
   using my_p4est_interpolation_t::interpolate;
 
-  my_p4est_interpolation_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t* ngbd_n);
+  my_p4est_interpolation_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t* ngbd_n)
+    : my_p4est_interpolation_t(ngbd_n), nodes(ngbd_n->nodes), ngbd_c(ngbd_c), phi(NULL), bc(NULL) {};
 
-#ifdef P4_TO_P8
-  void set_input(Vec F, Vec phi, const BoundaryConditions3D *bc);
-#else
-  void set_input(Vec F, Vec phi, const BoundaryConditions2D *bc);
-#endif
+  void set_input(Vec *F, Vec phi_, const BoundaryConditionsDIM *bc_, const size_t &n_vecs_);
+  inline void set_input(Vec F, Vec phi_, const BoundaryConditionsDIM *bc_) { set_input(&F, phi_, bc_, 1); }
 
-  // interpolation methods
-#ifdef P4_TO_P8
-  double operator()(double x, double y, double z) const;
-#else
-  double operator()(double x, double y) const;
-#endif
+  // definition of abstract interpolation methods
+  using my_p4est_interpolation_t::operator();
+  void operator()(const double *xyz, double *results, const u_int &) const; // last argument is dummy in this case
 
-  double interpolate(const p4est_quadrant_t &quad, const double *xyz) const;
+  void interpolate(const p4est_quadrant_t &quad, const double *xyz, double *results, const u_int &) const; // last argument is dummy in this cse
 };
 
 #endif /* MY_P4EST_INTERPOLATION_CELLS_H */

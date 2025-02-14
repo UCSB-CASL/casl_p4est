@@ -38,8 +38,8 @@ public:
   Point3(double c1, double c2, double c3);
 
   /*!
-     * \brief copy constructor for Point3
-     * \param pt the Point3 to copy
+     * \brief copy constructor for Point2
+     * \param pt the Point2 to copy (z coordinate is set to 0)
      */
   Point3 (const Point2& pt);
 
@@ -131,6 +131,24 @@ public:
      * \return the normalized Point3
      */
   Point3 normalize() const;
+
+  inline double& xyz(const unsigned char &dir)
+  {
+#ifdef CASL_THROWS
+    if(dir != 0 && dir != 1 && dir != 2)
+      throw std::invalid_argument("[CASL_ERROR]: Point3::xyz(const unsigned char & dir) : dir must be either 0 or 1 or 2.");
+#endif
+    return (dir == 0 ? this->x : (dir == 1 ? this->y : this->z));
+  }
+
+  inline const double& xyz(const unsigned char &dir) const
+  {
+#ifdef CASL_THROWS
+    if(dir != 0 && dir != 1 && dir != 2)
+      throw std::invalid_argument("[CASL_ERROR]: Point3::xyz(const unsigned char & dir) : dir must be either 0 or 1 or 2.");
+#endif
+    return (dir == 0 ? this->x : (dir == 1 ? this->y : this->z));
+  }
 
   /*!
      * \brief compute the curl with another Point3

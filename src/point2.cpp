@@ -1,6 +1,6 @@
 #include "math.h"
 #include "point2.h"
-#include <src/math.h>
+#include <src/casl_math.h>
 
 #ifdef P4_TO_P8
 #include "my_p8est_utils.h"
@@ -143,7 +143,7 @@ double Point2::cross(const Point2& P1, const Point2& P2)
 
 double Point2::area(const Point2& P1, const Point2& P2, const Point2& P3)
 {
-  double sum = (P2.x-P1.x)*(P3.y-P1.y) - (P3.x-P1.x)*(P2.y-P1.y);
+  double sum = ((P2.x-P1.x)*(P3.y-P1.y) - (P3.x-P1.x)*(P2.y-P1.y))*0.5;
   if(sum>0)
     return sum;
   return -sum;

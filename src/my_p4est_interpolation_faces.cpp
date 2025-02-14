@@ -1,255 +1,208 @@
 #ifdef P4_TO_P8
-#include "my_p4est_interpolation_faces.h"
+#include <src/my_p8est_solve_lsqr.h>
+#include "my_p8est_interpolation_faces.h"
 #else
+#include <src/my_p4est_solve_lsqr.h>
 #include "my_p4est_interpolation_faces.h"
 #endif
 
 #include <algorithm>
-
 #include <src/matrix.h>
-#include <src/my_p4est_solve_lsqr.h>
 
-
-my_p4est_interpolation_faces_t::my_p4est_interpolation_faces_t(const my_p4est_node_neighbors_t* ngbd_n, const my_p4est_faces_t *faces)
-  : my_p4est_interpolation_t(ngbd_n), faces(faces), ngbd_c(faces->ngbd_c), face_is_well_defined(NULL), bc(NULL)
+void my_p4est_interpolation_faces_t::set_input(const Vec *F, const u_char& dir_, const size_t &n_vecs_, const u_char& degree_, Vec face_is_well_defined_dir_, BoundaryConditionsDIM *bc_array_)
 {
+  set_input_fields(F, n_vecs_, 1); // only for block_size of 1 with face-sampled fields
+  this->face_is_well_defined_dir = face_is_well_defined_dir_;
+  this->which_face  = dir_;
+  this->bc_array    = bc_array_;
+  this->degree      = degree_;
 }
 
-
-#ifdef P4_TO_P8
-void my_p4est_interpolation_faces_t::set_input(Vec F, int dir, int order, Vec face_is_well_defined, BoundaryConditions3D *bc)
-#else
-void my_p4est_interpolation_faces_t::set_input(Vec F, int dir, int order, Vec face_is_well_defined, BoundaryConditions2D *bc)
-#endif
+void my_p4est_interpolation_faces_t::operator ()(const double *xyz, double *results, const u_int&) const
 {
-  this->Fi = F;
-  this->face_is_well_defined = face_is_well_defined;
-  this->dir = dir;
-  this->bc = bc;
-  this->order = order;
-}
-
-
-#ifdef P4_TO_P8
-double my_p4est_interpolation_faces_t::operator ()(double x, double y, double z) const
-#else
-double my_p4est_interpolation_faces_t::operator ()(double x, double y) const
-#endif
-{
-#ifdef P4_TO_P8
-  double xyz [] = { x, y, z };
-#else
-  double xyz [] = { x, y };
-#endif
-
-  /* first clip the coordinates */
-#ifdef P4_TO_P8
-  double xyz_clip [] = { x, y, z };
-#else
-  double xyz_clip [] = { x, y };
-#endif
-
-  // clip to bounding box
-  for (short i=0; i<P4EST_DIM; i++){
-    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = xyz_max[i];
-    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = xyz_min[i];
-  }
-
-  p4est_quadrant_t best_match;
+  int rank_found = -1;
   std::vector<p4est_quadrant_t> remote_matches;
-  int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
-
-//  if(rank_found!=-1)
-  if(rank_found == p4est->mpirank)
-    return interpolate(best_match, xyz);
-
-  throw std::invalid_argument("[ERROR]: my_p4est_interpolation_faces_t->interpolate(): the point does not belong to the local forest.");
+  try
+  {
+    clip_point_and_interpolate_all_on_the_fly(xyz, ALL_COMPONENTS, results, rank_found, remote_matches, true); // second input is dummy in this case, interpolate allows only bs_f == 1
+    // we allow the procedure to proceed even in ghost layer because it is conceptually possible
+    // however with a possibly restricted cell neighborhood
+    // --> this may introduce and trigger process-dependent outcomes which is not ideal
+    // Therefore, the interpolation procedure prints a warning if called on a nonlocal quadrant
+  }
+  catch (std::invalid_argument& e)
+  {
+    // The point could not be handled locally --> let the user know but let's be more specific about the origin of the issue
+    P4EST_ASSERT(rank_found == -1);
+    std::ostringstream oss;
+    oss << "my_p4est_interpolation_faces_t::operator (): Point (" << xyz[0] << "," << xyz[1] << ONLY3D("," << xyz[2] <<) ") cannot be processed on-the-fly by process " << p4est->mpirank << ".";
+    oss << "Process(es) likely to own a quadrant containing the point is (are) = ";
+    for (size_t i = 0; i < remote_matches.size() - 1; i++)
+      oss << remote_matches[i].p.piggy1.owner_rank << ", ";
+    oss << remote_matches[remote_matches.size() - 1].p.piggy1.owner_rank << "." << std::endl;
+    throw std::invalid_argument(oss.str());
+  }
+  return;
 }
 
-
-double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, const double *xyz) const
+void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, const double *xyz, double *results, const u_int &) const
 {
   PetscErrorCode ierr;
 
-  double *v2c = p4est->connectivity->vertices;
-  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
-  double xmin = v2c[3*t2v[0 + 0] + 0];
-  double ymin = v2c[3*t2v[0 + 0] + 1];
-  double xmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 0];
-  double ymax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 1];
+  if(quad.p.piggy3.local_num > p4est->local_num_quadrants)
+    std::cerr << "WARNING : interpolating face-sampled values at point " << xyz[0] << ", " << xyz[1] ONLY3D(<< ", " << xyz[2]) << " which belongs to the ghost layer of process " << p4est->mpirank << std::endl;
 
-#ifdef P4_TO_P8
-  double zmin = v2c[3*t2v[0 + 0] + 2];
-  double zmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 2];
-  if(bc!=NULL && bc->wallType(xyz[0],xyz[1],xyz[2])==DIRICHLET &&
-     (fabs(xyz[0]-xmin)<EPS || fabs(xyz[0]-xmax)<EPS ||
-      fabs(xyz[1]-ymin)<EPS || fabs(xyz[1]-ymax)<EPS ||
-      fabs(xyz[2]-zmin)<EPS || fabs(xyz[2]-zmax)<EPS))
-    return bc->wallValue(xyz[0], xyz[1], xyz[2]);
-#else
-  if(bc!=NULL && bc->wallType(xyz[0],xyz[1])==DIRICHLET &&
-     (fabs(xyz[0]-xmin)<EPS || fabs(xyz[0]-xmax)<EPS || fabs(xyz[1]-ymin)<EPS || fabs(xyz[1]-ymax)<EPS))
-    return bc->wallValue(xyz[0], xyz[1]);
-#endif
+  const size_t n_functions = n_vecs();
+  P4EST_ASSERT(n_functions > 0);
+  P4EST_ASSERT(bs_f == 1); // not implemented for bs_f > 1 yet
 
-  xmax = v2c[3*t2v[0 + P4EST_CHILDREN-1] + 0];
-  ymax = v2c[3*t2v[0 + P4EST_CHILDREN-1] + 1];
-#ifdef P4_TO_P8
-  zmax = v2c[3*t2v[0 + P4EST_CHILDREN-1] + 2];
-  double qh = MIN(xmax-xmin, ymax-ymin, zmax-zmin);
-#else
-  double qh = MIN(xmax-xmin, ymax-ymin);
-#endif
-  double scaling = .5 * qh*(double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
+  const double *xyz_min   = get_xyz_min();
+  const double *xyz_max   = get_xyz_max();
+  const bool *periodicity = get_periodicity();
+  const double *tree_dimensions = ngbd_c->get_tree_dimensions();
 
-  p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
-  p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-  p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
-
-  /* gather the neighborhood */
-  std::vector<p4est_quadrant_t> ngbd_tmp;
-  std::vector<p4est_locidx_t> ngbd;
-  p4est_locidx_t f_tmp;
-
-  for(int i=-1; i<2; ++i)
-    for(int j=-1; j<2; ++j)
-#ifdef P4_TO_P8
-      for(int k=-1; k<2; ++k)
-//        if((i==0 && j==0) || (i==0 && k==0) || (j==0 && k==0))
-          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j, k);
-#else
-//      if(i==0 || j==0)
-        ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j);
-#endif
-
-  int nb_ngbd = ngbd_tmp.size();
-  for(int m=0; m<nb_ngbd; ++m)
+  bool is_on_wall = false;
+  char neumann_wall[P4EST_DIM] = {DIM(0, 0, 0)};
+  u_char nb_neumann_walls = 0;
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
   {
-    for(int i=-1; i<2; ++i)
-      for(int j=-1; j<2; ++j)
-#ifdef P4_TO_P8
-        for(int k=-1; k<2; ++k)
-//          if((i==0 && j==0) || (i==0 && k==0) || (j==0 && k==0))
-            ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, i, j, k);
-#else
-//        if(i==0 || j==0)
-          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, i, j);
-#endif
+    const char is_wall_ = (!periodicity[dim] && fabs(xyz[dim] - xyz_min[dim]) < EPS*tree_dimensions[dim] ? -1 : (!periodicity[dim] && fabs(xyz[dim] - xyz_max[dim]) < EPS*tree_dimensions[dim] ? +1 : 0));
+    is_on_wall = is_on_wall || is_wall_ != 0;
+    if(is_wall_!= 0 && degree >= 1 && bc_array != NULL && bc_array[which_face].wallType(xyz) == NEUMANN)
+    {
+      neumann_wall[dim] = is_wall_;
+      nb_neumann_walls += abs(neumann_wall[dim]);
+    }
+  }
+  if(is_on_wall && bc_array != NULL && bc_array[which_face].wallType(xyz) == DIRICHLET)
+  {
+    for (size_t k = 0; k < n_functions; ++k)
+      results[k] = bc_array[which_face].wallValue(xyz);
+    return;
   }
 
-  const double *Fi_p;
-  ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
+  /* gather the cell neighborhood and get the (logical) size of the smallest quadrant in that neighborhood */
+  set_of_neighboring_quadrants ngbd; ngbd.clear();
+  const p4est_qcoord_t smallest_logical_size_of_nearby_quad = ngbd_c->gather_neighbor_cells_of_cell(quad, ngbd, true);
+  const double scaling = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double)smallest_logical_size_of_nearby_quad/(double)P4EST_ROOT_LEN;
 
-  const PetscScalar *face_is_well_defined_p;
-  if(face_is_well_defined!=NULL)
-    ierr = VecGetArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+  std::vector<const double *> Fi_p(n_functions);
+  for (size_t k = 0; k < n_functions; ++k) {
+    ierr = VecGetArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);
+  }
 
-  for(unsigned int m=0; m<ngbd_tmp.size(); ++m)
+  const PetscScalar *face_is_well_defined_dir_p;
+  if(face_is_well_defined_dir != NULL){
+    ierr = VecGetArrayRead(face_is_well_defined_dir, &face_is_well_defined_dir_p); CHKERRXX(ierr);
+  }
+
+  matrix_t A;
+  A.resize(1, 1 + (degree >= 1 ? P4EST_DIM - nb_neumann_walls : 0) + (degree >= 2 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0)); // constant term + P4EST_DIM linear terms + (if second order) P4EST_DIM squared terms + 0.5*P4EST_DIM*(P4EST_DIM + 1) squared and crossed terms
+
+  std::vector<double>* p = new std::vector<double>[n_functions];
+  for (size_t k = 0; k < n_functions; ++k)
+    p[k].resize(0);
+  std::vector<double> nb[P4EST_DIM];
+  const double min_w = 1e-6;
+  const double inv_max_w = 1e-6;
+  int row_idx = 0;
+
+  // keep track of the faces that have already been dealt with using a set
+  indexed_and_located_face f_tmp;
+  std::set<indexed_and_located_face> face_ngbd; face_ngbd.clear();
+
+  for (set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
   {
-    for(int d=0; d<2; ++d)
+    for(u_char touch = 0; touch < 2; ++touch)
     {
-      f_tmp = faces->q2f(ngbd_tmp[m].p.piggy3.local_num, 2*dir+d);
+      f_tmp.face_idx = faces->q2f(it->p.piggy3.local_num, 2*which_face + touch);
 
-      if(f_tmp!=NO_VELOCITY && std::find(ngbd.begin(), ngbd.end(),f_tmp)==ngbd.end())
+      if(f_tmp.face_idx != NO_VELOCITY && face_ngbd.find(f_tmp) == face_ngbd.end())
       {
-#ifdef P4_TO_P8
-        if((face_is_well_defined==NULL || face_is_well_defined_p[f_tmp]) &&
-           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS && fabs(xyz[2]-faces->z_fr_f(f_tmp,dir))<EPS)
-#else
-        if((face_is_well_defined==NULL || face_is_well_defined_p[f_tmp]) &&
-           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS)
-#endif
+        faces->xyz_fr_f(f_tmp.face_idx, which_face, f_tmp.xyz_face);
+        bool point_is_on_face = true;
+        for (u_char dim = 0; dim < P4EST_DIM && point_is_on_face; ++dim)
+          point_is_on_face = point_is_on_face && fabs(xyz[dim] - f_tmp.xyz_face[dim]) < EPS*tree_dimensions[dim];
+        if((face_is_well_defined_dir == NULL || face_is_well_defined_dir_p[f_tmp.face_idx]) && point_is_on_face)
         {
-          double Fi_tmp = Fi_p[f_tmp];
-          ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
-          if(face_is_well_defined!=NULL)
-            ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
-          return Fi_tmp;
+          for (size_t k = 0; k < n_functions; ++k) {
+            results[k] = Fi_p[k][f_tmp.face_idx];
+            ierr = VecRestoreArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);
+          }
+          if(face_is_well_defined_dir != NULL){
+            ierr = VecRestoreArrayRead(face_is_well_defined_dir, &face_is_well_defined_dir_p); CHKERRXX(ierr);
+          }
+          delete [] p;
+          return;
         }
 
-        ngbd.push_back(f_tmp);
+        face_ngbd.insert(f_tmp);
+
+        if(face_is_well_defined_dir == NULL || face_is_well_defined_dir_p[f_tmp.face_idx])
+        {
+          double xyz_t[P4EST_DIM] = {DIM(f_tmp.xyz_face[0], f_tmp.xyz_face[1], f_tmp.xyz_face[2])};
+
+          for(u_char dim = 0; dim < P4EST_DIM; ++dim)
+          {
+            xyz_t[dim] = xyz_t[dim] - xyz[dim];
+            if(periodicity[dim])
+            {
+              const double pp = xyz_t[dim]/(xyz_max[dim] - xyz_min[dim]);
+              xyz_t[dim] -= (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[dim] - xyz_min[dim]);
+            }
+            xyz_t[dim] /=  scaling;
+          }
+
+          const double w = MAX(min_w, 1./MAX(inv_max_w, sqrt(SUMD(SQR(xyz_t[0]), SQR(xyz_t[1]), SQR(xyz_t[2])))));
+
+          unsigned char col_idx = 0;
+          A.set_value(row_idx, col_idx++, w); // constant term
+          if(degree >= 1)
+            for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+              if(neumann_wall[dim] == 0)
+                A.set_value(row_idx, col_idx++, xyz_t[dim]*w); // linear terms
+          P4EST_ASSERT(col_idx == 1 + (degree >= 1 ? P4EST_DIM - nb_neumann_walls : 0));
+          if(degree >= 2)
+            for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+              for (unsigned char dd = dim; dd < P4EST_DIM; ++dd)
+                A.set_value(row_idx, col_idx++, xyz_t[dim]*xyz_t[dd]*w); // quadratic terms
+          P4EST_ASSERT(col_idx == 1 + (degree >= 1 ? P4EST_DIM - nb_neumann_walls : 0) + (degree >= 2 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0));
+
+          for (size_t k = 0; k < n_functions; ++k)
+          {
+            const double neumann_term = (degree >= 1 && nb_neumann_walls > 0 ? SUMD(neumann_wall[0]*bc_array[which_face].wallValue(xyz)*xyz_t[0]*scaling, neumann_wall[1]*bc_array[which_face].wallValue(xyz)*xyz_t[1]*scaling, neumann_wall[2]*bc_array[which_face].wallValue(xyz)*xyz_t[2]*scaling) : 0.0);
+            p[k].push_back((Fi_p[k][f_tmp.face_idx] - neumann_term)* w);
+          }
+
+          for(unsigned char d = 0; d < P4EST_DIM; ++d)
+            if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end())
+              nb[d].push_back(xyz_t[d]);
+
+          row_idx++;
+        }
       }
     }
   }
 
-  std::vector<p4est_locidx_t> interp_points;
-  matrix_t A;
-#ifdef P4_TO_P8
-  A.resize(1,(order>=2) ? 10 : 4);
-#else
-  A.resize(1,(order>=2) ? 6 : 3);
-#endif
-  std::vector<double> p;
-  std::vector<double> nb[P4EST_DIM];
-
-  double min_w = 1e-6;
-  double inv_max_w = 1e-6;
-
-  for(unsigned int m=0; m<ngbd.size(); m++)
+  for (size_t k = 0; k < n_functions; ++k)
   {
-    p4est_locidx_t fm_idx = ngbd[m];
-    if((face_is_well_defined==NULL || face_is_well_defined_p[fm_idx]) && std::find(interp_points.begin(), interp_points.end(),fm_idx)==interp_points.end() )
-    {
-      double xyz_t[P4EST_DIM];
-      faces->xyz_fr_f(fm_idx, dir, xyz_t);
-
-      for(int i=0; i<P4EST_DIM; ++i)
-        xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
-
-#ifdef P4_TO_P8
-      double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]) + SQR(xyz_t[2]))));
-#else
-      double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]))));
-#endif
-
-#ifdef P4_TO_P8
-      A.set_value(interp_points.size(), 0, 1                 * w);
-      A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
-      A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
-      A.set_value(interp_points.size(), 3, xyz_t[2]          * w);
-      if(order>=2)
-      {
-        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interp_points.size(), 5, xyz_t[0]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 6, xyz_t[0]*xyz_t[2] * w);
-        A.set_value(interp_points.size(), 7, xyz_t[1]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 8, xyz_t[1]*xyz_t[2] * w);
-        A.set_value(interp_points.size(), 9, xyz_t[2]*xyz_t[2] * w);
-      }
-#else
-      A.set_value(interp_points.size(), 0, 1                 * w);
-      A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
-      A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
-      if(order>=2)
-      {
-        A.set_value(interp_points.size(), 3, xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 5, xyz_t[1]*xyz_t[1] * w);
-      }
-#endif
-
-      p.push_back(Fi_p[fm_idx] * w);
-
-      for(int d=0; d<P4EST_DIM; ++d)
-        if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end())
-          nb[d].push_back(xyz_t[d]);
-
-      interp_points.push_back(fm_idx);
-    }
+    ierr = VecRestoreArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);
+    results[k] = 0.0;
+  }
+  if(face_is_well_defined_dir != NULL){
+    ierr = VecRestoreArrayRead(face_is_well_defined_dir, &face_is_well_defined_dir_p); CHKERRXX(ierr);
   }
 
-  ierr = VecRestoreArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
-  if(face_is_well_defined!=NULL)
-    ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+  if(row_idx == 0)
+  {
+    delete [] p;
+    return;
+  }
 
-  if(interp_points.size()==0)
-    return 0;
+  A.scale_by_maxabs(p, n_functions);
 
-  A.scale_by_maxabs(p);
+  solve_lsqr_system(A, p, n_functions, results, DIM(nb[0].size(), nb[1].size(), nb[2].size()), degree, nb_neumann_walls);
+  delete [] p;
 
-#ifdef P4_TO_P8
-  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), nb[2].size());
-#else
-  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size());
-#endif
+  return;
 }

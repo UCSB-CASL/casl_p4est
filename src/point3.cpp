@@ -1,7 +1,7 @@
 #include "math.h"
 #include "point3.h"
 
-#include <src/math.h>
+#include <src/casl_math.h>
 
 Point3::Point3 ()
 {

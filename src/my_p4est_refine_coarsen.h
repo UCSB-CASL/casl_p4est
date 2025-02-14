@@ -5,19 +5,21 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_log_wrappers.h>
+#include <src/my_p8est_macros.h>
 #include <p8est.h>
 #else
+//#include <src/my_p4est_utils.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_log_wrappers.h>
+#include <src/my_p4est_macros.h>
 #include <p4est.h>
 #endif
 
-#include <set>
 #include <vector>
 #include <stdexcept>
 
-#define SKIP_QUADRANT		 0
+#define SKIP_QUADRANT	 0
 #define REFINE_QUADRANT  1
 #define COARSEN_QUADRANT 2
 #define NEW_QUADRANT     3
@@ -31,69 +33,110 @@ typedef int p4est_bool_t;
 class CF_3;
 class CF_2;
 
+// Define options for one of the refinement tools:
+// Elyce trying something: // for use in refine and coarsen
+enum compare_option_t {LESS_THAN = 0, GREATER_THAN = 1, SIGN_CHANGE =2, NO_CHECK = 3};
+// sign change indicates a search for change in sign of a field, no check indicates you don't want to check that particular field for either refining or coarsening
+enum compare_diagonal_option_t {DIVIDE_BY=0, MULTIPLY_BY = 1, ABSOLUTE = 2};
+
+
+/*!
+ * \class splitting_criteria_t
+ * \brief Basic grid refinement class. Not very useful by itself, but all of the
+ *        refinement classes used in practice (see below) are inherited from it.
+ */
 struct splitting_criteria_t {
-  splitting_criteria_t(int min_lvl = 0, int max_lvl = 0, double lip = 1.2)
+  splitting_criteria_t(int min_lvl = 0, int max_lvl = 0, double lip = 1.2, double band = 0)
   {
     if(min_lvl>max_lvl)
       throw std::invalid_argument("[ERROR]: you cannot choose a min level larger than the max level.");
-    this->max_lvl = max_lvl;
-    this->min_lvl = min_lvl;
-    this->lip     = lip;
+    this->max_lvl            = max_lvl;
+    this->min_lvl            = min_lvl;
+    this->lip                = lip;
+    this->band               = band;
+    this->refine_only_inside = false;
   }
 
-  int max_lvl, min_lvl;
-  double lip;
+  void set_refine_only_inside(bool val) { refine_only_inside = val; }
+
+  int    max_lvl, min_lvl;   /*! Maximum and minimum levels of refinement.*/
+  double lip;                /*! Lipschitz constant for refinement with the distance to an interface.*/
+  double band;               /*! Uniform band around an interface.*/
+  bool   refine_only_inside; /*! If true, enforces refinement only where the l-s function is negative.*/
 };
 
+/*!
+ * \class splitting_criteria_cf_t
+ * \brief Class for refinement based on the distance to an interface. The level-set
+ *        function representing the interface is provided as a continuous function.
+ */
 struct splitting_criteria_cf_t : splitting_criteria_t {
-#ifdef P4_TO_P8
-  CF_3 *phi;
-#else
-  CF_2 *phi;
-#endif
-#ifdef P4_TO_P8
-  splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_3 *phi, double lip=1.2)
-#else
-  splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_2 *phi, double lip=1.2)
-#endif
-    : splitting_criteria_t(min_lvl, max_lvl, lip)
+  CF_DIM *phi;             /*! Pointer to continuous function object representing the level-set function.*/
+  splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_DIM *phi, double lip=1.2, double band = 0)
+    : splitting_criteria_t(min_lvl, max_lvl, lip, band)
   {
     this->phi = phi;
   }
+  splitting_criteria_cf_t(int min_lvl, int max_lvl, const CF_DIM *phi, double lip=1.2, double band = 0):splitting_criteria_t(min_lvl, max_lvl, lip, band)
+  {
+      this->phi =const_cast<CF_DIM*>(phi);
+      // this one did not work: Elyce and Rochi merge ~12/3/21 //this->phi = std::remove_const<typename std::remove_pointer<const CF_DIM*>::type>::type* CF_DIM(phi);
+  }
 };
 
+/*!
+ * \class splitting_criteria_cf_and_uniform_band_t
+ * \brief Class for refinement based on the distance to an interface, additionally
+ *        enforcing a band of uniform cells around it. The level-set function
+ *        representing the interface is provided as a continuous function.
+ */
+struct splitting_criteria_cf_and_uniform_band_t : splitting_criteria_cf_t {
+  const double uniform_band;
+  splitting_criteria_cf_and_uniform_band_t(int min_lvl, int max_lvl, CF_DIM *phi_, double uniform_band_, double lip=1.2)
+    : splitting_criteria_cf_t (min_lvl, max_lvl, phi_, lip), uniform_band(uniform_band_) { }
+  splitting_criteria_cf_and_uniform_band_t(int min_lvl, int max_lvl, const CF_DIM *phi_, double uniform_band_, double lip=1.2)
+    : splitting_criteria_cf_t (min_lvl, max_lvl, phi_, lip), uniform_band(uniform_band_) { }
+};
+
+/*!
+ * \class splitting_criteria_thresh_t
+ * \brief Class for refinement based on the threshold of a function. The function
+ *        of interest is provided as a continuous function.
+ */
 struct splitting_criteria_thresh_t : splitting_criteria_t {
-#ifdef P4_TO_P8
-  CF_3 *f;
-#else
-  CF_2 *f;
-#endif
+  const CF_DIM *f;
   double thresh;
-#ifdef P4_TO_P8
-  splitting_criteria_thresh_t(int min_lvl, int max_lvl, CF_3 *f, double thresh)
-#else
-  splitting_criteria_thresh_t(int min_lvl, int max_lvl, CF_2 *f, double thresh)
-#endif
-    :splitting_criteria_t(min_lvl, max_lvl)
+  splitting_criteria_thresh_t(int min_lvl, int max_lvl, const CF_DIM *f, double thresh)
+    : splitting_criteria_t(min_lvl, max_lvl)
   {
     this->f = f;
     this->thresh = thresh;
   }
+  virtual ~splitting_criteria_thresh_t() {};
 };
 
+/*!
+ * \class splitting_criteria_random_t
+ * \brief Class for random refinement.
+ */
 struct splitting_criteria_random_t : splitting_criteria_t {
   p4est_gloidx_t max_quads, min_quads, num_quads;
   splitting_criteria_random_t(int min_lvl, int max_lvl, p4est_gloidx_t min_quads, p4est_gloidx_t max_quads)
     : splitting_criteria_t(min_lvl, max_lvl)
   {
-    this->min_quads = min_quads;
-    this->max_quads = max_quads;
-    num_quads = 0;
+    this->min_quads = min_quads; /*! Minimum number of quadrants to be refined.*/
+    this->max_quads = max_quads; /*! Maximum number of quadrants to be refined.*/
+    num_quads = 0;               /*! Quadrant counter dummy variable.*/
   }
+  virtual ~splitting_criteria_random_t() {};
 };
 
+/*!
+ * \class splitting_criteria_marker_t
+ * \brief Class for refinement based on custom markers for each individual quadrant.
+ */
 class splitting_criteria_marker_t: public splitting_criteria_t {
-  std::vector<p4est_bool_t> markers;
+  std::vector<p4est_bool_t> markers; /*! Vector of refinement markers, one per quadrant.*/
 public:
   splitting_criteria_marker_t(p4est_t *p4est, int min_lvl, int max_lvl, double lip=1.2)
     : splitting_criteria_t(min_lvl, max_lvl, lip), markers(p4est->local_num_quadrants, P4EST_FALSE)
@@ -109,30 +152,208 @@ public:
       }
     }
   }
-
-  inline p4est_bool_t& operator[](p4est_locidx_t q) {return markers[q];}
-  inline const p4est_bool_t& operator[](p4est_locidx_t q) const {return markers[q];}
-};
-
-class splitting_criteria_tag_t: public splitting_criteria_t {
-protected:
-	static void init_fn   (p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t*  quad);
-	static int  refine_fn (p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t*  quad);
-	static int  coarsen_fn(p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t** quad);
-	
-  void tag_quadrant(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
-public:
-  splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2)
-    : splitting_criteria_t(min_lvl, max_lvl, lip)
-  {
-  }
-
-  bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
-  bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
+  inline p4est_bool_t& operator[](p4est_locidx_t q) { return markers[q]; }
+  inline const p4est_bool_t& operator[](p4est_locidx_t q) const { return markers[q]; }
+  virtual ~splitting_criteria_marker_t() {};
 };
 
 /*!
- * \brief refine_levelset_cf refine based on distance to a cf levelset
+ * \class splitting_criteria_tag_t
+ * \brief Class for refinement based on the distance to an interface. The level-set
+ *        function representing the interface is provided as data sampled at grid nodes.
+ */
+class splitting_criteria_tag_t: public splitting_criteria_t {
+protected:
+  static void init_fn   (p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t*  quad);
+  static int  refine_fn (p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t*  quad);
+  static int  coarsen_fn(p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t** quad);
+
+  void tag_quadrant(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f, bool finest_in_negative_flag);
+  void tag_quadrant_inside(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
+  // ELYCE TRYING SOMETHING:
+  /*!
+   * \brief tag_quadrant
+   * This function tags a quadrant for either refinement or coarsening, depending on a variable number of fields and criteria which are provided by the user.
+   * Please see the documentation on refine_and_coarsen with corresponding inputs for more information on the exact usage of the fields and criteria.
+   * \param p4est [inout] the grid you want to refine and coarsen
+   * \param quad  [in] The current quadrant we are evaluating for refinement or coarsening
+   * \param tree_idx [in] Tree index of current tree we are considering
+   * \param quad_idx [in] Quad index of current quadrant we are considering
+   * \param nodes [in] nodes of the grid we want to refine and coarsen
+   * \param phi_p [in] double pointer to the level set function we are considering
+   * \param num_fields [in] *please see refine_and_coarsen documentation
+   * \param use_block [in] *please see refine_and_coarsen documentation
+   * \param enforce_uniform_band [in] *please see refine_and_coarsen documentation
+   * \param refine_band [in] *please see refine_and_coarsen documentation
+   * \param coarsen_band [in] *please see refine_and_coarsen documentation
+   * \param fields [in] *please see refine_and_coarsen documentation
+   * \param fields_block [in] *please see refine_and_coarsen documentation
+   * \param criteria [in] *please see refine_and_coarsen documentation
+   * \param compare_opn [in] *please see refine_and_coarsen documentation
+   * \param diag_opn [in] *please see refine_and_coarsen documentation
+   * Developer: Elyce Bayat, ebayat@ucsb.edu
+   * Last modified: 3/30/2020
+   * WARNING: This function has not been implemented or validated in 3d
+   */
+
+
+  void tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes, const double* phi_p, const int num_fields,bool use_block,bool enforce_uniform_band,double refine_band,double coarsen_band, const double** fields,const double* fields_block,std::vector<double> criteria, std::vector<compare_option_t> compare_opn,std::vector<compare_diagonal_option_t> diag_opn,std::vector<int> lmax_custom);
+
+  double uniform_band;
+  bool refine_only_inside;
+public:
+  splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2, double uniform_band_ = -1.0)
+    : splitting_criteria_t(min_lvl, max_lvl, lip), uniform_band(uniform_band_), refine_only_inside(false)
+  {
+  }
+  splitting_criteria_tag_t(const splitting_criteria_t* splitting_criteria_, double uniform_band_ = -1.0)
+    : splitting_criteria_t(*splitting_criteria_), uniform_band(uniform_band_), refine_only_inside(false)
+  {
+  }
+  /*!
+   * \fn    refine_and_coarsen
+   * \brief Loops through all the quadrants in the grid, and tags them for refinement/coarsening using 'tag_quadrant' or
+   *        'tag_quadrant_inside'. Then, it refines and coarsens the whole grid according to the tagging. The version
+   *        without '_and_coarsen' only enforces refinement, not coarsening.
+   * \param p4est       [in] forest object
+   * \param nodes       [in] nodes object
+   * \param phi         [in] a pointer to data stored in a Vec containing the sampled level-set function on the grid
+   * \return            a boolean (0/1) set as true if at least one quadrant of the grid has been marked for refinement or coarsening
+   */
+  bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi, bool finest_in_negative_flag = false);
+  bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi, bool finest_in_negative_flag = false);
+  inline bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, Vec phi, bool finest_in_negative_flag = false)
+  {
+    const double *phi_p;
+    PetscErrorCode ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+    const bool to_return = refine(p4est, nodes, phi_p, finest_in_negative_flag);
+    ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+    return to_return;
+  }
+
+  // ELYCE TRYING SOMETHING:
+  /*!
+   * \brief refine_and_coarsen
+   * This function evaluates whether quadrants in the grid are eligible for refinement/coarsening based on a variable number of fields with user-selected refinement and coarsen criteria for each field. This function returns a boolean which is true if the grid has changed and false if the grid has not changed.
+   * Note: This particular function is a wrapper for the refine_coarsen function below whose arguments are identical except for the fields to refine/coarsen around, which are constant double pointers instead of provided PETSC Vec.
+   * This particular function:
+   *      (a) Gets the associated double pointer with the given PETSC Vec field being considered for refinement/coarsening criteria
+   *      (b) Passes that field and criteria to the refine_and_coarsen function listed below, which will then check the refine/coarsen condition for all quadrants in the forest.
+   * \param p4est           [inout] the grid you want to refine and coarsen
+   * \param nodes           [in] nodes of the grid you want to refine and coarsen
+   * \param phi             [in] a PETSC Vec for the LSF (or effective LSF) that we want to refine and coarsen around
+   * \param num_fields      [in] int, number of fields to refine and coarsen by
+   * \param use_block       [in] boolean, describing whether to use a PETSc block vector to access fields to refine by, or not.
+   *                                True = use user provided double pointer to PETSc block vector with block size = num_fields.
+   *                                False = use std::vector of double pointers for num_fields number of PETSc Vectors
+   *
+   * \param enforce_uniform_band [in] boolean, describing whether or not a uniform band will be enforced around the interface
+   * \param refine_band     [in] double, Size of refined band around the interface we want to enforce. ie. refine_band = 2.0 --> band of 2 smallest grid cells will be enforced around the interface
+   * \param coarsen_band    [in] double, Size of coarsened band around the interface that we allow coarsening for. ie. coarsen_band = 4.0 --> coarsening is not allowed around the interface for less than 4 grid cells from interface, but greater than 4 coarsening is allowed
+   * \param fields          [in] an array of PETSC vector pointer (object Vec) which point to the fields we want to refine by
+   *
+   * \param fields_block    [in] a PETSC Vector pointer (object Vec) to a PETSc block vector of fields to refine by
+   * \param criteria        [in] a std::vector of criteria to coarsen and refine by
+   *                            - The order of the criteria list should be as follows:
+   *                                criteria = {criteria_coarsen_field_1, criteria_refine_field_1, ....., criteria_coarsen_field_n,
+   *                                            criteria_refine_field_n}, for n = 1, ..., num_fields
+   *                            - Therefore, the total length of criteria should be 2*n (one coarsen condition and one refine condition for each field we are considering)
+   *
+   * \param compare_opn     [in] a std::vector of comparison options to refine and coarsen by, with same ordering as criteria above (see below for more information)
+   * \param diag_opn        [in] a std::vector of diagonal comparison options to refine and coarsen by, with same ordering as criteria above (see below for more information)
+   *
+   * MORE INFORMATION FROM THE DEVELOPER:
+   * Refinement for LSF:
+   *     - LSF is evaluated for refinement and/or coarsening by
+   *        (a) comparing LSF*(lipschitz coeff) to 0
+   *        (b) checking for sign changes in LSF across a grid cell
+   *
+   * Looking for more refined neighbors:
+   *    - The refinement procedure considers not only the current quadrant, but also searches for the existence of neighbors of the current cell which have higher levels of refinement.
+   *      If they exist, we use the data from these neighbors as well in our evaluation.
+   *
+   *
+   * Info about using compare_opn : there are 3 comparison options currently: LESS_THAN, GREATER_THAN, and SIGN_CHANGE
+   *                        - GREATER_THAN evaluates case where your field is greater than the specified criteria
+   *                        - LESS_THAN    is true for case where your field is less than the specified criteria
+   *                        - SIGN_CHANGE evaluates cases for the change in sign of a provided field (so long as values are above the specified criteria)
+   *                                --> NOTE: sign change refines in the case where there is a sign change across the cell AND the cell has a more refined neighbor node on one or more sides AND the (abs(field value)>provided criteria for all nodes in cell)
+   *                                        sign change coarsens in the case where there is EITHER (NO sign change across cell) OR (abs(field value)< provided criteria for all nodes in cell)
+   *
+   * Info about using diag_opn : there are 3 diagonal comparsion options currently: ABSOLUTE, DIVIDE_BY, and MULTIPLY_BY
+   *                        - ABSOLUTE: compares the field value to the criteria provided
+   *                        - DIVIDE_BY: compares the field value to (criteria provided)/(cell size)
+   *                        - MULTIPLY_BY: compares the field value to (criteria provided)*(cell size)
+   * The various selections for compare_opn and diag_opn are combined to provide 9 total possible ways to compare a field for refinement or coarsening
+   *
+   * Developer: Elyce Bayat, ebayat@ucsb.edu
+   * Last modified: 3/30/2020
+   * WARNING: This function has not yet been fully validated in 2d
+   * WARNING: This function has not been implemented or validated in 3d
+   * \return
+   */
+  bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi,
+                          const unsigned int num_fields, bool use_block,bool enforce_uniform_band,
+                          double refine_band, double coarsen_band,
+                          Vec* fields,Vec fields_block,
+                          std::vector<double> criteria, std::vector<compare_option_t> compare_opn,
+                          std::vector<compare_diagonal_option_t> diag_opn,std::vector<int> lmax_custom);
+
+  /*!
+   * \brief refine_and_coarsen
+   * This function loops through each quadrant in the grid and evaluates whether the quadrant is eligible for refinement or coarsening depending on the provided user criteria. It then returns a boolean which is true if the grid has changed and false if the grid has not changed.
+   * The complete information from the developer is described in the function listed above.
+   * The refine_and_coarsen function listed above wraps around this function, and serves to get PETSC Vec fields as pointers to then pass to this function. This function then:
+   *      (a) Loops through each quadrant in the grid
+   *      (b) Evaluates whether or not refinement/coarsening can be applied to that grid, and calls the function to tag the quadrants appropriately
+   *      (c) Returns whether or not the grid has been changed
+   * \param p4est [inout] See above description
+   * \param nodes [in] " "
+   * \param phi_p [in] a double pointer for the LSF (or effective LSF) that we want to refine and coarsen around
+   * \param num_fields [in] See above description
+   * \param use_block [in] " "
+   * \param enforce_uniform_band [in] " "
+   * \param refine_band [in] " "
+   * \param coarsen_band [in] " "
+   * \param fields [in] a double pointer to the fields for which we want to evaluate refinement/coarsening criteria
+   * \param fields_block [in] a double pointer to the fields (provided in block vector format) for which we want to evaluate refinement/coarsening criteria
+   * \param criteria [in] See above function description
+   * \param compare_opn [in] See above function description
+   * \param diag_opn [in] See above function description
+   * \param lmax_custom [in] See above function description
+   * \return
+   */
+  bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, const double *phi_p,
+                          const unsigned int num_fields, bool use_block,
+                          bool enforce_uniform_band,
+                          double refine_band, double coarsen_band,
+                          const double** fields, const double* fields_block,
+                          std::vector<double> criteria, std::vector<compare_option_t> compare_opn,
+                          std::vector<compare_diagonal_option_t> diag_opn,std::vector<int> lmax_custom);
+
+  void set_refine_only_inside(bool val) { refine_only_inside = val; }
+
+  virtual ~ splitting_criteria_tag_t() {};
+};
+
+/*!
+ * \class splitting_criteria_grad_t
+ * \brief Class for refinement based on the gradient of a function. The function
+ *        of interest is provided as data sampled at grid nodes.
+ */
+struct splitting_criteria_grad_t: public splitting_criteria_t {
+  const CF_DIM* cf;
+  double fmax, tol;
+
+  splitting_criteria_grad_t(int min_lvl, int max_lvl, const CF_DIM* cf, double fmax, double tol = 1e-2)
+  : splitting_criteria_t(min_lvl, max_lvl), cf(cf), fmax(fmax), tol(tol)
+  {}
+  virtual ~splitting_criteria_grad_t() {};
+};
+
+/*!
+ * \fn    refine_levelset_cf
+ * \brief Refine based on distance to a cf level-set function.
  * \param p4est       [in] forest object to consider
  * \param which_tree  [in] current tree to which the quadrant belongs
  * \param quad        [in] pointer to the current quadrant
@@ -142,7 +363,8 @@ p4est_bool_t
 refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
 
 /*!
- * \brief coarsen_levelset coarsen based on distance of a cf function
+ * \fn    coarsen_levelset_cf
+ * \brief Coarsen based on distance of a cf level-set function.
  * \param p4est       [in] forest object
  * \param which_tree  [in] current tree to which the quadrant belongs
  * \param quad        [in] a pointer to a list of quadrant to be coarsened
@@ -152,7 +374,20 @@ p4est_bool_t
 coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
 
 /*!
- * \brief refine_levelset_cf refine based on the threshold of a continuous function
+ * \fn    refine_levelset_cf_and_uniform_band
+ * \brief Refine based on distance to a cf levelset and
+ *        impose a band of uniform cells around it.
+ * \param p4est       [in] forest object to consider
+ * \param which_tree  [in] current tree to which the quadrant belongs
+ * \param quad        [in] pointer to the current quadrant
+ * \return                a boolean (0/1) describing if refinement is needed
+ */
+p4est_bool_t
+refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+/*!
+ * \fn    refine_levelset_thres
+ * \brief Refine based on the threshold of a continuous function.
  * \param p4est       [in] forest object to consider
  * \param which_tree  [in] current tree to which the quadrant belongs
  * \param quad        [in] pointer to the current quadrant
@@ -162,7 +397,8 @@ p4est_bool_t
 refine_levelset_thresh(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
 
 /*!
- * \brief coarsen_levelset coarsen based on the threshold of a continuous function
+ * \fn    coarsen_levelset_thresh
+ * \brief Coarsen based on the threshold of a continuous function.
  * \param p4est       [in] forest object
  * \param which_tree  [in] current tree to which the quadrant belongs
  * \param quad        [in] a pointer to a list of quadrant to be coarsened
@@ -172,7 +408,8 @@ p4est_bool_t
 coarsen_levelset_thresh(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
 
 /*!
- * \brief refine_random a random refinement method
+ * \fn    refine_random
+ * \brief A random refinement method.
  * \param p4est       [in] forest object to consider
  * \param which_tree  [in] current tree to which the quadrant belongs
  * \param quad        [in] pointer to the current quadrant
@@ -182,7 +419,8 @@ p4est_bool_t
 refine_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
 
 /*!
- * \brief coarsen_random a method to randomly coarsen a forest
+ * \fn    coarsen_random
+ * \brief A method to randomly coarsen a forest.
  * \param p4est       [in] forest object
  * \param which_tree  [in] current tree to which the quadrant belongs
  * \param quad        [in] a pointer to a list of quadrant to be coarsened
@@ -192,7 +430,8 @@ p4est_bool_t
 coarsen_random(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
 
 /*!
- * \brief refine_every_cell refines all the cell in the p4est
+ * \fn    refine_every_cell
+ * \brief Refines all the cell in the p4est.
  * \param p4est       [in] forest object to consider
  * \param which_tree  [in] current tree to which the quadrant belongs
  * \param quad        [in] pointer to the current quadrant
@@ -202,7 +441,8 @@ p4est_bool_t
 refine_every_cell(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
 
 /*!
- * \brief coarsen_every_cell coarsens all the cells in the p4est
+ * \fn    coarsen_every_cell
+ * \brief Coarsens all the cells in the p4est.
  * \param p4est       [in] forest object
  * \param which_tree  [in] current tree to which the quadrant belongs
  * \param quad        [in] a pointer to a list of quadrant to be coarsened
@@ -212,7 +452,8 @@ p4est_bool_t
 coarsen_every_cell(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
 
 /*!
- * \brief refine_marked_quadrants refines quadrants that have been explicitly marked for refinement
+ * \fn    refine_marked_quadrants
+ * \brief Refines quadrants that have been explicitly marked for refinement.
  * \param p4est       [in] forest object
  * \param which_tree  [in] current tree to which the quadrant belongs
  * \param quad        [in] pointer to the current quadrant
@@ -222,7 +463,8 @@ p4est_bool_t
 refine_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
 
 /*!
- * \brief coarsen_marked_quadrants coarsens quadrants that have been explicitly marked for coarsening
+ * \fn    coarsen_marked_quadrants
+ * \brief Coarsens quadrants that have been explicitly marked for coarsening.
  * \param p4est       [in] forest object
  * \param which_tree  [in] current tree to which the quadrant belongs
  * \param quad        [in] a pointer to a list of quadrant to be coarsened
@@ -230,5 +472,76 @@ refine_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadran
  */
 p4est_bool_t
 coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+/*!
+ * \fn    refine_grad_cf
+ * \brief Refinement based on gradient indicator.
+ * \param p4est       [in] forest object
+ * \param which_tree  [in] current tree to which the quadrant belongs
+ * \param quad        [in] a pointer to a list of quadrant to be coarsened
+ * \return                 a boolean (0/1) describing if a set of quadrants need to be coarsened
+ */
+p4est_bool_t
+refine_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+/*!
+ * \fn    coarsen_grad_cf
+ * \brief Coarsening based on gradient indicator.
+ * \param p4est       [in] forest object
+ * \param which_tree  [in] current tree to which the quadrant belongs
+ * \param quad        [in] a pointer to a list of quadrant to be coarsened
+ * \return                 a boolean (0/1) describing if a set of quadrants need to be coarsened
+ */
+p4est_bool_t
+coarsen_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+/*!
+ * \fn    coarsen_down_to_lmax
+ * \brief A dumb coarsening down to lmax.
+ * \param p4est       [in] forest object
+ * \param which_tree  [in] current tree to which the quadrant belongs
+ * \param quad        [in] a pointer to a list of quadrant to be coarsened
+ * \return                 a boolean (0/1) describing if a set of quadrants need to be coarsened
+ */
+p4est_bool_t
+coarsen_down_to_lmax (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Splitting-criteria class based on usual distance to interface and explicit narrow band around interface.
+ * Code based on the 'grid_update' example.
+ */
+class splitting_criteria_band_t : public splitting_criteria_tag_t
+{
+private:
+	double _bandWidth;		// Band width around the interface (measured in min cell diagonal).
+
+	/**
+	 * Tag quadrants for coarsening or refinement depending on whether their phi value meets the usual splitting crite-
+	 * rion or if they are within some band (in min diagonals) from the interface.
+	 * @param [in] p4est Pointer to p4est object.
+	 * @param [in] quadIdx Quadrant index.
+	 * @param [in] treeIdx Tree index which the quadrant belongs to.
+	 * @param [in] nodes Pointer to nodes object.
+	 * @param [in] phiReadPtr Pointer to level-set function values vector.
+	 */
+	void tag_quadrant( p4est_t const *p4est, p4est_locidx_t quadIdx, p4est_topidx_t treeIdx, p4est_nodes_t const *nodes,
+					   double const *phiReadPtr );
+public:
+	splitting_criteria_band_t( int minLvl, int maxLvl, double lip, double bandWidth=0 )
+	: splitting_criteria_tag_t( minLvl, maxLvl, lip ), _bandWidth( bandWidth ) {}
+
+	/**
+	 * Refine or coarsen a grid after tagging the quadrants appropriately.
+	 * @note I had to rename this function from refine_and_coarsen to refine_and_coarsen because I cannot declare the
+	 * parent's class function virtual --it has parameters with default values, which are forbidden.
+	 * @param [in,out] p4est Pointer to p4est object.
+	 * @param [in] nodes Pointer to nodes object.
+	 * @param [in] phiReadPtr Pointer to level-set function values vector.
+	 * @return True if grid changed, false otherwise.
+	 */
+	bool refine_and_coarsen_with_band( p4est_t *p4est, p4est_nodes_t const *nodes, double const *phiReadPtr );
+};
 
 #endif // REFINE_COARSEN_H

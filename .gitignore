@@ -10,6 +10,9 @@
 *.pro
 *.pro.user*
 *.creator.user*
+*examples/**/*.pri
+!examples/two_phase_flows_validation/two_phase_flows_validation.pri
+CMakeLists.txt.user
 *~
 *.vt[uks]
 *.pvt[uks]
@@ -33,6 +36,7 @@
 *.blg
 sync
 .rsync.exclude
+Info.plist
 
 # What directories to ignore
 *[Dd]ebug*
@@ -40,9 +44,20 @@ sync
 *[Oo]bjs*
 *[Pp]roject[s]*
 *[Bb]uild*
+*[Xx]code*
+Default/
 
 *.orig
 *_BACKUP_*
 *_BASE_*
 *_LOCAL_*
 *_REMOTE_*
+
+# CLion.
+.idea/
+
+# VSCODE 
+.vscode/
+*.json
+
+examples/porous_media/CMakeLists_old.txt

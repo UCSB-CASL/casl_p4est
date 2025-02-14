@@ -4,19 +4,20 @@
 #include <vector>
 #include <iostream>
 
-#include <src/math.h>
+#include <src/casl_math.h>
 
 using std::vector;
 
 class matrix_t
 {
+  friend class my_p4est_interface_manager_t;
 protected:
   int m, n;
   vector<double> values;
 
 public:
 
-  matrix_t( int m=1, int n=1 )
+  matrix_t(int m = 1, int n = 1)
   {
     this->m=m; this->n=n;
     values.resize(m*n);
@@ -24,13 +25,13 @@ public:
 
   void resize(int m, int n);
 
-  void operator=( const matrix_t& M );
+  void operator=(const matrix_t& M);
 
   inline int num_rows() const { return m; }
 
   inline int num_cols() const { return n; }
 
-  inline double get_value(int i,int j) const
+  inline double get_value(int i, int j) const
   {
 #ifdef CASL_THROWS
     if(i<0 || i>m || j<0 || j>n)
@@ -47,15 +48,21 @@ public:
   //--------------------------------------------------------------------------
   // b = Ax
   //--------------------------------------------------------------------------
-  void matvec( const vector<double>& x, vector<double>& b );
+  void matvec(const vector<double>& x, vector<double>& b) const;
 
-  void tranpose_matvec( const vector<double>& x, vector<double>& b );
+  void tranpose_matvec(const vector<double>& x, vector<double>& b) const {tranpose_matvec(&x, &b, 1);}
+  void tranpose_matvec(const vector<double> x[], vector<double> b[], const size_t &n_vectors) const;
 
-  void matrix_product(  matrix_t& b, matrix_t& c );
+  // c = this*b:
+  void matrix_product(const matrix_t& b, matrix_t& c) const;
+  // c = this*(transpose of b): [light version, no actual transpose done]
+  void matrix_product_transpose(const matrix_t& b, matrix_t& c) const;
 
-  void scale_by_maxabs(vector<double>& x);
+  double scale_by_maxabs(vector<double>& x) {return scale_by_maxabs(&x, 1); }
+  double scale_by_maxabs(vector<double> x[], const size_t &n_vectors);
 
-  void mtm_product(matrix_t& m );
+  void mtm_product(matrix_t& m) const;
+  void mtm_product(matrix_t& m, vector<double>& w) const;
 
 
   /*!
@@ -65,15 +72,17 @@ public:
   matrix_t tr();
 
   void print();
-  void sub( int im, int jm, int iM, int jM, matrix_t& M );
-  void truncate_matrix( int m, int n, matrix_t& M);
-  void create_as_transpose(  matrix_t& M );
+  void sub(int im, int jm, int iM, int jM, matrix_t& M);
+  void truncate_matrix(int m, int n, const matrix_t& M);
+  void create_as_transpose(matrix_t& M);
 
-  void operator+=(matrix_t& M );
-  void operator-=(matrix_t& M );
-  void operator*=(double s );
-  void operator/=(double s );
-  void operator =(double s );
+  void operator+=(matrix_t& M);
+  void operator-=(matrix_t& M);
+  void operator*=(double s);
+  void operator/=(double s);
+  void operator =(double s);
+//  const double* read_data() const {return values.data();}
+//  double* get_data() {return values.data();}
 };
 
 

@@ -52,18 +52,18 @@ my_p4est_brick_new (const int* n_xyz,
   p4est_topidx_t      tt, vindex;
   p4est_connectivity_t *conn;
 
-#ifdef CASL_THROWS
-  if((periodic[0] && n_xyz[0]==1) ||
-     (periodic[1] && n_xyz[1]==1)
-   #ifdef P4_TO_P8
-     || (periodic[2] && n_xyz[2]==1)
-   #endif
-     )
-  {
-    fprintf(stderr, "[P4EST_ERROR]: You cannot use periodic boundaries with a macromesh of size 1.\n");
-    return NULL;
-  }
-#endif
+//#ifdef CASL_THROWS
+//  if((periodic[0] && n_xyz[0]==1) ||
+//     (periodic[1] && n_xyz[1]==1)
+//   #ifdef P4_TO_P8
+//     || (periodic[2] && n_xyz[2]==1)
+//   #endif
+//     )
+//  {
+//    fprintf(stderr, "[P4EST_ERROR]: You cannot use periodic boundaries with a macromesh of size 1.\n");
+//    return NULL;
+//  }
+//#endif
 
   P4EST_ASSERT (0 < n_xyz[0] && 0 < n_xyz[1]);
 #ifdef P4_TO_P8
@@ -363,3 +363,12 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
   return -1;
 }
 #endif
+
+size_t my_p4est_brick_memory_estimate(const my_p4est_brick_t* brick)
+{
+  size_t memory = 0;
+  memory += 3*sizeof (int);
+  memory += 2*3*sizeof (double);
+  memory += brick->nxyztrees[0]*brick->nxyztrees[1]*brick->nxyztrees[2]*sizeof (p4est_topidx_t);
+  return memory;
+}

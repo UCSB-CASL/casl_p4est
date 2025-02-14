@@ -40,6 +40,14 @@
   (!PETSC_VERSION_LE(MAJOR,MINOR,SUBMINOR))
 #endif
 
+#if PETSC_VERSION_GE(3,13,0)
+#define PetscBinaryWrite(a, b, c, d, e) PetscBinaryWrite(a, b, c, d)
+#endif
+
+#if PETSC_VERSION_LT(3,12,0)
+#define PetscBinaryRead(a, b, c, d, e) PetscBinaryRead(a, b, c, e)
+#endif
+
 #if PETSC_VERSION_GT(3,4,3)
 #define MatNullSpaceRemove(a, b, c) MatNullSpaceRemove(a, b)
 #endif
@@ -51,5 +59,8 @@
 #define KSPSetOperators(a,b,c,d) KSPSetOperators(a,b,c)
 #endif
 
+#if PETSC_VERSION_GE(3,7,0)
+#define PetscOptionsSetValue(a,b) PetscOptionsSetValue(NULL,a,b)
+#endif
 
 #endif // PETSC_COMPATIBILITY_H

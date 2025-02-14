@@ -40,6 +40,21 @@ extern              "C"
 #endif
 #endif
 
+/** Determine the owning tree for a node and clamp it inside the domain.
+ *
+ * If the node is on the boundary, assign the lowest tree to own it.
+ * Clamp it inside the tree bounds if necessary.
+ *
+ * \param [in] p4est    The p4est to work on.
+ * \param [in] treeid   Original tree index for this node.
+ * \param [in] n        The node to work on.
+ * \param [out] c       The clamped node in owning tree coordinates.
+ *                      Its piggy data will be filled with owning tree id.
+ * [Raphael:] removed the static qualifier, because I needed access from another file...
+ */
+void p4est_node_canonicalize (const p4est_t * p4est, p4est_topidx_t treeid,
+                              const p4est_quadrant_t * n, p4est_quadrant_t * c);
+
 /** Create node information.
  * All nodes, including hanging nodes, are considered unique and independent.
  * Function is compatible with p4est_nodes_is_valid and p4est_nodes_destroy.

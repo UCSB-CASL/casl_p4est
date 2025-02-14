@@ -4,8 +4,14 @@
 #include <stack>
 /* c++11 support for the "random" procedures is broken for some reason with icpc / gcc 4.4.7 or gcc 4.8.0 */
 //#if defined(COMET) || defined(STAMPEDE)
+
+// the following is needed on stampede when using intel compiler
+#ifdef __INTEL_COMPILER
+namespace std {
+      typedef decltype(nullptr) nullptr_t;
+}
+#endif
 #include <boost/random.hpp>
-#include <boost/random/normal_distribution.hpp>
 //#else
 //#include <random>
 //#endif

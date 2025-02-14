@@ -10,7 +10,7 @@
 #endif
 
 #include <src/petsc_compatibility.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -19,10 +19,10 @@
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
-extern PetscLogEvent log_PoissonSolverNodeBase_matrix_preallocation;
-extern PetscLogEvent log_PoissonSolverNodeBase_matrix_setup;
-extern PetscLogEvent log_PoissonSolverNodeBase_rhsvec_setup;
-extern PetscLogEvent log_PoissonSolverNodeBase_solve;
+extern PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_matrix_preallocation;
+extern PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_setup_linear_system;
+extern PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_rhsvec_setup;
+extern PetscLogEvent log_PoissonSolverNodeBasedJumpExtended_solve;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -248,7 +248,7 @@ void my_p4est_poisson_jump_nodes_extended_t::preallocate_matrix()
   //  MatSetOption(A, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
 
   // enable logging for the preallocation
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJumpExtended_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 
   PetscInt num_owned_global = 2 * global_node_offset[p4est->mpisize];
   PetscInt num_owned_local  = 2 * (PetscInt)(nodes->num_owned_indeps);
@@ -311,12 +311,12 @@ void my_p4est_poisson_jump_nodes_extended_t::preallocate_matrix()
   ierr = MatSeqAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0]); CHKERRXX(ierr);
   ierr = MatMPIAIJSetPreallocation(A, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJumpExtended_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_jump_nodes_extended_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
 {
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJumpExtended_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
   if(bc_ == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
@@ -462,7 +462,7 @@ void my_p4est_poisson_jump_nodes_extended_t::solve(Vec solution, bool use_nonzer
     rhs_ = NULL;
   }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJumpExtended_solve, A, rhs_, ksp, 0); CHKERRXX(ierr);
 }
 
 
@@ -471,7 +471,7 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
   preallocate_matrix();
 
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJumpExtended_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -603,29 +603,29 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
 #else
       Cube2 cube;
 #endif
-      cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
-      cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
-      cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
-      cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
+      cube.xyz_mmm[0] = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
+      cube.xyz_ppp[0] = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
+      cube.xyz_mmm[1] = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
+      cube.xyz_ppp[1] = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
 #ifdef P4_TO_P8
-      cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
-      cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
+      cube.xyz_mmm[2] = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
+      cube.xyz_ppp[2] = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
 #endif
 
 #ifdef P4_TO_P8
-      double P_mmm = phi_interp(cube.x0, cube.y0, cube.z0);
-      double P_mmp = phi_interp(cube.x0, cube.y0, cube.z1);
-      double P_mpm = phi_interp(cube.x0, cube.y1, cube.z0);
-      double P_mpp = phi_interp(cube.x0, cube.y1, cube.z1);
-      double P_pmm = phi_interp(cube.x1, cube.y0, cube.z0);
-      double P_pmp = phi_interp(cube.x1, cube.y0, cube.z1);
-      double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
-      double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
+      double P_mmm = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+      double P_mmp = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+      double P_mpm = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+      double P_mpp = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
+      double P_pmm = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+      double P_pmp = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+      double P_ppm = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+      double P_ppp = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
 #else
-      double P_mmm = phi_interp(cube.x0, cube.y0);
-      double P_mpm = phi_interp(cube.x0, cube.y1);
-      double P_pmm = phi_interp(cube.x1, cube.y0);
-      double P_ppm = phi_interp(cube.x1, cube.y1);
+      double P_mmm = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1]);
+      double P_mpm = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1]);
+      double P_pmm = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1]);
+      double P_ppm = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1]);
 #endif
 
 #ifdef P4_TO_P8
@@ -648,13 +648,13 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
 #else
         Cube2 cube;
 #endif
-        cube.x0 = x_C-0.5*dx_min;
-        cube.x1 = x_C+0.5*dx_min;
-        cube.y0 = y_C-0.5*dy_min;
-        cube.y1 = y_C+0.5*dy_min;
+        cube.xyz_mmm[0] = x_C-0.5*dx_min;
+        cube.xyz_ppp[0] = x_C+0.5*dx_min;
+        cube.xyz_mmm[1] = y_C-0.5*dy_min;
+        cube.xyz_ppp[1] = y_C+0.5*dy_min;
 #ifdef P4_TO_P8
-        cube.z0 = z_C-0.5*dz_min;
-        cube.z1 = z_C+0.5*dz_min;
+        cube.xyz_mmm[2] = z_C-0.5*dz_min;
+        cube.xyz_ppp[2] = z_C+0.5*dz_min;
 #endif
 #ifdef P4_TO_P8
         OctValue  phi_cube(P_mmm, P_mmp, P_mpm, P_mpp,
@@ -673,28 +673,28 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
         Cube2 c2;
         QuadValue qv;
 
-        c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-        qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_mpm;    qv.val11 = P_mpp;
+        c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+        qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_mpm;    qv.val[3] = P_mpp;
         double s_m00_m = c2.area_In_Negative_Domain(qv); double s_m00_p = dy_min*dz_min - s_m00_m;
 
-        c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-        qv.val00 = P_pmm;    qv.val01 = P_pmp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+        c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+        qv.val[0] = P_pmm;    qv.val[1] = P_pmp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
         double s_p00_m = c2.area_In_Negative_Domain(qv); double s_p00_p = dy_min*dz_min - s_p00_m;
 
-        c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-        qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_pmm;    qv.val11 = P_pmp;
+        c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+        qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_pmm;    qv.val[3] = P_pmp;
         double s_0m0_m = c2.area_In_Negative_Domain(qv); double s_0m0_p = dx_min*dz_min - s_0m0_m;
 
-        c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-        qv.val00 = P_mpm;    qv.val01 = P_mpp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+        c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+        qv.val[0] = P_mpm;    qv.val[1] = P_mpp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
         double s_0p0_m = c2.area_In_Negative_Domain(qv); double s_0p0_p = dx_min*dz_min - s_0p0_m;
 
-        c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-        qv.val00 = P_mmm;    qv.val01 = P_mpm;    qv.val10 = P_pmm;    qv.val11 = P_ppm;
+        c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+        qv.val[0] = P_mmm;    qv.val[1] = P_mpm;    qv.val[2] = P_pmm;    qv.val[3] = P_ppm;
         double s_00m_m = c2.area_In_Negative_Domain(qv); double s_00m_p = dx_min*dy_min - s_00m_m;
 
-        c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-        qv.val00 = P_mmp;    qv.val01 = P_mpp;    qv.val10 = P_pmp;    qv.val11 = P_ppp;
+        c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+        qv.val[0] = P_mmp;    qv.val[1] = P_mpp;    qv.val[2] = P_pmp;    qv.val[3] = P_ppp;
         double s_00p_m = c2.area_In_Negative_Domain(qv); double s_00p_p = dx_min*dy_min - s_00p_m;
 
         p4est_locidx_t quad_mmm_idx, quad_ppp_idx;
@@ -1099,13 +1099,13 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_matrix()
 //    }
 //  }
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJumpExtended_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_rhsvec()
 {
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_PoissonSolverNodeBase_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJumpExtended_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double *phi_p, *phi_xx_p, *phi_yy_p, *add_p, *rhs_p;
   ierr = VecGetArray(phi_,    &phi_p   ); CHKERRXX(ierr);
@@ -1204,29 +1204,29 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_rhsvec()
 #else
       Cube2 cube;
 #endif
-      cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
-      cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
-      cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
-      cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
+      cube.xyz_mmm[0] = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
+      cube.xyz_ppp[0] = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
+      cube.xyz_mmm[1] = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
+      cube.xyz_ppp[1] = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
 #ifdef P4_TO_P8
-      cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
-      cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
+      cube.xyz_mmm[2] = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
+      cube.xyz_ppp[2] = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
 #endif
 
 #ifdef P4_TO_P8
-      double P_mmm = phi_interp(cube.x0, cube.y0, cube.z0);
-      double P_mmp = phi_interp(cube.x0, cube.y0, cube.z1);
-      double P_mpm = phi_interp(cube.x0, cube.y1, cube.z0);
-      double P_mpp = phi_interp(cube.x0, cube.y1, cube.z1);
-      double P_pmm = phi_interp(cube.x1, cube.y0, cube.z0);
-      double P_pmp = phi_interp(cube.x1, cube.y0, cube.z1);
-      double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
-      double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
+      double P_mmm = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+      double P_mmp = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+      double P_mpm = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+      double P_mpp = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
+      double P_pmm = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+      double P_pmp = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+      double P_ppm = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+      double P_ppp = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
 #else
-      double P_mmm = phi_interp(cube.x0, cube.y0);
-      double P_mpm = phi_interp(cube.x0, cube.y1);
-      double P_pmm = phi_interp(cube.x1, cube.y0);
-      double P_ppm = phi_interp(cube.x1, cube.y1);
+      double P_mmm = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1]);
+      double P_mpm = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1]);
+      double P_pmm = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1]);
+      double P_ppm = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1]);
 #endif
 
 #ifdef P4_TO_P8
@@ -1249,13 +1249,13 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_rhsvec()
 #else
         Cube2 cube;
 #endif
-        cube.x0 = x_C-0.5*dx_min;
-        cube.x1 = x_C+0.5*dx_min;
-        cube.y0 = y_C-0.5*dy_min;
-        cube.y1 = y_C+0.5*dy_min;
+        cube.xyz_mmm[0] = x_C-0.5*dx_min;
+        cube.xyz_ppp[0] = x_C+0.5*dx_min;
+        cube.xyz_mmm[1] = y_C-0.5*dy_min;
+        cube.xyz_ppp[1] = y_C+0.5*dy_min;
 #ifdef P4_TO_P8
-        cube.z0 = z_C-0.5*dz_min;
-        cube.z1 = z_C+0.5*dz_min;
+        cube.xyz_mmm[2] = z_C-0.5*dz_min;
+        cube.xyz_ppp[2] = z_C+0.5*dz_min;
 #endif
 #ifdef P4_TO_P8
         OctValue  phi_cube(P_mmm, P_mmp, P_mpm, P_mpp,
@@ -1484,7 +1484,7 @@ void my_p4est_poisson_jump_nodes_extended_t::setup_negative_laplace_rhsvec()
   ierr = VecRestoreArray(add_,    &add_p   ); CHKERRXX(ierr);
   ierr = VecRestoreArray(rhs_,    &phi_p   ); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_PoissonSolverNodeBase_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJumpExtended_rhsvec_setup, rhs_, 0, 0, 0); CHKERRXX(ierr);
 }
 
 #ifdef P4_TO_P8
