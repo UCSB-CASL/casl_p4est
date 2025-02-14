@@ -1252,4 +1252,571 @@ struct capsule_domain_t
   }
 };
 
+
+// Added By Faranak for multi shapes
+#ifdef P4_TO_P8
+// 3D version of multi_circle classes
+class multi_circle_phi_t : public CF_3 {
+public:
+    std::vector<double> r0;
+    std::vector<double> xc, yc, zc;
+    double beta;
+    double inside;
+    double theta, cos_theta, sin_theta;
+
+    multi_circle_phi_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                      const std::vector<double>& xc = std::vector<double>{0.0},
+                      const std::vector<double>& yc = std::vector<double>{0.0},
+                      const std::vector<double>& zc = std::vector<double>{0.0},
+                      double beta = 0.0, double inside = 1.0, double theta = 0.0)
+        : r0(r0), xc(xc), yc(yc), zc(zc), beta(beta), inside(inside), theta(theta)
+    {
+        cos_theta = cos(theta);
+        sin_theta = sin(theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                   const std::vector<double>& xc,
+                   const std::vector<double>& yc,
+                   const std::vector<double>& zc,
+                   double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        this->r0 = r0;
+        this->xc = xc;
+        this->yc = yc;
+        this->zc = zc;
+        this->beta = beta;
+        this->inside = inside;
+        this->theta = theta;
+        this->cos_theta = cos(theta);
+        this->sin_theta = sin(theta);
+    }
+
+    double operator()(double x, double y, double z) const {
+        if (r0.empty()) return 0.0;
+
+        double phi_final = evaluate_sphere(x, y, z, 0);
+        for(size_t i = 1; i < r0.size(); ++i) {
+            if(inside > 0) {
+                phi_final = std::min(phi_final, evaluate_sphere(x, y, z, i));
+            } else {
+                phi_final = std::max(phi_final, evaluate_sphere(x, y, z, i));
+            }
+        }
+        return phi_final;
+    }
+
+private:
+    double evaluate_sphere(double x, double y, double z, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+        double Z = z - zc[idx];
+        double r = sqrt(X*X + Y*Y + Z*Z);
+        if (r < 1.0E-9) r = 1.0E-9;
+        return inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+    }
+};
+
+class multi_circle_phi_x_t : public CF_3 {
+public:
+    std::vector<double> r0;
+    std::vector<double> xc, yc, zc;
+    double beta;
+    double inside;
+    double theta, cos_theta, sin_theta;
+
+    multi_circle_phi_x_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                       const std::vector<double>& xc = std::vector<double>{0.0},
+                       const std::vector<double>& yc = std::vector<double>{0.0},
+                       const std::vector<double>& zc = std::vector<double>{0.0},
+                       double beta = 0.0, double inside = 1.0, double theta = 0.0)
+        : r0(r0), xc(xc), yc(yc), zc(zc), beta(beta), inside(inside), theta(theta)
+    {
+        cos_theta = cos(theta);
+        sin_theta = sin(theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                   const std::vector<double>& xc,
+                   const std::vector<double>& yc,
+                   const std::vector<double>& zc,
+                   double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        this->r0 = r0;
+        this->xc = xc;
+        this->yc = yc;
+        this->zc = zc;
+        this->beta = beta;
+        this->inside = inside;
+        this->theta = theta;
+        this->cos_theta = cos(theta);
+        this->sin_theta = sin(theta);
+    }
+
+    double operator()(double x, double y, double z) const {
+        if (r0.empty()) return 0.0;
+
+        size_t extremum_idx = 0;
+        double extremum_val = evaluate_sphere_phi(x, y, z, 0);
+
+        for(size_t i = 1; i < r0.size(); ++i) {
+            double current = evaluate_sphere_phi(x, y, z, i);
+            if((inside > 0 && current < extremum_val) ||
+               (inside < 0 && current > extremum_val)) {
+                extremum_val = current;
+                extremum_idx = i;
+            }
+        }
+
+        return evaluate_sphere_derivative_x(x, y, z, extremum_idx);
+    }
+
+private:
+    double evaluate_sphere_phi(double x, double y, double z, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+        double Z = z - zc[idx];
+        double r = sqrt(X*X + Y*Y + Z*Z);
+        if (r < 1.0E-9) r = 1.0E-9;
+        return inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+    }
+
+    double evaluate_sphere_derivative_x(double x, double y, double z, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+        double Z = z - zc[idx];
+        double r = sqrt(X*X + Y*Y + Z*Z);
+        if (r < 1.0E-9) r = 1.0E-9;
+
+        double phi_x = inside * X * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
+                    - inside * 20.0 * beta * X * Y * (X*X - Y*Y) / pow(r, 5.0);
+        double phi_y = inside * Y * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
+                    - inside * 5.0 * beta * (pow(Y, 4.0) + pow(X, 4.0) - 6.0 * pow(X * Y, 2.0)) / pow(r, 5.0);
+        double phi_z = inside * Z / r;
+
+        return phi_x * cos_theta + phi_y * sin_theta;
+    }
+};
+
+class multi_circle_phi_y_t : public CF_3 {
+public:
+    std::vector<double> r0;
+    std::vector<double> xc, yc, zc;
+    double beta;
+    double inside;
+    double theta, cos_theta, sin_theta;
+
+    multi_circle_phi_y_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                       const std::vector<double>& xc = std::vector<double>{0.0},
+                       const std::vector<double>& yc = std::vector<double>{0.0},
+                       const std::vector<double>& zc = std::vector<double>{0.0},
+                       double beta = 0.0, double inside = 1.0, double theta = 0.0)
+        : r0(r0), xc(xc), yc(yc), zc(zc), beta(beta), inside(inside), theta(theta)
+    {
+        cos_theta = cos(theta);
+        sin_theta = sin(theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                   const std::vector<double>& xc,
+                   const std::vector<double>& yc,
+                   const std::vector<double>& zc,
+                   double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        this->r0 = r0;
+        this->xc = xc;
+        this->yc = yc;
+        this->zc = zc;
+        this->beta = beta;
+        this->inside = inside;
+        this->theta = theta;
+        this->cos_theta = cos(theta);
+        this->sin_theta = sin(theta);
+    }
+
+    double operator()(double x, double y, double z) const {
+        if (r0.empty()) return 0.0;
+
+        size_t extremum_idx = 0;
+        double extremum_val = evaluate_sphere_phi(x, y, z, 0);
+
+        for(size_t i = 1; i < r0.size(); ++i) {
+            double current = evaluate_sphere_phi(x, y, z, i);
+            if((inside > 0 && current < extremum_val) ||
+               (inside < 0 && current > extremum_val)) {
+                extremum_val = current;
+                extremum_idx = i;
+            }
+        }
+
+        return evaluate_sphere_derivative_y(x, y, z, extremum_idx);
+    }
+
+private:
+    double evaluate_sphere_phi(double x, double y, double z, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+        double Z = z - zc[idx];
+        double r = sqrt(X*X + Y*Y + Z*Z);
+        if (r < 1.0E-9) r = 1.0E-9;
+        return inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+    }
+
+    double evaluate_sphere_derivative_y(double x, double y, double z, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+        double Z = z - zc[idx];
+        double r = sqrt(X*X + Y*Y + Z*Z);
+        if (r < 1.0E-9) r = 1.0E-9;
+
+        double phi_x = inside * X * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
+                    - inside * 20.0 * beta * X * Y * (X*X - Y*Y) / pow(r, 5.0);
+        double phi_y = inside * Y * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
+                    - inside * 5.0 * beta * (pow(Y, 4.0) + pow(X, 4.0) - 6.0 * pow(X * Y, 2.0)) / pow(r, 5.0);
+        double phi_z = inside * Z / r;
+
+        return -phi_x * sin_theta + phi_y * cos_theta;
+    }
+};
+
+class multi_circle_phi_z_t : public CF_3 {
+public:
+    std::vector<double> r0;
+    std::vector<double> xc, yc, zc;
+    double beta;
+    double inside;
+    double theta, cos_theta, sin_theta;
+
+    multi_circle_phi_z_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                       const std::vector<double>& xc = std::vector<double>{0.0},
+                       const std::vector<double>& yc = std::vector<double>{0.0},
+                       const std::vector<double>& zc = std::vector<double>{0.0},
+                       double beta = 0.0, double inside = 1.0, double theta = 0.0)
+        : r0(r0), xc(xc), yc(yc), zc(zc), beta(beta), inside(inside), theta(theta)
+    {
+        cos_theta = cos(theta);
+        sin_theta = sin(theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                   const std::vector<double>& xc,
+                   const std::vector<double>& yc,
+                   const std::vector<double>& zc,
+                   double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        this->r0 = r0;
+        this->xc = xc;
+        this->yc = yc;
+        this->zc = zc;
+        this->beta = beta;
+        this->inside = inside;
+        this->theta = theta;
+        this->cos_theta = cos(theta);
+        this->sin_theta = sin(theta);
+    }
+
+    double operator()(double x, double y, double z) const {
+        if (r0.empty()) return 0.0;
+
+        size_t extremum_idx = 0;
+        double extremum_val = evaluate_sphere_phi(x, y, z, 0);
+
+        for(size_t i = 1; i < r0.size(); ++i) {
+            double current = evaluate_sphere_phi(x, y, z, i);
+            if((inside > 0 && current < extremum_val) ||
+               (inside < 0 && current > extremum_val)) {
+                extremum_val = current;
+                extremum_idx = i;
+            }
+        }
+
+        return evaluate_sphere_derivative_z(x, y, z, extremum_idx);
+    }
+
+private:
+    double evaluate_sphere_phi(double x, double y, double z, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+        double Z = z - zc[idx];
+        double r = sqrt(X*X + Y*Y + Z*Z);
+        if (r < 1.0E-9) r = 1.0E-9;
+        return inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+    }
+
+    double evaluate_sphere_derivative_z(double x, double y, double z, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+        double Z = z - zc[idx];
+        double r = sqrt(X*X + Y*Y + Z*Z);
+        if (r < 1.0E-9) r = 1.0E-9;
+
+        // Z derivative is simpler as sphere is symmetric in Z direction
+        return inside * Z / r;
+    }
+};
+
+// 3D domain struct
+struct multi_circle_domain_t {
+    multi_circle_phi_t phi;
+    multi_circle_phi_x_t phi_x;
+    multi_circle_phi_y_t phi_y;
+    multi_circle_phi_z_t phi_z;
+
+    multi_circle_domain_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                         const std::vector<double>& xc = std::vector<double>{0.0},
+                         const std::vector<double>& yc = std::vector<double>{0.0},
+                         const std::vector<double>& zc = std::vector<double>{0.0},
+                         double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        set_params(r0, xc, yc, zc, beta, inside, theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                   const std::vector<double>& xc,
+                   const std::vector<double>& yc,
+                   const std::vector<double>& zc,
+                   double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        phi.set_params(r0, xc, yc, zc, beta, inside, theta);
+        phi_x.set_params(r0, xc, yc, zc, beta, inside, theta);
+        phi_y.set_params(r0, xc, yc, zc, beta, inside, theta);
+        phi_z.set_params(r0, xc, yc, zc, beta, inside, theta);
+    }
+};
+
+#else
+class multi_circle_phi_t : public CF_2 {
+public:
+    std::vector<double> r0;      // radii of circles
+    std::vector<double> xc, yc;  // centers
+    double beta;                 // deformation parameter (same for all circles)
+    double inside;               // interior (1) or exterior (-1)
+    double theta, cos_theta, sin_theta;  // rotation parameters (same for all circles)
+
+    multi_circle_phi_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                       const std::vector<double>& xc = std::vector<double>{0.0},
+                       const std::vector<double>& yc = std::vector<double>{0.0},
+                       double beta = 0.0, double inside = 1.0, double theta = 0.0)
+            : r0(r0), xc(xc), yc(yc), beta(beta), inside(inside), theta(theta)
+    {
+        cos_theta = cos(theta);
+        sin_theta = sin(theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                    const std::vector<double>& xc,
+                    const std::vector<double>& yc,
+                    double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        this->r0 = r0;
+        this->xc = xc;
+        this->yc = yc;
+        this->beta = beta;
+        this->inside = inside;
+        this->theta = theta;
+        this->cos_theta = cos(theta);
+        this->sin_theta = sin(theta);
+    }
+
+    double operator()(double x, double y) const {
+        if (r0.empty() || xc.empty() || yc.empty()) return 0.0;
+
+        double phi_final = evaluate_circle(x, y, 0);
+        for(size_t i = 1; i < r0.size(); ++i) {
+            if(inside > 0) {
+                phi_final = std::min(phi_final, evaluate_circle(x, y, i));
+            } else {
+                phi_final = std::max(phi_final, evaluate_circle(x, y, i));
+            }
+        }
+        return phi_final;
+    }
+
+private:
+    double evaluate_circle(double x, double y, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+        double r = sqrt(X*X + Y*Y);
+        if (r < 1.0E-9) r = 1.0E-9;
+        return inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+    }
+};
+
+class multi_circle_phi_x_t : public CF_2 {
+public:
+    std::vector<double> r0;
+    std::vector<double> xc, yc;
+    double beta;
+    double inside;
+    double theta, cos_theta, sin_theta;
+
+    multi_circle_phi_x_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                         const std::vector<double>& xc = std::vector<double>{0.0},
+                         const std::vector<double>& yc = std::vector<double>{0.0},
+                         double beta = 0.0, double inside = 1.0, double theta = 0.0)
+            : r0(r0), xc(xc), yc(yc), beta(beta), inside(inside), theta(theta)
+    {
+        cos_theta = cos(theta);
+        sin_theta = sin(theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                    const std::vector<double>& xc,
+                    const std::vector<double>& yc,
+                    double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        this->r0 = r0;
+        this->xc = xc;
+        this->yc = yc;
+        this->beta = beta;
+        this->inside = inside;
+        this->theta = theta;
+        this->cos_theta = cos(theta);
+        this->sin_theta = sin(theta);
+    }
+
+    double operator()(double x, double y) const {
+        if (r0.empty() || xc.empty() || yc.empty()) return 0.0;
+
+        // Find which circle gives the extremum value
+        size_t extremum_idx = 0;
+        double extremum_val = evaluate_circle_phi(x, y, 0);
+
+        for(size_t i = 1; i < r0.size(); ++i) {
+            double current = evaluate_circle_phi(x, y, i);
+            if((inside > 0 && current < extremum_val) ||
+               (inside < 0 && current > extremum_val)) {
+                extremum_val = current;
+                extremum_idx = i;
+            }
+        }
+
+        return evaluate_circle_derivative_x(x, y, extremum_idx);
+    }
+
+private:
+    double evaluate_circle_phi(double x, double y, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+        double r = sqrt(X*X + Y*Y);
+        if (r < 1.0E-9) r = 1.0E-9;
+        return inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+    }
+
+    double evaluate_circle_derivative_x(double x, double y, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+        double r = sqrt(X*X + Y*Y);
+        if (r < 1.0E-9) r = 1.0E-9;
+
+        double phi_x = inside * X * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
+                       - inside * 20.0 * beta * X * Y * (X*X - Y*Y) / pow(r, 5.0);
+        double phi_y = inside * Y * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
+                       - inside * 5.0 * beta * (pow(Y, 4.0) + pow(X, 4.0) - 6.0 * pow(X * Y, 2.0)) / pow(r, 5.0);
+
+        return phi_x * cos_theta + phi_y * sin_theta;
+    }
+};
+
+class multi_circle_phi_y_t : public CF_2 {
+public:
+    std::vector<double> r0;
+    std::vector<double> xc, yc;
+    double beta;
+    double inside;
+    double theta, cos_theta, sin_theta;
+
+    multi_circle_phi_y_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                         const std::vector<double>& xc = std::vector<double>{0.0},
+                         const std::vector<double>& yc = std::vector<double>{0.0},
+                         double beta = 0.0, double inside = 1.0, double theta = 0.0)
+            : r0(r0), xc(xc), yc(yc), beta(beta), inside(inside), theta(theta)
+    {
+        cos_theta = cos(theta);
+        sin_theta = sin(theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                    const std::vector<double>& xc,
+                    const std::vector<double>& yc,
+                    double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        this->r0 = r0;
+        this->xc = xc;
+        this->yc = yc;
+        this->beta = beta;
+        this->inside = inside;
+        this->theta = theta;
+        this->cos_theta = cos(theta);
+        this->sin_theta = sin(theta);
+    }
+
+    double operator()(double x, double y) const {
+        if (r0.empty() || xc.empty() || yc.empty()) return 0.0;
+
+        // Find which circle gives the extremum value
+        size_t extremum_idx = 0;
+        double extremum_val = evaluate_circle_phi(x, y, 0);
+
+        for(size_t i = 1; i < r0.size(); ++i) {
+            double current = evaluate_circle_phi(x, y, i);
+            if((inside > 0 && current < extremum_val) ||
+               (inside < 0 && current > extremum_val)) {
+                extremum_val = current;
+                extremum_idx = i;
+            }
+        }
+
+        return evaluate_circle_derivative_y(x, y, extremum_idx);
+    }
+
+private:
+    double evaluate_circle_phi(double x, double y, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+        double r = sqrt(X*X + Y*Y);
+        if (r < 1.0E-9) r = 1.0E-9;
+        return inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+    }
+
+    double evaluate_circle_derivative_y(double x, double y, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+        double r = sqrt(X*X + Y*Y);
+        if (r < 1.0E-9) r = 1.0E-9;
+
+        double phi_x = inside * X * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
+                       - inside * 20.0 * beta * X * Y * (X*X - Y*Y) / pow(r, 5.0);
+        double phi_y = inside * Y * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
+                       - inside * 5.0 * beta * (pow(Y, 4.0) + pow(X, 4.0) - 6.0 * pow(X * Y, 2.0)) / pow(r, 5.0);
+
+        return -phi_x * sin_theta + phi_y * cos_theta;
+    }
+};
+
+struct multi_circle_domain_t {
+    multi_circle_phi_t phi;
+    multi_circle_phi_x_t phi_x;
+    multi_circle_phi_y_t phi_y;
+
+    multi_circle_domain_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                          const std::vector<double>& xc = std::vector<double>{0.0},
+                          const std::vector<double>& yc = std::vector<double>{0.0},
+                          double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        set_params(r0, xc, yc, beta, inside, theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                    const std::vector<double>& xc,
+                    const std::vector<double>& yc,
+                    double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    {
+        phi.set_params(r0, xc, yc, beta, inside, theta);
+        phi_x.set_params(r0, xc, yc, beta, inside, theta);
+        phi_y.set_params(r0, xc, yc, beta, inside, theta);
+    }
+};
+#endif
+
 #endif // SHAPES_H
