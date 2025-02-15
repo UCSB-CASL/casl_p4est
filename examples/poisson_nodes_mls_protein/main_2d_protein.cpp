@@ -2045,54 +2045,61 @@ public:
       //                     ZCODE( case DDZ: return circles.phi_z(DIM(x, y, z)) );
       //             }
       //         } break;
-case 19: {
-    #ifdef P4_TO_P8
-    // 3D version would need similar modifications
-    #else
-    // First patch of each protein (0 to 3π/2)
+
+      case 19:
+{
+#ifdef P4_TO_P8
+    // 3D parameters
     static std::vector<double> radii = {0.2, 0.2, 0.2, 0.2};
     static std::vector<double> x_centers = {-0.25, -0.25, 0.25, 0.25};
     static std::vector<double> y_centers = {-0.4, 0.4, -0.4, 0.4};
-    static std::vector<double> start_angles = {0.0, 0.0, 0.0, 0.0};
-    static std::vector<double> end_angles = {3.0 * M_PI / 2.0, 3.0 * M_PI / 2.0,
-                                           3.0 * M_PI / 2.0, 3.0 * M_PI / 2.0};
-
-    static partial_circle_domain_t circles(radii, x_centers, y_centers,
-                                         start_angles, end_angles, 0.0, -1.0);
-    #endif
-
-    switch (what) {
-        _CODE( case VAL: return circles.phi(DIM(x, y, 0.0)) );
-        XCODE( case DDX: return circles.phi_x(DIM(x, y, 0.0)) );
-        YCODE( case DDY: return circles.phi_y(DIM(x, y, 0.0)) );
-    }
-}
-break;
-
-case 20: {
-    #ifdef P4_TO_P8
-    // 3D version would need similar modifications
-    #else
-    // Second patch of each protein (3π/2 to 2π)
+    static std::vector<double> z_centers = {0.0, 0.0, 0.0, 0.0};  // Added for 3D
+    static std::vector<double> split_angles = {3.0*M_PI/2.0, 3.0*M_PI/2.0, 3.0*M_PI/2.0, 3.0*M_PI/2.0};
+    static weighted_circle_domain_t circles(radii, x_centers, y_centers, split_angles, 0.0, -1.0, true, 0.0);
+#else
+    // 2D parameters
     static std::vector<double> radii = {0.2, 0.2, 0.2, 0.2};
     static std::vector<double> x_centers = {-0.25, -0.25, 0.25, 0.25};
     static std::vector<double> y_centers = {-0.4, 0.4, -0.4, 0.4};
-    static std::vector<double> start_angles = {3.0 * M_PI / 2.0, 3.0 * M_PI / 2.0,
-                                             3.0 * M_PI / 2.0, 3.0 * M_PI / 2.0};
-    static std::vector<double> end_angles = {2.0 * M_PI, 2.0 * M_PI,
-                                           2.0 * M_PI, 2.0 * M_PI};
-
-    static partial_circle_domain_t circles(radii, x_centers, y_centers,
-                                         start_angles, end_angles, 0.0, -1.0);
-    #endif
+    static std::vector<double> split_angles = {3.0*M_PI/2.0, 3.0*M_PI/2.0, 3.0*M_PI/2.0, 3.0*M_PI/2.0};
+    static weighted_circle_domain_t circles(radii, x_centers, y_centers, split_angles, 0.0, -1.0, true, 0.0);
+#endif
 
     switch (what) {
-        _CODE( case VAL: return circles.phi(DIM(x, y, 0.0)) );
-        XCODE( case DDX: return circles.phi_x(DIM(x, y, 0.0)) );
-        YCODE( case DDY: return circles.phi_y(DIM(x, y, 0.0)) );
+        _CODE( case VAL: return circles.phi(DIM(x, y, z)) );
+        XCODE( case DDX: return circles.phi_x(DIM(x, y, z)) );
+        YCODE( case DDY: return circles.phi_y(DIM(x, y, z)) );
+        ZCODE( case DDZ: return circles.phi_z(DIM(x, y, z)) );
     }
-}
-break;
+} break;
+
+case 20:
+{
+#ifdef P4_TO_P8
+    // 3D parameters
+    static std::vector<double> radii = {0.2, 0.2, 0.2, 0.2};
+    static std::vector<double> x_centers = {-0.25, -0.25, 0.25, 0.25};
+    static std::vector<double> y_centers = {-0.4, 0.4, -0.4, 0.4};
+    static std::vector<double> z_centers = {0.0, 0.0, 0.0, 0.0};  // Added for 3D
+    static std::vector<double> split_angles = {3.0*M_PI/2.0, 3.0*M_PI/2.0, 3.0*M_PI/2.0, 3.0*M_PI/2.0};
+    static weighted_circle_domain_t circles(radii, x_centers, y_centers, split_angles, 0.0, -1.0, false, 0.0);
+#else
+    // 2D parameters
+    static std::vector<double> radii = {0.2, 0.2, 0.2, 0.2};
+    static std::vector<double> x_centers = {-0.25, -0.25, 0.25, 0.25};
+    static std::vector<double> y_centers = {-0.4, 0.4, -0.4, 0.4};
+    static std::vector<double> split_angles = {3.0*M_PI/2.0, 3.0*M_PI/2.0, 3.0*M_PI/2.0, 3.0*M_PI/2.0};
+    static weighted_circle_domain_t circles(radii, x_centers, y_centers, split_angles, 0.0, -1.0, false, 0.0);
+#endif
+
+    switch (what) {
+        _CODE( case VAL: return circles.phi(DIM(x, y, z)) );
+        XCODE( case DDX: return circles.phi_x(DIM(x, y, z)) );
+        YCODE( case DDY: return circles.phi_y(DIM(x, y, z)) );
+        ZCODE( case DDZ: return circles.phi_z(DIM(x, y, z)) );
+    }
+} break;
+
     }
 
     // default value
