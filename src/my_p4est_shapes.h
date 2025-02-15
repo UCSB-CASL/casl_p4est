@@ -1819,43 +1819,44 @@ struct multi_circle_domain_t {
 };
 #endif
 
-class partial_circle_phi_t : public CF_2 {
+// Added by Faranak partial circles
+class weighted_circle_phi_t : public CF_2 {
 public:
     std::vector<double> r0;         // radii
     std::vector<double> xc, yc;     // centers
-    std::vector<double> start_angle; // starting angle for each circle
-    std::vector<double> end_angle;   // ending angle for each circle
+    std::vector<double> split_angle; // angle where dominance changes
     double beta;                     // deformation parameter
     double inside;                   // interior (1) or exterior (-1)
     double theta, cos_theta, sin_theta;  // rotation parameters
+    bool is_first_region;  // Whether this represents first region of circle
 
-    partial_circle_phi_t(const std::vector<double>& r0 = std::vector<double>{1.0},
-                        const std::vector<double>& xc = std::vector<double>{0.0},
-                        const std::vector<double>& yc = std::vector<double>{0.0},
-                        const std::vector<double>& start = std::vector<double>{0.0},
-                        const std::vector<double>& end = std::vector<double>{2.0 * M_PI},
-                        double beta = 0.0, double inside = 1.0, double theta = 0.0)
-        : r0(r0), xc(xc), yc(yc), start_angle(start), end_angle(end),
-          beta(beta), inside(inside), theta(theta)
+    weighted_circle_phi_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                         const std::vector<double>& xc = std::vector<double>{0.0},
+                         const std::vector<double>& yc = std::vector<double>{0.0},
+                         const std::vector<double>& split = std::vector<double>{3.0*M_PI/2.0},
+                         double beta = 0.0, double inside = 1.0, bool is_first_region = true,
+                         double theta = 0.0)
+        : r0(r0), xc(xc), yc(yc), split_angle(split), beta(beta), inside(inside),
+          is_first_region(is_first_region), theta(theta)
     {
         cos_theta = cos(theta);
         sin_theta = sin(theta);
     }
 
     void set_params(const std::vector<double>& r0,
-                   const std::vector<double>& xc,
-                   const std::vector<double>& yc,
-                   const std::vector<double>& start,
-                   const std::vector<double>& end,
-                   double beta = 0.0, double inside = 1.0, double theta = 0.0)
+               const std::vector<double>& xc,
+               const std::vector<double>& yc,
+               const std::vector<double>& split,
+               double beta = 0.0, double inside = 1.0, bool is_first_region = true,
+               double theta = 0.0)
     {
         this->r0 = r0;
         this->xc = xc;
         this->yc = yc;
-        this->start_angle = start;
-        this->end_angle = end;
+        this->split_angle = split;
         this->beta = beta;
         this->inside = inside;
+        this->is_first_region = is_first_region;
         this->theta = theta;
         this->cos_theta = cos(theta);
         this->sin_theta = sin(theta);
@@ -1875,40 +1876,78 @@ public:
         return phi_final;
     }
 
+
+
 private:
     double evaluate_circle(double x, double y, size_t idx) const {
         double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
         double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
 
-        // Check angle bounds
         double angle = atan2(Y, X);
         while (angle < 0) angle += 2 * M_PI;
-        if (angle < start_angle[idx] || angle > end_angle[idx]) {
-            return inside > 0 ? HUGE_VAL : -HUGE_VAL;
-        }
 
+        // Basic level set
         double r = sqrt(X*X + Y*Y);
         if (r < 1.0E-9) r = 1.0E-9;
-        return inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+        double phi = inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+
+        double dist = std::abs(angle - split_angle[idx]);
+        double angle_factor = exp(-dist*dist/2.0);  // Gaussian-like smoothing
+        double offset = 1e-8 * r0[idx] * (r/r0[idx]) * (1.0 + angle_factor);
+        if (is_first_region) {
+            return angle <= split_angle[idx] ? phi : phi + offset;
+        } else {
+            return angle > split_angle[idx] ? phi : phi + offset;
+        }
     }
 };
 
-class partial_circle_phi_x_t : public CF_2 {
+class weighted_circle_phi_x_t : public CF_2 {
 public:
     std::vector<double> r0;
     std::vector<double> xc, yc;
-    std::vector<double> start_angle;
-    std::vector<double> end_angle;
+    std::vector<double> split_angle;
     double beta;
     double inside;
     double theta, cos_theta, sin_theta;
+    bool is_first_region;
 
-    // Same constructor and set_params as phi_t...
+    weighted_circle_phi_x_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                         const std::vector<double>& xc = std::vector<double>{0.0},
+                         const std::vector<double>& yc = std::vector<double>{0.0},
+                         const std::vector<double>& split = std::vector<double>{3.0*M_PI/2.0},
+                         double beta = 0.0, double inside = 1.0, bool is_first_region = true,
+                         double theta = 0.0)
+        : r0(r0), xc(xc), yc(yc), split_angle(split), beta(beta), inside(inside),
+          is_first_region(is_first_region), theta(theta)
+    {
+        cos_theta = cos(theta);
+        sin_theta = sin(theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                   const std::vector<double>& xc,
+                   const std::vector<double>& yc,
+                   const std::vector<double>& split,
+                   double beta = 0.0, double inside = 1.0, bool is_first_region = true,
+                   double theta = 0.0)
+    {
+        this->r0 = r0;
+        this->xc = xc;
+        this->yc = yc;
+        this->split_angle = split;
+        this->beta = beta;
+        this->inside = inside;
+        this->is_first_region = is_first_region;
+        this->theta = theta;
+        this->cos_theta = cos(theta);
+        this->sin_theta = sin(theta);
+    }
 
     double operator()(double x, double y) const {
         if (r0.empty()) return 0.0;
 
-        // First find which circle gives the extremum value
+        // Find controlling circle
         size_t extremum_idx = 0;
         double extremum_val = evaluate_circle_phi(x, y, 0);
 
@@ -1931,24 +1970,24 @@ private:
 
         double angle = atan2(Y, X);
         while (angle < 0) angle += 2 * M_PI;
-        if (angle < start_angle[idx] || angle > end_angle[idx]) {
-            return inside > 0 ? HUGE_VAL : -HUGE_VAL;
-        }
 
         double r = sqrt(X*X + Y*Y);
         if (r < 1.0E-9) r = 1.0E-9;
-        return inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+        double phi = inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+
+        double dist = std::abs(angle - split_angle[idx]);
+        double angle_factor = exp(-dist*dist/2.0);  // Gaussian-like smoothing
+        double offset = 1e-8 * r0[idx] * (r/r0[idx]) * (1.0 + angle_factor);
+        if (is_first_region) {
+            return angle <= split_angle[idx] ? phi : phi + offset;
+        } else {
+            return angle > split_angle[idx] ? phi : phi + offset;
+        }
     }
 
     double evaluate_circle_derivative_x(double x, double y, size_t idx) const {
         double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
         double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
-
-        double angle = atan2(Y, X);
-        while (angle < 0) angle += 2 * M_PI;
-        if (angle < start_angle[idx] || angle > end_angle[idx]) {
-            return 0.0;  // No derivative outside angle range
-        }
 
         double r = sqrt(X*X + Y*Y);
         if (r < 1.0E-9) r = 1.0E-9;
@@ -1962,22 +2001,52 @@ private:
     }
 };
 
-class partial_circle_phi_y_t : public CF_2 {
+class weighted_circle_phi_y_t : public CF_2 {
 public:
     std::vector<double> r0;
     std::vector<double> xc, yc;
-    std::vector<double> start_angle;
-    std::vector<double> end_angle;
+    std::vector<double> split_angle;
     double beta;
     double inside;
     double theta, cos_theta, sin_theta;
+    bool is_first_region;
 
-    // Same constructor and set_params...
+    // Constructor same as phi_x_t
+    weighted_circle_phi_y_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                         const std::vector<double>& xc = std::vector<double>{0.0},
+                         const std::vector<double>& yc = std::vector<double>{0.0},
+                         const std::vector<double>& split = std::vector<double>{3.0*M_PI/2.0},
+                         double beta = 0.0, double inside = 1.0, bool is_first_region = true,
+                         double theta = 0.0)
+        : r0(r0), xc(xc), yc(yc), split_angle(split), beta(beta), inside(inside),
+          is_first_region(is_first_region), theta(theta)
+    {
+        cos_theta = cos(theta);
+        sin_theta = sin(theta);
+    }
+
+    void set_params(const std::vector<double>& r0,
+                   const std::vector<double>& xc,
+                   const std::vector<double>& yc,
+                   const std::vector<double>& split,
+                   double beta = 0.0, double inside = 1.0, bool is_first_region = true,
+                   double theta = 0.0)
+    {
+        this->r0 = r0;
+        this->xc = xc;
+        this->yc = yc;
+        this->split_angle = split;
+        this->beta = beta;
+        this->inside = inside;
+        this->is_first_region = is_first_region;
+        this->theta = theta;
+        this->cos_theta = cos(theta);
+        this->sin_theta = sin(theta);
+    }
 
     double operator()(double x, double y) const {
         if (r0.empty()) return 0.0;
 
-        // First find which circle gives the extremum value
         size_t extremum_idx = 0;
         double extremum_val = evaluate_circle_phi(x, y, 0);
 
@@ -1994,17 +2063,30 @@ public:
     }
 
 private:
-    // Same evaluate_circle_phi as phi_x_t...
-
-    double evaluate_circle_derivative_y(double x, double y, size_t idx) const {
+    double evaluate_circle_phi(double x, double y, size_t idx) const {
         double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
         double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
 
         double angle = atan2(Y, X);
         while (angle < 0) angle += 2 * M_PI;
-        if (angle < start_angle[idx] || angle > end_angle[idx]) {
-            return 0.0;  // No derivative outside angle range
+
+        double r = sqrt(X*X + Y*Y);
+        if (r < 1.0E-9) r = 1.0E-9;
+        double phi = inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+
+        double dist = std::abs(angle - split_angle[idx]);
+        double angle_factor = exp(-dist*dist/2.0);  // Gaussian-like smoothing
+        double offset = 1e-8 * r0[idx] * (r/r0[idx]) * (1.0 + angle_factor);
+        if (is_first_region) {
+            return angle <= split_angle[idx] ? phi : phi + offset;
+        } else {
+            return angle > split_angle[idx] ? phi : phi + offset;
         }
+    }
+
+    double evaluate_circle_derivative_y(double x, double y, size_t idx) const {
+        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
+        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
 
         double r = sqrt(X*X + Y*Y);
         if (r < 1.0E-9) r = 1.0E-9;
@@ -2018,31 +2100,35 @@ private:
     }
 };
 
-struct partial_circle_domain_t {
-    partial_circle_phi_t phi;
-    partial_circle_phi_x_t phi_x;
-    partial_circle_phi_y_t phi_y;
+struct weighted_circle_domain_t {
+    weighted_circle_phi_t phi;
+    weighted_circle_phi_x_t phi_x;
+    weighted_circle_phi_y_t phi_y;
 
-    partial_circle_domain_t(const std::vector<double>& r0 = std::vector<double>{1.0},
-                          const std::vector<double>& xc = std::vector<double>{0.0},
-                          const std::vector<double>& yc = std::vector<double>{0.0},
-                          const std::vector<double>& start = std::vector<double>{0.0},
-                          const std::vector<double>& end = std::vector<double>{2.0 * M_PI},
-                          double beta = 0.0, double inside = 1.0, double theta = 0.0)
+    weighted_circle_domain_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                           const std::vector<double>& xc = std::vector<double>{0.0},
+                           const std::vector<double>& yc = std::vector<double>{0.0},
+                           const std::vector<double>& split = std::vector<double>{3.0*M_PI/2.0},
+                           double beta = 0.0, double inside = 1.0, bool is_first_region = true,
+                           double theta = 0.0)
+        : phi(r0, xc, yc, split, beta, inside, is_first_region, theta),
+          phi_x(r0, xc, yc, split, beta, inside, is_first_region, theta),
+          phi_y(r0, xc, yc, split, beta, inside, is_first_region, theta)
     {
-        set_params(r0, xc, yc, start, end, beta, inside, theta);
+        set_params(r0, xc, yc, split, beta, inside, is_first_region, theta);
     }
 
     void set_params(const std::vector<double>& r0,
                    const std::vector<double>& xc,
                    const std::vector<double>& yc,
-                   const std::vector<double>& start,
-                   const std::vector<double>& end,
-                   double beta = 0.0, double inside = 1.0, double theta = 0.0)
+                   const std::vector<double>& split,
+                   double beta = 0.0, double inside = 1.0, bool is_first_region = true,
+                   double theta = 0.0)
     {
-        phi.set_params(r0, xc, yc, start, end, beta, inside, theta);
-        phi_x.set_params(r0, xc, yc, start, end, beta, inside, theta);
-        phi_y.set_params(r0, xc, yc, start, end, beta, inside, theta);
+        phi.set_params(r0, xc, yc, split, beta, inside, is_first_region, theta);
+        phi_x.set_params(r0, xc, yc, split, beta, inside, is_first_region, theta);
+        phi_y.set_params(r0, xc, yc, split, beta, inside, is_first_region, theta);
     }
 };
+
 #endif // SHAPES_H
