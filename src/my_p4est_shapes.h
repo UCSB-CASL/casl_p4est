@@ -2,6 +2,9 @@
 #define SHAPES_H
 
 #include <math.h>
+#include <random>  // For random number generation
+#include "src/Parser.h"
+#include "src/parameter_list.h"
 #ifdef P4_TO_P8
 #include <src/my_p8est_utils.h>
 #else
@@ -1830,10 +1833,18 @@ public:
     double theta, cos_theta, sin_theta;  // rotation parameters
     bool is_first_region;  // Whether this represents first region of circle
 
+<<<<<<< HEAD
+
+    weighted_circle_phi_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+                         const std::vector<double>& xc = std::vector<double>{0.0},
+                         const std::vector<double>& yc = std::vector<double>{0.0},
+                         const std::vector<double>& split = std::vector<double>{2.0*M_PI/3.0}, // Changed this
+=======
     weighted_circle_phi_t(const std::vector<double>& r0 = std::vector<double>{1.0},
                          const std::vector<double>& xc = std::vector<double>{0.0},
                          const std::vector<double>& yc = std::vector<double>{0.0},
                          const std::vector<double>& split = std::vector<double>{3.0*M_PI/2.0},
+>>>>>>> master
                          double beta = 0.0, double inside = 1.0, bool is_first_region = true,
                          double theta = 0.0)
         : r0(r0), xc(xc), yc(yc), split_angle(split), beta(beta), inside(inside),
@@ -1913,11 +1924,19 @@ public:
     bool is_first_region;
 
     weighted_circle_phi_x_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+<<<<<<< HEAD
+                           const std::vector<double>& xc = std::vector<double>{0.0},
+                           const std::vector<double>& yc = std::vector<double>{0.0},
+                           const std::vector<double>& split = std::vector<double>{2.0*M_PI/3.0}, // Changed this
+                           double beta = 0.0, double inside = 1.0, bool is_first_region = true,
+                           double theta = 0.0)
+=======
                          const std::vector<double>& xc = std::vector<double>{0.0},
                          const std::vector<double>& yc = std::vector<double>{0.0},
                          const std::vector<double>& split = std::vector<double>{3.0*M_PI/2.0},
                          double beta = 0.0, double inside = 1.0, bool is_first_region = true,
                          double theta = 0.0)
+>>>>>>> master
         : r0(r0), xc(xc), yc(yc), split_angle(split), beta(beta), inside(inside),
           is_first_region(is_first_region), theta(theta)
     {
@@ -2013,11 +2032,19 @@ public:
 
     // Constructor same as phi_x_t
     weighted_circle_phi_y_t(const std::vector<double>& r0 = std::vector<double>{1.0},
+<<<<<<< HEAD
+                           const std::vector<double>& xc = std::vector<double>{0.0},
+                           const std::vector<double>& yc = std::vector<double>{0.0},
+                           const std::vector<double>& split = std::vector<double>{2.0*M_PI/3.0}, // Changed this
+                           double beta = 0.0, double inside = 1.0, bool is_first_region = true,
+                           double theta = 0.0)
+=======
                          const std::vector<double>& xc = std::vector<double>{0.0},
                          const std::vector<double>& yc = std::vector<double>{0.0},
                          const std::vector<double>& split = std::vector<double>{3.0*M_PI/2.0},
                          double beta = 0.0, double inside = 1.0, bool is_first_region = true,
                          double theta = 0.0)
+>>>>>>> master
         : r0(r0), xc(xc), yc(yc), split_angle(split), beta(beta), inside(inside),
           is_first_region(is_first_region), theta(theta)
     {
@@ -2105,11 +2132,26 @@ struct weighted_circle_domain_t {
     weighted_circle_phi_x_t phi_x;
     weighted_circle_phi_y_t phi_y;
 
+<<<<<<< HEAD
+    // Static storage for shared positions
+    static std::vector<double> static_xc;
+    static std::vector<double> static_yc;
+    static bool positions_initialized;
+
+    // Original constructor remains for backward compatibility
+    weighted_circle_domain_t(const std::vector<double>& r0,
+                           const std::vector<double>& xc,
+                           const std::vector<double>& yc,
+                           const std::vector<double>& split,
+                           double beta = 0.0, double inside = 1.0,
+                           bool is_first_region = true,
+=======
     weighted_circle_domain_t(const std::vector<double>& r0 = std::vector<double>{1.0},
                            const std::vector<double>& xc = std::vector<double>{0.0},
                            const std::vector<double>& yc = std::vector<double>{0.0},
                            const std::vector<double>& split = std::vector<double>{3.0*M_PI/2.0},
                            double beta = 0.0, double inside = 1.0, bool is_first_region = true,
+>>>>>>> master
                            double theta = 0.0)
         : phi(r0, xc, yc, split, beta, inside, is_first_region, theta),
           phi_x(r0, xc, yc, split, beta, inside, is_first_region, theta),
@@ -2118,17 +2160,265 @@ struct weighted_circle_domain_t {
         set_params(r0, xc, yc, split, beta, inside, is_first_region, theta);
     }
 
+<<<<<<< HEAD
+    // New constructor for random generation with parameters
+    weighted_circle_domain_t(int num_circles, double radius,
+                           param_t<double>& xmin, param_t<double>& xmax,
+                           param_t<double>& ymin, param_t<double>& ymax,
+                           double beta = 0.0, double inside = 1.0,
+                           bool is_first_region = true,
+                           double theta = 0.0)
+    {
+        // if (!positions_initialized) {
+        //     generateRandomPositions(num_circles, radius, xmin, xmax, ymin, ymax);
+        //     positions_initialized = true;
+        // }
+        if (!positions_initialized) {
+            generateRandomPositions(num_circles, radius, xmin, xmax, ymin, ymax);
+            positions_initialized = true;
+            std::string output_dir = "/home/faranak/CASL/workspace/simulations_output/poisson-nodes-mls-protein/";
+            std::cout << "Exporting to: " << output_dir << std::endl;  // Debug output
+            export_separate_evaluations();  // Add export here
+        }
+
+        std::vector<double> radii(num_circles, radius);
+        std::vector<double> split_angles(num_circles, 2.0*M_PI/3.0);
+
+        set_params(radii, static_xc, static_yc, split_angles,
+                  beta, inside, is_first_region, theta);
+    }
+
+    std::pair<double, double> evaluate_separate_regions(double x, double y) const {
+        double phi_first = evaluate_first_region(x, y);   // 0 to 2π/3
+        double phi_second = evaluate_second_region(x, y); // 2π/3 to 2π
+        return std::make_pair(phi_first, phi_second);
+    }
+
+    void set_params(const std::vector<double>& r0,
+               const std::vector<double>& xc,
+               const std::vector<double>& yc,
+               const std::vector<double>& split,
+               double beta = 0.0, double inside = 1.0,
+               bool is_first_region = true,
+               double theta = 0.0)
+=======
     void set_params(const std::vector<double>& r0,
                    const std::vector<double>& xc,
                    const std::vector<double>& yc,
                    const std::vector<double>& split,
                    double beta = 0.0, double inside = 1.0, bool is_first_region = true,
                    double theta = 0.0)
+>>>>>>> master
     {
         phi.set_params(r0, xc, yc, split, beta, inside, is_first_region, theta);
         phi_x.set_params(r0, xc, yc, split, beta, inside, is_first_region, theta);
         phi_y.set_params(r0, xc, yc, split, beta, inside, is_first_region, theta);
     }
+<<<<<<< HEAD
+
+        void export_separate_evaluations() const {
+        // Create paths using the simulation output directory
+        std::string output_dir = "/home/faranak/CASL/workspace/simulations_output/poisson-nodes-mls-protein/";
+        std::ofstream first_region(output_dir + "first_region.dat");
+        std::ofstream second_region(output_dir + "second_region.dat");
+
+        // Write header with circle info
+        first_region << "x y phi\n";
+        second_region << "x y phi\n";
+
+        // Grid parameters
+        double dx = 0.01;
+        double dy = 0.01;
+
+        for (double x = -1.0; x <= 1.0; x += dx) {
+            for (double y = -1.0; y <= 1.0; y += dy) {
+                bool found_first = false;
+                bool found_second = false;
+                double phi_first = HUGE_VAL;
+                double phi_second = HUGE_VAL;
+
+                // Check each circle
+                for (size_t i = 0; i < phi.r0.size(); ++i) {
+                    double X = (x - phi.xc[i]) * phi.cos_theta -
+                              (y - phi.yc[i]) * phi.sin_theta;
+                    double Y = (x - phi.xc[i]) * phi.sin_theta +
+                              (y - phi.yc[i]) * phi.cos_theta;
+
+                    double angle = atan2(Y, X);
+                    if (angle < 0) angle += 2 * M_PI;
+
+                    double r = sqrt(X*X + Y*Y);
+                    if (r < 1.0E-9) r = 1.0E-9;
+                    double val = phi.inside * (r - phi.r0[i]); // Simplified for visualization
+
+                    if (angle <= 2.0*M_PI/3.0) {
+                        phi_first = std::min(phi_first, val);
+                        found_first = true;
+                    }
+                    if (angle > 2.0*M_PI/3.0) {
+                        phi_second = std::min(phi_second, val);
+                        found_second = true;
+                    }
+                }
+
+                if (found_first) {
+                    first_region << x << " " << y << " " << phi_first << "\n";
+                }
+                if (found_second) {
+                    second_region << x << " " << y << " " << phi_second << "\n";
+                }
+            }
+        }
+
+        first_region.close();
+        second_region.close();
+    }
+
+private:
+    bool isValidCenter(double x, double y, double radius,
+                      double xmin_val, double xmax_val,
+                      double ymin_val, double ymax_val) const {
+        double margin = 2.0 * radius;
+        double inner_xmin = xmin_val + margin;
+        double inner_xmax = xmax_val - margin;
+        double inner_ymin = ymin_val + margin;
+        double inner_ymax = ymax_val - margin;
+
+        if (x < inner_xmin || x > inner_xmax ||
+            y < inner_ymin || y > inner_ymax) {
+            return false;
+        }
+
+        for(size_t i = 0; i < static_xc.size(); i++) {
+            double dx = x - static_xc[i];
+            double dy = y - static_yc[i];
+            double min_dist = 2.5 * radius;
+            if (dx*dx + dy*dy < min_dist*min_dist) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Make these accessible for verification
+    static bool debug_positions;  // To help verify positions
+
+        // Evaluate first region (0 to 2π/3)
+    double evaluate_first_region(double x, double y) const {
+        std::vector<double> phis;
+        for(size_t i = 0; i < phi.r0.size(); ++i) {
+            double X = (x - phi.xc[i]) * phi.cos_theta - (y - phi.yc[i]) * phi.sin_theta;
+            double Y = (x - phi.xc[i]) * phi.sin_theta + (y - phi.yc[i]) * phi.cos_theta;
+
+            double angle = atan2(Y, X);
+            if (angle < 0) angle += 2 * M_PI;
+
+            // Only include if in first region
+            if (angle <= 2.0*M_PI/3.0) {
+                double r = sqrt(X*X + Y*Y);
+                if (r < 1.0E-9) r = 1.0E-9;
+                double val = phi.inside * (r - phi.r0[i] - phi.beta * (pow(Y, 5.0) +
+                            5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+                phis.push_back(val);
+            }
+        }
+
+        if (phis.empty()) return HUGE_VAL;
+        return phi.inside > 0 ? *std::min_element(phis.begin(), phis.end())
+                             : *std::max_element(phis.begin(), phis.end());
+    }
+
+    // Evaluate second region (2π/3 to 2π)
+    double evaluate_second_region(double x, double y) const {
+        std::vector<double> phis;
+        for(size_t i = 0; i < phi.r0.size(); ++i) {
+            double X = (x - phi.xc[i]) * phi.cos_theta - (y - phi.yc[i]) * phi.sin_theta;
+            double Y = (x - phi.xc[i]) * phi.sin_theta + (y - phi.yc[i]) * phi.cos_theta;
+
+            double angle = atan2(Y, X);
+            if (angle < 0) angle += 2 * M_PI;
+
+            // Only include if in second region
+            if (angle > 2.0*M_PI/3.0) {
+                double r = sqrt(X*X + Y*Y);
+                if (r < 1.0E-9) r = 1.0E-9;
+                double val = phi.inside * (r - phi.r0[i] - phi.beta * (pow(Y, 5.0) +
+                            5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+                phis.push_back(val);
+            }
+        }
+
+        if (phis.empty()) return HUGE_VAL;
+        return phi.inside > 0 ? *std::min_element(phis.begin(), phis.end())
+                             : *std::max_element(phis.begin(), phis.end());
+    }
+
+    // Modified random position generator
+    void generateRandomPositions(int num_circles, double radius,
+                               param_t<double>& xmin, param_t<double>& xmax,
+                               param_t<double>& ymin, param_t<double>& ymax)
+    {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+
+        // Adjust margins to ensure circles stay well within bounds
+        double margin = 2.0 * radius;
+        double inner_xmin = xmin.val + margin;
+        double inner_xmax = xmax.val - margin;
+        double inner_ymin = ymin.val + margin;
+        double inner_ymax = ymax.val - margin;
+
+        if (debug_positions) {
+            std::cout << "Generating positions in domain: ["
+                      << inner_xmin << ", " << inner_xmax << "] x ["
+                      << inner_ymin << ", " << inner_ymax << "]\n";
+        }
+
+        static_xc.clear();
+        static_yc.clear();
+
+        for (int i = 0; i < num_circles; i++) {
+            int max_attempts = 1000;
+            int attempts = 0;
+            bool found_valid_center = false;
+
+            while (!found_valid_center && attempts < max_attempts) {
+                // Use true random distribution
+                std::uniform_real_distribution<> x_dist(inner_xmin, inner_xmax);
+                std::uniform_real_distribution<> y_dist(inner_ymin, inner_ymax);
+
+                double x = x_dist(gen);
+                double y = y_dist(gen);
+
+                if (isValidCenter(x, y, radius, xmin.val, xmax.val, ymin.val, ymax.val)) {
+                    static_xc.push_back(x);
+                    static_yc.push_back(y);
+                    found_valid_center = true;
+
+                    if (debug_positions) {
+                        std::cout << "Circle " << i << " placed at ("
+                                  << x << ", " << y << ")\n";
+                    }
+                }
+                attempts++;
+            }
+
+            if (!found_valid_center) {
+                throw std::runtime_error("Could not find valid position for circle " +
+                                       std::to_string(i+1));
+            }
+        }
+    }
 };
 
+// Initialize static members
+std::vector<double> weighted_circle_domain_t::static_xc;
+std::vector<double> weighted_circle_domain_t::static_yc;
+bool weighted_circle_domain_t::positions_initialized = false;
+bool weighted_circle_domain_t::debug_positions = true;  // Set to true initially to verify
+
+=======
+};
+
+>>>>>>> master
 #endif // SHAPES_H
