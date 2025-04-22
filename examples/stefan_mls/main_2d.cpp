@@ -74,7 +74,7 @@ const static std::string main_description =
 parameter_list_t pl;
 
 // Examples:
-DEFINE_PARAMETER(pl,int,example_,0,"Example number. 0 = Frank sphere, 1 = Ice melting. (default: 0)");
+DEFINE_PARAMETER(pl,int,example_,1,"Example number. 0 = Frank sphere, 1 = Ice melting. (default: 0)");
 
 // Define the numeric label for each type of example to make implementation a bit more clear
 enum{
@@ -191,7 +191,8 @@ void set_geometry(){
 
       Tice_init = 263.0; // [K] initial temp of ice out of freezer
       Tinterface = 273.0; // [K] -- freezing temp of water
-      Twall = 298.0; // [K] -- a bit under boiling temp of water
+      // Twall = 298.0; // [K] -- a bit under boiling temp of water
+      Twall = 330;
       break;
 
     }
@@ -213,8 +214,8 @@ void simulation_time_info(){
       break;
     case ICE_MELT:
       tstart = 0.0;
-      tfinal = 90.*60.; // approx 90 minutes
-      dt_max_allowed = 20.0;
+      tfinal = 2 * 90. * 60.; // approx 90 minutes
+      dt_max_allowed = 40.0;
       break;
     }
   tn = tstart;
@@ -1208,23 +1209,31 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     }
 
 
-    // Save data:
+    // Save data: modified by Faranak
     std::vector<std::string> point_names;
     std::vector<double*> point_data;
-
-    if(example_ == FRANK_SPHERE){
-        point_names = {"phi","Tl","Ts","v_int_x","v_int_y","T_error" ,"T_analytical",ZCODE("v_int_z")};
-        point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],T_error.ptr,T_ana.ptr,ZCODE(v_int.ptr[2])};
-    }
-    else{
-        point_names = {"phi","Tl","Ts","v_int_x","v_int_y",ZCODE("v_int_z")};
-        point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],ZCODE(v_int.ptr[2])};
-    }
 
     std::vector<std::string> cell_names;
     std::vector<double*> cell_data;
 
-    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+    if(example_ == FRANK_SPHERE){
+      point_names = {"phi","Tl","Ts","v_int_x","v_int_y","T_error" ,"T_analytical",ZCODE("v_int_z")};
+      point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],T_error.ptr,T_ana.ptr,ZCODE(v_int.ptr[2])};
+    }
+    else{
+      point_names = {"phi","Tl","Ts","v_int_x","v_int_y",ZCODE("v_int_z")};
+      point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],ZCODE(v_int.ptr[2])};
+    }
+
+    // Convert to const double*
+    std::vector<const double*> point_data_const(point_data.begin(), point_data.end());
+    std::vector<const double*> cell_data_const(cell_data.begin(), cell_data.end());
+
+    my_p4est_vtk_write_all_lists(p4est, nodes, ghost,
+        P4EST_TRUE, P4EST_TRUE,
+        filename, point_data_const, point_names,
+        cell_data_const, cell_names);
+
 
 
     // Restore arrays:
@@ -1581,8 +1590,25 @@ int main(int argc, char** argv) {
         compute_normals(*ngbd,phi_solid.vec,solid_normals.vec);
 
         // Extend Temperature Fields across the interface:
-        ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
-        ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
+        // ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
+        // ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
+        // Modifed by Faranak
+        ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, 1.e-9, extension_band_use_,
+                    liquid_normals.vec,      // normal[P4EST_DIM]
+                    NULL,                    // mask
+                    NULL,                    // bc
+                    false,                   // use_nonzero_guess
+                    NULL, NULL);             // q_d, q_dd
+
+        ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec,
+                    50, 2, 1.e-9,
+                    extension_band_use_,
+                    solid_normals.vec,
+                    NULL,
+                    NULL,
+                    false,
+                    NULL, NULL);
+
 
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Successfully extended fields across interface \n");
 
