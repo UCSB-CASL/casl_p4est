@@ -13,11 +13,12 @@ set( CMAKE_CXX_STANDARD 14 )
 string(REGEX REPLACE .*/ "" THE_PROJECT_NAME ${CMAKE_CURRENT_SOURCE_DIR} )
 
 # Automatically set the project name:
-project( "poisson_nodes_mls_protein")
+project( "stefan_mls")
 
 ########## Compiler custom macros for current project
 
 if( DIMENSION MATCHES 2d )
+#	list( APPEND SRC main_2d.cpp )
 	list( APPEND SRC main_2d_protein.cpp )
 elseif( DIMENSION MATCHES 3d )
 	list( APPEND SRC main_3d.cpp )
