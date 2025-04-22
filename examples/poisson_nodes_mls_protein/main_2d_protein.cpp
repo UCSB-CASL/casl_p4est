@@ -1771,6 +1771,11 @@ bc_coeff_cf_t bc_coeff_cf_all[] = { bc_coeff_cf_t(bdry_00_coeff.val, bdry_00_coe
                                     bc_coeff_cf_t(bdry_02_coeff.val, bdry_02_coeff_mult.val),
                                     bc_coeff_cf_t(bdry_03_coeff.val, bdry_03_coeff_mult.val) };
 
+// First, define a global configuration type that can be easily changed
+
+multi_circle_domain_t::ConfigurationType config_type = multi_circle_domain_t::RANDOM_POSITIONS_OPTIMIZED;
+multi_circle_domain_t circles_case_19;
+
 // DOMAIN GEOMETRY
 class bdry_phi_cf_t: public CF_DIM {
 public:
@@ -1972,127 +1977,91 @@ public:
       } break;
 
       // Added By Faranak for protein aggregation
-      case 17: // union of two spheres: 1st sphere
-      case 18: // union of two spheres: 2nd sphere
-      {
+        case 17: // union of two spheres: 1st sphere
+        case 18: // union of two spheres: 2nd sphere
+        {
 #ifdef P4_TO_P8
-        // ***** Needs Modificaton for 3D case ***** //
+            // ***** Needs Modificaton for 3D case ***** //
         static double r0 = 0.71, xc0 = 0.22, yc0 = 0.17, zc0 = 0.21;
         static double r1 = 0.63, xc1 =-0.19, yc1 =-0.19, zc1 =-0.23;
 #else
-        static double r0 = 0.50, xc0 = -0.25, yc0 = 0.0;
-        static double r1 = 0.50, xc1 = 0.25, yc1 = 0.0;
+            static double r0 = 0.50, xc0 = -0.25, yc0 = 0.0;
+            static double r1 = 0.50, xc1 = 0.25, yc1 = 0.0;
 #endif
-        static flower_shaped_domain_t circle0(r0, DIM(xc0, yc0, zc0));
-        static flower_shaped_domain_t circle1(r1, DIM(xc1, yc1, zc1));
+            static flower_shaped_domain_t circle0(r0, DIM(xc0, yc0, zc0));
+            static flower_shaped_domain_t circle1(r1, DIM(xc1, yc1, zc1));
 
-        flower_shaped_domain_t *shape_ptr = (*n) == 17 ? &circle0 : &circle1;
+            flower_shaped_domain_t *shape_ptr = (*n) == 17 ? &circle0 : &circle1;
 
-        switch (what) {
-          _CODE( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-          XCODE( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-          YCODE( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-          ZCODE( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
-        }
-      } break;
+            switch (what) {
+                _CODE( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+                    XCODE( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+                    YCODE( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+                    ZCODE( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+            }
+        } break;
+// Implementation for case 19 (hydrophilic patches - smaller circles)
+case 19:
+{
+    // Parameters for protein configuration
+    const int n_proteins = 4;
+    const double hydrophilic_radius = 0.1;     // Case 19 circles (small)
+    const double hydrophobic_radius = 0.2;     // Case 20 circles (large)
+    const double patch_distance = 0.12;        // Distance from center to patch (increased)
+    const double beta = 0.0;                   // No deformation
+    const double inside = -1.0;                // Exterior is negative
 
-      //         case 19:
-      //         {
-      // #ifdef P4_TO_P8
-      //             // 3D parameters
-      //             static std::vector<double> radii = {0.2, 0.2, 0.2, 0.2};
-      //             static std::vector<double> x_centers = {-0.25, -0.25, 0.25, 0.25};
-      //             static std::vector<double> y_centers = {-0.4, 0.4, -0.4, 0.4};
-      //             static std::vector<double> z_centers = {0.0, 0.0, 0.0, 0.0};  // Added for 3D
-      //             static multi_circle_domain_t circles(radii, x_centers, y_centers, z_centers, 0.0, -1.0);
-      // #else
-      //             // 2D parameters
-      //             static std::vector<double> radii = {0.2, 0.2, 0.2, 0.2};
-      //             static std::vector<double> x_centers = {-0.25, -0.25, 0.25, 0.25};
-      //             static std::vector<double> y_centers = {-0.4, 0.4, -0.4, 0.4};
-      //             static multi_circle_domain_t circles(radii, x_centers, y_centers, 2.0, -1.0);
-      // #endif
-      //
-      //             switch (what) {
-      //                 _CODE( case VAL: return circles.phi(DIM(x, y, z)) );
-      //                 XCODE( case DDX: return circles.phi_x(DIM(x, y, z)) );
-      //                 YCODE( case DDY: return circles.phi_y(DIM(x, y, z)) );
-      //                     ZCODE( case DDZ: return circles.phi_z(DIM(x, y, z)) );
-      //             }
-      //         } break;
-      //
-      //         case 20:
-      //         {
-      // #ifdef P4_TO_P8
-      //             // 3D parameters
-      //             static std::vector<double> radii = {0.25, 0.25, 0.25, 0.25};
-      //             static std::vector<double> x_centers = {0.0, 0.0, 0.0, 0.0};
-      //             static std::vector<double> y_centers = {-0.4, 0.4, -0.4, 0.4};
-      //             static std::vector<double> z_centers = {0.0, 0.0, 0.0, 0.0};  // Added for 3D
-      //             static multi_circle_domain_t circles(radii, x_centers, y_centers, z_centers, 0.0, -1.0);
-      // #else
-      //             // 2D parameters
-      //             static std::vector<double> radii = {0.25, 0.25, 0.25, 0.25};
-      //             static std::vector<double> x_centers = {0.0, 0.0, 0.0, 0.0};
-      //             static std::vector<double> y_centers = {-0.4, 0.4, -0.4, 0.4};
-      //             static multi_circle_domain_t circles(radii, x_centers, y_centers, 3.0, -1.0);
-      // #endif
-      //
-      //             switch (what) {
-      //                 _CODE( case VAL: return circles.phi(DIM(x, y, z)) );
-      //                 XCODE( case DDX: return circles.phi_x(DIM(x, y, z)) );
-      //                 YCODE( case DDY: return circles.phi_y(DIM(x, y, z)) );
-      //                     ZCODE( case DDZ: return circles.phi_z(DIM(x, y, z)) );
-      //             }
-      //         } break;
-case 19: {
-    #ifdef P4_TO_P8
-    // 3D version would need similar modifications
-    #else
-    // First patch of each protein (0 to 3π/2)
-    static std::vector<double> radii = {0.2, 0.2, 0.2, 0.2};
-    static std::vector<double> x_centers = {-0.25, -0.25, 0.25, 0.25};
-    static std::vector<double> y_centers = {-0.4, 0.4, -0.4, 0.4};
-    static std::vector<double> start_angles = {0.0, 0.0, 0.0, 0.0};
-    static std::vector<double> end_angles = {3.0 * M_PI / 2.0, 3.0 * M_PI / 2.0,
-                                           3.0 * M_PI / 2.0, 3.0 * M_PI / 2.0};
+    // Generate protein configuration using our new method
+    static multi_circle_domain_t circles =
+        multi_circle_domain_t::generate_protein_configuration(
+            config_type,              // Use the global configuration type
+            n_proteins,
+            hydrophobic_radius, hydrophilic_radius,
+            patch_distance,
+            xmin, xmax, ymin, ymax,
+            false,                    // isHydrophobic = false for hydrophilic patches
+            beta, inside);
 
-    static partial_circle_domain_t circles(radii, x_centers, y_centers,
-                                         start_angles, end_angles, 0.0, -1.0);
-    #endif
+    // Save circles for reference by case 20 if needed
+    circles_case_19 = circles;
 
     switch (what) {
-        _CODE( case VAL: return circles.phi(DIM(x, y, 0.0)) );
-        XCODE( case DDX: return circles.phi_x(DIM(x, y, 0.0)) );
-        YCODE( case DDY: return circles.phi_y(DIM(x, y, 0.0)) );
+        _CODE( case VAL: return circles.phi(DIM(x, y, z)) );
+        XCODE( case DDX: return circles.phi_x(DIM(x, y, z)) );
+        YCODE( case DDY: return circles.phi_y(DIM(x, y, z)) );
+        ZCODE( case DDZ: return 0.0 ); // No z-derivative in 2D
     }
-}
-break;
+} break;
 
-case 20: {
-    #ifdef P4_TO_P8
-    // 3D version would need similar modifications
-    #else
-    // Second patch of each protein (3π/2 to 2π)
-    static std::vector<double> radii = {0.2, 0.2, 0.2, 0.2};
-    static std::vector<double> x_centers = {-0.25, -0.25, 0.25, 0.25};
-    static std::vector<double> y_centers = {-0.4, 0.4, -0.4, 0.4};
-    static std::vector<double> start_angles = {3.0 * M_PI / 2.0, 3.0 * M_PI / 2.0,
-                                             3.0 * M_PI / 2.0, 3.0 * M_PI / 2.0};
-    static std::vector<double> end_angles = {2.0 * M_PI, 2.0 * M_PI,
-                                           2.0 * M_PI, 2.0 * M_PI};
+// Implementation for case 20 (hydrophobic patches - larger circles)
+case 20:
+{
+    // Parameters for protein configuration
+    const int n_proteins = 4;
+    const double hydrophilic_radius = 0.1;     // Case 19 circles (small)
+    const double hydrophobic_radius = 0.2;     // Case 20 circles (large)
+    const double patch_distance = 0.12;        // Distance from center to patch (increased)
+    const double beta = 0.0;                   // No deformation
+    const double inside = -1.0;                // Exterior is negative
 
-    static partial_circle_domain_t circles(radii, x_centers, y_centers,
-                                         start_angles, end_angles, 0.0, -1.0);
-    #endif
+    // Generate protein configuration using our new method
+    static multi_circle_domain_t circles =
+        multi_circle_domain_t::generate_protein_configuration(
+            config_type,              // Use the global configuration type
+            n_proteins,
+            hydrophobic_radius, hydrophilic_radius,
+            patch_distance,
+            xmin, xmax, ymin, ymax,
+            true,                     // isHydrophobic = true for hydrophobic patches
+            beta, inside);
 
     switch (what) {
-        _CODE( case VAL: return circles.phi(DIM(x, y, 0.0)) );
-        XCODE( case DDX: return circles.phi_x(DIM(x, y, 0.0)) );
-        YCODE( case DDY: return circles.phi_y(DIM(x, y, 0.0)) );
+        _CODE( case VAL: return circles.phi(DIM(x, y, z)) );
+        XCODE( case DDX: return circles.phi_x(DIM(x, y, z)) );
+        YCODE( case DDY: return circles.phi_y(DIM(x, y, z)) );
+        ZCODE( case DDZ: return 0.0 ); // No z-derivative in 2D
     }
-}
-break;
+} break;
     }
 
     // default value
