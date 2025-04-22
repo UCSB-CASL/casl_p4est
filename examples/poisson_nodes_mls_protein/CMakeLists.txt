@@ -13,7 +13,7 @@ set( CMAKE_CXX_STANDARD 14 )
 string(REGEX REPLACE .*/ "" THE_PROJECT_NAME ${CMAKE_CURRENT_SOURCE_DIR} )
 
 # Automatically set the project name:
-project( ${THE_PROJECT_NAME} )
+project( "poisson_nodes_mls_protein")
 
 ########## Compiler custom macros for current project
 
