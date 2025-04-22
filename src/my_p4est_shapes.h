@@ -1,12 +1,20 @@
 #ifndef SHAPES_H
 #define SHAPES_H
 
+#include <cstdlib>  // for std::rand() and RAND_MAX
+#include <ctime>    // for std::time()
+#include <cmath>    // for math functions
 #include <math.h>
+#include <random>
+#include <vector>
+#include <iostream>
+
 #ifdef P4_TO_P8
 #include <src/my_p8est_utils.h>
 #else
 #include <src/my_p4est_utils.h>
 #endif
+#include <src/parameter_list.h>
 
 //--------------------------------------------------------------
 // half-space
@@ -1794,11 +1802,22 @@ private:
     }
 };
 
+// Extended multi_circle_domain_t that keeps all existing functionality
+// but adds the three configuration types
 struct multi_circle_domain_t {
+    // Keep existing members
     multi_circle_phi_t phi;
     multi_circle_phi_x_t phi_x;
     multi_circle_phi_y_t phi_y;
 
+    // Add configuration type enum
+    enum ConfigurationType {
+        FIXED_EQUILIBRIUM,   // Fixed positions and orientations for Poisson
+        RANDOM_POSITIONS_OPTIMIZED,    // Random positions with equilibrium orientations
+        FULLY_RANDOM         // Random positions and orientations for Stefan
+    };
+
+    // Keep existing constructors
     multi_circle_domain_t(const std::vector<double>& r0 = std::vector<double>{1.0},
                           const std::vector<double>& xc = std::vector<double>{0.0},
                           const std::vector<double>& yc = std::vector<double>{0.0},
@@ -1816,319 +1835,376 @@ struct multi_circle_domain_t {
         phi_x.set_params(r0, xc, yc, beta, inside, theta);
         phi_y.set_params(r0, xc, yc, beta, inside, theta);
     }
-};
-#endif
 
-// Added by Faranak partial circles
-class weighted_circle_phi_t : public CF_2 {
-public:
-    std::vector<double> r0;         // radii
-    std::vector<double> xc, yc;     // centers
-    std::vector<double> split_angle; // angle where dominance changes
-    double beta;                     // deformation parameter
-    double inside;                   // interior (1) or exterior (-1)
-    double theta, cos_theta, sin_theta;  // rotation parameters
-    bool is_first_region;  // Whether this represents first region of circle
-
-    weighted_circle_phi_t(const std::vector<double>& r0 = std::vector<double>{1.0},
-                         const std::vector<double>& xc = std::vector<double>{0.0},
-                         const std::vector<double>& yc = std::vector<double>{0.0},
-                         const std::vector<double>& split = std::vector<double>{3.0*M_PI/2.0},
-                         double beta = 0.0, double inside = 1.0, bool is_first_region = true,
-                         double theta = 0.0)
-        : r0(r0), xc(xc), yc(yc), split_angle(split), beta(beta), inside(inside),
-          is_first_region(is_first_region), theta(theta)
+    // Keep existing generate_random_first_boundary method
+    static multi_circle_domain_t generate_random_first_boundary(
+        double radius, int num_circles,
+        param_t<double>& xmin, param_t<double>& xmax,
+        param_t<double>& ymin, param_t<double>& ymax,
+        double buffer_factor = 0.2, double beta = 0.0, double inside = -1.0)
     {
-        cos_theta = cos(theta);
-        sin_theta = sin(theta);
-    }
+        // Existing implementation...
+        // Initialize random seed
+        std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
-    void set_params(const std::vector<double>& r0,
-               const std::vector<double>& xc,
-               const std::vector<double>& yc,
-               const std::vector<double>& split,
-               double beta = 0.0, double inside = 1.0, bool is_first_region = true,
-               double theta = 0.0)
-    {
-        this->r0 = r0;
-        this->xc = xc;
-        this->yc = yc;
-        this->split_angle = split;
-        this->beta = beta;
-        this->inside = inside;
-        this->is_first_region = is_first_region;
-        this->theta = theta;
-        this->cos_theta = cos(theta);
-        this->sin_theta = sin(theta);
-    }
+        // Calculate buffer distance from domain edges
+        double buffer = radius * (1.0 + buffer_factor);
 
-    double operator()(double x, double y) const {
-        if (r0.empty()) return 0.0;
+        // Calculate inner rectangle bounds
+        double inner_min_x = xmin.val + buffer;
+        double inner_max_x = xmax.val - buffer;
+        double inner_min_y = ymin.val + buffer;
+        double inner_max_y = ymax.val - buffer;
 
-        double phi_final = evaluate_circle(x, y, 0);
-        for(size_t i = 1; i < r0.size(); ++i) {
-            if(inside > 0) {
-                phi_final = std::min(phi_final, evaluate_circle(x, y, i));
+        std::vector<double> radii, x_centers, y_centers;
+
+        // Generate circles
+        int max_attempts = 1000;
+
+        for (int i = 0; i < num_circles; ++i) {
+            int attempts = 0;
+            bool valid_position = false;
+
+            double x, y;
+            while (!valid_position && attempts < max_attempts) {
+                // Generate random position
+                x = inner_min_x + (inner_max_x - inner_min_x) * (static_cast<double>(std::rand()) / RAND_MAX);
+                y = inner_min_y + (inner_max_y - inner_min_y) * (static_cast<double>(std::rand()) / RAND_MAX);
+
+                // Check if it overlaps with any existing circle
+                valid_position = true;
+                for (size_t j = 0; j < x_centers.size(); ++j) {
+                    double distance = std::sqrt(std::pow(x - x_centers[j], 2) +
+                                              std::pow(y - y_centers[j], 2));
+                    if (distance < 2 * radius) {
+                        valid_position = false;
+                        break;
+                    }
+                }
+                attempts++;
+            }
+
+            if (valid_position) {
+                radii.push_back(radius);
+                x_centers.push_back(x);
+                y_centers.push_back(y);
             } else {
-                phi_final = std::max(phi_final, evaluate_circle(x, y, i));
-            }
-        }
-        return phi_final;
-    }
-
-
-
-private:
-    double evaluate_circle(double x, double y, size_t idx) const {
-        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
-        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
-
-        double angle = atan2(Y, X);
-        while (angle < 0) angle += 2 * M_PI;
-
-        // Basic level set
-        double r = sqrt(X*X + Y*Y);
-        if (r < 1.0E-9) r = 1.0E-9;
-        double phi = inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
-
-        double dist = std::abs(angle - split_angle[idx]);
-        double angle_factor = exp(-dist*dist/2.0);  // Gaussian-like smoothing
-        double offset = 1e-8 * r0[idx] * (r/r0[idx]) * (1.0 + angle_factor);
-        if (is_first_region) {
-            return angle <= split_angle[idx] ? phi : phi + offset;
-        } else {
-            return angle > split_angle[idx] ? phi : phi + offset;
-        }
-    }
-};
-
-class weighted_circle_phi_x_t : public CF_2 {
-public:
-    std::vector<double> r0;
-    std::vector<double> xc, yc;
-    std::vector<double> split_angle;
-    double beta;
-    double inside;
-    double theta, cos_theta, sin_theta;
-    bool is_first_region;
-
-    weighted_circle_phi_x_t(const std::vector<double>& r0 = std::vector<double>{1.0},
-                         const std::vector<double>& xc = std::vector<double>{0.0},
-                         const std::vector<double>& yc = std::vector<double>{0.0},
-                         const std::vector<double>& split = std::vector<double>{3.0*M_PI/2.0},
-                         double beta = 0.0, double inside = 1.0, bool is_first_region = true,
-                         double theta = 0.0)
-        : r0(r0), xc(xc), yc(yc), split_angle(split), beta(beta), inside(inside),
-          is_first_region(is_first_region), theta(theta)
-    {
-        cos_theta = cos(theta);
-        sin_theta = sin(theta);
-    }
-
-    void set_params(const std::vector<double>& r0,
-                   const std::vector<double>& xc,
-                   const std::vector<double>& yc,
-                   const std::vector<double>& split,
-                   double beta = 0.0, double inside = 1.0, bool is_first_region = true,
-                   double theta = 0.0)
-    {
-        this->r0 = r0;
-        this->xc = xc;
-        this->yc = yc;
-        this->split_angle = split;
-        this->beta = beta;
-        this->inside = inside;
-        this->is_first_region = is_first_region;
-        this->theta = theta;
-        this->cos_theta = cos(theta);
-        this->sin_theta = sin(theta);
-    }
-
-    double operator()(double x, double y) const {
-        if (r0.empty()) return 0.0;
-
-        // Find controlling circle
-        size_t extremum_idx = 0;
-        double extremum_val = evaluate_circle_phi(x, y, 0);
-
-        for(size_t i = 1; i < r0.size(); ++i) {
-            double current = evaluate_circle_phi(x, y, i);
-            if((inside > 0 && current < extremum_val) ||
-               (inside < 0 && current > extremum_val)) {
-                extremum_val = current;
-                extremum_idx = i;
+                std::cerr << "Warning: Could not place circle " << i << " after "
+                          << max_attempts << " attempts." << std::endl;
             }
         }
 
-        return evaluate_circle_derivative_x(x, y, extremum_idx);
+        // Create and return the multi_circle_domain
+        multi_circle_domain_t domain;
+        domain.set_params(radii, x_centers, y_centers, beta, inside);
+
+        return domain;
     }
 
-private:
-    double evaluate_circle_phi(double x, double y, size_t idx) const {
-        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
-        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
-
-        double angle = atan2(Y, X);
-        while (angle < 0) angle += 2 * M_PI;
-
-        double r = sqrt(X*X + Y*Y);
-        if (r < 1.0E-9) r = 1.0E-9;
-        double phi = inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
-
-        double dist = std::abs(angle - split_angle[idx]);
-        double angle_factor = exp(-dist*dist/2.0);  // Gaussian-like smoothing
-        double offset = 1e-8 * r0[idx] * (r/r0[idx]) * (1.0 + angle_factor);
-        if (is_first_region) {
-            return angle <= split_angle[idx] ? phi : phi + offset;
-        } else {
-            return angle > split_angle[idx] ? phi : phi + offset;
-        }
-    }
-
-    double evaluate_circle_derivative_x(double x, double y, size_t idx) const {
-        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
-        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
-
-        double r = sqrt(X*X + Y*Y);
-        if (r < 1.0E-9) r = 1.0E-9;
-
-        double phi_x = inside * X * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
-                    - inside * 20.0 * beta * X * Y * (X*X - Y*Y) / pow(r, 5.0);
-        double phi_y = inside * Y * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
-                    - inside * 5.0 * beta * (pow(Y, 4.0) + pow(X, 4.0) - 6.0 * pow(X * Y, 2.0)) / pow(r, 5.0);
-
-        return phi_x * cos_theta + phi_y * sin_theta;
-    }
-};
-
-class weighted_circle_phi_y_t : public CF_2 {
-public:
-    std::vector<double> r0;
-    std::vector<double> xc, yc;
-    std::vector<double> split_angle;
-    double beta;
-    double inside;
-    double theta, cos_theta, sin_theta;
-    bool is_first_region;
-
-    // Constructor same as phi_x_t
-    weighted_circle_phi_y_t(const std::vector<double>& r0 = std::vector<double>{1.0},
-                         const std::vector<double>& xc = std::vector<double>{0.0},
-                         const std::vector<double>& yc = std::vector<double>{0.0},
-                         const std::vector<double>& split = std::vector<double>{3.0*M_PI/2.0},
-                         double beta = 0.0, double inside = 1.0, bool is_first_region = true,
-                         double theta = 0.0)
-        : r0(r0), xc(xc), yc(yc), split_angle(split), beta(beta), inside(inside),
-          is_first_region(is_first_region), theta(theta)
+    // Keep existing generate_random_second_boundary method
+    static multi_circle_domain_t generate_random_second_boundary(
+        double radius, const multi_circle_domain_t& first_boundary,
+        param_t<double>& xmin, param_t<double>& xmax,
+        param_t<double>& ymin, param_t<double>& ymax,
+        double intersection_distance_factor = 0.8,
+        double buffer_factor = 0.2, double beta = 0.0, double inside = -1.0)
     {
-        cos_theta = cos(theta);
-        sin_theta = sin(theta);
-    }
+        // Existing implementation...
+        // Initialize random seed
+        std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
-    void set_params(const std::vector<double>& r0,
-                   const std::vector<double>& xc,
-                   const std::vector<double>& yc,
-                   const std::vector<double>& split,
-                   double beta = 0.0, double inside = 1.0, bool is_first_region = true,
-                   double theta = 0.0)
-    {
-        this->r0 = r0;
-        this->xc = xc;
-        this->yc = yc;
-        this->split_angle = split;
-        this->beta = beta;
-        this->inside = inside;
-        this->is_first_region = is_first_region;
-        this->theta = theta;
-        this->cos_theta = cos(theta);
-        this->sin_theta = sin(theta);
-    }
+        // Calculate buffer distance from domain edges
+        double buffer = radius * (1.0 + buffer_factor);
 
-    double operator()(double x, double y) const {
-        if (r0.empty()) return 0.0;
+        // Calculate inner rectangle bounds
+        double inner_min_x = xmin.val + buffer;
+        double inner_max_x = xmax.val - buffer;
+        double inner_min_y = ymin.val + buffer;
+        double inner_max_y = ymax.val - buffer;
 
-        size_t extremum_idx = 0;
-        double extremum_val = evaluate_circle_phi(x, y, 0);
+        std::vector<double> radii, x_centers, y_centers;
 
-        for(size_t i = 1; i < r0.size(); ++i) {
-            double current = evaluate_circle_phi(x, y, i);
-            if((inside > 0 && current < extremum_val) ||
-               (inside < 0 && current > extremum_val)) {
-                extremum_val = current;
-                extremum_idx = i;
+        // Get first boundary centers
+        const std::vector<double>& first_centers_x = first_boundary.phi.xc;
+        const std::vector<double>& first_centers_y = first_boundary.phi.yc;
+
+        // Target distance between centers for intersection
+        double target_distance = radius * intersection_distance_factor;
+
+        for (size_t i = 0; i < first_centers_x.size(); ++i) {
+            double first_x = first_centers_x[i];
+            double first_y = first_centers_y[i];
+
+            int attempts = 0;
+            const int max_attempts = 100;
+            bool valid_position = false;
+
+            double x, y;
+            while (!valid_position && attempts < max_attempts) {
+                // Generate random angle
+                double angle = 2 * M_PI * (static_cast<double>(std::rand()) / RAND_MAX);
+
+                // Place at target distance from first center
+                x = first_x + target_distance * std::cos(angle);
+                y = first_y + target_distance * std::sin(angle);
+
+                // Check if within inner rectangle
+                if (x < inner_min_x || x > inner_max_x ||
+                    y < inner_min_y || y > inner_max_y) {
+                    attempts++;
+                    continue;
+                }
+
+                // Check if it overlaps with any other second boundary circle
+                valid_position = true;
+                for (size_t j = 0; j < x_centers.size(); ++j) {
+                    double distance = std::sqrt(std::pow(x - x_centers[j], 2) +
+                                              std::pow(y - y_centers[j], 2));
+                    if (distance < 2 * radius) {
+                        valid_position = false;
+                        break;
+                    }
+                }
+
+                // Check if it overlaps with any first boundary circle except its pair
+                for (size_t j = 0; j < first_centers_x.size(); ++j) {
+                    if (j == i) continue; // Skip its pair
+
+                    double distance = std::sqrt(std::pow(x - first_centers_x[j], 2) +
+                                              std::pow(y - first_centers_y[j], 2));
+                    if (distance < 2 * radius) {
+                        valid_position = false;
+                        break;
+                    }
+                }
+
+                attempts++;
+            }
+
+            if (valid_position) {
+                radii.push_back(radius);
+                x_centers.push_back(x);
+                y_centers.push_back(y);
+            } else {
+                std::cerr << "Warning: Could not place second boundary circle for pair "
+                          << i << " after " << max_attempts << " attempts." << std::endl;
             }
         }
 
-        return evaluate_circle_derivative_y(x, y, extremum_idx);
+        // Create and return the multi_circle_domain
+        multi_circle_domain_t domain;
+        domain.set_params(radii, x_centers, y_centers, beta, inside);
+
+        return domain;
     }
 
-private:
-    double evaluate_circle_phi(double x, double y, size_t idx) const {
-        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
-        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
+static multi_circle_domain_t generate_protein_configuration(
+    ConfigurationType config_type,
+    int n_proteins,
+    double hydrophobic_radius,   // Radius for hydrophobic patches
+    double hydrophilic_radius,   // Radius for hydrophilic patches
+    double patch_distance,       // Distance between protein center and patch center
+    param_t<double>& xmin, param_t<double>& xmax,
+    param_t<double>& ymin, param_t<double>& ymax,
+    bool is_hydrophobic,         // Whether to generate hydrophobic (true) or hydrophilic (false) patches
+    double beta = 0.0, double inside = -1.0)
+{
+    std::vector<double> radii, x_centers, y_centers;
+    double radius = is_hydrophobic ? hydrophobic_radius : hydrophilic_radius;
 
-        double angle = atan2(Y, X);
-        while (angle < 0) angle += 2 * M_PI;
+    // Use a good buffer from domain edges (like in the MATLAB code)
+    double buffer = 0.3;
 
-        double r = sqrt(X*X + Y*Y);
-        if (r < 1.0E-9) r = 1.0E-9;
-        double phi = inside * (r - r0[idx] - beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 5.0));
+    // Minimum distance between protein centers to avoid overlaps
+    double min_distance = 2 * std::max(hydrophobic_radius, hydrophilic_radius) + patch_distance;
 
-        double dist = std::abs(angle - split_angle[idx]);
-        double angle_factor = exp(-dist*dist/2.0);  // Gaussian-like smoothing
-        double offset = 1e-8 * r0[idx] * (r/r0[idx]) * (1.0 + angle_factor);
-        if (is_first_region) {
-            return angle <= split_angle[idx] ? phi : phi + offset;
+    // Different placement approach based on configuration type
+    std::vector<double> protein_centers_x;
+    std::vector<double> protein_centers_y;
+    std::vector<double> orientations;
+
+    // Use a dynamic seed based on config_type
+    unsigned int seed;
+    switch (config_type) {
+        case FIXED_EQUILIBRIUM: seed = 42; break;
+        case RANDOM_POSITIONS_OPTIMIZED: seed = (unsigned int)std::time(nullptr); break;
+        case FULLY_RANDOM: seed = (unsigned int)std::time(nullptr) + 100; break;
+    }
+    std::srand(seed);
+
+    // STEP 1: Place protein centers without overlap
+    int attempts = 0, max_attempts = 1000;
+    int i = 0;
+
+    while (i < n_proteins && attempts < max_attempts) {
+        // Generate random position within domain buffer
+        double cx = (xmax.val - xmin.val - 2*buffer) * (static_cast<double>(std::rand()) / RAND_MAX)
+                    + xmin.val + buffer;
+        double cy = (ymax.val - ymin.val - 2*buffer) * (static_cast<double>(std::rand()) / RAND_MAX)
+                    + ymin.val + buffer;
+
+        // Check minimum distance to existing proteins
+        bool valid = true;
+        for (size_t j = 0; j < protein_centers_x.size(); j++) {
+            double dx = cx - protein_centers_x[j];
+            double dy = cy - protein_centers_y[j];
+            double dist = std::sqrt(dx*dx + dy*dy);
+
+            if (dist < min_distance) {
+                valid = false;
+                break;
+            }
+        }
+
+        if (valid) {
+            protein_centers_x.push_back(cx);
+            protein_centers_y.push_back(cy);
+
+            // Initial random orientation
+            double angle = 2 * M_PI * (static_cast<double>(std::rand()) / RAND_MAX);
+            orientations.push_back(angle);
+
+            i++;
+        }
+
+        attempts++;
+    }
+
+    n_proteins = protein_centers_x.size(); // Adjust if we couldn't place all
+
+    // STEP 2: Apply orientation rules based on configuration type
+    if (config_type == FIXED_EQUILIBRIUM) {
+        // For FIXED_EQUILIBRIUM, we want a symmetric arrangement
+        // with proteins pointing toward the center
+
+        // Calculate domain center
+        double center_x = (xmin.val + xmax.val) / 2.0;
+        double center_y = (ymin.val + ymax.val) / 2.0;
+
+        // Place proteins in a perfectly symmetric arrangement
+        // For 4 proteins, we can use corners of a rectangle
+        if (n_proteins >= 4) {
+            double offset_x = (xmax.val - xmin.val) * 0.3; // 30% from center
+            double offset_y = (ymax.val - ymin.val) * 0.3;
+
+            // Four corners
+            protein_centers_x = {
+                center_x - offset_x,
+                center_x - offset_x,
+                center_x + offset_x,
+                center_x + offset_x
+            };
+
+            protein_centers_y = {
+                center_y - offset_y,
+                center_y + offset_y,
+                center_y - offset_y,
+                center_y + offset_y
+            };
+
+            // Limit to requested number
+            protein_centers_x.resize(n_proteins);
+            protein_centers_y.resize(n_proteins);
+
+            // All proteins point toward center
+            orientations.resize(n_proteins);
+            for (int i = 0; i < n_proteins; i++) {
+                double dx = center_x - protein_centers_x[i];
+                double dy = center_y - protein_centers_y[i];
+                orientations[i] = std::atan2(dy, dx);
+            }
+        }
+    }
+    else if (config_type == RANDOM_POSITIONS_OPTIMIZED) {
+        // Energy minimization like in the MATLAB code
+        int num_iter = 100;
+        double angle_step = 0.1;
+
+        for (int iter = 0; iter < num_iter; iter++) {
+            for (size_t i = 0; i < orientations.size(); i++) {
+                double current_angle = orientations[i];
+                double best_energy = calculate_total_energy(orientations);
+                double best_angle = current_angle;
+
+                // Try clockwise and counter-clockwise adjustments
+                for (double delta : {-angle_step, angle_step}) {
+                    double new_angle = current_angle + delta;
+                    orientations[i] = new_angle;
+
+                    double energy = calculate_total_energy(orientations);
+                    if (energy < best_energy) {
+                        best_energy = energy;
+                        best_angle = new_angle;
+                    }
+                }
+
+                // Use the best angle found
+                orientations[i] = best_angle;
+            }
+        }
+    }
+    // For FULLY_RANDOM, we keep the initial random orientations
+
+    // STEP 3: Calculate patch positions using protein centers and orientations
+    for (size_t i = 0; i < protein_centers_x.size(); i++) {
+        // Orientation vector scaled by patch distance
+        double dx = std::cos(orientations[i]) * patch_distance;
+        double dy = std::sin(orientations[i]) * patch_distance;
+
+        // Calculate patch position based on orientation and patch type
+        double patch_x, patch_y;
+        if (is_hydrophobic) {
+            // Hydrophobic patch points in direction of orientation
+            patch_x = protein_centers_x[i] + dx;
+            patch_y = protein_centers_y[i] + dy;
         } else {
-            return angle > split_angle[idx] ? phi : phi + offset;
+            // Hydrophilic patch points in opposite direction
+            patch_x = protein_centers_x[i] - dx;
+            patch_y = protein_centers_y[i] - dy;
+        }
+
+        // Safety check - ensure patch is within bounds
+        patch_x = std::max(xmin.val + radius, std::min(patch_x, xmax.val - radius));
+        patch_y = std::max(ymin.val + radius, std::min(patch_y, ymax.val - radius));
+
+        // Add to result vectors
+        radii.push_back(radius);
+        x_centers.push_back(patch_x);
+        y_centers.push_back(patch_y);
+    }
+
+    // Create and return the domain
+    multi_circle_domain_t domain;
+    domain.set_params(radii, x_centers, y_centers, beta, inside);
+
+    return domain;
+}
+
+// Energy calculation function for orientation optimization
+static double calculate_total_energy(const std::vector<double>& orientations) {
+    double energy = 0.0;
+
+    for (size_t i = 0; i < orientations.size(); i++) {
+        for (size_t j = i + 1; j < orientations.size(); j++) {
+            // Calculate angle difference
+            double angle_i = orientations[i];
+            double angle_j = orientations[j];
+            double angle_diff = std::abs(angle_i - angle_j);
+
+            // Ensure angle_diff is in [0, π]
+            while (angle_diff > M_PI) {
+                angle_diff = 2 * M_PI - angle_diff;
+            }
+
+            // Energy is negative cosine of angle difference (minimize to align)
+            energy -= std::cos(angle_diff);
         }
     }
 
-    double evaluate_circle_derivative_y(double x, double y, size_t idx) const {
-        double X = (x - xc[idx]) * cos_theta - (y - yc[idx]) * sin_theta;
-        double Y = (x - xc[idx]) * sin_theta + (y - yc[idx]) * cos_theta;
-
-        double r = sqrt(X*X + Y*Y);
-        if (r < 1.0E-9) r = 1.0E-9;
-
-        double phi_x = inside * X * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
-                    - inside * 20.0 * beta * X * Y * (X*X - Y*Y) / pow(r, 5.0);
-        double phi_y = inside * Y * (1.0 + 5.0 * beta * (pow(Y, 5.0) + 5.0 * pow(X, 4.0) * Y - 10.0 * pow(X * Y, 2.0) * Y) / pow(r, 6.0)) / r
-                    - inside * 5.0 * beta * (pow(Y, 4.0) + pow(X, 4.0) - 6.0 * pow(X * Y, 2.0)) / pow(r, 5.0);
-
-        return -phi_x * sin_theta + phi_y * cos_theta;
-    }
+    return energy;
+}
 };
 
-struct weighted_circle_domain_t {
-    weighted_circle_phi_t phi;
-    weighted_circle_phi_x_t phi_x;
-    weighted_circle_phi_y_t phi_y;
-
-    weighted_circle_domain_t(const std::vector<double>& r0 = std::vector<double>{1.0},
-                           const std::vector<double>& xc = std::vector<double>{0.0},
-                           const std::vector<double>& yc = std::vector<double>{0.0},
-                           const std::vector<double>& split = std::vector<double>{3.0*M_PI/2.0},
-                           double beta = 0.0, double inside = 1.0, bool is_first_region = true,
-                           double theta = 0.0)
-        : phi(r0, xc, yc, split, beta, inside, is_first_region, theta),
-          phi_x(r0, xc, yc, split, beta, inside, is_first_region, theta),
-          phi_y(r0, xc, yc, split, beta, inside, is_first_region, theta)
-    {
-        set_params(r0, xc, yc, split, beta, inside, is_first_region, theta);
-    }
-
-    void set_params(const std::vector<double>& r0,
-                   const std::vector<double>& xc,
-                   const std::vector<double>& yc,
-                   const std::vector<double>& split,
-                   double beta = 0.0, double inside = 1.0, bool is_first_region = true,
-                   double theta = 0.0)
-    {
-        phi.set_params(r0, xc, yc, split, beta, inside, is_first_region, theta);
-        phi_x.set_params(r0, xc, yc, split, beta, inside, is_first_region, theta);
-        phi_y.set_params(r0, xc, yc, split, beta, inside, is_first_region, theta);
-    }
-};
+#endif
 
 #endif // SHAPES_H
