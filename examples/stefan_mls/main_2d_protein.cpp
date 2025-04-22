@@ -17,7 +17,7 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_semi_lagrangian.h>
-
+#include <src/my_p4est_shapes.h>
 #include <src/my_p4est_poisson_nodes_mls.h>
 #include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_interpolation_nodes.h>
@@ -74,12 +74,13 @@ const static std::string main_description =
 parameter_list_t pl;
 
 // Examples:
-DEFINE_PARAMETER(pl,int,example_,1,"Example number. 0 = Frank sphere, 1 = Ice melting. (default: 0)");
+DEFINE_PARAMETER(pl,int,example_,2,"Example number. 0 = Frank sphere, 1 = Ice melting, 2 = protein aggregation. (default: 0)");
 
 // Define the numeric label for each type of example to make implementation a bit more clear
 enum{
-    FRANK_SPHERE = 0,
-    ICE_MELT = 1
+  FRANK_SPHERE = 0,
+  ICE_MELT = 1,
+  PROTEIN_AGGREGATION = 2
 };
 
 // Save settings:
@@ -150,6 +151,13 @@ double v_interface_max_norm;
 
 // For surface tension: (used to apply some interfacial BC's in temperature)
 double sigma;
+
+// For protein aggregation:
+int protein_n_monomers;
+double protein_hydrophobic_radius;
+double protein_hydrophilic_radius;
+double protein_patch_distance;
+multi_circle_domain_t::ConfigurationType protein_config_type;
 // -----------------------------------------
 // Auxiliary functions for initializing the problem:
 // -----------------------------------------
@@ -175,6 +183,7 @@ void set_geometry(){
 
       break;
   case ICE_MELT:
+      {  // Add braces to create a new scope for local variables
       CODE2D(xmin = -0.8; ymin = -0.8; zmin = 0.0;
              xmax = 0.8; ymax = 0.8; zmax = 0.0);
        CODE3D(xmin = -0.8; ymin = -0.8; zmin = -0.8;
@@ -193,9 +202,24 @@ void set_geometry(){
       Tinterface = 273.0; // [K] -- freezing temp of water
       // Twall = 298.0; // [K] -- a bit under boiling temp of water
       Twall = 330;
+      }  // Close the scope
       break;
 
-    }
+  case PROTEIN_AGGREGATION:
+      CODE2D(xmin = -1.0; ymin = -1.0; zmin = 0.0;
+             xmax = 1.0; ymax = 1.0; zmax = 0.0;)
+      CODE3D(xmin = -1.0; ymin = -1.0; zmin = -1.0;
+             xmax = 1.0; ymax = 1.0; zmax = 1.0;)
+
+      nx = 1; ny = 1; CODE2D(nz = 0); CODE3D(nz = 1);
+      px = 0; py = 0; pz = 0;
+
+      // Define protein configuration parameters
+      scaling = 1.0;  // 1 μm computational domain
+      Tinterface = 0.0;  // Temperature at interface (equilibrium concentration)
+      Twall = 1.0;     // Temperature at boundaries (source concentration)
+      break;
+  }
 }
 
 
@@ -203,21 +227,24 @@ void set_geometry(){
 // Time-stepping:
 // ---------------------------------------
 double dt; // Global variable which holds the current timestep value
-void simulation_time_info(){
-  switch(example_){
+void simulation_time_info() {
+  switch(example_) {
     case FRANK_SPHERE:
       tstart = 1.0;
-      tfinal = 1.3;
-
-      dt_max_allowed = 0.05;
-
-      break;
+    tfinal = 1.3;
+    dt_max_allowed = 0.05;
+    break;
     case ICE_MELT:
       tstart = 0.0;
-      tfinal = 2 * 90. * 60.; // approx 90 minutes
-      dt_max_allowed = 40.0;
-      break;
-    }
+    tfinal = 2 * 90. * 60.; // approx 90 minutes
+    dt_max_allowed = 40.0;
+    break;
+    case PROTEIN_AGGREGATION:
+      tstart = 0.0;
+    tfinal = 5.0;     // Run for sufficient time to see aggregation
+    dt_max_allowed = 0.1;  // Smaller timesteps for stability
+    break;
+  }
   tn = tstart;
 }
 // ---------------------------------------
@@ -235,6 +262,12 @@ void set_diffusivities(){
       alpha_s = (1.1820e-6); //ice - [m^2]/s
       alpha_l = (1.4547e-7); //water- [m^2]/s
       break;
+    case PROTEIN_AGGREGATION:
+    // From proposal page 8: "Inside aggregates, x ∈ Ω−, we solve a Laplace problem"
+    // No time-dependent diffusion happens inside aggregates
+    alpha_s = 0.0;  // No diffusion inside protein aggregates
+    alpha_l = 0.1;  // Diffusion in solution
+    break;
     }
 }
 
@@ -260,6 +293,21 @@ void set_conductivities(){
       sigma = 9.e-6;//30.e-3 // J/m^2 // surface tension of water
       break;
 
+    case PROTEIN_AGGREGATION:
+      // From proposal page 9 equations (6-8): Different boundary conditions for
+      // hydrophobic vs. hydrophilic patches
+      k_s = 1.5;    // Binding rate at hydrophobic patches (higher)
+      k_l = 0.5;    // Binding rate at hydrophilic patches (lower)
+
+      // From proposal page 9: "δ monomers per growth timescale"
+      L = 1.0;      // Binding energy between proteins
+
+      // From proposal page 8 equation (2): "protein transport equation"
+      rho_l = 1.0;  // Solution density (normalized)
+
+      // No initial surface tension (can be modified later if needed)
+      sigma = 0.0;
+    break;
     }
 }
 
@@ -353,80 +401,156 @@ double frank_sphere_solution_t(double s){
 
   if (s<s0) return 0;
   else      return T_inf*(1.0 - F(s)/F(s0));
-
-
 }
 
 // --------------------------------------------------------------------------------------------------------------
 // Level Set Function:
 // --------------------------------------------------------------------------------------------------------------
+// Global variables for protein configuration
+bool protein_config_initialized = false;
+std::vector<double> protein_radius;
+std::vector<double> protein_x;
+std::vector<double> protein_y;
+std::vector<bool> is_hydrophobic;
+
+// Global function to check if a point is on a hydrophobic patch
+bool is_hydrophobic_patch(DIM(double x, double y, double z)) {
+  double r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+
+  // Core region is hydrophobic (inner 70% of the protein)
+  if (r < 0.21) {
+    return true;
+  }
+
+  // Check if in one of the hydrophobic patches
+  // Simplified: add a hydrophobic patch in the +x direction
+  if (r < 0.3 && x > 0.1) {
+    return true;
+  }
+
+  return false;
+}
+
+// Global function to check if a point is on a hydrophilic patch
+bool is_hydrophilic_patch(DIM(double x, double y, double z)) {
+  double r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+
+  // Point is within protein radius but not in hydrophobic region
+  if (r < 0.3 && !is_hydrophobic_patch(DIM(x, y, z))) {
+    return true;
+  }
+
+  return false;
+}
+
 struct LEVEL_SET : CF_DIM {
 public:
   double operator() (DIM(double x, double y, double z)) const
   {
-     switch (example_){
+    // Initialize protein configuration if not already done
+    if (example_ == PROTEIN_AGGREGATION && !protein_config_initialized) {
+      // Start with a simple protein (just a single sphere)
+      protein_radius.push_back(0.3);
+      protein_x.push_back(0.0);
+      protein_y.push_back(0.0);
+      is_hydrophobic.push_back(true);
+
+      protein_config_initialized = true;
+    }
+
+    switch (example_){
       case FRANK_SPHERE:
         return s0 - sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
 
       case ICE_MELT:
-         return r0 - sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+        return r0 - sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
 
-      default: throw std::invalid_argument("You must choose an example type\n");
+      case PROTEIN_AGGREGATION: {
+        // Simple spherical protein
+        return 0.3 - sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
       }
+
+      default:
+        throw std::invalid_argument("You must choose an example type\n");
+    }
+
+    return 0.0; // Default return to avoid warning
   }
 } level_set;
-
 
 // --------------------------------------------------------------------------------------------------------------
 // INTERFACIAL TEMPERATURE BOUNDARY CONDITION
 // --------------------------------------------------------------------------------------------------------------
 BoundaryConditionType interface_bc_type_temp;
 // Auxiliary function which initializes the interface BC type -- call this function before setting interface bc in the solver
-void interface_bc(){
-  switch(example_){
+void interface_bc() {
+  switch(example_) {
     case FRANK_SPHERE:
       interface_bc_type_temp = DIRICHLET;
-      break;
+    break;
     case ICE_MELT:
       interface_bc_type_temp = DIRICHLET;
-      break;
-    }
+    break;
+    case PROTEIN_AGGREGATION:
+      interface_bc_type_temp = DIRICHLET; // Start with Dirichlet for simplicity
+    break;
+  }
 }
 
-// A class that evaluates the interfacial BC value -- dependent on the current LSF geometry
-class BC_interface_value: public CF_DIM{
+class BC_interface_value: public CF_DIM {
 private:
-  // Have interpolation objects for case with surface tension included in boundary condition: can interpolate the curvature in a timestep to the interface points while applying the boundary condition
   my_p4est_interpolation_nodes_t kappa_interp;
 
 public:
   BC_interface_value(my_p4est_node_neighbors_t *ngbd, vec_and_ptr_t kappa): kappa_interp(ngbd)
   {
-    // Set the curvature and normal inputs to be interpolated when the BC object is constructed:
-    kappa_interp.set_input(kappa.vec,linear);
+    kappa_interp.set_input(kappa.vec, linear);
   }
-  double operator()(DIM(double x, double y,double z)) const
+
+  // In BC_interface_value
+  double operator()(DIM(double x, double y, double z)) const
   {
-    switch(example_){
-      case FRANK_SPHERE: // Frank sphere case, no surface tension
+    switch(example_) {
+      case FRANK_SPHERE:
         return Tinterface;
-    case ICE_MELT: // Water case, has surface tension effects
-        //return Tinterface;
+      case ICE_MELT:
         return Tinterface*(1. + sigma*kappa_interp(DIM(x,y,z))/L);
+      case PROTEIN_AGGREGATION: {
+        // Check if on a hydrophobic patch
+        bool hydrophobic = is_hydrophobic_patch(DIM(x, y, z));
+
+        // Return equilibrium concentration with patch-specific modifier
+        return hydrophobic ?
+               Tinterface*(1.0 + 0.5*kappa_interp(DIM(x,y,z))) : // Enhanced binding at hydrophobic patches
+               Tinterface*(1.0 - 0.2*kappa_interp(DIM(x,y,z)));  // Reduced binding at hydrophilic patches
       }
+    }
+
+    return Tinterface; // Default fallback
   }
 };
 
-class BC_interface_coeff: public CF_DIM{
+class BC_interface_coeff: public CF_DIM {
 public:
-  double operator()(DIM(double x, double y,double z)) const
-  { switch(example_){
-      case FRANK_SPHERE: return 1.0;
-      case ICE_MELT: return 1.0;
-      }
-  }
-}bc_interface_coeff;
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch(example_) {
+      case FRANK_SPHERE:
+        return 1.0;
+      case ICE_MELT:
+        return 1.0;
+      case PROTEIN_AGGREGATION: {
+        // Check if on a hydrophobic patch
+        bool hydrophobic = is_hydrophobic_patch(DIM(x, y, z));
 
+        // Return higher coefficient for hydrophobic patches (stronger binding)
+        return hydrophobic ? 2.5 : 0.5;
+      }
+    }
+    return 1.0; // Default value
+  }
+};
+BC_interface_coeff bc_interface_coeff;
 
 // --------------------------------------------------------------------------------------------------------------
 // Wall functions -- these evaluate to true or false depending on if the location is on the wall --  they just add coding simplicity
@@ -468,6 +592,9 @@ public:
   double operator() (DIM(double x, double y, double z)) const
   {
     CODE3D(return (fabs(z - zmin) < EPS));
+#ifndef P4_TO_P8
+    return 0.0;  // Return 0 in 2D case
+#endif
   }
 } zlower_wall;
 
@@ -476,6 +603,9 @@ public:
   double operator() (DIM(double x, double y, double z)) const
   {
     CODE3D(return (fabs(z - zmax) < EPS));
+#ifndef P4_TO_P8
+    return 0.0;  // Return 0 in 2D case
+#endif
   }
 } zupper_wall;
 // --------------------------------------------------------------------------------------------------------------
@@ -484,13 +614,14 @@ public:
 class WALL_BC_TYPE_TEMP: public WallBCDIM
 {
 public:
-  BoundaryConditionType operator()(DIM(double x, double y, double z )) const
+  BoundaryConditionType operator()(DIM(double x, double y, double z)) const
   {
     switch(example_){
       case FRANK_SPHERE: return DIRICHLET;
       case ICE_MELT: return DIRICHLET;
-      default: break;
-      }
+      case PROTEIN_AGGREGATION: return DIRICHLET;
+      default: return DIRICHLET;  // Add default return
+    }
   }
 } wall_bc_type_temp;
 
@@ -524,9 +655,18 @@ public:
           } // end of "if on wall"
         break;
     }// end of ICE_MELT case
-
-    default: break;
-    } // end of switch case
+      case PROTEIN_AGGREGATION: {
+      // For protein boundaries
+      if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) ||
+          ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z))
+          CODE3D(|| zlower_wall(DIM(x,y,z)) || zupper_wall(DIM(x,y,z)))) {
+        return Twall;
+      }
+      return Tinterface;
+    }
+    default:
+      return Tinterface;
+  }
   }
 } wall_bc_value_temp;
 
@@ -557,9 +697,44 @@ public:
         else{
             return Tice_init;
         }
-
     }
+    case PROTEIN_AGGREGATION:{
+        // For protein aggregation, we set up an initial concentration field
+        // with gradient from boundaries to center
 
+        // Check if inside aggregate (where proteins are located)
+        if (level_set(DIM(x,y,z)) > 0) {
+            // Inside protein aggregate: concentration is equilibrium level
+            return Tinterface;
+        } else {
+            // In solution: concentration decreases with distance from boundary
+            // Create gradient from walls (Twall = 1.0) to interface (Tinterface = 0.0)
+            r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+
+            // Distance from center of domain
+            double center_dist = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+
+            // Distance from nearest wall
+          double wall_dist = std::min(std::min(std::min(fabs(x - xmin), fabs(x - xmax)),
+                                  std::min(fabs(y - ymin), fabs(y - ymax))),
+                                  #ifdef P4_TO_P8
+                                  std::min(fabs(z - zmin), fabs(z - zmax))
+                                  #else
+                                  100.0 // Large value for 2D case
+                                  #endif
+                                  );
+
+            // Linear interpolation between wall value and interface value
+            // Maximum possible distance is half the domain width
+            double domain_half_width = (xmax - xmin)/2.0;
+            double t = wall_dist/domain_half_width;  // Normalized distance [0,1]
+
+            // Concentration decreases as we move away from walls toward center
+            return Twall * (1.0 - t) + Tinterface * t;
+        }
+    }
+    default:
+        return 0.0;
     }
   }
 }temp_current_time;
@@ -617,12 +792,27 @@ void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes_t* nodes, p4
   MPI_Allreduce(&min_T,&global_min_T,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
   MPI_Allreduce(&min_mag_T,&global_min_mag_T,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
 
+  // PetscPrintf(p4est->mpicomm,"\n");
+  // PetscPrintf(p4est->mpicomm,"Average temperature: %0.2f \n",global_avg_T);
+  // PetscPrintf(p4est->mpicomm,"Maximum temperature: %0.2f \n",global_max_T);
+  // PetscPrintf(p4est->mpicomm,"Minimum temperature: %0.2f \n",global_min_T);
+  // PetscPrintf(p4est->mpicomm,"Minimum temperature magnitude: %0.2f \n",global_min_mag_T);
+  // Modify just the output messages based on the example type
   PetscPrintf(p4est->mpicomm,"\n");
-  PetscPrintf(p4est->mpicomm,"Average temperature: %0.2f \n",global_avg_T);
-  PetscPrintf(p4est->mpicomm,"Maximum temperature: %0.2f \n",global_max_T);
-  PetscPrintf(p4est->mpicomm,"Minimum temperature: %0.2f \n",global_min_T);
-  PetscPrintf(p4est->mpicomm,"Minimum temperature magnitude: %0.2f \n",global_min_mag_T);
 
+  if (example_ == PROTEIN_AGGREGATION) {
+    // For protein aggregation, T represents concentration
+    PetscPrintf(p4est->mpicomm,"Average concentration: %0.2f \n",global_avg_T);
+    PetscPrintf(p4est->mpicomm,"Maximum concentration: %0.2f \n",global_max_T);
+    PetscPrintf(p4est->mpicomm,"Minimum concentration: %0.2f \n",global_min_T);
+    PetscPrintf(p4est->mpicomm,"Minimum concentration magnitude: %0.2f \n",global_min_mag_T);
+  } else {
+    // For other cases, T represents temperature
+    PetscPrintf(p4est->mpicomm,"Average temperature: %0.2f \n",global_avg_T);
+    PetscPrintf(p4est->mpicomm,"Maximum temperature: %0.2f \n",global_max_T);
+    PetscPrintf(p4est->mpicomm,"Minimum temperature: %0.2f \n",global_min_T);
+    PetscPrintf(p4est->mpicomm,"Minimum temperature magnitude: %0.2f \n",global_min_mag_T);
+  }
 //  if(global_max_T>400. || global_min_T<100.0) SC_ABORT("temp values are geting unreasonable");
   T.restore_array();
   phi.restore_array();
@@ -1009,6 +1199,32 @@ void setup_rhs(vec_and_ptr_t T_l, vec_and_ptr_t T_s,vec_and_ptr_t rhs_Tl, vec_an
     }
 }
 
+// For protein aggregation case, check if protein aggregation has reached a steady state
+bool check_protein_aggregation_complete(vec_and_ptr_t phi, double time, p4est_nodes_t* nodes, p4est_t* p4est){
+  int still_growing = 0;
+  int global_still_growing;
+
+  // Compare the current velocity magnitude with a small threshold
+  // If max velocity is below threshold, aggregation has reached steady state
+  if (v_interface_max_norm > 0.01) {
+    still_growing = 1;
+  }
+
+  // Get the global outcome across all processors
+  int mpi_check;
+  mpi_check = MPI_Allreduce(&still_growing, &global_still_growing, 1, MPI_INT, MPI_LOR, p4est->mpicomm);
+
+  SC_CHECK_MPI(mpi_check);
+  MPI_Barrier(p4est->mpicomm);
+
+  if (!global_still_growing) {
+    // If no more growth, protein aggregation has reached steady state
+    PetscPrintf(p4est->mpicomm, "\n\nProtein aggregation has reached steady state at t = %0.3e\n\n", time);
+  }
+
+  return global_still_growing;
+}
+
 void interpolate_values_onto_new_grid(vec_and_ptr_t T_l, vec_and_ptr_t T_l_new,
                                       vec_and_ptr_t T_s, vec_and_ptr_t T_s_new,
                                       vec_and_ptr_dim_t v_interface, vec_and_ptr_dim_t v_interface_new,
@@ -1051,7 +1267,10 @@ void interpolate_values_onto_new_grid(vec_and_ptr_t T_l, vec_and_ptr_t T_l_new,
 } // end of interpolate_values_onto_new_grid
 
 
-void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s_d, vec_and_ptr_dim_t jump, vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, my_p4est_node_neighbors_t *ngbd){
+void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s_d,
+                                vec_and_ptr_dim_t jump, vec_and_ptr_dim_t v_interface,
+                                vec_and_ptr_t phi, my_p4est_node_neighbors_t *ngbd,
+                                p4est_t *p4est, p4est_nodes_t *nodes){
 
   // Get arrays:
   jump.get_array();
@@ -1065,7 +1284,7 @@ void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s
     foreach_dimension(d){
         jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_l);
     }
-   }
+  }
 
   // Begin updating the ghost values of the layer nodes:
   foreach_dimension(d){
@@ -1079,15 +1298,46 @@ void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s
       foreach_dimension(d){
           jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_l);
       }
-    }
+  }
 
   // Finish updating the ghost values of the layer nodes:
   foreach_dimension(d){
     VecGhostUpdateEnd(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);
   }
 
+  // For protein aggregation, modify the jump values based on patch orientation
+  if (example_ == PROTEIN_AGGREGATION) {
+    jump.get_array();
+
+    for(size_t i=0; i<ngbd->get_layer_size(); i++) {
+      p4est_locidx_t n = ngbd->get_layer_node(i);
+
+      // Get node coordinates
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est, nodes, xyz);
+
+      // Check patch type - handle both 2D and 3D cases
+      bool hydrophobic;
+      CODE2D(
+        hydrophobic = is_hydrophobic_patch(DIM(xyz[0], xyz[1], 0.0));
+      )
+      CODE3D(
+        hydrophobic = is_hydrophobic_patch(DIM(xyz[0], xyz[1], xyz[2]));
+      )
+
+      // Apply patch-specific growth factor
+      double growth_factor = hydrophobic ? 2.0 : 0.5;
+
+      // Apply growth factor to jump values
+      foreach_dimension(d) {
+        jump.ptr[d][n] *= growth_factor;
+      }
+    }
+
+    jump.restore_array();
+  }
+
   // Restore arrays:
-  jump.restore_array();
   T_l_d.restore_array();
   T_s_d.restore_array();
 
@@ -1097,7 +1347,6 @@ void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s
   foreach_dimension(d){
      ls.extend_from_interface_to_whole_domain_TVD(phi.vec,jump.vec[d],v_interface.vec[d],20);
   }
-
 }
 
 void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double dxyz_close_to_interface, double dxyz_smallest[P4EST_DIM],p4est_nodes_t *nodes, p4est_t *p4est){
@@ -1182,7 +1431,7 @@ void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t 
 // --------------------------------------------------------------------------------------------------------------
 // Function for saving to VTK for visualization in paraview:
 // --------------------------------------------------------------------------------------------------------------
-void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi,vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int, vec_and_ptr_t T_error, vec_and_ptr_t T_ana, char* filename ){
+void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi,vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int, vec_and_ptr_t T_error, vec_and_ptr_t T_ana, char* filename ) {
   // Things we want to save:
   /*
    * LSF
@@ -1192,24 +1441,58 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
    * v_interface
    * */
 
-    // First, need to scale the fields appropriately:
+  // First, need to scale the fields appropriately:
 
-    // Scale velocities:
-    foreach_dimension(d){
-      VecScaleGhost(v_int.vec[d],1./scaling);
+  // Scale velocities:
+  foreach_dimension(d){
+    VecScaleGhost(v_int.vec[d],1./scaling);
+  }
+
+  // Get arrays:
+  phi.get_array();
+  Tl.get_array(); Ts.get_array();
+  v_int.get_array();
+
+  // Create field for patch types if protein aggregation
+  vec_and_ptr_t patch_type;
+  if(example_ == PROTEIN_AGGREGATION){
+    patch_type.create(p4est, nodes);
+    patch_type.get_array();
+
+    // Fill patch type field (0=solution, 1=hydrophobic, 2=hydrophilic)
+    // In save_stefan_fields
+    foreach_node(n, nodes) {
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est, nodes, xyz);
+
+      // Default - not a patch
+      patch_type.ptr[n] = 0.0;
+
+      // Check patch type
+      CODE2D(
+        if (is_hydrophobic_patch(DIM(xyz[0], xyz[1], 0.0))) {
+          patch_type.ptr[n] = 1.0;
+        }
+        else if (is_hydrophilic_patch(DIM(xyz[0], xyz[1], 0.0))) {
+          patch_type.ptr[n] = 2.0;
+        }
+      )
+      CODE3D(
+        if (is_hydrophobic_patch(DIM(xyz[0], xyz[1], xyz[2]))) {
+          patch_type.ptr[n] = 1.0;
+        }
+        else if (is_hydrophilic_patch(DIM(xyz[0], xyz[1], xyz[2]))) {
+          patch_type.ptr[n] = 2.0;
+        }
+      )
     }
 
-    // Get arrays:
-    phi.get_array();
-    Tl.get_array(); Ts.get_array();
-    v_int.get_array();
     if(example_ == FRANK_SPHERE){
-        T_error.get_array();
-        T_ana.get_array();
+      T_error.get_array();
+      T_ana.get_array();
     }
 
-
-    // Save data: modified by Faranak
+    // Save data
     std::vector<std::string> point_names;
     std::vector<double*> point_data;
 
@@ -1219,6 +1502,10 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     if(example_ == FRANK_SPHERE){
       point_names = {"phi","Tl","Ts","v_int_x","v_int_y","T_error" ,"T_analytical",ZCODE("v_int_z")};
       point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],T_error.ptr,T_ana.ptr,ZCODE(v_int.ptr[2])};
+    }
+    else if(example_ == PROTEIN_AGGREGATION){
+      point_names = {"phi","Tl","Ts","v_int_x","v_int_y","patch_type",ZCODE("v_int_z")};
+      point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],patch_type.ptr,ZCODE(v_int.ptr[2])};
     }
     else{
       point_names = {"phi","Tl","Ts","v_int_x","v_int_y",ZCODE("v_int_z")};
@@ -1234,23 +1521,26 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
         filename, point_data_const, point_names,
         cell_data_const, cell_names);
 
-
-
     // Restore arrays:
-
     phi.restore_array();
     Tl.restore_array(); Ts.restore_array();
     v_int.restore_array();
+
     if(example_ == FRANK_SPHERE){
-        T_error.restore_array();
-        T_ana.restore_array();
+      T_error.restore_array();
+      T_ana.restore_array();
     }
 
+    if(example_ == PROTEIN_AGGREGATION){
+      patch_type.restore_array();
+      patch_type.destroy();
+    }
 
     // Scale things back:
     foreach_dimension(d){
       VecScaleGhost(v_int.vec[d],scaling);
     }
+  }
 }
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1696,7 +1986,7 @@ int main(int argc, char** argv) {
         v_interface.create(p4est,nodes);
 
         // Call the compute_velocity_function:
-        compute_interfacial_velocity(T_l_d,T_s_d,jump,v_interface,phi,ngbd);
+        compute_interfacial_velocity(T_l_d, T_s_d, jump, v_interface, phi, ngbd, p4est, nodes);
 
         // Destroy values once no longer needed:
         T_l_d.destroy();
@@ -1929,7 +2219,8 @@ int main(int argc, char** argv) {
           // ---------------------------------------------------------------------------
           // STEP 3.2: Get the solution to your Poisson equation!
           // ---------------------------------------------------------------------------
-          // Preassemble the linear system
+
+        // Preassemble the linear system
           solver_Tl->preassemble_linear_system();
           solver_Ts->preassemble_linear_system();
 
