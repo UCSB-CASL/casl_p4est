@@ -1,0 +1,22 @@
+# Ignore build directories
+cmake-build-debug/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore PDF exports
+*.pdf
+
+# Ignore temporary/editor files
+*~
+*.swp
+*.swo
+.DS_Store
+
+# Optional: ignore local config or backup files
+*.log
+*.bak
