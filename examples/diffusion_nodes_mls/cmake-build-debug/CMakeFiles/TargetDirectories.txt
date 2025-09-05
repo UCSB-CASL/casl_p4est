@@ -1,0 +1,4 @@
+/home/faranak/CASL/casl_code_base/casl_p4est/examples/diffusion_nodes_mls/cmake-build-debug/CMakeFiles/casl_core_obj.dir
+/home/faranak/CASL/casl_code_base/casl_p4est/examples/diffusion_nodes_mls/cmake-build-debug/CMakeFiles/diffusion_nodes_mls.dir
+/home/faranak/CASL/casl_code_base/casl_p4est/examples/diffusion_nodes_mls/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/faranak/CASL/casl_code_base/casl_p4est/examples/diffusion_nodes_mls/cmake-build-debug/CMakeFiles/rebuild_cache.dir
