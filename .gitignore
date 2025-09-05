@@ -5,3 +5,7 @@
 # === Misc junk ===
 **/.ipynb_checkpoints/
 *.bak
+
+# === IDE / build artifacts ===
+**/.idea/
+**/cmake-build-*/
