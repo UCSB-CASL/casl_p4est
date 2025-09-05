@@ -61,3 +61,4 @@ Default/
 *.json
 
 examples/porous_media/CMakeLists_old.txt
+examples/poisson_nodes_mls_protein/main_2d_heat_const_coeffs_ex6.cpp
