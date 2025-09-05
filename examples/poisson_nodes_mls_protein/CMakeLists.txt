@@ -65,8 +65,11 @@ include( ${PARCASL}/cmake/libparcasl.cmake )
 
 add_executable( ${PROJECT_NAME}
 		${SRC} ${HEADERS} ${SOURCES}
+		../../src/my_p4est_heat_solver_mls.h
 )
 
 message("*****************")
 message("This CMake will generate the executable ${PROJECT_NAME} in ${DIMENSION}.")
 message("*****************")
+# include repo root so <src/...> works
+target_include_directories(main_2d_heat_const_coeffs PRIVATE ${CMAKE_SOURCE_DIR})
