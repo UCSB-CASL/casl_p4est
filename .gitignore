@@ -13,3 +13,5 @@
 # === IDE / build artifacts ===
 **/.idea/
 **/cmake-build-*/
+**/.idea/
+**/cmake-build-*/
