@@ -18,11 +18,12 @@ project( "poisson_nodes_mls_protein")
 ########## Compiler custom macros for current project
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC main_2d_protein.cpp )
+    list( APPEND SRC main_2d_heat_messy.cpp )
+#    list( APPEND SRC main_2d_protein.cpp )
 elseif( DIMENSION MATCHES 3d )
-	list( APPEND SRC main_3d.cpp )
+    list( APPEND SRC main_3d.cpp )
 else()
-	message( FATAL_ERROR "Invalid or missing DIMENSION macro --it should be '2d' or '3d'." )
+    message( FATAL_ERROR "Invalid or missing DIMENSION macro --it should be '2d' or '3d'." )
 endif()
 
 add_compile_definitions( PRIVATE CASL_THROWS )
@@ -44,32 +45,29 @@ include( ${PARCASL}/cmake/casl_generic.cmake )		# Set paths for this machine and
 # INC_DIRS, and LIB_DIRS lists.
 
 if( CMAKE_BUILD_TYPE MATCHES Debug )
-	add_compile_definitions( PRIVATE DEBUG )		# Enable debug macro.
+    add_compile_definitions( PRIVATE DEBUG )		# Enable debug macro.
 endif()
 
 # Libraries and their linking/include directories.
 link_directories(
-		${LIB_DIRS})
+        ${LIB_DIRS})
 
 link_libraries(
-		${LIBS})
+        ${LIBS})
 
 include_directories(
-		.
-		${PARCASL}
-		${INC_DIRS})
+        .
+        ${PARCASL}
+        ${INC_DIRS})
 
 ########## Creating the executable
 
 include( ${PARCASL}/cmake/libparcasl.cmake )
 
 add_executable( ${PROJECT_NAME}
-		${SRC} ${HEADERS} ${SOURCES}
-		../../src/my_p4est_heat_solver_mls.h
+        ${SRC} ${HEADERS} ${SOURCES}
 )
 
 message("*****************")
 message("This CMake will generate the executable ${PROJECT_NAME} in ${DIMENSION}.")
 message("*****************")
-# include repo root so <src/...> works
-target_include_directories(main_2d_heat_const_coeffs PRIVATE ${CMAKE_SOURCE_DIR})

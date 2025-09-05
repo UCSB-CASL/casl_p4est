@@ -1,4 +1,4 @@
-ifndef MY_P4EST_HEAT_SOLVER_MLS_H
+#ifndef MY_P4EST_HEAT_SOLVER_MLS_H
 #define MY_P4EST_HEAT_SOLVER_MLS_H
 
 #include <src/my_p4est_poisson_nodes_mls.h>
@@ -292,6 +292,9 @@ public:
     Vec get_areas_m()  { return poisson_solver->get_areas_m(); }
     Vec get_areas_p()  { return poisson_solver->get_areas_p(); }
     Mat get_matrix()   { return poisson_solver->get_matrix(); }
+    double get_time_step() const { return dt; }
+    Vec get_solution_at_tn() const { return u_prev; }
+    TimeSteppingMethod get_time_method() const { return time_method; }
     PetscInt get_global_idx(p4est_locidx_t n) { return poisson_solver->get_global_idx(n); }
     boundary_conditions_t* get_bc(int phi_idx) { return poisson_solver->get_bc(phi_idx); }
 
@@ -769,6 +772,13 @@ private:
 
         poisson_solver->set_diag(k_m_modified, k_p_modified);
         poisson_solver->set_rhs(f_m_modified, f_p_modified);
+    }
+
+    bool check_steady_state(double tol = 1e-10) {
+        double diff;
+        VecAXPY(u_current, -1.0, u_prev);  // u_current - u_prev
+        VecNorm(u_current, NORM_2, &diff);
+        return diff < tol;
     }
 };
 
