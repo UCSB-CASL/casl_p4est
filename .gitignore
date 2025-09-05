@@ -9,3 +9,7 @@
 # === IDE / build artifacts ===
 **/.idea/
 **/cmake-build-*/
+
+# === IDE / build artifacts ===
+**/.idea/
+**/cmake-build-*/
